@@ -157,7 +157,7 @@ get_stats() ->
 %% @spec update(term()) -> ok
 %% @doc Update the given stat.
 update(Stat) ->
-    gen_server2:cast(?MODULE, {update, Stat, riak_kv_util:moment()}).
+    gen_server2:cast(?MODULE, {update, Stat, riak_core_util:moment()}).
 
 %% @private
 init([]) ->
@@ -355,6 +355,6 @@ ring_stats() ->
                                           
 
 config_stats() ->
-    [{ring_creation_size, app_helper:get_env(riak_kv, ring_creation_size)},
+    [{ring_creation_size, app_helper:get_env(riak_core, ring_creation_size)},
      {storage_backend, app_helper:get_env(riak_kv, storage_backend)}].
 

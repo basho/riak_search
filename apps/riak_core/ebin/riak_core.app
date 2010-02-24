@@ -18,8 +18,10 @@
              riak_core_claim,
              riak_core_connect,
              riak_core_ring,
+             riak_core_ring_events,
              riak_core_ring_manager,
              riak_core_sup,
+             riak_core_util,
              slide,
              spiraltime,
              vclock
@@ -43,6 +45,19 @@
          {ring_creation_size, 64},
 
          %% Default gossip interval (milliseconds)
-         {gossip_interval, 60000}
+         {gossip_interval, 60000},
+
+         %% Target N value
+         {target_n_val, 3},
+
+         %% Default claims functions
+         {wants_claim_fun, {riak_core_claim, default_wants_claim}},
+         {choose_claim_fun, {riak_core_claim, default_choose_claim}},
+
+         %% Default bucket props
+         {default_bucket_props, [{n_val,3},
+                                 {allow_mult,false},
+                                 {chash_keyfun, {riak_core_util, chash_std_keyfun}}]}
+
         ]}
  ]}.

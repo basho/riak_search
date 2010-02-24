@@ -111,10 +111,10 @@ merge(V=[{Node1,{Ctr1,TS1}}|VClock],
        Node1 > Node2 ->
             merge(V, NClock, [{Node2,{Ctr2,TS2}}|AccClock]);
        true ->
-            {Ctr,TS} = if Ctr1 > Ctr2 -> {Ctr1,TS1};
+            ({_Ctr,_TS} = C1) = if Ctr1 > Ctr2 -> {Ctr1,TS1};
                           true        -> {Ctr2,TS2}
                        end,
-            merge(VClock, NClock, [{Node1,{Ctr,TS}}|AccClock])
+            merge(VClock, NClock, [{Node1,C1}|AccClock])
     end.
 
 % @doc Get the counter value in VClock set from Node.
@@ -136,13 +136,13 @@ get_timestamp(Node, VClock) ->
 % @doc Increment VClock at Node.
 % @spec increment(Node :: node(), VClock :: vclock()) -> vclock()
 increment(Node, VClock) ->
-    {{Ctr, TS},NewV} = case lists:keytake(Node, 1, VClock) of
-                           false ->
-                               {{1, timestamp()}, VClock};
-                           {value, {_N, {C, _T}}, ModV} ->
-                               {{C + 1, timestamp()}, ModV}
-                       end,
-    [{Node,{Ctr,TS}}|NewV].
+    {{_Ctr, _TS}=C1,NewV} = case lists:keytake(Node, 1, VClock) of
+                                false ->
+                                    {{1, timestamp()}, VClock};
+                                {value, {_N, {C, _T}}, ModV} ->
+                                    {{C + 1, timestamp()}, ModV}
+                            end,
+    [{Node,C1}|NewV].
 
 % @doc Return the list of all nodes that have ever incremented VClock.
 % @spec all_nodes(VClock :: vclock()) -> [node()]
@@ -198,7 +198,7 @@ prune_vclock1(V,Now,BProps,HeadTime) ->
 
 prune_small_test() ->
     % vclock with less entries than small_vclock will be untouched
-    Now = riak_kv_util:moment(),
+    Now = riak_core_util:moment(),
     OldTime = Now - 32000000,
     SmallVC = [{<<"1">>, {1, OldTime}},
                {<<"2">>, {2, OldTime}},
@@ -208,7 +208,7 @@ prune_small_test() ->
 
 prune_young_test() ->
     % vclock with all entries younger than young_vclock will be untouched
-    Now = riak_kv_util:moment(),
+    Now = riak_core_util:moment(),
     NewTime = Now - 1,
     VC = [{<<"1">>, {1, NewTime}},
           {<<"2">>, {2, NewTime}},
@@ -219,7 +219,7 @@ prune_young_test() ->
 prune_big_test() ->
     % vclock not preserved by small or young will be pruned down to
     % no larger than big_vclock entries
-    Now = riak_kv_util:moment(),
+    Now = riak_core_util:moment(),
     NewTime = Now - 1000,
     VC = [{<<"1">>, {1, NewTime}},
           {<<"2">>, {2, NewTime}},
@@ -231,7 +231,7 @@ prune_big_test() ->
 prune_old_test() ->
     % vclock not preserved by small or young will be pruned down to
     % no larger than big_vclock and no entries more than old_vclock ago
-    Now = riak_kv_util:moment(),
+    Now = riak_core_util:moment(),
     NewTime = Now - 1000,
     OldTime = Now - 100000,    
     VC = [{<<"1">>, {1, NewTime}},

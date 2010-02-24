@@ -37,18 +37,16 @@ start(_Type, _StartArgs) ->
             ok
     end,
 
-    %% Make sure default_bucket_props is setup properly
-    DefaultBucketProps = app_helper:get_env(riak_kv, default_bucket_props),
-    if
-        DefaultBucketProps =:= undefined ->
-            set_bucket_params([]);
-        is_list(DefaultBucketProps) ->
-            set_bucket_params(DefaultBucketProps);
-        true ->
-            error_logger:error_msg("default_bucket_props is not a list: ~p\n",
-                                   [DefaultBucketProps]),
-            throw({error, invalid_default_bucket_props})
-    end,
+    %% Append defaults for riak_kv buckets to the bucket defaults
+    %% TODO: Need to revisit this. Buckets are typically created
+    %% by a specific entity; seems lame to append a bunch of unused
+    %% metadata to buckets that may not be appropriate for the bucket.
+    riak_core_bucket:append_bucket_defaults(
+      [{linkfun, {modfun, riak_kv_wm_link_walker, mapreduce_linkfun}},
+       {old_vclock, 86400},
+       {young_vclock, 20},
+       {big_vclock, 50},
+       {small_vclock, 10}]),
 
     %% Check the storage backend
     StorageBackend = app_helper:get_env(riak_kv, storage_backend),
@@ -62,20 +60,19 @@ start(_Type, _StartArgs) ->
     end,
 
     %% Spin up supervisor
-    riak_kv_sup:start_link().
+    case riak_kv_sup:start_link() of
+        {ok, Pid} ->
+            ok = riak_core_ring_events:add_handler(riak_kv_ring_handler, []),
+            {ok, Pid};
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
 
 %% @spec stop(State :: term()) -> ok
 %% @doc The application:stop callback for riak.
 stop(_State) ->
     ok.
-
-
-set_bucket_params(In) ->
-    application:set_env(
-      riak_kv, default_bucket_props,
-      lists:ukeymerge(1,
-                      lists:keysort(1, lists:keydelete(name, 1, In)),
-                      lists:keysort(1, riak_core_bucket:defaults()))).
 
 
 
@@ -105,3 +102,4 @@ check_epoch() ->
                                    "but your system says the epoch is ~p~n", [Epoch]),
             ok
     end.
+
