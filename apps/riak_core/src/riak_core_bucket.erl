@@ -1,18 +1,24 @@
+%% -------------------------------------------------------------------
+%%
+%% riak_core: Core Riak Application
+%%
+%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
 %% except in compliance with the License.  You may obtain
 %% a copy of the License at
-
+%%
 %%   http://www.apache.org/licenses/LICENSE-2.0
-
+%%
 %% Unless required by applicable law or agreed to in writing,
 %% software distributed under the License is distributed on an
 %% "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
 %% KIND, either express or implied.  See the License for the
 %% specific language governing permissions and limitations
 %% under the License.
-
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%%
+%% -------------------------------------------------------------------
 
 %% @doc Functions for manipulating bucket properties.
 %% @type riak_core_bucketprops() = [{Propkey :: atom(), Propval :: term()}]
@@ -47,7 +53,7 @@ set_bucket(Name, BucketProps) ->
     riak_core_ring_manager:set_my_ring(R1),
     riak_core_ring_manager:write_ringfile(),
     RandomNode = riak_core_ring:random_node(R1),
-    riak_core_connect:send_ring(RandomNode),
+    riak_core_gossip:send_ring(RandomNode),
     ok.
 
 
@@ -84,6 +90,7 @@ get_bucket(Name, Ring) ->
 -ifdef(TEST).
 
 simple_set_test() ->
+    application:load(riak_core),
     riak_core_ring_manager:start_link(test),
     ok = set_bucket(a_bucket,[{key,value}]),
     Bucket = get_bucket(a_bucket),
