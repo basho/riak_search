@@ -1,12 +1,13 @@
 Nonterminals
 
-query query_term plain_term reqd_omit_prefix title_prefix tilde_suffix boost_suffix
-bool_expr expr group_expr group_body title_group
+query query_term plain_term reqd_omit_prefix field_prefix tilde_suffix boost_suffix
+bool_expr expr group_expr group_body field_group
 .
 
 Terminals
 
 term phrase colon tilde plus minus caret lnot land lor lparen rparen
+lbracket rbracket to lstache rstache
 .
 
 Rootsymbol query.
@@ -22,7 +23,7 @@ expr -> bool_expr:
     ['$1'].
 expr -> group_expr:
     ['$1'].
-expr -> title_group:
+expr -> field_group:
     ['$1'].
 expr -> expr query_term:
     '$1' ++ ['$2'].
@@ -30,7 +31,7 @@ expr -> expr bool_expr:
     [add_operand('$2', '$1')].
 expr -> expr group_expr:
     ['$1'] ++ '$2'.
-expr -> expr title_group:
+expr -> expr field_group:
     ['$1'] ++ '$2'.
 
 group_body -> bool_expr:
@@ -47,7 +48,7 @@ group_expr -> lparen group_body rparen:
 group_expr -> lparen group_expr rparen:
     {group, emit_group_expr('$2')}.
 
-title_group -> title_prefix group_expr:
+field_group -> field_prefix group_expr:
     make_field_term('$1', '$2').
 
 bool_expr -> lnot query_term:
@@ -67,18 +68,18 @@ query_term -> plain_term:
     '$1'.
 query_term -> reqd_omit_prefix plain_term:
     add_attribute('$2', '$1').
-query_term -> title_prefix plain_term:
+query_term -> field_prefix plain_term:
     make_field_term('$1', '$2').
-query_term -> reqd_omit_prefix title_prefix plain_term:
+query_term -> reqd_omit_prefix field_prefix plain_term:
     add_attribute(make_field_term('$1', '$2'), '$1').
 
 query_term -> plain_term tilde_suffix:
     make_term('$1', '$2').
 query_term -> reqd_omit_prefix plain_term tilde_suffix:
     add_attribute(make_term('$1', '$2'), '$3').
-query_term -> title_prefix plain_term tilde_suffix:
+query_term -> field_prefix plain_term tilde_suffix:
     make_field_term('$1', '$2', '$3').
-query_term -> reqd_omit_prefix title_prefix plain_term tilde_suffix:
+query_term -> reqd_omit_prefix field_prefix plain_term tilde_suffix:
     add_attribute(make_field_term('$1', '$2', '$3'), '$4').
 
 query_term -> plain_term boost_suffix:
@@ -87,18 +88,22 @@ query_term -> plain_term tilde_suffix boost_suffix:
     make_term('$1', '$2' ++ '$3').
 query_term -> reqd_omit_prefix plain_term tilde_suffix boost_suffix:
     add_attribute(make_term('$1', '$2' ++ '$4'), '$1').
-query_term -> title_prefix plain_term tilde_suffix boost_suffix:
+query_term -> field_prefix plain_term tilde_suffix boost_suffix:
     make_field_term('$1', '$2', '$3' ++ '$4').
-query_term -> reqd_omit_prefix title_prefix plain_term tilde_suffix boost_suffix:
+query_term -> reqd_omit_prefix field_prefix plain_term tilde_suffix boost_suffix:
     add_attribute(make_field_term('$1', '$2', '$3' ++ '$5'), '$1').
 
+query_term -> field_prefix lbracket plain_term to plain_term rbracket:
+    make_field_term('$1', {inclusive_range, '$3', '$5'}).
+query_term -> field_prefix lstache plain_term to plain_term rstache:
+    make_field_term('$1', {exclusive_range, '$3', '$5'}).
 
 plain_term -> term:
     make_term('$1').
 plain_term -> phrase:
     make_term('$1').
 
-title_prefix -> term colon:
+field_prefix -> term colon:
     make_field_name('$1').
 
 reqd_omit_prefix -> plus:
@@ -163,7 +168,10 @@ make_field_name({term, _, Term}) ->
 make_field_term({field, Field}, {term, Term, SL}) ->
     {field, Field, Term, SL};
 make_field_term({field, Field}, {group, _}=Group) ->
-    {field, Field, Group}.
+    {field, Field, Group};
+make_field_term({field, Field}, {RangeType, _, _}=Range) when RangeType =:= inclusive_range orelse
+                                                              RangeType =:= exclusive_range ->
+    {field, Field, [Range]}.
 
 make_field_term({field, Field}, {term, Term, SL0}, SL) ->
     {field, Field, Term, SL0 ++ SL}.

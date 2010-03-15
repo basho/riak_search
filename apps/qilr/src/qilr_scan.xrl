@@ -1,7 +1,7 @@
 Definitions.
 
 WHITESPACE  = [\b\f\n\r\t\s\v]*
-TERM = (\\\^.|\\.|[^\:^\(^\)^\[^\]^\+^\-^\!^\&^\|^\^^\~^\s])*
+TERM = (\\\^.|\\.|[^\:^\{^\}^\(^\)^\[^\]^\+^\-^\!^\&^\|^\^^\~^\s])*
 STRING = "(\\\^.|\\.|[^\"])*"
 Rules.
 
@@ -12,6 +12,8 @@ Rules.
 \:			: {token, {colon, TokenLine, TokenChars}}.
 \(			: {token, {lparen, TokenLine, TokenChars}}.
 \)			: {token, {rparen, TokenLine, TokenChars}}.
+\{			: {token, {lstache, TokenLine, TokenChars}}.
+\}			: {token, {rstache, TokenLine, TokenChars}}.
 \[			: {token, {lbracket, TokenLine, TokenChars}}.
 \]			: {token, {rbracket, TokenLine, TokenChars}}.
 \+			: {token, {plus, TokenLine, TokenChars}}.

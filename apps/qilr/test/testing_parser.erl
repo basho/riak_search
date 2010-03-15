@@ -58,6 +58,12 @@ grouping_test() ->
                                   {term, "cookbook", [{proximity, 2}, required]}]}}]},
                   ?PARSE("title:(+python +cookbook~2)"))].
 
+field_range_test() ->
+    [?assertMatch({ok, [{field, "title", [{inclusive_range, {term, "Aida", []}, {term, "Carmen", []}}]}]},
+                  ?PARSE("title:[Aida TO Carmen]")),
+     ?assertMatch({ok, [{field, "mod_date", [{exclusive_range, {term, "20020101", []}, {term, "20030101", []}}]}]},
+                   ?PARSE("mod_date:{20020101 TO 20030101}"))].
+
 escaped_chars_gen([]) ->
     ?GEN_END;
 escaped_chars_gen([H|T]) ->
