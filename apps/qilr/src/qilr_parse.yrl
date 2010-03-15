@@ -1,7 +1,7 @@
 Nonterminals
 
 query query_term plain_term reqd_omit_prefix title_prefix tilde_suffix boost_suffix
-bool_expr expr group_expr group_body
+bool_expr expr group_expr group_body title_group
 .
 
 Terminals
@@ -22,26 +22,33 @@ expr -> bool_expr:
     ['$1'].
 expr -> group_expr:
     ['$1'].
+expr -> title_group:
+    ['$1'].
 expr -> expr query_term:
     '$1' ++ ['$2'].
 expr -> expr bool_expr:
     [add_operand('$2', '$1')].
 expr -> expr group_expr:
     ['$1'] ++ '$2'.
+expr -> expr title_group:
+    ['$1'] ++ '$2'.
 
 group_body -> bool_expr:
-    ['$1'].
+    '$1'.
 group_body -> query_term:
-    ['$1'].
+    '$1'.
 group_body -> group_body bool_expr:
     [add_operand('$2', '$1')].
 group_body -> group_body query_term:
     ['$1'] ++ ['$2'].
 
 group_expr -> lparen group_body rparen:
-    {group, '$2'}.
+    {group, emit_group_expr('$2')}.
 group_expr -> lparen group_expr rparen:
-    {group, '$2'}.
+    {group, emit_group_expr('$2')}.
+
+title_group -> title_prefix group_expr:
+    make_field_term('$1', '$2').
 
 bool_expr -> lnot query_term:
     {lnot, '$2'}.
@@ -68,11 +75,11 @@ query_term -> reqd_omit_prefix title_prefix plain_term:
 query_term -> plain_term tilde_suffix:
     make_term('$1', '$2').
 query_term -> reqd_omit_prefix plain_term tilde_suffix:
-    add_attribute(make_term('$1', '$2'), '$1').
+    add_attribute(make_term('$1', '$2'), '$3').
 query_term -> title_prefix plain_term tilde_suffix:
     make_field_term('$1', '$2', '$3').
 query_term -> reqd_omit_prefix title_prefix plain_term tilde_suffix:
-    add_attribute(make_field_term('$1', '$2', '$3'), '$1').
+    add_attribute(make_field_term('$1', '$2', '$3'), '$4').
 
 query_term -> plain_term boost_suffix:
     make_term('$1', '$2').
@@ -100,11 +107,11 @@ reqd_omit_prefix -> minus:
     prohibited.
 
 tilde_suffix -> tilde:
-    [{fuzzy, 1.0}].
+    {fuzzy, 1.0}.
 tilde_suffix -> tilde term:
-    [make_suffix('$2')].
+    make_suffix('$2').
 boost_suffix -> caret term:
-    [make_boost('$2')].
+    make_boost('$2').
 
 Erlang code.
 -export([string/1]).
@@ -113,6 +120,11 @@ string(Query) ->
     parse(Tokens).
 
 %% Internal functions
+emit_group_expr(Expr) when is_list(Expr) ->
+    Expr;
+emit_group_expr(Expr) ->
+    [Expr].
+
 add_operand({lnot, _}=Bool, Term) ->
     [Term] ++ [Bool];
 add_operand({BoolType, Op2}, Op1) when is_list(Op1) ->
@@ -138,14 +150,20 @@ make_term({Type, _, Term}) when Type =:= phrase orelse Type =:= term->
             end
     end.
 
+make_term({term, Term, SL0}, SL1) when is_list(SL1) ->
+    {term, Term, SL0 ++ SL1};
 make_term({term, Term, SL0}, SL1) ->
-    {term, Term, SL0 ++ SL1}.
+    {term, Term, SL0 ++ [SL1]};
+make_term(Attr, {term, Term, SL0}) when is_atom(Attr) ->
+    {term, Term, SL0 ++ [Attr]}.
 
 make_field_name({term, _, Term}) ->
     {field, Term}.
 
 make_field_term({field, Field}, {term, Term, SL}) ->
-    {field, Field, Term, SL}.
+    {field, Field, Term, SL};
+make_field_term({field, Field}, {group, _}=Group) ->
+    {field, Field, Group}.
 
 make_field_term({field, Field}, {term, Term, SL0}, SL) ->
     {field, Field, Term, SL0 ++ SL}.

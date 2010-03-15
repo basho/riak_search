@@ -47,8 +47,16 @@ grouping_test() ->
      ?assertMatch({ok,[{lor,[{term,"broccoli",[]},
                               {group,[{land,[{term,"green",[]},{term,"tasty",[]}]}]}]}]},
                   ?PARSE("broccoli || (green AND tasty)")),
-     ?assertMatch({ok, [{group, {group, {group, {group, [{term, "ruby", []}]}}}}]},
-                  ?PARSE("((((ruby))))"))].
+     ?assertMatch({ok, [{group, [{group, [{group, [{group, [{term, "lisp", []}]}]}]}]}]},
+                  ?PARSE("((((lisp))))")),
+     ?assertMatch({ok,[{land,[{group,[{lor,[{term,"jakarta",[]},
+                                            {term,"apache",[]}]}]},
+                              {term,"website",[]}]}]},
+                  ?PARSE("(jakarta OR apache) AND website")),
+     ?assertMatch({ok, [{field, "title",
+                         {group, [{term, "python", [required]},
+                                  {term, "cookbook", [{proximity, 2}, required]}]}}]},
+                  ?PARSE("title:(+python +cookbook~2)"))].
 
 escaped_chars_gen([]) ->
     ?GEN_END;
