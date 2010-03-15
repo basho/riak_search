@@ -1,0 +1,183 @@
+Nonterminals
+
+query query_term plain_term reqd_omit_prefix title_prefix tilde_suffix boost_suffix
+bool_expr expr group_expr group_body
+.
+
+Terminals
+
+term phrase colon tilde plus minus caret lnot land lor lparen rparen
+.
+
+Rootsymbol query.
+
+Expect 1.
+
+query -> expr:
+    '$1'.
+
+expr -> query_term:
+    ['$1'].
+expr -> bool_expr:
+    ['$1'].
+expr -> group_expr:
+    ['$1'].
+expr -> expr query_term:
+    '$1' ++ ['$2'].
+expr -> expr bool_expr:
+    [add_operand('$2', '$1')].
+expr -> expr group_expr:
+    ['$1'] ++ '$2'.
+
+group_body -> bool_expr:
+    ['$1'].
+group_body -> query_term:
+    ['$1'].
+group_body -> group_body bool_expr:
+    [add_operand('$2', '$1')].
+group_body -> group_body query_term:
+    ['$1'] ++ ['$2'].
+
+group_expr -> lparen group_body rparen:
+    {group, '$2'}.
+group_expr -> lparen group_expr rparen:
+    {group, '$2'}.
+
+bool_expr -> lnot query_term:
+    {lnot, '$2'}.
+bool_expr -> land query_term:
+    {land, '$2'}.
+bool_expr -> lor query_term:
+    {lor, '$2'}.
+bool_expr -> lnot group_expr:
+    {lnot, '$2'}.
+bool_expr -> land group_expr:
+    {land, '$2'}.
+bool_expr -> lor group_expr:
+    {lor, '$2'}.
+
+query_term -> plain_term:
+    '$1'.
+query_term -> reqd_omit_prefix plain_term:
+    add_attribute('$2', '$1').
+query_term -> title_prefix plain_term:
+    make_field_term('$1', '$2').
+query_term -> reqd_omit_prefix title_prefix plain_term:
+    add_attribute(make_field_term('$1', '$2'), '$1').
+
+query_term -> plain_term tilde_suffix:
+    make_term('$1', '$2').
+query_term -> reqd_omit_prefix plain_term tilde_suffix:
+    add_attribute(make_term('$1', '$2'), '$1').
+query_term -> title_prefix plain_term tilde_suffix:
+    make_field_term('$1', '$2', '$3').
+query_term -> reqd_omit_prefix title_prefix plain_term tilde_suffix:
+    add_attribute(make_field_term('$1', '$2', '$3'), '$1').
+
+query_term -> plain_term boost_suffix:
+    make_term('$1', '$2').
+query_term -> plain_term tilde_suffix boost_suffix:
+    make_term('$1', '$2' ++ '$3').
+query_term -> reqd_omit_prefix plain_term tilde_suffix boost_suffix:
+    add_attribute(make_term('$1', '$2' ++ '$4'), '$1').
+query_term -> title_prefix plain_term tilde_suffix boost_suffix:
+    make_field_term('$1', '$2', '$3' ++ '$4').
+query_term -> reqd_omit_prefix title_prefix plain_term tilde_suffix boost_suffix:
+    add_attribute(make_field_term('$1', '$2', '$3' ++ '$5'), '$1').
+
+
+plain_term -> term:
+    make_term('$1').
+plain_term -> phrase:
+    make_term('$1').
+
+title_prefix -> term colon:
+    make_field_name('$1').
+
+reqd_omit_prefix -> plus:
+    required.
+reqd_omit_prefix -> minus:
+    prohibited.
+
+tilde_suffix -> tilde:
+    [{fuzzy, 1.0}].
+tilde_suffix -> tilde term:
+    [make_suffix('$2')].
+boost_suffix -> caret term:
+    [make_boost('$2')].
+
+Erlang code.
+-export([string/1]).
+string(Query) ->
+    {ok, Tokens, _} = qilr_scan:string(Query),
+    parse(Tokens).
+
+%% Internal functions
+add_operand({lnot, _}=Bool, Term) ->
+    [Term] ++ [Bool];
+add_operand({BoolType, Op2}, Op1) when is_list(Op1) ->
+    {BoolType, Op1 ++ [Op2]};
+add_operand({BoolType, Op2}, Op1) ->
+    {BoolType, [Op1, Op2]}.
+
+
+make_term({Type, _, Term}) when Type =:= phrase orelse Type =:= term->
+    QMark = string:chr(Term, $?),
+    EscQMark = string:str(Term, "\\?"),
+    Star = string:chr(Term, $*),
+    EscStar = string:str(Term, "\\*"),
+    case QMark > 0 andalso EscQMark /= QMark - 1 of
+        true ->
+            {term, Term, [{wildcard, one}]};
+        false ->
+            case Star > 0 andalso EscStar /= Star - 1 of
+                true ->
+                    {term, Term, [{wildcard, all}]};
+                false ->
+                    {term, Term, []}
+            end
+    end.
+
+make_term({term, Term, SL0}, SL1) ->
+    {term, Term, SL0 ++ SL1}.
+
+make_field_name({term, _, Term}) ->
+    {field, Term}.
+
+make_field_term({field, Field}, {term, Term, SL}) ->
+    {field, Field, Term, SL}.
+
+make_field_term({field, Field}, {term, Term, SL0}, SL) ->
+    {field, Field, Term, SL0 ++ SL}.
+
+make_suffix({term, Line, Term}) ->
+    try
+        case lists:member($., Term) of
+            true ->
+                {fuzzy, list_to_float(Term)};
+            false ->
+                {proximity, list_to_integer(Term)}
+        end
+    catch
+        error:badarg ->
+            throw({parse_error, Line, Term})
+    end.
+
+add_attribute({term, Term, Attrs}, Attr) ->
+    {term, Term, [Attr|Attrs]};
+add_attribute({field, Field, Term, Attrs}, Attr) ->
+    {field, Field, Term, [Attr|Attrs]}.
+
+make_boost({term, Line, Term}) ->
+    try
+        BoostAmt = case lists:member($., Term) of
+                       true ->
+                           list_to_float(Term);
+                       false ->
+                           list_to_integer(Term)
+                       end,
+        {boost, BoostAmt}
+    catch
+        error:badarg ->
+            throw({parse_error, Line, Term})
+    end.
