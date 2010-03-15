@@ -1,16 +1,26 @@
+%% -------------------------------------------------------------------
+%%
+%% riak_handoff_listener: entry point for TCP-based handoff
+%%
+%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
 %% except in compliance with the License.  You may obtain
 %% a copy of the License at
-
+%%
 %%   http://www.apache.org/licenses/LICENSE-2.0
-
+%%
 %% Unless required by applicable law or agreed to in writing,
 %% software distributed under the License is distributed on an
 %% "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
 %% KIND, either express or implied.  See the License for the
 %% specific language governing permissions and limitations
-%% under the License.    
+%% under the License.
+%%
+%% -------------------------------------------------------------------
+
+%% @doc entry point for TCP-based handoff
 
 -module(riak_kv_handoff_listener).
 -behavior(gen_nb_server).
@@ -21,16 +31,8 @@
 -record(state, {portnum}).
 
 start_link() ->
-    PortNum = 
-        case application:get_env(riak, handoff_port) of
-            undefined -> 8099;
-            {ok, N} -> N
-        end,
-    IpAddr = 
-        case application:get_env(riak, riak_handoff_ip) of
-            undefined -> "0.0.0.0";
-            {ok, IP} -> IP
-        end,
+    PortNum = app_helper:get_env(riak_kv, handoff_port),
+    IpAddr = app_helper:get_env(riak_kv, handoff_ip),
     gen_nb_server:start_link(?MODULE, IpAddr, PortNum, [PortNum]).
 
 init([PortNum]) -> 

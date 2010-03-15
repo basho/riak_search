@@ -3,7 +3,7 @@
 {application, riak_core,
  [
   {description, "Riak Core"},
-  {vsn, "0.9"},
+  {vsn, "0.10"},
   {modules, [
              app_helper,
              bloom,
@@ -16,7 +16,7 @@
              riak_core_app,
              riak_core_bucket,
              riak_core_claim,
-             riak_core_connect,
+             riak_core_gossip,
              riak_core_ring,
              riak_core_ring_events,
              riak_core_ring_manager,
@@ -31,7 +31,8 @@
                   kernel,
                   stdlib,
                   sasl,
-                  crypto
+                  crypto,
+                  webmachine
                  ]},
   {mod, { riak_core_app, []}},
   {env, [
