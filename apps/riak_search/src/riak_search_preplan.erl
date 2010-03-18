@@ -42,8 +42,6 @@ pass1(Op = #group {}, Config) ->
             %% results together.
             F = fun(X) -> is_record(X, term) andalso (?IS_REQUIRED(X) orelse ?IS_PROHIBITED(X)) end,
             {RequiredOps, NonRequiredOps} = lists:splitwith(F, OpList),
-            ?PRINT(RequiredOps),
-            ?PRINT(NonRequiredOps),
             if 
                 RequiredOps /= [] andalso NonRequiredOps == [] ->
                     pass1(#land { ops=RequiredOps }, Config);
@@ -93,14 +91,23 @@ pass2(Op = #term {}, Config) ->
     NewString = string:join([DefIndex, DefField, Op#term.string], "."),
     Op#term { string = NewString };
 
-%% FACETS
-%% pass2(Op = #land {}, Config) ->
-%% pass2(Op = #lor {}, Config) ->
+pass2(Op = #land {}, Config) ->
+    OpList = facetize(Op#land.ops, Config#config.facets),
+    Op#land { ops=pass2(OpList, Config) };
+
+pass2(Op = #lor {}, Config) ->
+    OpList = facetize(Op#lor.ops, Config#config.facets),
+    Op#lor { ops=pass2(OpList, Config) };
 
 pass2(Op, Config) -> 
     F = fun(X) -> lists:flatten([pass2(Y, Config) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
 
+
+%% Given a list of operations, fold the facets into the non-facets.
+facetize(Ops, Facets) ->
+    %% 
+    
 
 
 %% THIRD PASS
