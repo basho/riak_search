@@ -91,22 +91,22 @@ pass2(Op = #term {}, Config) ->
     NewString = string:join([DefIndex, DefField, Op#term.string], "."),
     Op#term { string = NewString };
 
-pass2(Op = #land {}, Config) ->
-    OpList = facetize(Op#land.ops, Config#config.facets),
-    Op#land { ops=pass2(OpList, Config) };
+%% pass2(Op = #land {}, Config) ->
+%%     OpList = facetize(Op#land.ops, Config#config.facets),
+%%     Op#land { ops=pass2(OpList, Config) };
 
-pass2(Op = #lor {}, Config) ->
-    OpList = facetize(Op#lor.ops, Config#config.facets),
-    Op#lor { ops=pass2(OpList, Config) };
+%% pass2(Op = #lor {}, Config) ->
+%%     OpList = facetize(Op#lor.ops, Config#config.facets),
+%%     Op#lor { ops=pass2(OpList, Config) };
 
 pass2(Op, Config) -> 
     F = fun(X) -> lists:flatten([pass2(Y, Config) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
 
 
-%% Given a list of operations, fold the facets into the non-facets.
-facetize(Ops, Facets) ->
-    %% 
+%% %% Given a list of operations, fold the facets into the non-facets.
+%% facetize(Ops, Facets) ->
+%%     %% 
     
 
 

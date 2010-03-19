@@ -45,7 +45,7 @@ loop(Ref, OutputPid, OutputRef) ->
         {result, '$end_of_table', Ref} ->
             OutputPid!{disconnect, OutputRef};
 
-        {result, {Key, Props}, Ref} ->
+        {result, {Key, _Props}, Ref} ->
             OutputPid!{results, [Key], OutputRef},
             loop(Ref, OutputPid, OutputRef)
     end.
