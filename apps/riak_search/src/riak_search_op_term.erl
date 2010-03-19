@@ -6,8 +6,16 @@
 
 -include("riak_search.hrl").
 
-preplan_op(Op, _F) ->
-    Op.
+%% This is a stub for debugging purposes. This generates data by
+%% taking the search term and splitting it into characters, which
+%% makes it easy to write test queries.
+%%
+%% For example, the word 'fat' is in documents 'f', 'a', and 't'. The
+%% document 'cat' is in 'c', 'a', and 't'. So if you search for 'fat
+%% AND cat', then you should get the documents 'a' and 't' in the
+%% result.
+
+preplan_op(Op, _F) -> Op.
 
 chain_op(Op, OutputPid, OutputRef) ->
     String = Op#term.string,

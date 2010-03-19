@@ -12,6 +12,7 @@
              riak_search_op_lor,
              riak_search_op_lnot,
              riak_search_op_term,
+             riak_search_op_field,
              test
             ]},
   {registered, []},

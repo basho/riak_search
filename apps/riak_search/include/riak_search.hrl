@@ -2,8 +2,8 @@
 -define(PRINT(Var), io:format("DEBUG: ~p:~p - ~p~n ~p~n", [?MODULE, ?LINE, ??Var, Var])).
 -endif.
 
--define(IS_PROHIBITED(Flags), lists:member(prohibited, Flags)).
--define(IS_REQUIRED(Flags), lists:member(required, Flags)).
+-define(IS_PROHIBITED(Op), lists:member(prohibited, Op#term.flags)).
+-define(IS_REQUIRED(Op), lists:member(required, Op#term.flags)).
 
 %% Pre-plan Operators...
 -record(term,             {string, flags}). 
