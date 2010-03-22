@@ -37,7 +37,7 @@ send_results(String, OutputPid, OutputRef) ->
 start_loop(String, OutputPid, OutputRef) ->
     Term1 = lists:nth(3, string:tokens(String, ".")),
     Ref = make_ref(),
-    riak_search_file_index:stream(string:to_lower(Term1), self(), Ref),
+    merge_index:stream(string:to_lower(Term1), self(), Ref),
     loop(Ref, OutputPid, OutputRef).
 
 loop(Ref, OutputPid, OutputRef) ->

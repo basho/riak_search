@@ -1,13 +1,18 @@
 -module(test).
--export([test/0, test/1]).
+-export([start/0, test/0, test/1]).
 -define(IS_CHAR(C), ((C >= $A andalso C =< $Z) orelse (C >= $a andalso C =< $z))).
 
+start() ->
+    {ok, Pid} = merge_index:start("./data/index"),
+%%     eprof:start_profiling([Pid]),
+    ok.
 
 test() ->
     %% Read enron text, split by space, write to backend.
     Files = filelib:wildcard("../../../Enron/*"),
-    {Files1, _} = lists:split(300, lists:sort(Files)),
-    [index_file(File) || File <- Files1],
+%%     {Files1, _} = lists:split(60, lists:sort(Files)),
+    [index_file(File) || File <- Files],
+%%     eprof:analyse(),
     ok.
 
 %% test(Word) ->
@@ -25,6 +30,7 @@ test(Q) ->
 
 %% Index the file.
 index_file(File) ->
+    io:format("File: ~p~n", [File]),
     {ok, Bytes} = file:read_file(File),
     index_file_inner(Bytes, [], File).
 
@@ -58,8 +64,8 @@ collect_results(Ref, Count) ->
 index_word(Word, File) ->
     case length(Word) > 0 of
         true ->
-%%             io:format("Indexing ~s~n", [Word]),
-            riak_search_file_index:put(Word, File, []);
+%%             io:format("Word: ~s~n", [Word]);
+            merge_index:put(Word, File, []);
         false ->
             ok
     end.
