@@ -26,7 +26,17 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    riak_search_sup:start_link().
+    case riak_search_sup:start_link() of
+        {ok, Pid} ->
+            %% Set up the riak_search bucket.
+            riak_core_bucket:set_bucket(<<"search">>, [
+                {n_val, 1},
+                {backend, search_backend}
+            ]),
+            {ok, Pid};
+        Other ->
+            Other
+    end.
 
 stop(_State) ->
     ok.

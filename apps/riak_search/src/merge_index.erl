@@ -20,10 +20,11 @@
 
 %% API
 -export([
-    start/2, put/3, stream/3,
+    start/2, put/3, stream/3, is_empty/0,
     start_link/2,
     put/4,
-    stream/4
+    stream/4,
+    is_empty/1
 ]).
 
 %% gen_server callbacks
@@ -51,6 +52,9 @@ put(BucketName, Value, Props) ->
 stream(BucketName, Pid, Ref) ->
     stream(?SERVER, BucketName, Pid, Ref).
 
+is_empty() ->
+    is_empty(?SERVER).
+
 %%% END DEBUGGING
 
 start_link(Rootfile, Config) ->
@@ -61,6 +65,9 @@ put(ServerPid, BucketName, Value, Props) ->
 
 stream(ServerPid, BucketName, Pid, Ref) ->
     gen_server:cast(ServerPid, {stream, BucketName, Pid, Ref}).
+
+is_empty(ServerPid) ->
+    gen_server:call(ServerPid, is_empty).
 
 init([Rootfile, Config]) ->
     random:seed(),
@@ -102,6 +109,10 @@ init([Rootfile, Config]) ->
 handle_call({put, BucketName, Value, Props}, _From, State) ->
     NewBuffer = [{BucketName, Value, now(), Props}|State#state.buffer],
     {reply, ok, State#state { buffer=NewBuffer }};
+
+handle_call(is_empty, _From, State) ->
+    IsEmpty = gb_trees:size(State#state.buckets) > 0,
+    {reply, IsEmpty, State};
 
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.

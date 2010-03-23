@@ -37,7 +37,15 @@ send_results(String, OutputPid, OutputRef) ->
 start_loop(String, OutputPid, OutputRef) ->
     Term1 = lists:nth(3, string:tokens(String, ".")),
     Ref = make_ref(),
-    merge_index:stream(string:to_lower(Term1), self(), Ref),
+    
+    %% Tell the backend to stream results...
+    {ok, Client} = riak:local_client(),
+    BucketName = list_to_binary(Term1),
+    Payload = {stream, self(), Ref},
+    Obj = riak_object:new(<<"search">>, BucketName, Payload),
+    Client:put(Obj, 1, 1),
+
+    %% Gather the results...
     loop(Ref, OutputPid, OutputRef).
 
 loop(Ref, OutputPid, OutputRef) ->
