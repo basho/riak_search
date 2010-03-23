@@ -3,17 +3,15 @@
 -define(IS_CHAR(C), ((C >= $A andalso C =< $Z) orelse (C >= $a andalso C =< $z))).
 
 start() ->
-    {ok, Pid} = merge_index:start("./data/index"),
-    eprof:start_profiling([Pid]),
-    ok.
+    {ok, Pid} = merge_index:start("./data/index", []),
+    timer:tc(?MODULE, test, []).
 
 test() ->
     %% Read enron text, split by space, write to backend.
     Files = filelib:wildcard("../../../Enron/*"),
-%%     {Files1, _} = lists:split(5, lists:sort(Files)),
+%%      {Files1, _} = lists:split(1, lists:sort(Files)),
     {Files1, _} = lists:split(length(Files), lists:sort(Files)),
     [index_file(File) || File <- Files1],
-%%     eprof:analyse(),
     ok.
 
 %% test(Word) ->

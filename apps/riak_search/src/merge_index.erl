@@ -20,28 +20,30 @@
 
 %% API
 -export([
-    start/1, put/3, stream/3,
-    start_link/1,
+    start/2, put/3, stream/3,
+    start_link/2,
     put/4,
     stream/4
 ]).
-
-
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
     terminate/2, code_change/3]).
 
+
 -define(PRINT(Var), error_logger:info_msg("DEBUG: ~p:~p~n~p~n  ~p~n", [?MODULE, ?LINE, ??Var, Var])).
--define(MERGE_INTERVAL, 10 * 1000 * 1000).
 -define(SERVER, ?MODULE).
--record(state,  { rootfile, buckets, rawfiles, buffer, last_merge, is_merging }).
+-define(DEFAULT_MERGE_INTERVAL, 10 * 1000).
+-define(DEFAULT_SORT_BUFFER_SIZE, 1 * 1024 * 1024).
+-define(DEFAULT_FILE_BUFFER_SIZE, 1 * 1024 * 1024).
+-define(DEFAULT_FILE_BUFFER_DURATION, 2 * 1000).
+-record(state,  { rootfile, config, buckets, rawfiles, buffer, last_merge, is_merging }).
 -record(bucket, { offset, count, size }).
 
 %%% DEBUGGING - Single Process
 
-start(Rootfile) ->
-    gen_server:start({local, ?SERVER}, ?MODULE, [Rootfile], [{timeout, infinity}]).
+start(Rootfile, Config) ->
+    gen_server:start({local, ?SERVER}, ?MODULE, [Rootfile, Config], [{timeout, infinity}]).
 
 put(BucketName, Value, Props) ->
     put(?SERVER, BucketName, Value, Props).
@@ -51,8 +53,8 @@ stream(BucketName, Pid, Ref) ->
 
 %%% END DEBUGGING
 
-start_link(Rootfile) ->
-    gen_server:start_link(?MODULE, [Rootfile], [{timeout, infinity}]).
+start_link(Rootfile, Config) ->
+    gen_server:start_link(?MODULE, [Rootfile, Config], [{timeout, infinity}]).
 
 put(ServerPid, BucketName, Value, Props) ->
     gen_server:call(ServerPid, {put, BucketName, Value, Props}, infinity).
@@ -60,7 +62,7 @@ put(ServerPid, BucketName, Value, Props) ->
 stream(ServerPid, BucketName, Pid, Ref) ->
     gen_server:cast(ServerPid, {stream, BucketName, Pid, Ref}).
 
-init([Rootfile]) ->
+init([Rootfile, Config]) ->
     random:seed(),
 
     %% Ensure that the data file exists...
@@ -88,6 +90,7 @@ init([Rootfile]) ->
     %% Open the file.
     State = #state { 
         rootfile = Rootfile,
+        config=Config,
         buckets=Buckets,
         rawfiles=[],
         buffer=[],
@@ -110,17 +113,18 @@ handle_cast(checkpoint, State) ->
     Buffer = State#state.buffer,
     NewState = case length(Buffer) > 0 of
         true ->
-            TempFileName = write_temp_file(Rootfile, Buffer),
+            TempFileName = write_temp_file(Rootfile, Buffer, State),
             NewRawfiles = [TempFileName|State#state.rawfiles],
             State#state { buffer=[], rawfiles = NewRawfiles };
         false ->
             State
     end,
-
     %% Check if we should do some merging...
-    NeedsMerge = (timer:now_diff(now(), State#state.last_merge) > ?MERGE_INTERVAL),
+    HasRawFiles = length(NewState#state.rawfiles) > 0,
+    MergeInterval = get_config(merge_interval, State, ?DEFAULT_MERGE_INTERVAL),
+    IsTimeForMerge = (timer:now_diff(now(), NewState#state.last_merge)/1000) > MergeInterval,
     IsMerging = NewState#state.is_merging,
-    case NeedsMerge andalso not IsMerging of
+    case HasRawFiles andalso IsTimeForMerge andalso not IsMerging of
         true -> 
             Self = self(),
             spawn_link(fun() -> merge(Self, NewState) end),
@@ -136,31 +140,6 @@ handle_cast({merge_complete, Buckets}, State) ->
     NewState = State#state { buckets=Buckets, last_merge=now(), is_merging=false },
     {noreply, NewState};
     
-%% handle_cast(merge, State) when length(State#state.rawfiles) > 0 ->
-%%     RF = State#state.rootfile,
-
-%%     %% Sort the partial files...
-%%     Rawfiles = State#state.rawfiles,
-%%     ok = file_sorter:sort(Rawfiles, RF ++ ".rawtmp"),
-    
-%%     %% Merge all files into a main file, and create the buckets tree...
-%%     {ok, FH} = file:open(RF ++ ".tmp", [raw, write, {delayed_write, 2 * 1024 * 1024, 2 * 1000}, binary]),
-%%     InitialBucket = #bucket { offset=0, size=0 },
-%%     F = create_index_fun(0, FH, undefined, undefined, InitialBucket, gb_trees:empty()),
-%%     Buckets = file_sorter:merge([RF ++ ".data", RF ++ ".rawtmp"], F),
-%%     file:close(FH),
-
-%%     %% Persist the buckets...
-%%     file:write_file(RF ++ ".buckets", term_to_binary(Buckets)),
-    
-%%     %% Cleanup...
-%%     file:rename(RF ++ ".data", RF ++ ".tmp2"),
-%%     file:rename(RF ++ ".tmp", RF ++ ".data"),
-%%     file:rename(RF ++ ".tmp2", RF ++ ".tmp"),
-%%     [file:delete(X) || X <- State#state.rawfiles],
-%%     file:delete(RF ++ ".rawtmp"),
-%%     {noreply, State#state { buckets=Buckets, rawfiles=[], last_merge=now() }};
-
 handle_cast({stream, BucketName, Pid, Ref}, State) ->
     %% Read bytes from the file...
     Rootfile = State#state.rootfile,    
@@ -188,22 +167,26 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-
-
-
+get_config(Key, State, Default) ->
+    Config = State#state.config,
+    proplists:get_value(Key, Config, Default).
 
 merge(Pid, State) ->
     RF = State#state.rootfile,
 
     %% Sort the partial files...
     Rawfiles = State#state.rawfiles,
-    ok = file_sorter:sort(Rawfiles, RF ++ ".rawmerged"),
+    SortBufferSize = get_config(sort_buffer_size, State, ?DEFAULT_SORT_BUFFER_SIZE),
+    ok = file_sorter:sort(Rawfiles, RF ++ ".rawmerged", [{size, SortBufferSize}]),
     
     %% Merge all files into a main file, and create the buckets tree...
-    {ok, FH} = file:open(RF ++ ".merged", [raw, write, {delayed_write, 2 * 1024 * 1024, 2 * 1000}, binary]),
+    FileBufferSize = get_config(file_buffer_size, State, ?DEFAULT_FILE_BUFFER_SIZE),
+    FileBufferDuration = get_config(file_buffer_duration, State, ?DEFAULT_FILE_BUFFER_DURATION),
+    FileOptions = [raw, write, {delayed_write, FileBufferSize, FileBufferDuration}, binary],
+    {ok, FH} = file:open(RF ++ ".merged", FileOptions),
     InitialBucket = #bucket { offset=0, count=0, size=0 },
     F = create_index_fun(0, FH, undefined, undefined, InitialBucket, gb_trees:empty()),
-    Buckets = file_sorter:merge([RF ++ ".data", RF ++ ".rawmerged"], F),
+    Buckets = file_sorter:merge([RF ++ ".data", RF ++ ".rawmerged"], F, {size, SortBufferSize}),
     file:close(FH),
 
     %% Persist the buckets...
@@ -254,9 +237,12 @@ swap_files(Filename1, Filename2) ->
     ok = file:rename(Filename2, Filename1),
     ok = file:rename(Filename1 ++ ".tmp", Filename2).
             
-write_temp_file(Rootfile, Buffer) ->
+write_temp_file(Rootfile, Buffer, State) ->
     TempFileName = Rootfile ++ ".raw." ++ integer_to_list(random:uniform(999999)),
-    {ok, FH} = file:open(TempFileName, [raw, append, {delayed_write, 500 * 1024, 2 * 1000}, binary]),
+    FileBufferSize = get_config(file_buffer_size, State, ?DEFAULT_FILE_BUFFER_SIZE),
+    FileBufferDuration = get_config(file_buffer_duration, State, ?DEFAULT_FILE_BUFFER_DURATION),
+    FileOptions = [raw, append, {delayed_write, FileBufferSize, FileBufferDuration}, binary],
+    {ok, FH} = file:open(TempFileName, FileOptions),
     [write_value(FH, term_to_binary(X)) || X <- Buffer],
     file:close(FH),
     TempFileName.
