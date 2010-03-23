@@ -68,10 +68,10 @@ put(State, BKey, Command) ->
             merge_index:stream(Pid, BucketName, OutputPid, OutputRef),
             ok;
         Other ->
+            throw({unexpected_operation, Other})
             %% Normal put, no properties.
 %%             io:format("Got the following: ~p~n", [Other]),
 %%             merge_index:put(Pid, BucketName, Other, []),
-            ok
     end.
 
 %% @spec delete(state(), BKey :: riak_object:bkey()) ->

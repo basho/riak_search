@@ -2,6 +2,7 @@
 -export([
          execute/1,
          tests/0,
+    test/1,
          test/2
         ]).
 -include("riak_search.hrl").
@@ -25,8 +26,7 @@
 execute(OpList) -> 
     %% Normalize, Optimize, and Expand Buckets.
     OpList1 = #group { ops=OpList },
-    OpList2 = riak_search_preplan:preplan(OpList1, "defIndex", "defField", []),
-    ?PRINT(OpList2),
+    OpList2 = riak_search_preplan:preplan(OpList1, "defIndex", "defField", ["price", "color"]),
 
     %% Set up the operators. They automatically start when created...
     Ref = make_ref(),
@@ -117,5 +117,10 @@ test(Q, ExpectedResults) ->
         false ->
             io:format(" [X] FAIL - ~s~n", [Q])
     end.
+
+
+test(Q) ->
+    {ok, Qilr} = qilr_parse:string(Q),
+    riak_search_preplan:preplan(Qilr, "defIndex", "defField", ["price", "color"]).
 
 
