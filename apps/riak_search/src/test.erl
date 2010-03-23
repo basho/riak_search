@@ -10,8 +10,9 @@ start() ->
 test() ->
     %% Read enron text, split by space, write to backend.
     Files = filelib:wildcard("../../../Enron/*"),
-%%     {Files1, _} = lists:split(60, lists:sort(Files)),
-    [index_file(File) || File <- Files],
+%%     {Files1, _} = lists:split(2, lists:sort(Files)),
+    {Files1, _} = lists:split(length(Files), lists:sort(Files)),
+    [index_file(File) || File <- Files1],
 %%     eprof:analyse(),
     ok.
 

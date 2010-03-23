@@ -33,7 +33,7 @@
     terminate/2, code_change/3]).
 
 -define(PRINT(Var), error_logger:info_msg("DEBUG: ~p:~p~n~p~n  ~p~n", [?MODULE, ?LINE, ??Var, Var])).
--define(MERGE_INTERVAL, 5000).
+-define(MERGE_INTERVAL, 10 * 1000 * 1000).
 -define(SERVER, ?MODULE).
 -record(state,  { rootfile, buckets, rawfiles, buffer, last_merge }).
 -record(bucket, { offset, count, size }).
@@ -63,14 +63,25 @@ stream(ServerPid, BucketName, Pid, Ref) ->
 init([Rootfile]) ->
     random:seed(),
 
+    %% Ensure that the file exists...
+    filelib:ensure_dir(Rootfile ++ ".data"),
+    case filelib:is_file(Rootfile ++ ".data") of
+        true -> ok;
+        false -> file:write_file(Rootfile ++ ".data", <<>>)
+    end,
+
+    Buckets = case file:read_file(Rootfile ++ ".buckets") of
+        {ok, B} -> binary_to_term(B);
+        {error, _} -> gb_trees:empty()
+    end,
+
     %% Checkpoint every so often.
     timer:apply_interval(100, gen_server, cast, [self(), checkpoint]),
-    timer:apply_interval(1000, gen_server, cast, [self(), merge]),
 
     %% Open the file.
     State = #state { 
         rootfile = Rootfile,
-        buckets=gb_trees:empty(),
+        buckets=Buckets,
         rawfiles=[],
         buffer=[],
         last_merge=now()
@@ -78,13 +89,19 @@ init([Rootfile]) ->
     {ok, State}.
 
 handle_call({put, BucketName, Value, Props}, _From, State) ->
-    NewBuffer = [{BucketName, now(), Value, Props}|State#state.buffer],
+    NewBuffer = [{BucketName, Value, now(), Props}|State#state.buffer],
     {reply, ok, State#state { buffer=NewBuffer }};
 
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
 handle_cast(checkpoint, State) ->
+    %% Check if we should do some merging...
+    case timer:now_diff(now(), State#state.last_merge) > ?MERGE_INTERVAL of
+        true -> gen_server:cast(self(), merge);
+        false -> ignore
+    end,
+    
     %% Write everything in the buffer to a new rawfile, and add it to
     %% the list of existing rawfiles.
     Rootfile = State#state.rootfile,
@@ -93,10 +110,6 @@ handle_cast(checkpoint, State) ->
         true ->
             TempFileName = write_temp_file(Rootfile, length(State#state.rawfiles), Buffer),
             NewRawfiles = [TempFileName|State#state.rawfiles],
-            case timer:now_diff(now(), State#state.last_merge) > ?MERGE_INTERVAL of
-                true -> gen_server:cast(self(), merge);
-                false -> ignore
-            end,
             {noreply, State#state { 
                 buffer=[],
                 rawfiles = NewRawfiles
@@ -106,21 +119,29 @@ handle_cast(checkpoint, State) ->
     end;
 
 handle_cast(merge, State) when length(State#state.rawfiles) > 0 ->
-    %% Merge all rawfiles into the main data file, and then re-index.
-    Rootfile = State#state.rootfile,
-    Rawfiles = State#state.rawfiles,
-    ok = file_sorter:sort([Rootfile ++ ".data"|Rawfiles], Rootfile ++ ".tmp"), 
-    Buckets = create_bucket_index(Rootfile ++ ".tmp"),
-    file:write_file(Rootfile ++ ".buckets", term_to_binary(Buckets)),
-    file:rename(Rootfile ++ ".data", Rootfile ++ ".tmp2"),
-    file:rename(Rootfile ++ ".tmp", Rootfile ++ ".data"),
-    file:rename(Rootfile ++ ".tmp2", Rootfile ++ ".tmp"),
-    [file:delete(X) || X <- State#state.rawfiles],
-    {noreply, State#state { buckets=Buckets, rawfiles=[], last_merge=now() }};
+    RF = State#state.rootfile,
 
-handle_cast(merge, State) ->
-%%     ?PRINT(State#state.buckets),
-    {noreply, State};
+    %% Sort the partial files...
+    Rawfiles = State#state.rawfiles,
+    ok = file_sorter:sort(Rawfiles, RF ++ ".rawtmp"),
+    
+    %% Merge all files into a main file, and create the buckets tree...
+    {ok, FH} = file:open(RF ++ ".tmp", [raw, write, delayed_write, binary]),
+    InitialBucket = #bucket { offset=0, size=0 },
+    F = create_index_fun(0, FH, undefined, undefined, InitialBucket, gb_trees:empty()),
+    Buckets = file_sorter:merge([RF ++ ".data", RF ++ ".rawtmp"], F),
+    file:close(FH),
+
+    %% Persist the buckets...
+    file:write_file(RF ++ ".buckets", term_to_binary(Buckets)),
+    
+    %% Cleanup...
+    file:rename(RF ++ ".data", RF ++ ".tmp2"),
+    file:rename(RF ++ ".tmp", RF ++ ".data"),
+    file:rename(RF ++ ".tmp2", RF ++ ".tmp"),
+    [file:delete(X) || X <- State#state.rawfiles],
+    file:delete(RF ++ ".rawtmp"),
+    {noreply, State#state { buckets=Buckets, rawfiles=[], last_merge=now() }};
 
 handle_cast({stream, BucketName, Pid, Ref}, State) ->
     %% Read bytes from the file...
@@ -149,62 +170,57 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-create_bucket_index(Filename) ->
-    {ok, FH} = file:open(Filename, [raw, read, read_ahead, binary]),
-    EmptyBucket = #bucket { offset=0, size=0 },
-    create_bucket_index(0, FH, undefined, EmptyBucket, gb_trees:empty()).
+create_index_fun(Pos, FH, LastValue, BucketName, Bucket, Buckets) ->
+    fun(L) ->
+        create_index(Pos, FH, LastValue, BucketName, Bucket, Buckets, L)
+    end.
 
-create_bucket_index(Pos, FH, LastBucketName, Bucket, Acc) ->
-    case read_value(FH) of
-        {ValueSize, {LastBucketName, _, _, _}} ->
-            %% Keep adding to the old bucket...
-            NewSize = Bucket#bucket.size + ValueSize + 4,
-            NewBucket = Bucket#bucket { size=NewSize },
-            create_bucket_index(Pos + ValueSize + 4, FH, LastBucketName, NewBucket, Acc);
-
-        {ValueSize, {BucketName, _, _, _}} ->
-            %% Save the old bucket, create new bucket, continue...
-            NewAcc = gb_trees:enter(LastBucketName, Bucket, Acc),
-            NewBucket = #bucket { offset=Pos, size=ValueSize + 4 },
-            create_bucket_index(Pos + ValueSize + 4, FH, BucketName, NewBucket, NewAcc);
-
-        eof ->
-            %% Done, so save the old bucket...
-            gb_trees:enter(LastBucketName, Bucket, Acc)
+create_index(Pos, FH, LastValue, LastBucketName, Bucket, Buckets, L) ->
+    case L of
+        [H|T] ->
+            case binary_to_term(H) of
+                {LastBucketName, LastValue, _, _} ->
+                    %% Remove duplicates...
+                    create_index(Pos, FH, LastValue, LastBucketName, Bucket, Buckets, T);
+                {LastBucketName, Value, _, _} ->
+                    %% Keep adding to the old bucket...
+                    write_value(FH, H),
+                    NewSize = Bucket#bucket.size + size(H) + 4,
+                    NewBucket = Bucket#bucket { size=NewSize },
+                    create_index(Pos + size(H) + 4, FH, Value, LastBucketName, NewBucket, Buckets, T);
+                {BucketName, Value, _, _} ->
+                    %% Save the old bucket, create new bucket, continue...
+                    write_value(FH, H),
+                    NewBuckets = gb_trees:enter(LastBucketName, Bucket, Buckets),
+                    NewBucket = #bucket { offset=Pos, size=size(H) + 4 },
+                    create_index(Pos + size(H) + 4, FH, Value, BucketName, NewBucket, NewBuckets, T)
+            end;
+        [] ->
+            %% End of list, return a callback function...
+            create_index_fun(Pos, FH, LastValue, LastBucketName, Bucket, Buckets);
+        close ->
+            gb_trees:enter(LastBucketName, Bucket, Buckets)
     end.
             
-read_value(FH) ->
-    case file:read(FH, 4) of
-        {ok, <<Size:32/integer>>} ->
-            {ok, Bytes} = file:read(FH, Size),
-            {Size, binary_to_term(Bytes)};
-        eof ->
-            eof
-    end.
-
-
 write_temp_file(Rootfile, N, Buffer) ->
     TempFileName = Rootfile ++ ".raw." ++ integer_to_list(N),
-    ?PRINT({TempFileName, length(Buffer)}),
     {ok, FH} = file:open(TempFileName, [raw, append, delayed_write, binary]),
-    F = fun(X) ->
-        BinX = term_to_binary(X),
-        SizeX = size(BinX),
-        BinSizeX = <<SizeX:32/integer>>,
-        file:write(FH, [BinSizeX, BinX])
-    end,
-    [F(X) || X <- Buffer],
+    [write_value(FH, term_to_binary(X)) || X <- Buffer],
     file:close(FH),
     TempFileName.
+
+write_value(FH, B) ->
+    Size = size(B),
+    ok = file:write(FH, <<Size:32/integer, B/binary>>).
 
 stream_bytes(<<>>, _, _, _) -> 
     ok;
 stream_bytes(<<Size:32/integer, B:Size/binary, Rest/binary>>, LastValue, Pid, Ref) ->
     case binary_to_term(B) of
-        {_, _, LastValue, _} -> 
+        {_, LastValue, _, _} -> 
             % Skip duplicates.
             stream_bytes(Rest, LastValue, Pid, Ref);
-        {_, _, Value, Props} ->
+        {_, Value, _, Props} ->
             Pid!{result, {Value, Props}, Ref},
             stream_bytes(Rest, Value, Pid, Ref)
     end.
