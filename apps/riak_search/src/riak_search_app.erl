@@ -30,7 +30,7 @@ start(_StartType, _StartArgs) ->
         {ok, Pid} ->
             %% Set up a riak_search bucket.
             riak_core_bucket:set_bucket(<<"search">>, [
-                {n_val, 1},
+                {n_val, 3},
                 {backend, search_backend}
             ]),
 

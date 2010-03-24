@@ -21,13 +21,23 @@ stream(Index, Field, Term, FilterFun) ->
     %% Construct the operation...
     IndexBin = to_binary(Index),
     FieldTermBin = to_binary([Field, ".", Term]),
+    {ok, Client} = riak:local_client(),
     Ref = make_ref(),
-    Payload = {stream, self(), Ref, FilterFun},
+
+    %% How many replicas?
+    BucketProps = riak_core_bucket:get_bucket(IndexBin),
+    NVal = proplists:get_value(n_val, BucketProps),
+
+    %% Figure out which nodes we can stream from.
+    Payload1 = {init_stream, self(), Ref},
+    Obj1 = riak_object:new(IndexBin, FieldTermBin, Payload1),
+    Client:put(Obj1, 0, 0),
+    {ok, Partition, Node} = wait_for_ready(NVal, Ref, undefined, undefined),
     
     %% Run the operation...
-    {ok, Client} = riak:local_client(),
-    Obj = riak_object:new(IndexBin, FieldTermBin, Payload),
-    Client:put(Obj, 0, 0),
+    Payload2 = {stream, self(), Ref, Partition, Node, FilterFun},
+    Obj2 = riak_object:new(IndexBin, FieldTermBin, Payload2),
+    Client:put(Obj2, 0, 0),
     {ok, Ref}.
 
 range(Start, End, Inclusive) ->
@@ -73,4 +83,20 @@ normalize_range(wildcard_all) -> wildcard_all;
 normalize_range(wildcard_one) -> wildcard_one;
 normalize_range(all) ->  all.
     
+%% Get replies from all nodes that are willing to stream this
+%% bucket. If there is one on the local node, then use it, otherwise,
+%% use the first one that responds.
+wait_for_ready(0, _Ref, Partition, Node) -> 
+    {ok, Partition, Node};
+wait_for_ready(RepliesRemaining, Ref, Partition, Node) ->
+    LocalNode = node(),
+    receive 
+        {stream_ready, LocalPartition, LocalNode, Ref} -> 
+            {ok, LocalPartition, LocalNode};
+        {stream_ready, _NewPartition, _NewNode, Ref} when Node /= undefined ->
+            wait_for_ready(RepliesRemaining - 1, Ref, Partition, Node);
+        {stream_ready, NewPartition, NewNode, Ref} ->
+            wait_for_ready(RepliesRemaining -1, Ref, NewPartition, NewNode)
+    end.
+
     

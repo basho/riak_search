@@ -23,8 +23,9 @@
 -export([fold/3, drop/1, is_empty/1]).
 
 -include_lib("eunit/include/eunit.hrl").
+-include("riak_search.hrl").
 % @type state() = term().
--record(state, {pid}).
+-record(state, {partition, pid}).
 
 %% @spec start(Partition :: integer(), Config :: proplist()) ->
 %%          {ok, state()} | {{error, Reason :: term()}, state()}
@@ -34,7 +35,7 @@ start(Partition, Config) ->
     RootPath = proplists:get_value(merge_index_backend_root, Config, DefaultRootPath),
     Rootfile = filename:join([RootPath, integer_to_list(Partition)]),
     {ok, Pid} = merge_index:start_link(Rootfile, Config),
-    {ok, #state { pid=Pid }}.
+    {ok, #state { partition=Partition, pid=Pid }}.
 
 %% @spec stop(state()) -> ok | {error, Reason :: term()}
 stop(_State) -> ok.
@@ -47,36 +48,51 @@ stop(_State) -> ok.
 get(_State, _BKey) ->
     {error, notfound}.
 
-
 %% @spec put(state(), BKey :: riak_object:bkey(), Val :: binary()) ->
 %%         ok | {error, Reason :: term()}
 %% @doc Route all commands through the object's value.
 put(State, BKey, ObjBin) ->      
-    Pid = State#state.pid,
     {Index, FieldTerm} = BKey,
     IndexFieldTerm = list_to_binary([Index, ".", FieldTerm]),
     Obj = binary_to_term(ObjBin),
     Command = riak_object:get_value(Obj),
-    handle_command(Pid, IndexFieldTerm, Command).
+    handle_command(State, IndexFieldTerm, Command).
     
-handle_command(Pid, IndexFieldTerm, {put, Value, Props}) ->
+handle_command(State, IndexFieldTerm, {put, Value, Props}) ->
     %% io:format("Got a put: ~p ~p ~p~n", [BucketName, Value, Props]),
     %% Put with properties.
+    Pid = State#state.pid,
     merge_index:put(Pid, IndexFieldTerm, Value, Props),
     ok;
 
-handle_command(Pid, IndexFieldTerm, {stream, OutputPid, OutputRef, FilterFun}) ->
-    %% io:format("Got a stream: ~p ~p ~p~n", [BucketName, OutputPid, OutputRef]),
-    %% Stream some results.
-    merge_index:stream(Pid, IndexFieldTerm, OutputPid, OutputRef, FilterFun),
+handle_command(State, _IndexFieldTerm, {init_stream, OutputPid, OutputRef}) ->
+    %% Do some handshaking so that we only stream results from one partition/node.
+    Partition = State#state.partition,
+    OutputPid!{stream_ready, Partition, node(), OutputRef},
     ok;
 
-handle_command(Pid, _, {range, Start, End, Inclusive, OutputPid, OutputRef}) ->
+handle_command(State, IndexFieldTerm, {stream, OutputPid, OutputRef, Partition, Node, FilterFun}) ->
+    Pid = State#state.pid,
+    case Partition == State#state.partition andalso Node == node() of
+        true ->
+            %% Stream some results.
+            merge_index:stream(Pid, IndexFieldTerm, OutputPid, OutputRef, FilterFun);
+        false ->
+            %% The requester doesn't want results from this node, so
+            %% ignore. This is a hack, to get around the fact that
+            %% there is no way to send a put or other command to a
+            %% specific v-node.
+            ignore
+    end,
+    ok;
+
+handle_command(State, _, {range, Start, End, Inclusive, OutputPid, OutputRef}) ->
+    Pid = State#state.pid,
     {ok, Range} = merge_index:range(Pid, Start, End, Inclusive),
     OutputPid!{range_response, Range, OutputRef},
     ok;
 
-handle_command(_Pid, IndexFieldTerm, Other) ->
+handle_command(_State, IndexFieldTerm, Other) ->
     throw({unexpected_operation, IndexFieldTerm, Other}).
 
 

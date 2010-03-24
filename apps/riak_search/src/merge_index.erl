@@ -144,7 +144,7 @@ handle_cast({merge_complete, Buckets}, State) ->
     swap_files(RF ++ ".buckets_merged", RF ++ ".buckets"),
     NewState = State#state { buckets=Buckets, last_merge=now(), is_merging=false },
     {noreply, NewState};
-    
+
 handle_cast({stream, BucketName, Pid, Ref, FilterFun}, State) ->
     %% Read bytes from the file...
     Rootfile = State#state.rootfile,    
@@ -152,6 +152,7 @@ handle_cast({stream, BucketName, Pid, Ref, FilterFun}, State) ->
         {value, Bucket} -> 
             {ok, FH} = file:open(Rootfile ++ ".data", [raw, read, read_ahead, binary]),
             {ok, B} = file:pread(FH, Bucket#bucket.offset, Bucket#bucket.size),
+            file:close(FH),
             B;
         none -> 
             <<>>
