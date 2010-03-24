@@ -212,7 +212,6 @@ inject_facets(Op, Facets) ->
     setelement(2, Op, NewOps).
 
 %% FOURTH PASS
-%% - TODO: Handle single character wildcards "car?"
 %% - TODO: Wrap things in #node to transfer control based on bucket stats.
 pass4(OpList, Config) when is_list(OpList) ->
     [pass4(X, Config) || X <- OpList];

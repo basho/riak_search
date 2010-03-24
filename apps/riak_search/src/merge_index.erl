@@ -99,7 +99,7 @@ handle_call({put, BucketName, Value, Props}, _From, State) ->
 
 handle_call({range, Start, End, Inclusive}, _From, State) ->
     Buckets = State#state.buckets,
-    Results = gb_tree_select(Start, End, Inclusive, Buckets),
+    Results = gb_trees_select(Start, End, Inclusive, Buckets),
     Node = node(),
     Results1 = [{ITF, Node, Bucket#bucket.count} || {ITF, Bucket} <- Results],
     {reply, {ok, Results1}, State};
@@ -272,50 +272,36 @@ stream_bytes(<<Size:32/integer, B:Size/binary, Rest/binary>>, LastValue, Pid, Re
             stream_bytes(Rest, Value, Pid, Ref, FilterFun)
     end.
 
-gb_tree_select(Start, End, Inclusive, Tree) ->
+
+
+%% Walk through a gb_tree, selecting values between a range. Special
+%% case for a wildcard, where we convert a prefix to the values that
+%% would come right before and right after it by adding -1 and 1,
+%% respectively.
+gb_trees_select(Start, Wildcard, _, Tree) 
+when Wildcard == wildcard_all orelse Wildcard == wildcard_one ->
     {_, T} = Tree,
-    gb_tree_select(Start, End, Inclusive, T, []).
+    NewStart = binary_inc(Start, -1),
+    NewEnd = binary_inc(Start, 1),
+    RequiredSize = case Wildcard of
+        wildcard_one -> size(Start) + 1;
+        wildcard_all -> undefined
+    end,
+    gb_trees_select(NewStart, NewEnd, false, RequiredSize, T, []);
+gb_trees_select(Start, End, Inclusive, Tree) ->
+    {_, T} = Tree,
+    gb_trees_select(Start, End, Inclusive, undefined, T, []).
 
-gb_tree_select(_, _, _, nil, Acc) -> 
+gb_trees_select(_, _, _, _, nil, Acc) -> 
     Acc;
-gb_tree_select(Start, Wildcard, Inclusive, {Key, Value, Left, Right}, Acc) 
-when Wildcard == wildcard_all orelse Wildcard == wildcard_one->
-    Size = size(Start),
-    LBound = (Start =< Key),
-    RBound = (Start >= Key),
-
-    NewAcc = case Key of
-        <<Start:Size/binary>> when Wildcard /= wildcard_one->
-            [{Key, Value}|Acc];
-        <<Start:Size/binary, _:1/binary>> when Wildcard == wildcard_one ->
-            [{Key, Value}|Acc];
-        <<Start:Size/binary, _/binary>> when Wildcard == wildcard_all -> 
-            [{Key, Value}|Acc];
-        _ ->
-            Acc
-    end,
-
-    %% If we are in lbound, then go left...
-    NewAcc1 = case LBound of
-        true ->  gb_tree_select(Start, Wildcard, Inclusive, Left, NewAcc);
-        false -> NewAcc
-    end,
-
-    %% If we are in rbound, then go right...
-    NewAcc2 = case RBound of
-        true ->  gb_tree_select(Start, Wildcard, Inclusive, Right, NewAcc1);
-        false -> NewAcc1
-    end,
-    NewAcc2;
-            
-            
-gb_tree_select(Start, End, Inclusive, {Key, Value, Left, Right}, Acc) ->
+gb_trees_select(Start, End, Inclusive, RequiredSize, {Key, Value, Left, Right}, Acc) ->
     LBound = (Start == all) orelse (Start < Key) orelse (Start == Key andalso Inclusive),
     RBound = (End == all) orelse (Key < End) orelse (End == Key andalso Inclusive),
+    CorrectSize = (size(Key) == RequiredSize orelse RequiredSize == undefined),
 
     %% If we are within bounds, then add this value...
     NewAcc = if 
-        LBound andalso RBound ->
+        LBound andalso RBound andalso CorrectSize ->
             [{Key, Value}|Acc];
         true ->
             Acc
@@ -323,13 +309,20 @@ gb_tree_select(Start, End, Inclusive, {Key, Value, Left, Right}, Acc) ->
 
     %% If we are in lbound, then go left...
     NewAcc1 = case LBound of
-        true ->  gb_tree_select(Start, End, Inclusive, Left, NewAcc);
+        true ->  gb_trees_select(Start, End, Inclusive, RequiredSize, Left, NewAcc);
         false -> NewAcc
     end,
 
     %% If we are in rbound, then go right...
     NewAcc2 = case RBound of
-        true ->  gb_tree_select(Start, End, Inclusive, Right, NewAcc1);
+        true ->  gb_trees_select(Start, End, Inclusive, RequiredSize, Right, NewAcc1);
         false -> NewAcc1
     end,
     NewAcc2.
+
+%% Return a new binary, incremented by Incr.
+binary_inc(Binary, Incr) ->
+    Bits = size(Binary) * 8,
+    <<Integer:Bits/integer>> = Binary,
+    NewInteger = Integer + Incr,
+    <<NewInteger:Bits/integer>>.
