@@ -18,25 +18,13 @@
 preplan_op(Op, _F) -> Op.
 
 chain_op(Op, OutputPid, OutputRef) ->
-    String = Op#term.string,
+    Q = Op#term.q,
     Facets = proplists:get_all_values(facets, Op#term.options),
-    DEBUG = false,
-    case DEBUG of
-        true ->
-            spawn(fun() -> send_results(String, OutputPid, OutputRef) end);
-        false ->
-            spawn(fun() -> start_loop(String, Facets, OutputPid, OutputRef) end)
-    end,
+    spawn_link(fun() -> start_loop(Q, Facets, OutputPid, OutputRef) end),
     {ok, 1}.
 
-send_results(String, OutputPid, OutputRef) ->
-    Term1 = lists:nth(3, string:tokens(String, ".")),
-    Term2 = lists:sort(Term1),
-    [OutputPid!{results, [X], OutputRef} || X <- Term2],
-    OutputPid!{disconnect, OutputRef}.
-
-start_loop(String, Facets, OutputPid, OutputRef) ->
-    [Index, Field, Term] = string:tokens(String, "."),
+start_loop(Q, Facets, OutputPid, OutputRef) ->
+    {Index, Field, Term} = Q,
 
     %% Stream the results...
     Fun = fun(_Value, Props) ->

@@ -7,14 +7,14 @@
 
 
 preplan(OpList, DefaultIndex, DefaultField, Facets) ->
-    OpList1 = #group { ops=OpList },
-    preplan(OpList1, #config { 
+    preplan(OpList, #config { 
               default_index=DefaultIndex,
               default_field=DefaultField,
               facets=Facets }).
 
 preplan(OpList, Config) ->
-    OpList1 = pass1(OpList, Config),
+    OpList0 = #group { ops=OpList },
+    OpList1 = pass1(OpList0, Config),
     OpList2 = pass2(OpList1, Config),
     OpList3 = pass3(OpList2, Config),
     OpList4 = pass4(OpList3, Config),
@@ -28,8 +28,8 @@ preplan(OpList, Config) ->
 pass1(OpList, Config) when is_list(OpList) ->
     lists:flatten([pass1(X, Config) || X <- OpList]);
 
-pass1({field, Field, Term, Options}, Config) ->
-    TermOp = #term { string=Term, options=Options},
+pass1({field, Field, Q, Options}, Config) ->
+    TermOp = #term { q=Q, options=Options},
     pass1(#field { field=Field, ops=[TermOp]}, Config);
 
 pass1(Op = #group {}, Config) ->
@@ -74,29 +74,28 @@ pass1(Op, Config) ->
     riak_search_op:preplan_op(Op, F).
 
 %% SECOND PASS
-%% - Turn #term strings into "index.field.term"
+%% - Normalize #term queries.
 %% - Flatten nested ands/ors
 pass2(OpList, Config) when is_list(OpList) ->
     [pass2(Op, Config) || Op <- OpList];
 
 pass2(Op = #field {}, Config) ->
-    Config1 = case string:tokens(Op#field.field, ".") of
-        [Field] -> Config#config { default_field=Field };
-        [Index, Field] -> Config#config { default_index=Index, default_field=Field }
-    end,
+    {Index, Field} = normalize_field(Op#field.field, Config),
+    NewConfig = Config#config {
+        default_index = Index,
+        default_field = Field
+    },
     case Op#field.ops of
-        [Op1] -> pass2(Op1, Config1);
-        Ops -> pass2(Ops, Config1)
+        [Op1] -> pass2(Op1, NewConfig);
+        Ops -> pass2(Ops, NewConfig)
     end;
 
 pass2(Op = #term {}, Config) ->
-    ?PRINT(Op),
-    NewString = normalize_term_string(Op#term.string, Config),
-    ?PRINT(NewString),
+    NewQ = normalize_term(Op#term.q, Config),
     Options = Op#term.options,
-    case is_facet(NewString, Config) of
-        true -> Op#term { string=NewString, options=[facet|Options] };
-        false -> Op#term { string=NewString }
+    case is_facet(NewQ, Config) of
+        true -> Op#term { q=NewQ, options=[facet|Options] };
+        false -> Op#term { q=NewQ }
     end;
 
 pass2(Op = #land {}, Config) ->
@@ -135,34 +134,39 @@ pass2(Op, Config) ->
     F = fun(X) -> lists:flatten([pass2(Y, Config) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
 
-%% Return true if this TermString is a facet.
-is_facet(TermString, Config) ->
-    ?PRINT(TermString),
+%% Return true if this Query is a facet.
+is_facet({Index, Field, _}, Config) ->
     FacetList = Config#config.facets,
-    FacetList1 = [normalize_field_string(X, Config) || X <- FacetList],
-    ?PRINT(FacetList1),
-    F = fun(X) ->
-        string:str(TermString, X ++ ".") == 1
+    FacetList1 = [normalize_field(X, Config) || X <- FacetList],
+    F = fun({FacetIndex, FacetField}) ->
+        Index == FacetIndex andalso Field == FacetField
     end,
     lists:any(F, FacetList1).
     
-normalize_field_string(OriginalField, Config) ->
+normalize_field(OriginalField, Config) when is_list(OriginalField) ->
     DefIndex = Config#config.default_index,
     case string:tokens(OriginalField, ".") of
-        [Field] -> string:join([DefIndex, Field], ".");
-        [Index, Field] -> string:join([Index, Field], ".");
+        [Field] -> {DefIndex, Field};
+        [Index, Field] -> {Index, Field};
         _ -> throw({could_not_normalize_field, OriginalField})
-    end.
+    end;
+normalize_field(Field, _) when is_tuple(Field) -> Field.
 
-normalize_term_string(OriginalTerm, Config) ->
+
+normalize_term(OriginalField, Config) when is_binary(OriginalField) ->
+    normalize_term(binary_to_list(OriginalField), Config);
+normalize_term(OriginalTerm, Config) when is_list(OriginalTerm) ->
     DefIndex = Config#config.default_index,
     DefField = Config#config.default_field,    
-    case string:tokens(OriginalTerm, ".") of
-        [Term] -> string:join([DefIndex, DefField, Term], ".");
-        [Field, Term] -> string:join([DefIndex, Field, Term], ".");
-        [Index, Field, Term] -> string:join([Index, Field, Term], ".");
+    OriginalTerm1 = string:strip(OriginalTerm, right, $*),
+    OriginalTerm2 = string:strip(OriginalTerm1, right, $?),
+    case string:tokens(OriginalTerm2, ".") of
+        [Term] -> {DefIndex, DefField, Term};
+        [Field, Term] -> {DefIndex, Field, Term};
+        [Index, Field, Term] -> {Index, Field, Term};
         _ -> throw({could_not_normalize_term, OriginalTerm})
-    end.
+    end;
+normalize_term(Term, _) when is_tuple(Term) -> Term.
 
 
 %% THIRD PASS
@@ -208,16 +212,65 @@ inject_facets(Op, Facets) ->
     setelement(2, Op, NewOps).
 
 %% FOURTH PASS
-%% - TODO: Expand fuzzy terms into a bunch of or's.
-%% - TODO: Expand range into a bunch of or's.
+%% - TODO: Handle single character wildcards "car?"
 %% - TODO: Wrap things in #node to transfer control based on bucket stats.
 pass4(OpList, Config) when is_list(OpList) ->
     [pass4(X, Config) || X <- OpList];
+
+pass4(Op = #inclusive_range {}, Config) ->
+    Start = hd(Op#inclusive_range.start_op),
+    End = hd(Op#inclusive_range.end_op),
+    range_to_lor(Start#term.q, End#term.q, true, Config);
+
+pass4(Op = #exclusive_range {}, Config) ->
+    Start = hd(Op#exclusive_range.start_op),
+    End = hd(Op#exclusive_range.end_op),
+    range_to_lor(Start#term.q, End#term.q, false, Config);
+
+pass4(Op = #term {}, Config) ->
+    IsWildcardAll = ?IS_TERM_WILDCARD_ALL(Op),
+    IsWildcardOne = ?IS_TERM_WILDCARD_ONE(Op),
+    if 
+        IsWildcardAll ->
+            Start = Op#term.q,
+            End = wildcard_all,
+             range_to_lor(Start, End, true, Config);
+        IsWildcardOne ->
+            Start = Op#term.q,
+            End = wildcard_one,
+            range_to_lor(Start, End, true, Config);
+        true ->
+            Op
+    end;
 
 pass4(Op, Config) -> 
     F = fun(X) -> lists:flatten([pass4(Y, Config) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
 
+range_to_lor(Start, End, Inclusive, Config) ->
+    %% Results are of form {node, Index.Field.Term, Count}
+    {ok, Results} = riak_search:range(Start, End, Inclusive),
+    
+    %% Collapse results into a gb_tree to combine...
+    F1 = fun({IndexFieldTerm, Node, Count}, Acc) ->
+        NewOption = {node_weight, Node, Count},
+        case gb_trees:lookup(IndexFieldTerm, Acc) of
+            {value, Options} ->
+                gb_trees:update(IndexFieldTerm, [NewOption|Options], Acc);
+            none ->
+                gb_trees:insert(IndexFieldTerm, [NewOption], Acc)
+        end
+    end,
+    Results1 = lists:foldl(F1, gb_trees:empty(), lists:flatten(Results)),
+    Results2 = gb_trees:to_list(Results1),
+
+    %% Create the lor operation.
+    F2 = fun({IFT, Options}) ->
+        Q = normalize_term(IFT, Config),
+        #term { q=Q, options=Options }
+    end,
+    Ops = [F2(X) || X <- Results2],
+    #lor { ops=Ops }.
 
 %% FIFTH PASS
 %% Collapse nested lnots.

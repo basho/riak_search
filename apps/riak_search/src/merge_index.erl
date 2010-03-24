@@ -22,6 +22,7 @@
 -export([
     start_link/2,
     put/4,
+    range/4,
     stream/5,
     is_empty/1
 ]).
@@ -45,6 +46,9 @@ start_link(Rootfile, Config) ->
 
 put(ServerPid, BucketName, Value, Props) ->
     gen_server:call(ServerPid, {put, BucketName, Value, Props}, infinity).
+
+range(ServerPid, Start, End, Inclusive) ->
+    gen_server:call(ServerPid, {range, Start, End, Inclusive}).
 
 stream(ServerPid, BucketName, Pid, Ref, FilterFun) ->
     gen_server:cast(ServerPid, {stream, BucketName, Pid, Ref, FilterFun}).
@@ -92,6 +96,13 @@ init([Rootfile, Config]) ->
 handle_call({put, BucketName, Value, Props}, _From, State) ->
     NewBuffer = [{BucketName, Value, now(), Props}|State#state.buffer],
     {reply, ok, State#state { buffer=NewBuffer }};
+
+handle_call({range, Start, End, Inclusive}, _From, State) ->
+    Buckets = State#state.buckets,
+    Results = gb_tree_select(Start, End, Inclusive, Buckets),
+    Node = node(),
+    Results1 = [{ITF, Node, Bucket#bucket.count} || {ITF, Bucket} <- Results],
+    {reply, {ok, Results1}, State};
 
 handle_call(is_empty, _From, State) ->
     IsEmpty = gb_trees:size(State#state.buckets) > 0,
@@ -260,3 +271,64 @@ stream_bytes(<<Size:32/integer, B:Size/binary, Rest/binary>>, LastValue, Pid, Re
             stream_bytes(Rest, Value, Pid, Ref, FilterFun)
     end.
 
+gb_tree_select(Start, End, Inclusive, Tree) ->
+    {_, T} = Tree,
+    gb_tree_select(Start, End, Inclusive, T, []).
+
+gb_tree_select(_, _, _, nil, Acc) -> 
+    Acc;
+gb_tree_select(Start, Wildcard, Inclusive, {Key, Value, Left, Right}, Acc) 
+when Wildcard == wildcard_all orelse Wildcard == wildcard_one->
+    Size = size(Start),
+    LBound = (Start =< Key),
+    RBound = (Start >= Key),
+
+    NewAcc = case Key of
+        <<Start:Size/binary>> ->
+            [{Key, Value}|Acc];
+        <<Start:Size/binary, _/binary>> when Wildcard == wildcard_all -> 
+            [{Key, Value}|Acc];
+        <<Start:Size/binary, _:1/binary>> when Wildcard == wildcard_one ->
+            [{Key, Value}|Acc];
+        _ ->
+            Acc
+    end,
+
+    %% If we are in lbound, then go left...
+    NewAcc1 = case LBound of
+        true ->  gb_tree_select(Start, Wildcard, Inclusive, Left, NewAcc);
+        false -> NewAcc
+    end,
+
+    %% If we are in rbound, then go right...
+    NewAcc2 = case RBound of
+        true ->  gb_tree_select(Start, Wildcard, Inclusive, Right, NewAcc1);
+        false -> NewAcc1
+    end,
+    NewAcc2;
+            
+            
+gb_tree_select(Start, End, Inclusive, {Key, Value, Left, Right}, Acc) ->
+    LBound = (Start == all) orelse (Start < Key) orelse (Start == Key andalso Inclusive),
+    RBound = (End == all) orelse (Key < End) orelse (End == Key andalso Inclusive),
+
+    %% If we are within bounds, then add this value...
+    NewAcc = if 
+        LBound andalso RBound ->
+            [{Key, Value}|Acc];
+        true ->
+            Acc
+    end,
+
+    %% If we are in lbound, then go left...
+    NewAcc1 = case LBound of
+        true ->  gb_tree_select(Start, End, Inclusive, Left, NewAcc);
+        false -> NewAcc
+    end,
+
+    %% If we are in rbound, then go right...
+    NewAcc2 = case RBound of
+        true ->  gb_tree_select(Start, End, Inclusive, Right, NewAcc1);
+        false -> NewAcc1
+    end,
+    NewAcc2.

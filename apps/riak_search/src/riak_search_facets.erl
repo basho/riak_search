@@ -18,6 +18,6 @@ passes_facets(Props, Facet) when is_record(Facet, lnot) ->
     not passes_facets(Props, Facet#lnot.ops);
 
 passes_facets(Props, Facet) when is_record(Facet, term) ->
-    [_, Field, Value] = string:tokens(Facet#term.string, "."),
+    {_Index, Field, Value} = Facet#term.q,
     proplists:get_value(Field, Props) == Value.
 

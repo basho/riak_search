@@ -71,6 +71,11 @@ handle_command(Pid, IndexFieldTerm, {stream, OutputPid, OutputRef, FilterFun}) -
     merge_index:stream(Pid, IndexFieldTerm, OutputPid, OutputRef, FilterFun),
     ok;
 
+handle_command(Pid, _, {range, Start, End, Inclusive, OutputPid, OutputRef}) ->
+    {ok, Range} = merge_index:range(Pid, Start, End, Inclusive),
+    OutputPid!{range_response, Range, OutputRef},
+    ok;
+
 handle_command(_Pid, IndexFieldTerm, Other) ->
     throw({unexpected_operation, IndexFieldTerm, Other}).
 

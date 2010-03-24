@@ -5,9 +5,11 @@
 -define(IS_TERM_PROHIBITED(Op), lists:member(prohibited, Op#term.options)).
 -define(IS_TERM_REQUIRED(Op), lists:member(required, Op#term.options)).
 -define(IS_TERM_FACET(Op), lists:member(facet, Op#term.options)).
+-define(IS_TERM_WILDCARD_ALL(Op), lists:member({wildcard, all}, Op#term.options)).
+-define(IS_TERM_WILDCARD_ONE(Op), lists:member({wildcard, one}, Op#term.options)).
 
 %% Pre-plan Operators...
--record(term,             {string, options}). 
+-record(term,             {q, options}). 
 -record(lnot,             {ops}).
 -record(land,             {ops}).
 -record(lor,              {ops}).

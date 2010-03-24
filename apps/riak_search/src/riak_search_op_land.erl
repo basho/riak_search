@@ -37,7 +37,9 @@ inner_chain_op([Op|Rest], Pid, {Ref, N}) ->
     inner_chain_op(Rest, Pid, {Ref, N + 1}).
 
 
-%% Gather results from all connections
+%% Gather results from all connections.
+gather_results(0, _, OutputPid, OutputRef, _, _) ->
+    OutputPid!{disconnect, OutputRef};
 gather_results(Connections, Ref, OutputPid, OutputRef, Queues, Type) ->
     receive
 	{results, Results, {Ref, N}} -> 
@@ -48,10 +50,7 @@ gather_results(Connections, Ref, OutputPid, OutputRef, Queues, Type) ->
 	{disconnect, {Ref, N}} ->
             NewQueues = add_results(N, ['$end_of_table'], Queues),
             NewQueues1 = possibly_send(OutputPid, OutputRef, NewQueues, Type),
-            case Connections > 1 of
-                true  -> gather_results(Connections - 1, Ref, OutputPid, OutputRef, NewQueues1, Type);
-                false -> OutputPid!{disconnect, OutputRef}
-            end;
+            gather_results(Connections - 1, Ref, OutputPid, OutputRef, NewQueues1, Type);
 
 	Other ->
             ?PRINT({unexpected_message, Other}),

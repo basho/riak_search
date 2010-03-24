@@ -1,8 +1,8 @@
 -module(riak_search).
 -export([
-    broadcast/1,
     put/5,
-    stream/4
+    stream/4,
+    range/3
 ]).
 -include("riak_search.hrl").
 
@@ -30,29 +30,47 @@ stream(Index, Field, Term, FilterFun) ->
     Client:put(Obj, 0, 0),
     {ok, Ref}.
 
-broadcast(Msg) ->
-    {ok, C} = riak:local_client(),
+range(Start, End, Inclusive) ->
+    %% Construct the operation...
+    Bucket = <<"search_broadcast">>,
+    Key = <<"ignored">>,
     Ref = make_ref(),
-    Obj = riak_object:new(<<"search_broadcast">>, <<"ignored">>, {broadcast, Msg, Ref}),
-    C:put(Obj, 0, 0),
-    broadcast_recv(ringsize(), Ref, []).
+    Start1 = normalize_range(Start),
+    End1 = normalize_range(End),
+    Payload = {range, Start1, End1, Inclusive, self(), Ref},
 
-broadcast_recv(RepliesRemaining, Ref, Acc) ->    
+    %% Run the operation...
+    {ok, Client} = riak:local_client(),
+    Obj = riak_object:new(Bucket, Key, Payload),
+    Client:put(Obj, 0, 0),
+    range_loop(ringsize(), Ref, []).
+
+range_loop(RepliesRemaining, Ref, Acc) ->    
     receive 
-        {response, Reply, Ref} when RepliesRemaining > 1 ->
-            broadcast_recv(RepliesRemaining - 1, Ref, [Reply|Acc]);
-        {response, Reply, Ref} when RepliesRemaining == 1 ->
-            {ok, [Reply|Acc]};
+        {range_response, List, Ref} when RepliesRemaining > 1 ->
+            range_loop(RepliesRemaining - 1, Ref, List ++ Acc);
+        {range_response, List, Ref} when RepliesRemaining == 1 ->
+            {ok, List ++ Acc};
         Other ->
             error_logger:info_msg("Unexpected response: ~p~n", [Other]),
-            broadcast_recv(RepliesRemaining, Ref, Acc)
+            range_loop(RepliesRemaining, Ref, Acc)
     after 5000 ->
-        error_logger:error_msg("broadcast_recv timed out!"),
-        throw({timeout, broadcast_recv})
+        error_logger:error_msg("range_loop timed out!"),
+        throw({timeout, range_loop})
     end.
     
 ringsize() ->
     app_helper:get_env(riak_core, ring_creation_size).
 
+
 to_binary(L) when is_list(L) -> list_to_binary(L);
 to_binary(B) when is_binary(B) -> B.
+
+
+normalize_range({Index, Field, Term}) ->
+    list_to_binary([Index, $., Field, $., Term]);
+normalize_range(wildcard_all) -> wildcard_all;
+normalize_range(wildcard_one) -> wildcard_one;
+normalize_range(all) ->  all.
+    
+    

@@ -1,5 +1,5 @@
 -module(test).
--export([test/0, test/1, testtree/0]).
+-export([test/0, test/1]).
 -define(IS_CHAR(C), ((C >= $A andalso C =< $Z) orelse (C >= $a andalso C =< $z))).
 
 
@@ -74,36 +74,4 @@ collect_results(Ref, Count) ->
 
 -define(PRINT(Var), io:format("DEBUG: ~p:~p - ~p~n~n ~p~n~n", [?MODULE, ?LINE, ??Var, Var])).
 
-testtree() ->
-    T = gb_trees:from_orddict([{X, X * 2} || X <- lists:seq(1, 100)]),
-    gb_tree_select(all, 20, true, T).
 
-
-gb_tree_select(Start, End, Inclusive, Tree) ->
-    {_, T} = Tree,
-    gb_tree_select(Start, End, Inclusive, T, []).
-
-gb_tree_select(_, _, _, nil, Acc) -> 
-    Acc;
-gb_tree_select(Start, End, Inclusive, {Key, Value, Left, Right}, Acc) ->
-    LBound = (Start == all) orelse (Start < Key) orelse (Start == Key andalso Inclusive),
-    RBound = (End == all) orelse (Key < End) orelse (End == Key andalso Inclusive),
-
-    %% If we are within bounds, then add this value...
-    NewAcc = case LBound andalso RBound of
-        true -> [{Key, Value}|Acc];
-        false -> Acc
-    end,
-
-    %% If we are in lbound, then go left...
-    NewAcc1 = case LBound of
-        true ->  gb_tree_select(Start, End, Inclusive, Left, NewAcc);
-        false -> NewAcc
-    end,
-
-    %% If we are in rbound, then go right...
-    NewAcc2 = case RBound of
-        true ->  gb_tree_select(Start, End, Inclusive, Right, NewAcc1);
-        false -> NewAcc1
-    end,
-    NewAcc2.
