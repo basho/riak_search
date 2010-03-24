@@ -86,10 +86,16 @@ handle_command(State, IndexFieldTerm, {stream, OutputPid, OutputRef, Partition, 
     end,
     ok;
 
-handle_command(State, _, {range, Start, End, Inclusive, OutputPid, OutputRef}) ->
+handle_command(State, IndexFieldTerm, {info, OutputPid, OutputRef}) ->
     Pid = State#state.pid,
-    {ok, Range} = merge_index:range(Pid, Start, End, Inclusive),
-    OutputPid!{range_response, Range, OutputRef},
+    {ok, Info} = merge_index:info(Pid, IndexFieldTerm),
+    OutputPid!{info_response, [Info], OutputRef},
+    ok;
+
+handle_command(State, _, {info_range, Start, End, Inclusive, OutputPid, OutputRef}) ->
+    Pid = State#state.pid,
+    {ok, Range} = merge_index:info_range(Pid, Start, End, Inclusive),
+    OutputPid!{info_response, Range, OutputRef},
     ok;
 
 handle_command(_State, IndexFieldTerm, Other) ->

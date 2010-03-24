@@ -22,7 +22,8 @@
 -export([
     start_link/2,
     put/4,
-    range/4,
+    info/2,
+    info_range/4,
     stream/5,
     is_empty/1
 ]).
@@ -47,8 +48,11 @@ start_link(Rootfile, Config) ->
 put(ServerPid, BucketName, Value, Props) ->
     gen_server:call(ServerPid, {put, BucketName, Value, Props}, infinity).
 
-range(ServerPid, Start, End, Inclusive) ->
-    gen_server:call(ServerPid, {range, Start, End, Inclusive}).
+info(ServerPid, BucketName) ->
+    gen_server:call(ServerPid, {info, BucketName}).
+
+info_range(ServerPid, Start, End, Inclusive) ->
+    gen_server:call(ServerPid, {info_range, Start, End, Inclusive}).
 
 stream(ServerPid, BucketName, Pid, Ref, FilterFun) ->
     gen_server:cast(ServerPid, {stream, BucketName, Pid, Ref, FilterFun}).
@@ -97,7 +101,16 @@ handle_call({put, BucketName, Value, Props}, _From, State) ->
     NewBuffer = [{BucketName, Value, now(), Props}|State#state.buffer],
     {reply, ok, State#state { buffer=NewBuffer }};
 
-handle_call({range, Start, End, Inclusive}, _From, State) ->
+handle_call({info, BucketName}, _From, State) ->
+    Buckets = State#state.buckets,
+    case gb_trees:lookup(BucketName, Buckets) of
+        {value, Bucket} ->
+            {reply, {ok, {BucketName, node(), Bucket#bucket.count}}, State};
+        none ->
+            {reply, {ok, {BucketName, node(), 0}}, State}
+    end;
+
+handle_call({info_range, Start, End, Inclusive}, _From, State) ->
     Buckets = State#state.buckets,
     Results = gb_trees_select(Start, End, Inclusive, Buckets),
     Node = node(),

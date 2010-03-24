@@ -5,7 +5,6 @@
 -include("riak_search.hrl").
 -record(config, { default_index, default_field, facets }).
 
-
 preplan(OpList, DefaultIndex, DefaultField, Facets) ->
     preplan(OpList, #config { 
               default_index=DefaultIndex,
@@ -18,7 +17,8 @@ preplan(OpList, Config) ->
     OpList2 = pass2(OpList1, Config),
     OpList3 = pass3(OpList2, Config),
     OpList4 = pass4(OpList3, Config),
-    pass5(OpList4, Config).
+    OpList5 = pass5(OpList4, Config),
+    pass6(OpList5, Config).
     
 %% FIRST PASS - Normalize incoming qil. 
 %% - We should move this to the qilr parser.
@@ -94,8 +94,13 @@ pass2(Op = #term {}, Config) ->
     NewQ = normalize_term(Op#term.q, Config),
     Options = Op#term.options,
     case is_facet(NewQ, Config) of
-        true -> Op#term { q=NewQ, options=[facet|Options] };
-        false -> Op#term { q=NewQ }
+        true -> 
+            Op#term { q=NewQ, options=[facet|Options] };
+        false -> 
+            {Index, Field, Term} = NewQ,
+            {ok, Results} = riak_search:info(Index, Field, Term),
+            Weights = [{node_weight, Node, Count} || {_, Node, Count} <- Results],
+            Op#term { q=NewQ, options=Weights ++ Options }
     end;
 
 pass2(Op = #land {}, Config) ->
@@ -212,7 +217,7 @@ inject_facets(Op, Facets) ->
     setelement(2, Op, NewOps).
 
 %% FOURTH PASS
-%% - TODO: Wrap things in #node to transfer control based on bucket stats.
+%% Expand wildcards and ranges into a #lor operator.
 pass4(OpList, Config) when is_list(OpList) ->
     [pass4(X, Config) || X <- OpList];
 
@@ -251,7 +256,7 @@ pass4(Op, Config) ->
 
 range_to_lor(Start, End, Inclusive, Facets, Config) ->
     %% Results are of form {node, Index.Field.Term, Count}
-    {ok, Results} = riak_search:range(Start, End, Inclusive),
+    {ok, Results} = riak_search:info_range(Start, End, Inclusive),
     
     %% Collapse results into a gb_tree to combine...
     F1 = fun({IndexFieldTerm, Node, Count}, Acc) ->
@@ -293,6 +298,24 @@ pass5(Op = #lnot {}, Config) ->
 pass5(Op, Config) -> 
     F = fun(X) -> lists:flatten([pass5(Y, Config) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
+
+
+%% SIXTH PASS - Wrap #lor and #land operations with a #node operation,
+%% based on where the weightiest node is coming from. By now, all
+%% terms will have a weight associated with them of the form
+%% {node_weight, Node, Weight} where Weight is simply the number of
+%% documents. We want to make sure that #lors and #lands happen on the
+%% node with the most weight.
+pass6(OpList, Config) when is_list(OpList) ->
+    [pass6(X, Config) || X <- OpList];
+
+pass6(Op, Config) -> 
+    F = fun(X) -> lists:flatten([pass6(Y, Config) || Y <- to_list(X)]) end,
+    riak_search_op:preplan_op(Op, F).
+
+
+
+
 
 to_list(L) when is_list(L) -> L;
 to_list(T) when is_tuple(T) -> [T].

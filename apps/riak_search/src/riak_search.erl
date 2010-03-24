@@ -2,7 +2,8 @@
 -export([
     put/5,
     stream/4,
-    range/3
+    info/3,
+    info_range/3
 ]).
 -include("riak_search.hrl").
 
@@ -33,42 +34,59 @@ stream(Index, Field, Term, FilterFun) ->
     Obj1 = riak_object:new(IndexBin, FieldTermBin, Payload1),
     Client:put(Obj1, 0, 0),
     {ok, Partition, Node} = wait_for_ready(NVal, Ref, undefined, undefined),
-    
+
     %% Run the operation...
     Payload2 = {stream, self(), Ref, Partition, Node, FilterFun},
     Obj2 = riak_object:new(IndexBin, FieldTermBin, Payload2),
     Client:put(Obj2, 0, 0),
     {ok, Ref}.
 
-range(Start, End, Inclusive) ->
+info(Index, Field, Term) ->
+    %% Construct the operation...
+    IndexBin = to_binary(Index),
+    FieldTermBin = to_binary([Field, ".", Term]),
+    Ref = make_ref(),
+    Payload = {info, self(), Ref},
+
+    %% Run the operation...
+    {ok, Client} = riak:local_client(),
+    Obj = riak_object:new(IndexBin, FieldTermBin, Payload),
+    Client:put(Obj, 0, 0),
+
+    %% How many replicas?
+    BucketProps = riak_core_bucket:get_bucket(IndexBin),
+    NVal = proplists:get_value(n_val, BucketProps),
+    {ok, _Results} = collect_info(NVal, Ref, []).
+
+info_range(Start, End, Inclusive) ->
     %% Construct the operation...
     Bucket = <<"search_broadcast">>,
     Key = <<"ignored">>,
     Ref = make_ref(),
     Start1 = normalize_range(Start),
     End1 = normalize_range(End),
-    Payload = {range, Start1, End1, Inclusive, self(), Ref},
+    Payload = {info_range, Start1, End1, Inclusive, self(), Ref},
 
     %% Run the operation...
     {ok, Client} = riak:local_client(),
     Obj = riak_object:new(Bucket, Key, Payload),
     Client:put(Obj, 0, 0),
-    range_loop(ringsize(), Ref, []).
+    {ok, _Results} = collect_info(ringsize(), Ref, []).
 
-range_loop(RepliesRemaining, Ref, Acc) ->    
+collect_info(RepliesRemaining, Ref, Acc) ->    
     receive 
-        {range_response, List, Ref} when RepliesRemaining > 1 ->
-            range_loop(RepliesRemaining - 1, Ref, List ++ Acc);
-        {range_response, List, Ref} when RepliesRemaining == 1 ->
+        {info_response, List, Ref} when RepliesRemaining > 1 ->
+            collect_info(RepliesRemaining - 1, Ref, List ++ Acc);
+        {info_response, List, Ref} when RepliesRemaining == 1 ->
             {ok, List ++ Acc};
         Other ->
             error_logger:info_msg("Unexpected response: ~p~n", [Other]),
-            range_loop(RepliesRemaining, Ref, Acc)
+            collect_info(RepliesRemaining, Ref, Acc)
     after 5000 ->
         error_logger:error_msg("range_loop timed out!"),
         throw({timeout, range_loop})
     end.
-    
+
 ringsize() ->
     app_helper:get_env(riak_core, ring_creation_size).
 
@@ -82,7 +100,7 @@ normalize_range({Index, Field, Term}) ->
 normalize_range(wildcard_all) -> wildcard_all;
 normalize_range(wildcard_one) -> wildcard_one;
 normalize_range(all) ->  all.
-    
+
 %% Get replies from all nodes that are willing to stream this
 %% bucket. If there is one on the local node, then use it, otherwise,
 %% use the first one that responds.
@@ -99,4 +117,4 @@ wait_for_ready(RepliesRemaining, Ref, Partition, Node) ->
             wait_for_ready(RepliesRemaining -1, Ref, NewPartition, NewNode)
     end.
 
-    
+
