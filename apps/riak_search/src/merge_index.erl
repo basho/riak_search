@@ -20,10 +20,9 @@
 
 %% API
 -export([
-    start/2, put/3, stream/3, is_empty/0,
     start_link/2,
     put/4,
-    stream/4,
+    stream/5,
     is_empty/1
 ]).
 
@@ -41,30 +40,14 @@
 -record(state,  { rootfile, config, buckets, rawfiles, buffer, last_merge, is_merging }).
 -record(bucket, { offset, count, size }).
 
-%%% DEBUGGING - Single Process
-
-start(Rootfile, Config) ->
-    gen_server:start({local, ?SERVER}, ?MODULE, [Rootfile, Config], [{timeout, infinity}]).
-
-put(BucketName, Value, Props) ->
-    put(?SERVER, BucketName, Value, Props).
-
-stream(BucketName, Pid, Ref) ->
-    stream(?SERVER, BucketName, Pid, Ref).
-
-is_empty() ->
-    is_empty(?SERVER).
-
-%%% END DEBUGGING
-
 start_link(Rootfile, Config) ->
     gen_server:start_link(?MODULE, [Rootfile, Config], [{timeout, infinity}]).
 
 put(ServerPid, BucketName, Value, Props) ->
     gen_server:call(ServerPid, {put, BucketName, Value, Props}, infinity).
 
-stream(ServerPid, BucketName, Pid, Ref) ->
-    gen_server:cast(ServerPid, {stream, BucketName, Pid, Ref}).
+stream(ServerPid, BucketName, Pid, Ref, FilterFun) ->
+    gen_server:cast(ServerPid, {stream, BucketName, Pid, Ref, FilterFun}).
 
 is_empty(ServerPid) ->
     gen_server:call(ServerPid, is_empty).
@@ -151,7 +134,7 @@ handle_cast({merge_complete, Buckets}, State) ->
     NewState = State#state { buckets=Buckets, last_merge=now(), is_merging=false },
     {noreply, NewState};
     
-handle_cast({stream, BucketName, Pid, Ref}, State) ->
+handle_cast({stream, BucketName, Pid, Ref, FilterFun}, State) ->
     %% Read bytes from the file...
     Rootfile = State#state.rootfile,    
     Bytes = case gb_trees:lookup(BucketName, State#state.buckets) of
@@ -162,7 +145,7 @@ handle_cast({stream, BucketName, Pid, Ref}, State) ->
         none -> 
             <<>>
     end,
-    stream_bytes(Bytes, undefined, Pid, Ref),
+    stream_bytes(Bytes, undefined, Pid, Ref, FilterFun),
     Pid!{result, '$end_of_table', Ref},
     {noreply, State};
 
@@ -262,14 +245,18 @@ write_value(FH, B) ->
     Size = size(B),
     ok = file:write(FH, <<Size:32/integer, B/binary>>).
 
-stream_bytes(<<>>, _, _, _) -> 
+stream_bytes(<<>>, _, _, _, _) -> 
     ok;
-stream_bytes(<<Size:32/integer, B:Size/binary, Rest/binary>>, LastValue, Pid, Ref) ->
+stream_bytes(<<Size:32/integer, B:Size/binary, Rest/binary>>, LastValue, Pid, Ref, FilterFun) ->
     case binary_to_term(B) of
         {_, LastValue, _, _} -> 
             % Skip duplicates.
-            stream_bytes(Rest, LastValue, Pid, Ref);
+            stream_bytes(Rest, LastValue, Pid, Ref, FilterFun);
         {_, Value, _, Props} ->
-            Pid!{result, {Value, Props}, Ref},
-            stream_bytes(Rest, Value, Pid, Ref)
+            case FilterFun(Value, Props) == true of
+                true -> Pid!{result, {Value, Props}, Ref};
+                false -> skip
+            end,
+            stream_bytes(Rest, Value, Pid, Ref, FilterFun)
     end.
+

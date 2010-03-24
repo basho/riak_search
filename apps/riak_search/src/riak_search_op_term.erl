@@ -19,12 +19,13 @@ preplan_op(Op, _F) -> Op.
 
 chain_op(Op, OutputPid, OutputRef) ->
     String = Op#term.string,
+    Facets = proplists:get_all_values(facets, Op#term.options),
     DEBUG = false,
     case DEBUG of
         true ->
             spawn(fun() -> send_results(String, OutputPid, OutputRef) end);
         false ->
-            spawn(fun() -> start_loop(String, OutputPid, OutputRef) end)
+            spawn(fun() -> start_loop(String, Facets, OutputPid, OutputRef) end)
     end,
     {ok, 1}.
 
@@ -34,16 +35,14 @@ send_results(String, OutputPid, OutputRef) ->
     [OutputPid!{results, [X], OutputRef} || X <- Term2],
     OutputPid!{disconnect, OutputRef}.
 
-start_loop(String, OutputPid, OutputRef) ->
-    Term1 = lists:nth(3, string:tokens(String, ".")),
-    Ref = make_ref(),
-    
-    %% Tell the backend to stream results...
-    {ok, Client} = riak:local_client(),
-    BucketName = list_to_binary(Term1),
-    Payload = {stream, self(), Ref},
-    Obj = riak_object:new(<<"search">>, BucketName, Payload),
-    Client:put(Obj, 1, 1),
+start_loop(String, Facets, OutputPid, OutputRef) ->
+    [Index, Field, Term] = string:tokens(String, "."),
+
+    %% Stream the results...
+    Fun = fun(_Value, Props) ->
+        riak_search_facets:passes_facets(Props, Facets)
+    end,
+    {ok, Ref} = riak_search:stream(Index, Field, Term, Fun),
 
     %% Gather the results...
     loop(Ref, OutputPid, OutputRef).
@@ -53,7 +52,7 @@ loop(Ref, OutputPid, OutputRef) ->
         {result, '$end_of_table', Ref} ->
             OutputPid!{disconnect, OutputRef};
 
-        {result, {Key, _Props}, Ref} ->
-            OutputPid!{results, [Key], OutputRef},
+        {result, {Key, Props}, Ref} ->
+            OutputPid!{results, [{Key, Props}], OutputRef},
             loop(Ref, OutputPid, OutputRef)
     end.

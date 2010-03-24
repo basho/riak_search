@@ -28,8 +28,8 @@ preplan(OpList, Config) ->
 pass1(OpList, Config) when is_list(OpList) ->
     lists:flatten([pass1(X, Config) || X <- OpList]);
 
-pass1({field, Field, Term, Flags}, Config) ->
-    TermOp = #term { string=Term, flags=Flags},
+pass1({field, Field, Term, Options}, Config) ->
+    TermOp = #term { string=Term, options=Options},
     pass1(#field { field=Field, ops=[TermOp]}, Config);
 
 pass1(Op = #group {}, Config) ->
@@ -62,7 +62,7 @@ pass1(Op = #term {}, Config) ->
         true -> 
             %% Rewrite a prohibited term to be a not.
             NewOp = #lnot { 
-              ops=[Op#term { flags=[] }] 
+              ops=[Op#term { options=[] }] 
              },
             pass1(NewOp, Config);
         false ->
@@ -73,8 +73,6 @@ pass1(Op, Config) ->
     F = fun(X) -> lists:flatten([pass1(Y, Config) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
 
-
-
 %% SECOND PASS
 %% - Turn #term strings into "index.field.term"
 %% - Flatten nested ands/ors
@@ -82,7 +80,10 @@ pass2(OpList, Config) when is_list(OpList) ->
     [pass2(Op, Config) || Op <- OpList];
 
 pass2(Op = #field {}, Config) ->
-    Config1 = Config#config { default_field=Op#field.field },
+    Config1 = case string:tokens(Op#field.field, ".") of
+        [Field] -> Config#config { default_field=Field };
+        [Index, Field] -> Config#config { default_index=Index, default_field=Field }
+    end,
     case Op#field.ops of
         [Op1] -> pass2(Op1, Config1);
         Ops -> pass2(Ops, Config1)
@@ -90,9 +91,9 @@ pass2(Op = #field {}, Config) ->
 
 pass2(Op = #term {}, Config) ->
     NewString = normalize_term_string(Op#term.string, Config),
-    Flags = Op#term.flags,
+    Options = Op#term.options,
     case is_facet(NewString, Config) of
-        true -> Op#term { string=NewString, flags=[facet|Flags] };
+        true -> Op#term { string=NewString, options=[facet|Options] };
         false -> Op#term { string=NewString }
     end;
 
@@ -195,8 +196,8 @@ is_all_facets(Op) ->
 
 %% Walk through an operator injecting facets into any found terms.
 inject_facets(Op, Facets) when is_record(Op, term) ->
-    NewFlags = [{facets, Facets}|Op#term.flags],
-    Op#term { flags=NewFlags };
+    NewOptions = [{facets, Facets}|Op#term.options],
+    Op#term { options=NewOptions };
 inject_facets(Op, Facets) ->
     Ops = element(2, Op),
     NewOps = [inject_facets(X, Facets) || X <- Ops],
@@ -236,4 +237,3 @@ pass5(Op, Config) ->
 
 to_list(L) when is_list(L) -> L;
 to_list(T) when is_tuple(T) -> [T].
-

@@ -1,15 +1,14 @@
 -module(test).
--export([test/0, test/1]).
+-export([test/0, test/1, testtree/0]).
 -define(IS_CHAR(C), ((C >= $A andalso C =< $Z) orelse (C >= $a andalso C =< $z))).
 
 
 
 test() ->
-    {ok, Client} = riak:local_client(),
     Files = filelib:wildcard("../../../Enron/*"),
-%%      {Files1, _} = lists:split(1, lists:sort(Files)),
-    {Files1, _} = lists:split(length(Files), lists:sort(Files)),
-    [index_file(Client, File) || File <- Files1],
+    {Files1, _} = lists:split(20, lists:sort(Files)),
+%%     {Files1, _} = lists:split(length(Files), lists:sort(Files)),
+    [index_file(File) || File <- Files1],
     ok.
 
 test(Q) ->
@@ -18,39 +17,50 @@ test(Q) ->
     Results.
 
 %% Index the file.
-index_file(Client, File) ->
+index_file(File) ->
     io:format("File: ~p~n", [File]),
     {ok, Bytes} = file:read_file(File),
-    index_file_inner(Client, Bytes, [], File).
+    Props = [{"color", random_color()}],
+    index_file_inner(Bytes, [], File, Props).
 
-index_file_inner(_, <<>>, [], _) -> 
+index_file_inner(<<>>, [], _, _) -> 
     ok;
 
-index_file_inner(Client, <<>>, Acc, File) ->
+index_file_inner(<<>>, Acc, File, Props) ->
     Word = string:to_lower(lists:reverse(Acc)),
-    index_word(Client, Word, File);
+    index_word(Word, File, Props);
 
-index_file_inner(Client, <<C, Rest/binary>>, Acc, File) when ?IS_CHAR(C) ->
-    index_file_inner(Client, Rest, [C|Acc], File);
+index_file_inner(<<C, Rest/binary>>, Acc, File, Props) when ?IS_CHAR(C) ->
+    index_file_inner(Rest, [C|Acc], File, Props);
 
-index_file_inner(Client, <<_, Rest/binary>>, [], File) ->
-    index_file_inner(Client, Rest, [], File);
+index_file_inner(<<_, Rest/binary>>, [], File, Props) ->
+    index_file_inner(Rest, [], File, Props);
 
-index_file_inner(Client, <<_, Rest/binary>>, Acc, File) ->
+index_file_inner(<<_, Rest/binary>>, Acc, File, Props) ->
     Word = string:to_lower(lists:reverse(Acc)),
-    index_word(Client, Word, File),
-    index_file_inner(Client, Rest, [], File).
+    index_word(Word, File, Props),
+    index_file_inner(Rest, [], File, Props).
         
-index_word(Client, Word, File) ->
-    case length(Word) > 0 of
+index_word(Term, Filename, Props) ->
+    case length(Term) > 0 of
         true ->
-            BucketName = list_to_binary(Word),
-            Payload = {put, File, []},
-            Obj = riak_object:new(<<"search">>, BucketName, Payload),
-            Client:put(Obj, 1, 0);
+            Index = "search",
+            Field = "default",
+            riak_search:put(Index, Field, Term, Filename, Props);
         false ->
             ok
     end.
+
+random_color() ->
+    N = random:uniform(5),
+    lists:nth(N, [
+        "red",
+        "orange",
+        "yellow",
+        "green",
+        "blue"
+    ]).
+    
 
 collect_results(Ref, Count) ->
     receive 
@@ -60,4 +70,40 @@ collect_results(Ref, Count) ->
             io:format(":: ~p~n", [Value]),
             collect_results(Ref, Count + 1)
     end.
-    
+
+
+-define(PRINT(Var), io:format("DEBUG: ~p:~p - ~p~n~n ~p~n~n", [?MODULE, ?LINE, ??Var, Var])).
+
+testtree() ->
+    T = gb_trees:from_orddict([{X, X * 2} || X <- lists:seq(1, 100)]),
+    gb_tree_select(all, 20, true, T).
+
+
+gb_tree_select(Start, End, Inclusive, Tree) ->
+    {_, T} = Tree,
+    gb_tree_select(Start, End, Inclusive, T, []).
+
+gb_tree_select(_, _, _, nil, Acc) -> 
+    Acc;
+gb_tree_select(Start, End, Inclusive, {Key, Value, Left, Right}, Acc) ->
+    LBound = (Start == all) orelse (Start < Key) orelse (Start == Key andalso Inclusive),
+    RBound = (End == all) orelse (Key < End) orelse (End == Key andalso Inclusive),
+
+    %% If we are within bounds, then add this value...
+    NewAcc = case LBound andalso RBound of
+        true -> [{Key, Value}|Acc];
+        false -> Acc
+    end,
+
+    %% If we are in lbound, then go left...
+    NewAcc1 = case LBound of
+        true ->  gb_tree_select(Start, End, Inclusive, Left, NewAcc);
+        false -> NewAcc
+    end,
+
+    %% If we are in rbound, then go right...
+    NewAcc2 = case RBound of
+        true ->  gb_tree_select(Start, End, Inclusive, Right, NewAcc1);
+        false -> NewAcc1
+    end,
+    NewAcc2.

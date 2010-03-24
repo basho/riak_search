@@ -28,9 +28,18 @@
 start(_StartType, _StartArgs) ->
     case riak_search_sup:start_link() of
         {ok, Pid} ->
-            %% Set up the riak_search bucket.
+            %% Set up a riak_search bucket.
             riak_core_bucket:set_bucket(<<"search">>, [
                 {n_val, 1},
+                {backend, search_backend}
+            ]),
+
+            %% Set up the search_broadcast bucket. Any operations on
+            %% this bucket will broadcast to all search_backend
+            %% partitions.
+            RingSize = app_helper:get_env(riak_core, ring_creation_size),
+            riak_core_bucket:set_bucket(<<"search_broadcast">>, [
+                {n_val, RingSize},
                 {backend, search_backend}
             ]),
             {ok, Pid};

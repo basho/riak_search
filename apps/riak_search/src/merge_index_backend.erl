@@ -62,10 +62,10 @@ put(State, BKey, Command) ->
             %% Put with properties.
             merge_index:put(Pid, BucketName, Value, Props),
             ok;
-        {stream, OutputPid, OutputRef} ->
+        {stream, OutputPid, OutputRef, FilterFun} ->
             %% io:format("Got a stream: ~p ~p ~p~n", [BucketName, OutputPid, OutputRef]),
             %% Stream some results.
-            merge_index:stream(Pid, BucketName, OutputPid, OutputRef),
+            merge_index:stream(Pid, BucketName, OutputPid, OutputRef, FilterFun),
             ok;
         Other ->
             throw({unexpected_operation, Other})

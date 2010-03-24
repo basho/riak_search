@@ -2,12 +2,12 @@
 -define(PRINT(Var), io:format("DEBUG: ~p:~p - ~p~n~n ~p~n~n", [?MODULE, ?LINE, ??Var, Var])).
 -endif.
 
--define(IS_TERM_PROHIBITED(Op), lists:member(prohibited, Op#term.flags)).
--define(IS_TERM_REQUIRED(Op), lists:member(required, Op#term.flags)).
--define(IS_TERM_FACET(Op), lists:member(facet, Op#term.flags)).
+-define(IS_TERM_PROHIBITED(Op), lists:member(prohibited, Op#term.options)).
+-define(IS_TERM_REQUIRED(Op), lists:member(required, Op#term.options)).
+-define(IS_TERM_FACET(Op), lists:member(facet, Op#term.options)).
 
 %% Pre-plan Operators...
--record(term,             {string, flags}). 
+-record(term,             {string, options}). 
 -record(lnot,             {ops}).
 -record(land,             {ops}).
 -record(lor,              {ops}).
