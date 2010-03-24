@@ -90,7 +90,9 @@ pass2(Op = #field {}, Config) ->
     end;
 
 pass2(Op = #term {}, Config) ->
+    ?PRINT(Op),
     NewString = normalize_term_string(Op#term.string, Config),
+    ?PRINT(NewString),
     Options = Op#term.options,
     case is_facet(NewString, Config) of
         true -> Op#term { string=NewString, options=[facet|Options] };
@@ -135,8 +137,10 @@ pass2(Op, Config) ->
 
 %% Return true if this TermString is a facet.
 is_facet(TermString, Config) ->
+    ?PRINT(TermString),
     FacetList = Config#config.facets,
     FacetList1 = [normalize_field_string(X, Config) || X <- FacetList],
+    ?PRINT(FacetList1),
     F = fun(X) ->
         string:str(TermString, X ++ ".") == 1
     end,

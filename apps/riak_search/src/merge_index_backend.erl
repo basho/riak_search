@@ -50,29 +50,31 @@ get(_State, _BKey) ->
 
 %% @spec put(state(), BKey :: riak_object:bkey(), Val :: binary()) ->
 %%         ok | {error, Reason :: term()}
-%% @doc Multiplex things through Value. Value can take the form of:
-%%      {put, Value, Props} or {stream, Pid, Ref}.
-put(State, BKey, Command) ->      
+%% @doc Route all commands through the object's value.
+put(State, BKey, ObjBin) ->      
     Pid = State#state.pid,
-    BucketName = element(2, BKey),
-    Obj = binary_to_term(Command),
-    case riak_object:get_value(Obj) of
-        {put, Value, Props} ->
-            %% io:format("Got a put: ~p ~p ~p~n", [BucketName, Value, Props]),
-            %% Put with properties.
-            merge_index:put(Pid, BucketName, Value, Props),
-            ok;
-        {stream, OutputPid, OutputRef, FilterFun} ->
-            %% io:format("Got a stream: ~p ~p ~p~n", [BucketName, OutputPid, OutputRef]),
-            %% Stream some results.
-            merge_index:stream(Pid, BucketName, OutputPid, OutputRef, FilterFun),
-            ok;
-        Other ->
-            throw({unexpected_operation, Other})
-            %% Normal put, no properties.
-%%             io:format("Got the following: ~p~n", [Other]),
-%%             merge_index:put(Pid, BucketName, Other, []),
-    end.
+    {Index, FieldTerm} = BKey,
+    IndexFieldTerm = list_to_binary([Index, ".", FieldTerm]),
+    Obj = binary_to_term(ObjBin),
+    Command = riak_object:get_value(Obj),
+    handle_command(Pid, IndexFieldTerm, Command).
+    
+handle_command(Pid, IndexFieldTerm, {put, Value, Props}) ->
+    %% io:format("Got a put: ~p ~p ~p~n", [BucketName, Value, Props]),
+    %% Put with properties.
+    merge_index:put(Pid, IndexFieldTerm, Value, Props),
+    ok;
+
+handle_command(Pid, IndexFieldTerm, {stream, OutputPid, OutputRef, FilterFun}) ->
+    %% io:format("Got a stream: ~p ~p ~p~n", [BucketName, OutputPid, OutputRef]),
+    %% Stream some results.
+    merge_index:stream(Pid, IndexFieldTerm, OutputPid, OutputRef, FilterFun),
+    ok;
+
+handle_command(_Pid, IndexFieldTerm, Other) ->
+    throw({unexpected_operation, IndexFieldTerm, Other}).
+
+
 
 %% @spec delete(state(), BKey :: riak_object:bkey()) ->
 %%          ok | {error, Reason :: term()}
