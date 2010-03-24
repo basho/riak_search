@@ -220,25 +220,28 @@ pass4(OpList, Config) when is_list(OpList) ->
 pass4(Op = #inclusive_range {}, Config) ->
     Start = hd(Op#inclusive_range.start_op),
     End = hd(Op#inclusive_range.end_op),
-    range_to_lor(Start#term.q, End#term.q, true, Config);
+    Facets = proplists:get_all_values(facets, Start#term.options),
+    range_to_lor(Start#term.q, End#term.q, true, Facets, Config);
 
 pass4(Op = #exclusive_range {}, Config) ->
     Start = hd(Op#exclusive_range.start_op),
     End = hd(Op#exclusive_range.end_op),
-    range_to_lor(Start#term.q, End#term.q, false, Config);
+    Facets = proplists:get_all_values(facets, Start#term.options),
+    range_to_lor(Start#term.q, End#term.q, false, Facets, Config);
 
 pass4(Op = #term {}, Config) ->
     IsWildcardAll = ?IS_TERM_WILDCARD_ALL(Op),
     IsWildcardOne = ?IS_TERM_WILDCARD_ONE(Op),
+    Facets = proplists:get_all_values(facets, Op#term.options),
     if 
         IsWildcardAll ->
             Start = Op#term.q,
             End = wildcard_all,
-             range_to_lor(Start, End, true, Config);
+             range_to_lor(Start, End, true, Facets, Config);
         IsWildcardOne ->
             Start = Op#term.q,
             End = wildcard_one,
-            range_to_lor(Start, End, true, Config);
+            range_to_lor(Start, End, true, Facets, Config);
         true ->
             Op
     end;
@@ -247,7 +250,7 @@ pass4(Op, Config) ->
     F = fun(X) -> lists:flatten([pass4(Y, Config) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
 
-range_to_lor(Start, End, Inclusive, Config) ->
+range_to_lor(Start, End, Inclusive, Facets, Config) ->
     %% Results are of form {node, Index.Field.Term, Count}
     {ok, Results} = riak_search:range(Start, End, Inclusive),
     
@@ -267,7 +270,7 @@ range_to_lor(Start, End, Inclusive, Config) ->
     %% Create the lor operation.
     F2 = fun({IFT, Options}) ->
         Q = normalize_term(IFT, Config),
-        #term { q=Q, options=Options }
+        #term { q=Q, options=[{facets, Facets}|Options] }
     end,
     Ops = [F2(X) || X <- Results2],
     #lor { ops=Ops }.

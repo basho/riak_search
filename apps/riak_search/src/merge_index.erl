@@ -284,11 +284,11 @@ when Wildcard == wildcard_all orelse Wildcard == wildcard_one->
     RBound = (Start >= Key),
 
     NewAcc = case Key of
-        <<Start:Size/binary>> ->
-            [{Key, Value}|Acc];
-        <<Start:Size/binary, _/binary>> when Wildcard == wildcard_all -> 
+        <<Start:Size/binary>> when Wildcard /= wildcard_one->
             [{Key, Value}|Acc];
         <<Start:Size/binary, _:1/binary>> when Wildcard == wildcard_one ->
+            [{Key, Value}|Acc];
+        <<Start:Size/binary, _/binary>> when Wildcard == wildcard_all -> 
             [{Key, Value}|Acc];
         _ ->
             Acc
