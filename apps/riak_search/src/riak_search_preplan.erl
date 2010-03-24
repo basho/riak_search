@@ -309,13 +309,47 @@ pass5(Op, Config) ->
 pass6(OpList, Config) when is_list(OpList) ->
     [pass6(X, Config) || X <- OpList];
 
+pass6(Op = #land {}, Config) ->
+    Node = get_preferred_node(Op),
+    Ops = Op#land.ops,
+    NewOp = Op#land { ops=pass6(Ops, Config) },
+    #node { ops=NewOp, node=Node };
+
+pass6(Op = #lor {}, Config) ->
+    Node = get_preferred_node(Op),
+    Ops = Op#lor.ops,
+    NewOp = Op#lor { ops=pass6(Ops, Config) },
+    #node { ops=NewOp, node=Node };
+
 pass6(Op, Config) -> 
     F = fun(X) -> lists:flatten([pass6(Y, Config) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
 
 
 
+%% Return the node with the highest combined weight.
+get_preferred_node(Op) ->
+    Weights = get_preferred_node_inner(Op),
+    F = fun({Node, Weight}, Acc) ->
+        case gb_trees:lookup(Node, Acc) of
+            {value, OldWeight} ->
+                gb_trees:update(Node, OldWeight + Weight, Acc);
+            none ->
+                gb_trees:enter(Node, Weight, Acc)
+        end
+    end,
+    StartingTree = gb_trees:from_orddict([{node(), 0}]),
+    Tree = lists:foldl(F, StartingTree, lists:flatten(Weights)),
+    {HeaviestNode, _W} = gb_trees:largest(Tree),
+    HeaviestNode.
 
+%% Given a nested list of operations, return a list of [{Node, Weight}].
+get_preferred_node_inner(Op) when is_record(Op, term) -> 
+    [{Node, Weight} || {node_weight, Node, Weight} <- Op#term.options];
+get_preferred_node_inner(Op) ->
+    Ops = element(2, Op),
+    [get_preferred_node_inner(X) || X <- Ops].
 
+    
 to_list(L) when is_list(L) -> L;
 to_list(T) when is_tuple(T) -> [T].

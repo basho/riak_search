@@ -15,8 +15,6 @@
 -record(lor,              {ops}).
 -record(group,            {ops}).
 -record(field,            {field, ops}).
-
-%% Not yet implemented...
 -record(inclusive_range,  {start_op, end_op}).
 -record(exclusive_range,  {start_op, end_op}).
--record(node,             {node, ops}).
+-record(node,             {ops, node}).

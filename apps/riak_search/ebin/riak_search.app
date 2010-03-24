@@ -17,6 +17,7 @@
              riak_search_op_field,
              riak_search_op_inclusive_range,
              riak_search_op_exclusive_range,
+             riak_search_op_node,
              merge_index,
              merge_index_backend,
              test

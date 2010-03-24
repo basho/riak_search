@@ -27,7 +27,7 @@ execute(OpList) ->
     %% Normalize, Optimize, and Expand Buckets.
     OpList1 = #group { ops=OpList },
     OpList2 = riak_search_preplan:preplan(OpList1, "search", "default", ["search.price", "search.color"]),
-    ?PRINT(OpList2),
+
     %% Set up the operators. They automatically start when created...
     Ref = make_ref(),
     {ok, NumInputs} = riak_search_op:chain_op(OpList2, self(), Ref),
