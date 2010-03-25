@@ -98,7 +98,15 @@ init([Rootfile, Config]) ->
     {ok, State}.
 
 handle_call({put, BucketName, Value, Props}, _From, State) ->
-    NewBuffer = [{BucketName, Value, now(), Props}|State#state.buffer],
+    %% Hackish - Values are sorted in ascending order on disk, but in
+    %% order to correctly allow property/facet updates we need them to
+    %% be sorted according to descending time. Achieve this by
+    %% inverting the timestamp. Make it better later.
+    Now = now(),
+    InverseTimestamp = {-1 * element(1, Now), -1 * element(2, Now), -1 * element(3, Now) },
+
+    %% Add the new value to the buffer.
+    NewBuffer = [{BucketName, Value, InverseTimestamp, Props}|State#state.buffer],
     {reply, ok, State#state { buffer=NewBuffer }};
 
 handle_call({info, BucketName}, _From, State) ->
