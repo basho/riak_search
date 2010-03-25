@@ -318,7 +318,9 @@ gb_trees_select(_, _, _, _, nil, Acc) ->
 gb_trees_select(Start, End, Inclusive, RequiredSize, {Key, Value, Left, Right}, Acc) ->
     LBound = (Start == all) orelse (Start < Key) orelse (Start == Key andalso Inclusive),
     RBound = (End == all) orelse (Key < End) orelse (End == Key andalso Inclusive),
-    CorrectSize = (size(Key) == RequiredSize orelse RequiredSize == undefined),
+    %% Key is undefined because the list of Buckets has a dummy
+    %% entry. Makes other parts of the code cleaner.
+    CorrectSize = ((Key /= undefined andalso size(Key) == RequiredSize) orelse RequiredSize == undefined),
 
     %% If we are within bounds, then add this value...
     NewAcc = if 
