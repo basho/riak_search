@@ -302,8 +302,8 @@ stream_bytes(<<Size:32/integer, B:Size/binary, Rest/binary>>, LastValue, Pid, Re
 gb_trees_select(Start, Wildcard, _, Tree) 
 when Wildcard == wildcard_all orelse Wildcard == wildcard_one ->
     {_, T} = Tree,
-    NewStart = binary_inc(Start, -1),
-    NewEnd = binary_inc(Start, 1),
+    NewStart = <<Start/binary, 0:8/integer>>,
+    NewEnd = <<Start/binary, 255:8/integer>>,
     RequiredSize = case Wildcard of
         wildcard_one -> size(Start) + 1;
         wildcard_all -> undefined
@@ -340,10 +340,3 @@ gb_trees_select(Start, End, Inclusive, RequiredSize, {Key, Value, Left, Right}, 
         false -> NewAcc1
     end,
     NewAcc2.
-
-%% Return a new binary, incremented by Incr.
-binary_inc(Binary, Incr) ->
-    Bits = size(Binary) * 8,
-    <<Integer:Bits/integer>> = Binary,
-    NewInteger = Integer + Incr,
-    <<NewInteger:Bits/integer>>.
