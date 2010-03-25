@@ -3,6 +3,7 @@
   {description, "Riak Search"},
   {vsn, "0.9"},
   {modules, [
+             search,
              riak_search,
              riak_search_app,
              riak_search_sup,
@@ -19,8 +20,7 @@
              riak_search_op_exclusive_range,
              riak_search_op_node,
              merge_index,
-             merge_index_backend,
-             test
+             merge_index_backend
             ]},
   {registered, []},
   {applications, [

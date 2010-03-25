@@ -39,8 +39,11 @@ passes_facets(Props, Facet) when is_record(Facet, term) ->
 
     IsWildcardAll = ?IS_TERM_WILDCARD_ALL(Facet),
     IsWildcardOne = ?IS_TERM_WILDCARD_ONE(Facet),
-    PrefixMatch = string:str(PropValue, FacetValue) == 1,
-    LengthDiff = length(PropValue) - length(FacetValue),
+    PrefixMatch = (PropValue /= undefined) andalso (string:str(PropValue, FacetValue) == 1),
+    LengthDiff = case PropValue /= undefined of
+        true -> length(PropValue) - length(FacetValue);
+        false -> undefined
+    end,
 
     if 
         PrefixMatch andalso LengthDiff == 0 andalso not IsWildcardOne ->
