@@ -1,11 +1,48 @@
 -module(riak_search).
 -export([
+    execute/4,
+    explain/4,
     put/5,
     stream/4,
     info/3,
     info_range/3
 ]).
 -include("riak_search.hrl").
+
+execute(OpList, DefaultIndex, DefaultField, Facets) -> 
+    %% Normalize, Optimize, and Expand Buckets.
+    OpList1 = riak_search_preplan:preplan(OpList, DefaultIndex, DefaultField, Facets),
+
+    %% Set up the operators. They automatically start when created...
+    Ref = make_ref(),
+    {ok, NumInputs} = riak_search_op:chain_op(OpList1, self(), Ref),
+
+    %% Gather and return results...
+    Results = collect_results(NumInputs, Ref, []),
+    {ok, Results}.
+
+%% Gather results from all connections
+collect_results(Connections, Ref, Acc) ->
+    receive
+	{results, Results, Ref} -> 
+	    collect_results(Connections, Ref, Acc ++ Results);
+
+	{disconnect, Ref} when Connections > 1  ->
+	    collect_results(Connections - 1, Ref, Acc);
+
+	{disconnect, Ref} when Connections == 1 ->
+	    Acc;
+
+	Other ->
+	    throw({unexpected_message, Other})
+
+    after 1 * 1000 ->
+            ?PRINT(timeout),
+            throw({timeout, Connections, Acc})
+    end.
+
+explain(OpList, DefaultIndex, DefaultField, Facets) ->
+    riak_search_preplan:preplan(OpList, DefaultIndex, DefaultField, Facets).
 
 put(Index, Field, Term, Value, Props) ->
     %% Construct the operation...

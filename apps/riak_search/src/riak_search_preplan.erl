@@ -21,7 +21,7 @@ preplan(OpList, Config) ->
     pass6(OpList5, Config).
     
 %% FIRST PASS - Normalize incoming qil. 
-%% - We should move this to the qilr parser.
+%% - We should move this to the qilr project.
 %% - Turn field/4 into field/3
 %% - Turn group statements into ANDs and ORs.
 %% - Wrap prohibited terms into an #lnot.
@@ -74,8 +74,8 @@ pass1(Op, Config) ->
     riak_search_op:preplan_op(Op, F).
 
 %% SECOND PASS
+%% - Flatten nested ands/ors. (Also move to qilr project.)
 %% - Normalize #term queries.
-%% - Flatten nested ands/ors
 pass2(OpList, Config) when is_list(OpList) ->
     [pass2(Op, Config) || Op <- OpList];
 
@@ -175,7 +175,7 @@ normalize_term(Term, _) when is_tuple(Term) -> Term.
 
 
 %% THIRD PASS
-%% - Collapse facets.
+%% - Collapse facets into the other branches of the query.
 pass3(OpList, Config) when is_list(OpList) ->
     [pass3(Op, Config) || Op <- OpList];
 
@@ -280,7 +280,7 @@ range_to_lor(Start, End, Inclusive, Facets, Config) ->
     #lor { ops=Ops }.
 
 %% FIFTH PASS
-%% Collapse nested lnots.
+%% Collapse nested NOTs.
 pass5(OpList, Config) when is_list(OpList) ->
     [pass5(X, Config) || X <- OpList];
 
@@ -300,7 +300,7 @@ pass5(Op, Config) ->
     riak_search_op:preplan_op(Op, F).
 
 
-%% SIXTH PASS - Wrap #lor and #land operations with a #node operation,
+%% SIXTH PASS - Wrap #lor and #land operations with a #node operation
 %% based on where the weightiest node is coming from. By now, all
 %% terms will have a weight associated with them of the form
 %% {node_weight, Node, Weight} where Weight is simply the number of

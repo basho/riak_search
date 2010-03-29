@@ -103,7 +103,7 @@ possibly_send(OutputPid, OutputRef, Queues, Type) ->
 
 %% Ensure that each queue has had the first result popped
 %% off if possible, and make sure the minimum result is NOT 
-%% on an NOT-flagged queue.
+%% on a NOT-flagged queue.
 pop_values(Queues) ->
     Queues1 = pop_undefined_values(Queues),
     Queues2 = pop_minimum_not_values(Queues1),
