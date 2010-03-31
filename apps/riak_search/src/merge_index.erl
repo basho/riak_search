@@ -22,10 +22,13 @@
 -export([
     start_link/2,
     put/4,
+    put/5,
     info/2,
     info_range/4,
     stream/5,
-    is_empty/1
+    fold/3,
+    is_empty/1,
+    drop/1
 ]).
 
 %% gen_server callbacks
@@ -39,11 +42,14 @@
 -define(DEFAULT_SORT_BUFFER_SIZE, 1 * 1024 * 1024).
 -define(DEFAULT_FILE_BUFFER_SIZE, 1 * 1024 * 1024).
 -define(DEFAULT_FILE_BUFFER_DURATION, 2 * 1000).
--record(state,  { rootfile, config, buckets, rawfiles, buffer, last_merge, is_merging }).
+-record(state,  { rootfile, config, buckets, rawfiles, buffer, last_merge, merge_pid, discard_next_merge=false }).
 -record(bucket, { offset, count, size }).
 
 start_link(Rootfile, Config) ->
     gen_server:start_link(?MODULE, [Rootfile, Config], [{timeout, infinity}]).
+
+put(ServerPid, BucketName, Timestamp, Value, Props) ->
+    gen_server:call(ServerPid, {put, BucketName, Timestamp, Value, Props}, infinity).
 
 put(ServerPid, BucketName, Value, Props) ->
     gen_server:call(ServerPid, {put, BucketName, Value, Props}, infinity).
@@ -57,8 +63,14 @@ info_range(ServerPid, Start, End, Inclusive) ->
 stream(ServerPid, BucketName, Pid, Ref, FilterFun) ->
     gen_server:cast(ServerPid, {stream, BucketName, Pid, Ref, FilterFun}).
 
+fold(ServerPid, Function, Acc) ->
+    gen_server:call(ServerPid, {fold, Function, Acc}).
+
 is_empty(ServerPid) ->
     gen_server:call(ServerPid, is_empty).
+
+drop(ServerPid) ->
+    gen_server:call(ServerPid, drop).
 
 init([Rootfile, Config]) ->
     random:seed(),
@@ -93,17 +105,20 @@ init([Rootfile, Config]) ->
         rawfiles=[],
         buffer=[],
         last_merge=now(),
-        is_merging=false
+        merge_pid=undefined
     },
     {ok, State}.
 
-handle_call({put, BucketName, Value, Props}, _From, State) ->
+handle_call({put, BucketName, Value, Props}, From, State) ->
+    Now = now(),
+    handle_call({put, BucketName, Now, Value, Props}, From, State);
+
+handle_call({put, BucketName, Timestamp, Value, Props}, _From, State) ->
     %% Hackish - Values are sorted in ascending order on disk, but in
     %% order to correctly allow property/facet updates we need them to
     %% be sorted according to descending time. Achieve this by
     %% inverting the timestamp. Make it better later.
-    Now = now(),
-    InverseTimestamp = {-1 * element(1, Now), -1 * element(2, Now), -1 * element(3, Now) },
+    InverseTimestamp = invert_timestamp(Timestamp),
 
     %% Add the new value to the buffer.
     NewBuffer = [{BucketName, Value, InverseTimestamp, Props}|State#state.buffer],
@@ -125,9 +140,30 @@ handle_call({info_range, Start, End, Inclusive}, _From, State) ->
     Results1 = [{ITF, Node, Bucket#bucket.count} || {ITF, Bucket} <- Results],
     {reply, {ok, Results1}, State};
 
+handle_call({fold, Fun, Acc}, _From, State) ->
+    Rootfile = State#state.rootfile,    
+    {ok, FH} = file:open(Rootfile ++ ".data", [raw, read, read_ahead, binary]),
+    NewAcc = do_fold(FH, Fun, Acc),
+    file:close(FH),
+    {reply, {ok, NewAcc}, State};
+
 handle_call(is_empty, _From, State) ->
-    IsEmpty = gb_trees:size(State#state.buckets) > 0,
+    % Hackish - the buckets gb_tree will always have one 'undefined'
+    % placeholder bucket.
+    IsEmpty = gb_trees:size(State#state.buckets) =< 1,
     {reply, IsEmpty, State};
+
+handle_call(drop, _From, State) ->
+    % Zero out the data file.
+    Rootfile = State#state.rootfile,    
+    file:write(Rootfile ++ ".data", ""),
+
+    % Empty buckets gbtree.
+    NewState = State#state { 
+        buckets=gb_trees:empty(),
+        discard_next_merge = true
+    },
+    {reply, ok, NewState};
 
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
@@ -149,22 +185,26 @@ handle_cast(checkpoint, State) ->
     HasRawFiles = length(NewState#state.rawfiles) > 0,
     MergeInterval = get_config(merge_interval, State, ?DEFAULT_MERGE_INTERVAL),
     IsTimeForMerge = (timer:now_diff(now(), NewState#state.last_merge)/1000) > MergeInterval,
-    IsMerging = NewState#state.is_merging,
+    IsMerging = is_pid(NewState#state.merge_pid),
     case HasRawFiles andalso IsTimeForMerge andalso not IsMerging of
         true -> 
             Self = self(),
-            spawn_link(fun() -> merge(Self, NewState) end),
-            {noreply, NewState#state { rawfiles=[], is_merging=true }};
+            Pid = spawn_link(fun() -> merge(Self, NewState) end),
+            {noreply, NewState#state { rawfiles=[], merge_pid=Pid }};
         false -> 
             {noreply, NewState}
     end;
 
-handle_cast({merge_complete, Buckets}, State) ->
+handle_cast({merge_complete, Buckets}, State) when State#state.discard_next_merge == false ->
     RF = State#state.rootfile,
     swap_files(RF ++ ".merged", RF ++ ".data"),
     swap_files(RF ++ ".buckets_merged", RF ++ ".buckets"),
-    NewState = State#state { buckets=Buckets, last_merge=now(), is_merging=false },
+    NewState = State#state { buckets=Buckets, last_merge=now(), merge_pid=undefined },
     {noreply, NewState};
+
+handle_cast({merge_complete, _Buckets}, State) when State#state.discard_next_merge == true ->
+    NewState = State#state { last_merge=now(), merge_pid=undefined, discard_next_merge=false },
+    {norelpy, NewState};
 
 handle_cast({stream, BucketName, Pid, Ref, FilterFun}, State) ->
     %% Read bytes from the file...
@@ -182,7 +222,8 @@ handle_cast({stream, BucketName, Pid, Ref, FilterFun}, State) ->
     Pid!{result, '$end_of_table', Ref},
     {noreply, State};
 
-handle_cast(_Msg, State) ->
+handle_cast(Msg, State) ->
+    ?PRINT({unhandled_cast, Msg}),
     {noreply, State}.
 
 handle_info(_Info, State) ->
@@ -278,6 +319,16 @@ write_value(FH, B) ->
     Size = size(B),
     ok = file:write(FH, <<Size:32/integer, B/binary>>).
 
+read_value(FH) ->
+    case file:read(FH, 4) of
+        {ok, <<Size:32/integer>>} ->
+            {ok, Bytes} = file:read(FH, Size),
+            {ok, binary_to_term(Bytes)};
+        eof ->
+            eof
+    end.
+                
+
 stream_bytes(<<>>, _, _, _, _) -> 
     ok;
 stream_bytes(<<Size:32/integer, B:Size/binary, Rest/binary>>, LastValue, Pid, Ref, FilterFun) ->
@@ -293,6 +344,30 @@ stream_bytes(<<Size:32/integer, B:Size/binary, Rest/binary>>, LastValue, Pid, Re
             stream_bytes(Rest, Value, Pid, Ref, FilterFun)
     end.
 
+
+do_fold(FH, Fun, Acc) ->
+    case read_value(FH) of
+        {ok, T} ->
+            ?PRINT(T),
+            %% Create a new Riak object.  Lots of binary/list
+            %% manipulation here. Can we streamline this?
+            {BucketName, Value, InverseTimestamp, Props} = T,
+            [Index, Field, Term] = string:tokens(binary_to_list(BucketName), "."),
+            IndexB = list_to_binary(Index),
+            FieldTermB = list_to_binary([Field, ".", Term]),
+            Timestamp = invert_timestamp(InverseTimestamp),
+            Obj = riak_object:new(IndexB, FieldTermB, {put, Timestamp, Value, Props}),
+            ObjB = term_to_binary(Obj),
+            NewAcc = Fun({IndexB, FieldTermB}, ObjB, Acc),
+            do_fold(FH, Fun, NewAcc);
+        eof ->
+            ?PRINT({fold_finished, eof}),
+            Acc
+    end.
+
+invert_timestamp(Timestamp) ->
+    {TS1, TS2, TS3} = Timestamp,
+    {-1 * TS1, -1 * TS2, -1 * TS3}.
 
 
 %% Walk through a gb_tree, selecting values between a range. Special

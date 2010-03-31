@@ -21,6 +21,7 @@
              riak_core_ring_events,
              riak_core_ring_manager,
              riak_core_sup,
+             riak_core_test_util,
              riak_core_util,
              slide,
              spiraltime,
@@ -58,6 +59,8 @@
          %% Default bucket props
          {default_bucket_props, [{n_val,3},
                                  {allow_mult,false},
+                                 {precommit, none},
+                                 {postcommit, none},
                                  {chash_keyfun, {riak_core_util, chash_std_keyfun}}]}
 
         ]}

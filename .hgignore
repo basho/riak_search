@@ -26,7 +26,7 @@ test\.log
 ^test/.*
 ^data/.*
 .*/.eunit/.*
-^rel/riak/.*
+^rel/riak.*/.*
 ^dev/.*
 include/.*_pb.hrl$
 c_src/deps/(nsprpub|js|mozilla|nspr_release)/.*

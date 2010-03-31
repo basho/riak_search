@@ -38,15 +38,9 @@ start(Partition, Config) ->
     {ok, #state { partition=Partition, pid=Pid }}.
 
 %% @spec stop(state()) -> ok | {error, Reason :: term()}
-stop(_State) -> ok.
-
-%% @spec get(state(), BKey :: riak_object:bkey()) ->
-%%         {ok, Val :: binary()} | {error, Reason :: term()}
-%% @doc Get the object stored at the given bucket/key pair. The merge
-%% backend does not support key-based lookups, so always return
-%% {error, notfound}.
-get(_State, _BKey) ->
-    {error, notfound}.
+stop(State) -> 
+    Pid = State#state.pid,
+    ok = merge_index:stop(Pid).
 
 %% @spec put(state(), BKey :: riak_object:bkey(), Val :: binary()) ->
 %%         ok | {error, Reason :: term()}
@@ -58,6 +52,13 @@ put(State, BKey, ObjBin) ->
     Command = riak_object:get_value(Obj),
     handle_command(State, IndexFieldTerm, Command).
     
+handle_command(State, IndexFieldTerm, {put, Timestamp, Value, Props}) ->
+    %% io:format("Got a put: ~p ~p ~p~n", [BucketName, Timestamp, Value, Props]),
+    %% Put with properties.
+    Pid = State#state.pid,
+    merge_index:put(Pid, IndexFieldTerm, Timestamp, Value, Props),
+    ok;
+
 handle_command(State, IndexFieldTerm, {put, Value, Props}) ->
     %% io:format("Got a put: ~p ~p ~p~n", [BucketName, Value, Props]),
     %% Put with properties.
@@ -103,14 +104,34 @@ handle_command(_State, IndexFieldTerm, Other) ->
 
 
 
+%% @spec get(state(), BKey :: riak_object:bkey()) ->
+%%         {ok, Val :: binary()} | {error, Reason :: term()}
+%% @doc Get the object stored at the given bucket/key pair. The merge
+%% backend does not support key-based lookups, so always return
+%% {error, notfound}.
+get(_State, _BKey) ->
+    {error, notfound}.
+
+is_empty(State) -> 
+    ?PRINT(is_empty),
+    Pid = State#state.pid,
+    merge_index:is_empty(Pid).
+
+fold(State, Fun, Acc) ->
+    ?PRINT({fold, Fun, Acc}),
+    Pid = State#state.pid,
+    merge_index:fold(Pid, Fun, Acc).
+
+drop(State) ->
+    ?PRINT(drop),
+    Pid = State#state.pid,
+    merge_index:drop(Pid).
+
 %% @spec delete(state(), BKey :: riak_object:bkey()) ->
 %%          ok | {error, Reason :: term()}
 %% @doc Writes are not supported.
 delete(_State, _BKey) ->
     {error, not_supported}.
-
-drop(_State) ->
-    throw({error, not_supported}).
 
 %% @spec list(state()) -> [{Bucket :: riak_object:bucket(),
 %%                          Key :: riak_object:key()}]
@@ -123,11 +144,4 @@ list(_State) ->
 %%           [riak_object:key()]
 %% @doc Get a list of the keys in a bucket
 list_bucket(_State, _Bucket) ->
-    throw({error, not_supported}).
-
-is_empty(State) -> 
-    Pid = State#state.pid,
-    merge_index:is_empty(Pid).
-
-fold(_State, _Fun0, _Acc) ->
     throw({error, not_supported}).

@@ -132,23 +132,24 @@ list_bucket(State, Bucket) ->
     Module:list_bucket(SubState, Bucket).
 
 is_empty(State) ->
-    F = fun({_, Module, SubState}, Acc) ->
-                [Module:is_empty(SubState)|Acc]
-        end,
-    lists:all(fun(I) -> I end, lists:foldl(F, [], State#state.backends)).
+    F = fun({_, Module, SubState}) ->
+        Module:is_empty(SubState)
+    end,
+    lists:all(F, State#state.backends).
 
 drop(State) ->
-    F = fun({_, Module, SubState}, Acc) ->
-                [Module:drop(SubState)|Acc]
-        end,
-    lists:foldl(F, [], State#state.backends),
+    F = fun({_, Module, SubState}) ->
+        Module:drop(SubState)
+    end,
+    [F(X) || X <- State#state.backends],
     ok.
 
-fold(State, Fun0, Acc) ->    
-    F = fun({_, Module, SubState}, AccIn) ->
-                [Module:fold(SubState, Fun0, AccIn)|AccIn]
-        end,
-    lists:flatten(lists:foldl(F, Acc, State#state.backends)).
+fold(State, Fun, Extra) ->    
+    F = fun({_, Module, SubState}) ->
+        Module:fold(SubState, Fun, Extra)
+    end,
+    [F(X) || X <- State#state.backends],
+    Extra.
 
 
 % Given a Bucket name and the State, return the
@@ -176,9 +177,10 @@ simple_test() ->
     riak_core_ring_manager:start_link(test),
     
     % Set some buckets...
+    application:load(riak_core), % make sure default_bucket_props is set
     riak_core_bucket:set_bucket(<<"b1">>, [{backend, first_backend}]),
     riak_core_bucket:set_bucket(<<"b2">>, [{backend, second_backend}]),
-    
+
     % Run the standard backend test...
     Config = sample_config(),
     riak_kv_test_util:standard_backend_test(riak_kv_multi_backend, Config).
@@ -189,6 +191,7 @@ get_backend_test() ->
     riak_core_ring_manager:start_link(test),
     
     % Set some buckets...
+    application:load(riak_core), % make sure default_bucket_props is set
     riak_core_bucket:set_bucket(<<"b1">>, [{backend, first_backend}]),
     riak_core_bucket:set_bucket(<<"b2">>, [{backend, second_backend}]),
     

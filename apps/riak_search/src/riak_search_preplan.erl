@@ -340,8 +340,15 @@ get_preferred_node(Op) ->
     end,
     StartingTree = gb_trees:from_orddict([{node(), 0}]),
     Tree = lists:foldl(F, StartingTree, lists:flatten(Weights)),
-    {HeaviestNode, _W} = gb_trees:largest(Tree),
-    HeaviestNode.
+    List = gb_trees:to_list(Tree),
+    get_largest(List, node(), 0).
+
+get_largest([], Node, _Weight) -> Node;
+get_largest([{NewNode, NewWeight}|T], Node, Weight) ->
+    case NewWeight > Weight of
+        true  -> get_largest(T, NewNode, NewWeight);
+        false -> get_largest(T, Node, Weight)
+    end.
 
 %% Given a nested list of operations, return a list of [{Node, Weight}].
 get_preferred_node_inner(Op) when is_record(Op, term) -> 
