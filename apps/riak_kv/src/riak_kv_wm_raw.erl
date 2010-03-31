@@ -296,16 +296,28 @@ is_bucket_put(RD, Ctx) ->
 %%        &lt;/Prefix/Bucket/Key&gt;; riaktag="Tag",...
 %%      The parsed links are stored in the context()
 %%      at this time.
-malformed_request(RD, Ctx) ->
+malformed_request(RD, Ctx) when Ctx#ctx.method =:= 'POST'
+                                orelse Ctx#ctx.method =:= 'PUT' ->
     case is_bucket_put(RD, Ctx) of
         true ->
             malformed_bucket_put(RD, Ctx);
         false ->
-            case malformed_rw_params(RD, Ctx) of
-                Result={true, _, _} -> Result;
-                {false, RWRD, RWCtx} ->
-                    malformed_link_headers(RWRD, RWCtx)
+            case wrq:get_req_header("Content-Type", RD) of
+                undefined ->
+                    {true, missing_content_type(RD), Ctx};
+                _ ->
+                    case malformed_rw_params(RD, Ctx) of
+                        Result={true, _, _} -> Result;
+                        {false, RWRD, RWCtx} ->
+                            malformed_link_headers(RWRD, RWCtx)
+                    end
             end
+    end;
+malformed_request(RD, Ctx) ->
+    case malformed_rw_params(RD, Ctx) of
+        Result={true, _, _} -> Result;
+        {false, RWRD, RWCtx} ->
+            malformed_link_headers(RWRD, RWCtx)
     end.
 
 %% @spec malformed_bucket_put(reqdata(), context()) ->
@@ -734,17 +746,22 @@ accept_doc_body(RD, Ctx=#ctx{bucket=B, key=K, client=C, links=L}) ->
     UserMetaMD = dict:store(?MD_USERMETA, UserMeta, LinkMD),
     MDDoc = riak_object:update_metadata(VclockDoc, UserMetaMD),
     Doc = riak_object:update_value(MDDoc, wrq:req_body(RD)),
-    ok = C:put(Doc, Ctx#ctx.w, Ctx#ctx.dw),
-
-    %% If returnbody=true is specified, then send the body back.
-    case wrq:get_qs_value(?Q_RETURNBODY, RD) of
-        ?Q_TRUE ->
-            R = Ctx#ctx.w, % R won't be available, use the same setting as W.
-            DocCtx = Ctx#ctx{doc=C:get(B, K, R)},
-            HasSiblings = (select_doc(DocCtx) == multiple_choices),
-            send_returnbody(RD, DocCtx, HasSiblings);
-        _ ->
-            {true, RD, Ctx#ctx{doc = {ok, Doc}}}
+    case C:put(Doc, Ctx#ctx.w, Ctx#ctx.dw) of
+        {error, precommit_fail} ->
+            {{halt, 403}, send_precommit_error(RD, undefined), Ctx};
+        {error, {precommit_fail, Reason}} ->
+            {{halt, 403}, send_precommit_error(RD, Reason), Ctx};
+        ok ->
+            %% If returnbody=true is specified, then send the body back.
+            case wrq:get_qs_value(?Q_RETURNBODY, RD) of
+                ?Q_TRUE ->
+                    R = Ctx#ctx.w, % R won't be available, use the same setting as W.
+                    DocCtx = Ctx#ctx{doc=C:get(B, K, R)},
+                    HasSiblings = (select_doc(DocCtx) == multiple_choices),
+                    send_returnbody(RD, DocCtx, HasSiblings);
+                _ ->
+                    {true, RD, Ctx#ctx{doc = {ok, Doc}}}
+            end
     end.
 
 %% Handle the no-sibling case. Just send the object.
@@ -771,10 +788,14 @@ send_returnbody(RD, DocCtx, _HasSiblings = true) ->
 %%      This function extracts the content type and charset for use
 %%      in subsequent GET requests.
 extract_content_type(RD) ->
-    RawCType = wrq:get_req_header(?HEAD_CTYPE, RD),
-    [CType|RawParams] = string:tokens(RawCType, "; "),
-    Params = [ list_to_tuple(string:tokens(P, "=")) || P <- RawParams],
-    {CType, proplists:get_value("charset", Params)}.
+    case wrq:get_req_header(?HEAD_CTYPE, RD) of
+        undefined ->
+            undefined;
+        RawCType ->
+            [CType|RawParams] = string:tokens(RawCType, "; "),
+            Params = [ list_to_tuple(string:tokens(P, "=")) || P <- RawParams],
+            {CType, proplists:get_value("charset", Params)}
+    end.
 
 %% @spec extract_user_meta(reqdata()) -> proplist()
 %% @doc Extract headers prefixed by X-Riak-Meta- in the client's PUT request
@@ -981,8 +1002,14 @@ ensure_doc(Ctx) -> Ctx.
 %% @spec delete_resource(reqdata(), context()) -> {true, reqdata(), context()}
 %% @doc Delete the document specified.
 delete_resource(RD, Ctx=#ctx{bucket=B, key=K, client=C, rw=RW}) ->
-    ok = C:delete(B, K, RW),
-    {true, RD, Ctx}.
+    case C:delete(B, K, RW) of
+        {error, precommit_fail} ->
+            {{halt, 403}, send_precommit_error(RD, undefined), Ctx};
+        {error, {precommit_fail, Reason}} ->
+            {{halt, 403}, send_precommit_error(RD, Reason), Ctx};
+        ok ->
+            {true, RD, Ctx}
+    end.
 
 %% @spec generate_etag(reqdata(), context()) ->
 %%          {undefined|string(), reqdata(), context()}
@@ -1036,6 +1063,7 @@ add_container_link(RD, #ctx{prefix=Prefix, bucket=Bucket}) ->
 %% @doc Add a Link header specifying the given Bucket and Key
 %%      with the given Tag to the response.
 add_link_head(Bucket, Key, Tag, RD, #ctx{prefix=Prefix}) ->
+    io:format("add_link_head: ~p, ~p, ~p~n", [Bucket, Key, Tag]),
     Val = format_link(Prefix, Bucket, Key, Tag),
     wrq:merge_resp_headers([{?HEAD_LINK,Val}], RD).
 
@@ -1091,3 +1119,18 @@ any_to_bool(V) when is_integer(V) ->
     V /= 0;
 any_to_bool(V) when is_boolean(V) ->
     V.
+
+missing_content_type(RD) ->
+    RD1 = wrq:set_resp_header("Content-Type", "text/plain", RD),
+    wrq:append_to_response_body(<<"Missing Content-Type request header">>, RD1).
+
+send_precommit_error(RD, Reason) ->
+    RD1 = wrq:set_resp_header("Content-Type", "text/plain", RD),
+    Error = if
+                Reason =:= undefined ->
+                    list_to_binary([atom_to_binary(wrq:method(RD1), utf8),
+                                    <<" aborted by pre-commit hook.">>]);
+                true ->
+                    Reason
+            end,
+    wrq:append_to_response_body(Error, RD1).
