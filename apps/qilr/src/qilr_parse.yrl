@@ -112,7 +112,7 @@ reqd_omit_prefix -> minus:
     prohibited.
 
 tilde_suffix -> tilde:
-    {fuzzy, 1.0}.
+    {fuzzy, 0.5}.
 tilde_suffix -> tilde term:
     make_suffix('$2').
 boost_suffix -> caret term:

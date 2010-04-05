@@ -22,7 +22,7 @@ prefix_test() ->
      ?assertMatch({ok, [{term, "planes trains", [prohibited]}]}, ?PARSE("-\"planes trains\""))].
 
 suffix_test() ->
-    [?assertMatch({ok, [{term, "solar", [{fuzzy, 1.0}]}]}, ?PARSE("solar~")),
+    [?assertMatch({ok, [{term, "solar", [{fuzzy, 0.5}]}]}, ?PARSE("solar~")),
      ?assertMatch({ok, [{term, "solar", [{proximity, 5}]}]}, ?PARSE("solar~5")),
      ?assertMatch({ok, [{term, "solar", [{fuzzy, 0.85}]}]}, ?PARSE("solar~0.85")),
      ?assertMatch({ok, [{term, "solar", [{boost, 2}]}]}, ?PARSE("solar^2")),
