@@ -122,7 +122,7 @@ Erlang code.
 -export([string/1]).
 string(Query) ->
     {ok, Tokens, _} = qilr_scan:string(Query),
-    parse(Tokens).
+    qilr_optimizer:optimize(parse(Tokens)).
 
 %% Internal functions
 emit_group_expr(Expr) when is_list(Expr) ->
@@ -132,6 +132,8 @@ emit_group_expr(Expr) ->
 
 add_operand({lnot, _}=Bool, Term) ->
     [Term] ++ [Bool];
+add_operand({BoolType, Op2}, [{BoolType, Op1}]) ->
+    {BoolType, Op1 ++ [Op2]};
 add_operand({BoolType, Op2}, Op1) when is_list(Op1) ->
     {BoolType, Op1 ++ [Op2]};
 add_operand({BoolType, Op2}, Op1) ->
