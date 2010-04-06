@@ -45,37 +45,39 @@ stop(State) ->
 %% @spec put(state(), BKey :: riak_object:bkey(), Val :: binary()) ->
 %%         ok | {error, Reason :: term()}
 %% @doc Route all commands through the object's value.
-put(State, _BKey, ObjBin) ->      
+put(State, BKey, ObjBin) ->      
+    {Index, FieldTerm} = BKey,
+    IndexFieldTerm = list_to_binary([Index, ".", FieldTerm]),
     Obj = binary_to_term(ObjBin),
     Command = riak_object:get_value(Obj),
-    handle_command(State, Command).
+    handle_command(State, IndexFieldTerm, Command).
     
-handle_command(State, {index, Index, Field, Term, Value, Props, Timestamp}) ->
+handle_command(State, IndexFieldTerm, {put, Timestamp, Value, Props}) ->
     %% io:format("Got a put: ~p ~p ~p~n", [BucketName, Timestamp, Value, Props]),
     %% Put with properties.
     Pid = State#state.pid,
-    merge_index:index(Pid, Index, Field, Term, Value, Props, Timestamp),
+    merge_index:put(Pid, IndexFieldTerm, Timestamp, Value, Props),
     ok;
 
-handle_command(State, {index, Index, Field, Term, Value, Props}) ->
+handle_command(State, IndexFieldTerm, {put, Value, Props}) ->
     %% io:format("Got a put: ~p ~p ~p~n", [BucketName, Value, Props]),
     %% Put with properties.
     Pid = State#state.pid,
-    merge_index:index(Pid, Index, Field, Term, Value, Props, now()),
+    merge_index:put(Pid, IndexFieldTerm, Value, Props),
     ok;
 
-handle_command(State, {init_stream, OutputPid, OutputRef}) ->
+handle_command(State, _IndexFieldTerm, {init_stream, OutputPid, OutputRef}) ->
     %% Do some handshaking so that we only stream results from one partition/node.
     Partition = State#state.partition,
     OutputPid!{stream_ready, Partition, node(), OutputRef},
     ok;
 
-handle_command(State, {stream, Index, Field, Term, OutputPid, OutputRef, Partition, Node, FilterFun}) ->
+handle_command(State, IndexFieldTerm, {stream, OutputPid, OutputRef, Partition, Node, FilterFun}) ->
     Pid = State#state.pid,
     case Partition == State#state.partition andalso Node == node() of
         true ->
             %% Stream some results.
-            merge_index:stream(Pid, Index, Field, Term, OutputPid, OutputRef, FilterFun);
+            merge_index:stream(Pid, IndexFieldTerm, OutputPid, OutputRef, FilterFun);
         false ->
             %% The requester doesn't want results from this node, so
             %% ignore. This is a hack, to get around the fact that
@@ -85,21 +87,20 @@ handle_command(State, {stream, Index, Field, Term, OutputPid, OutputRef, Partiti
     end,
     ok;
 
-handle_command(State, {info, Index, Field, Term, OutputPid, OutputRef}) ->
+handle_command(State, IndexFieldTerm, {info, OutputPid, OutputRef}) ->
     Pid = State#state.pid,
-    {ok, Info} = merge_index:info(Pid, Index, Field, Term),
+    {ok, Info} = merge_index:info(Pid, IndexFieldTerm),
     OutputPid!{info_response, [Info], OutputRef},
     ok;
 
-handle_command(State, {info_range, Index, Field, StartTerm, EndTerm, Size, OutputPid, OutputRef}) ->
+handle_command(State, _, {info_range, Start, End, Inclusive, OutputPid, OutputRef}) ->
     Pid = State#state.pid,
-    {ok, Range} = merge_index:info_range(Pid, Index, Field, StartTerm, EndTerm, Size),
-    Range1 = [{Term, node(), Count} || {Term, Count} <- Range],
-    OutputPid!{info_response, Range1, OutputRef},
+    {ok, Range} = merge_index:info_range(Pid, Start, End, Inclusive),
+    OutputPid!{info_response, Range, OutputRef},
     ok;
 
-handle_command(_State, Other) ->
-    throw({unexpected_operation, Other}).
+handle_command(_State, IndexFieldTerm, Other) ->
+    throw({unexpected_operation, IndexFieldTerm, Other}).
 
 
 

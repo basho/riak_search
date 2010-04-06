@@ -255,29 +255,38 @@ pass4(Op, Config) ->
     riak_search_op:preplan_op(Op, F).
 
 range_to_lor(Start, End, Inclusive, Facets, Config) ->
+    {Index, Field, StartTerm, EndTerm} = normalize_range(Start, End),
+
     %% Results are of form {node, Index.Field.Term, Count}
-    {ok, Results} = riak_search:info_range(Start, End, Inclusive),
+    {ok, Results} = riak_search:info_range(Index, Field, StartTerm, EndTerm, Inclusive),
     
     %% Collapse results into a gb_tree to combine...
-    F1 = fun({IndexFieldTerm, Node, Count}, Acc) ->
+    F1 = fun({Term, Node, Count}, Acc) ->
         NewOption = {node_weight, Node, Count},
-        case gb_trees:lookup(IndexFieldTerm, Acc) of
+        case gb_trees:lookup(Term, Acc) of
             {value, Options} ->
-                gb_trees:update(IndexFieldTerm, [NewOption|Options], Acc);
+                gb_trees:update(Term, [NewOption|Options], Acc);
             none ->
-                gb_trees:insert(IndexFieldTerm, [NewOption], Acc)
+                gb_trees:insert(Term, [NewOption], Acc)
         end
     end,
     Results1 = lists:foldl(F1, gb_trees:empty(), lists:flatten(Results)),
     Results2 = gb_trees:to_list(Results1),
 
     %% Create the lor operation.
-    F2 = fun({IFT, Options}) ->
-        Q = normalize_term(IFT, Config),
+    F2 = fun({Term, Options}) ->
+        Q = {Index, Field, Term},
         #term { q=Q, options=[{facets, Facets}|Options] }
     end,
     Ops = [F2(X) || X <- Results2],
     #lor { ops=Ops }.
+
+normalize_range({Index, Field, StartTerm}, {Index, Field, EndTerm}) ->
+    {Index, Field, StartTerm, EndTerm};
+normalize_range({Index, Field, StartTerm}, _) ->
+    {Index, Field, StartTerm, undefined};
+normalize_range(_, {Index, Field, EndTerm}) ->
+    {Index, Field, undefined, EndTerm}.
 
 %% FIFTH PASS
 %% Collapse nested NOTs.

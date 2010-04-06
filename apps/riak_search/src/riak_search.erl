@@ -2,10 +2,10 @@
 -export([
     execute/4,
     explain/4,
-    put/5,
+    index/5,
     stream/4,
     info/3,
-    info_range/3
+    info_range/5
 ]).
 -include("riak_search.hrl").
 
@@ -36,7 +36,7 @@ collect_results(Connections, Ref, Acc) ->
 	Other ->
 	    throw({unexpected_message, Other})
 
-    after 1 * 1000 ->
+    after 10 * 1000 ->
             ?PRINT(timeout),
             throw({timeout, Connections, Acc})
     end.
@@ -44,11 +44,11 @@ collect_results(Connections, Ref, Acc) ->
 explain(OpList, DefaultIndex, DefaultField, Facets) ->
     riak_search_preplan:preplan(OpList, DefaultIndex, DefaultField, Facets).
 
-put(Index, Field, Term, Value, Props) ->
+index(Index, Field, Term, Value, Props) ->
     %% Construct the operation...
     IndexBin = to_binary(Index),
     FieldTermBin = to_binary([Field, ".", Term]),
-    Payload = {put, Value, Props},
+    Payload = {index, Index, Field, Term, Value, Props},
 
     %% Run the operation...
     {ok, Client} = riak:local_client(),
@@ -56,6 +56,8 @@ put(Index, Field, Term, Value, Props) ->
     Client:put(Obj, 0, 0).
 
 stream(Index, Field, Term, FilterFun) ->
+    ?PRINT({Index, Field, Term}),
+
     %% Construct the operation...
     IndexBin = to_binary(Index),
     FieldTermBin = to_binary([Field, ".", Term]),
@@ -73,7 +75,7 @@ stream(Index, Field, Term, FilterFun) ->
     {ok, Partition, Node} = wait_for_ready(NVal, Ref, undefined, undefined),
 
     %% Run the operation...
-    Payload2 = {stream, self(), Ref, Partition, Node, FilterFun},
+    Payload2 = {stream, Index, Field, Term, self(), Ref, Partition, Node, FilterFun},
     Obj2 = riak_object:new(IndexBin, FieldTermBin, Payload2),
     Client:put(Obj2, 0, 0),
     {ok, Ref}.
@@ -83,7 +85,7 @@ info(Index, Field, Term) ->
     IndexBin = to_binary(Index),
     FieldTermBin = to_binary([Field, ".", Term]),
     Ref = make_ref(),
-    Payload = {info, self(), Ref},
+    Payload = {info, Index, Field, Term, self(), Ref},
 
     %% Run the operation...
     {ok, Client} = riak:local_client(),
@@ -95,14 +97,14 @@ info(Index, Field, Term) ->
     NVal = proplists:get_value(n_val, BucketProps),
     {ok, _Results} = collect_info(NVal, Ref, []).
 
-info_range(Start, End, Inclusive) ->
+info_range(Index, Field, StartTerm, EndTerm, _Inclusive) ->
+    %% TODO - Handle inclusive.
+    %% TODO - Handle wildcards.
     %% Construct the operation...
     Bucket = <<"search_broadcast">>,
     Key = <<"ignored">>,
     Ref = make_ref(),
-    Start1 = normalize_range(Start),
-    End1 = normalize_range(End),
-    Payload = {info_range, Start1, End1, Inclusive, self(), Ref},
+    Payload = {info_range, Index, Field, StartTerm, EndTerm, undefined, self(), Ref},
 
     %% Run the operation...
     {ok, Client} = riak:local_client(),
@@ -130,13 +132,6 @@ ringsize() ->
 
 to_binary(L) when is_list(L) -> list_to_binary(L);
 to_binary(B) when is_binary(B) -> B.
-
-
-normalize_range({Index, Field, Term}) ->
-    list_to_binary([Index, $., Field, $., Term]);
-normalize_range(wildcard_all) -> wildcard_all;
-normalize_range(wildcard_one) -> wildcard_one;
-normalize_range(all) ->  all.
 
 %% Get replies from all nodes that are willing to stream this
 %% bucket. If there is one on the local node, then use it, otherwise,
