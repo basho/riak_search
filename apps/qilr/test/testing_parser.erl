@@ -52,7 +52,7 @@ grouping_test() ->
      ?assertMatch({ok,[{lor,[{term,"broccoli",[]},
                               {group,[{land,[{term,"green",[]},{term,"tasty",[]}]}]}]}]},
                   ?PARSE("broccoli || (green AND tasty)")),
-     ?assertMatch({ok, [{group, [{group, [{group, [{group, [{term, "lisp", []}]}]}]}]}]},
+     ?assertMatch({ok, [{group, [{term, "lisp", []}]}]},
                   ?PARSE("((((lisp))))")),
      ?assertMatch({ok,[{land,[{group,[{lor,[{term,"jakarta",[]},
                                             {term,"apache",[]}]}]},

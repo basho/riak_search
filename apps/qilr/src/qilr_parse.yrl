@@ -44,9 +44,9 @@ group_body -> group_body query_term:
     ['$1'] ++ ['$2'].
 
 group_expr -> lparen group_body rparen:
-    {group, emit_group_expr('$2')}.
+    collapse_group({group, emit_group_expr('$2')}).
 group_expr -> lparen group_expr rparen:
-    {group, emit_group_expr('$2')}.
+    collapse_group({group, emit_group_expr('$2')}).
 
 field_group -> field_prefix group_expr:
     make_field_term('$1', '$2').
@@ -209,3 +209,8 @@ make_boost({term, Line, Term}) ->
         error:badarg ->
             throw({parse_error, Line, Term})
     end.
+
+collapse_group({group, [{group, Terms}]}) ->
+    {group, Terms};
+collapse_group(Group) ->
+    Group.
