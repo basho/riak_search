@@ -151,7 +151,6 @@ fold(State, Fun, Extra) ->
     [F(X) || X <- State#state.backends],
     Extra.
 
-
 % Given a Bucket name and the State, return the
 % backend definition. (ie: {Name, Module, SubState})
 get_backend(Bucket, State) ->
