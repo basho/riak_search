@@ -36,7 +36,7 @@ collect_results(Connections, Ref, Acc) ->
 	Other ->
 	    throw({unexpected_message, Other})
 
-    after 10 * 1000 ->
+    after 60 * 1000 ->
             ?PRINT(timeout),
             throw({timeout, Connections, Acc})
     end.
@@ -56,8 +56,6 @@ index(Index, Field, Term, Value, Props) ->
     Client:put(Obj, 0, 0).
 
 stream(Index, Field, Term, FilterFun) ->
-    ?PRINT({Index, Field, Term}),
-
     %% Construct the operation...
     IndexBin = to_binary(Index),
     FieldTermBin = to_binary([Field, ".", Term]),
@@ -121,7 +119,7 @@ collect_info(RepliesRemaining, Ref, Acc) ->
         Other ->
             error_logger:info_msg("Unexpected response: ~p~n", [Other]),
             collect_info(RepliesRemaining, Ref, Acc)
-    after 5000 ->
+    after 1000 ->
         error_logger:error_msg("range_loop timed out!"),
         throw({timeout, range_loop})
     end.
