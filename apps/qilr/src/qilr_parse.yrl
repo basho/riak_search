@@ -44,9 +44,9 @@ group_body -> group_body query_term:
     ['$1'] ++ ['$2'].
 
 group_expr -> lparen group_body rparen:
-    {group, emit_group_expr('$2')}.
+    collapse_group({group, emit_group_expr('$2')}).
 group_expr -> lparen group_expr rparen:
-    {group, emit_group_expr('$2')}.
+    collapse_group({group, emit_group_expr('$2')}).
 
 field_group -> field_prefix group_expr:
     make_field_term('$1', '$2').
@@ -112,7 +112,7 @@ reqd_omit_prefix -> minus:
     prohibited.
 
 tilde_suffix -> tilde:
-    {fuzzy, 1.0}.
+    {fuzzy, 0.5}.
 tilde_suffix -> tilde term:
     make_suffix('$2').
 boost_suffix -> caret term:
@@ -122,7 +122,7 @@ Erlang code.
 -export([string/1]).
 string(Query) ->
     {ok, Tokens, _} = qilr_scan:string(Query),
-    parse(Tokens).
+    qilr_optimizer:optimize(parse(Tokens)).
 
 %% Internal functions
 emit_group_expr(Expr) when is_list(Expr) ->
@@ -132,6 +132,8 @@ emit_group_expr(Expr) ->
 
 add_operand({lnot, _}=Bool, Term) ->
     [Term] ++ [Bool];
+add_operand({BoolType, Op2}, [{BoolType, Op1}]) ->
+    {BoolType, Op1 ++ [Op2]};
 add_operand({BoolType, Op2}, Op1) when is_list(Op1) ->
     {BoolType, Op1 ++ [Op2]};
 add_operand({BoolType, Op2}, Op1) ->
@@ -207,3 +209,8 @@ make_boost({term, Line, Term}) ->
         error:badarg ->
             throw({parse_error, Line, Term})
     end.
+
+collapse_group({group, [{group, Terms}]}) ->
+    {group, Terms};
+collapse_group(Group) ->
+    Group.

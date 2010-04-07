@@ -10,9 +10,9 @@ escaped_chars_test_() ->
     escaped_chars_gen([$:,$(,$),$[,$],$+,$-,$!,$&,$|,$^,$~,$*,$?]).
 
 multiple_terms_test() ->
-    [?assertMatch({ok, [{term, "planes", []},
-                        {term, "trains", []},
-                        {term, "automobiles", []}]},
+    [?assertMatch({ok, [{lor, [{term, "planes", []},
+                              {term, "trains", []},
+                              {term, "automobiles", []}]}]},
                    ?PARSE("planes trains automobiles"))].
 
 prefix_test() ->
@@ -22,12 +22,12 @@ prefix_test() ->
      ?assertMatch({ok, [{term, "planes trains", [prohibited]}]}, ?PARSE("-\"planes trains\""))].
 
 suffix_test() ->
-    [?assertMatch({ok, [{term, "solar", [{fuzzy, 1.0}]}]}, ?PARSE("solar~")),
+    [?assertMatch({ok, [{term, "solar", [{fuzzy, 0.5}]}]}, ?PARSE("solar~")),
      ?assertMatch({ok, [{term, "solar", [{proximity, 5}]}]}, ?PARSE("solar~5")),
      ?assertMatch({ok, [{term, "solar", [{fuzzy, 0.85}]}]}, ?PARSE("solar~0.85")),
      ?assertMatch({ok, [{term, "solar", [{boost, 2}]}]}, ?PARSE("solar^2")),
      ?assertMatch({ok, [{term, "solar", [{boost, 0.9}]}]}, ?PARSE("solar^0.9")),
-     ?assertMatch({ok, [{term, "solar power", [{fuzzy, 1.0}]}]}, ?PARSE("\"solar power\"~")),
+     ?assertMatch({ok, [{term, "solar power", [{fuzzy, 0.5}]}]}, ?PARSE("\"solar power\"~")),
      ?assertMatch({ok, [{term, "solar power", [{proximity, 5}]}]}, ?PARSE("\"solar power\"~5")),
      ?assertMatch({ok, [{term, "solar power", [{fuzzy, 0.85}]}]}, ?PARSE("\"solar power\"~0.85")),
      ?assertMatch({ok, [{term, "solar power", [{boost, 2}]}]}, ?PARSE("\"solar power\"^2")),
@@ -39,7 +39,9 @@ bool_test() ->
      ?assertMatch({ok, [{land, [{lnot, {term, "budweiser", []}}, {term, "beer", []}]}]},
                   ?PARSE("NOT budweiser AND beer")),
      ?assertMatch({ok, [{lor, [{term, "pizza", []}, {term, "spaghetti", []}]}]},
-                  ?PARSE("pizza OR spaghetti"))].
+                  ?PARSE("pizza OR spaghetti")),
+     ?assertMatch({ok, [{lor, [{term, "basil", []}, {term, "oregano", []}]}]},
+                  ?PARSE("basil oregano"))].
 
 grouping_test() ->
     [?assertMatch({ok, [{group, [{land, [{term, "erlang", []}, {term, "sweden", []}]}]}]},
@@ -50,7 +52,7 @@ grouping_test() ->
      ?assertMatch({ok,[{lor,[{term,"broccoli",[]},
                               {group,[{land,[{term,"green",[]},{term,"tasty",[]}]}]}]}]},
                   ?PARSE("broccoli || (green AND tasty)")),
-     ?assertMatch({ok, [{group, [{group, [{group, [{group, [{term, "lisp", []}]}]}]}]}]},
+     ?assertMatch({ok, [{group, [{term, "lisp", []}]}]},
                   ?PARSE("((((lisp))))")),
      ?assertMatch({ok,[{land,[{group,[{lor,[{term,"jakarta",[]},
                                             {term,"apache",[]}]}]},
