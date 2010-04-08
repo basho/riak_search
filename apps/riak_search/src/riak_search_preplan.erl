@@ -93,15 +93,7 @@ pass2(Op = #field {}, Config) ->
 pass2(Op = #term {}, Config) ->
     NewQ = normalize_term(Op#term.q, Config),
     Options = Op#term.options,
-    case is_facet(NewQ, Config) of
-        true -> 
-            Op#term { q=NewQ, options=[facet|Options] };
-        false -> 
-            {Index, Field, Term} = NewQ,
-            {ok, Results} = riak_search:info(Index, Field, Term),
-            Weights = [{node_weight, Node, Count} || {_, Node, Count} <- Results],
-            Op#term { q=NewQ, options=Weights ++ Options }
-    end;
+    rewrite_term(NewQ, Options, Config);
 
 pass2(Op = #land {}, Config) ->
     %% Collapse nested and operations.
@@ -158,6 +150,30 @@ normalize_field(OriginalField, Config) when is_list(OriginalField) ->
 normalize_field(Field, _) when is_tuple(Field) -> Field.
 
 
+%% Possibly rewrite a term. The term may be a "special" term, so 
+%% we rewrite it to a subterm_type. Or, it may be a facet.
+rewrite_term({Index, "date", Term}, Options, _Config) ->
+    case riak_search_dateutil:parse_datetime(Term) of
+        {YMD, HMS} ->
+            SubTerm = riak_search_dateutil:date_to_subterm({YMD, HMS}),
+            #term { q={Index, subterm, {1, SubTerm}}, options=[facet|Options]};
+        error ->
+            throw({could_not_parse_date, Term})
+    end;
+    
+rewrite_term(Q, Options, Config) ->
+    case is_facet(Q, Config) of
+        true -> 
+            [#term { q=Q, options=[facet|Options] }];
+        false -> 
+            {Index, Field, Term} = Q,
+            {ok, Results} = riak_search:info(Index, Field, Term),
+            Weights = [{node_weight, Node, Count} || {_, Node, Count} <- Results],
+            [#term { q=Q, options=Weights ++ Options }]
+    end.
+
+
+%% Convert a string field into {Index, Field, Term}.
 normalize_term(OriginalField, Config) when is_binary(OriginalField) ->
     normalize_term(binary_to_list(OriginalField), Config);
 normalize_term(OriginalTerm, Config) when is_list(OriginalTerm) ->
@@ -203,18 +219,21 @@ facetize(Ops) ->
 %% joined with lands and lors.
 is_all_facets(Op) when is_record(Op, term) ->
     ?IS_TERM_FACET(Op);
-is_all_facets(Op) ->
-    Ops = element(2, Op),
+is_all_facets(Op) when is_tuple(Op) ->
+    is_all_facets(element(2, Op));
+is_all_facets(Ops) when is_list(Ops) ->
     lists:all(fun(X) -> is_all_facets(X) end, Ops).
 
 %% Walk through an operator injecting facets into any found terms.
 inject_facets(Op, Facets) when is_record(Op, term) ->
     NewOptions = [{facets, Facets}|Op#term.options],
     Op#term { options=NewOptions };
-inject_facets(Op, Facets) ->
+inject_facets(Op, Facets) when is_tuple(Op) ->
     Ops = element(2, Op),
-    NewOps = [inject_facets(X, Facets) || X <- Ops],
-    setelement(2, Op, NewOps).
+    NewOps = inject_facets(Ops, Facets),
+    setelement(2, Op, NewOps);
+inject_facets(Ops, Facets) when is_list(Ops) ->
+    [inject_facets(X, Facets) || X <- Ops].
 
 %% FOURTH PASS
 %% Expand wildcards and ranges into a #lor operator.
@@ -402,3 +421,4 @@ get_preferred_node_inner(Op) ->
     
 to_list(L) when is_list(L) -> L;
 to_list(T) when is_tuple(T) -> [T].
+

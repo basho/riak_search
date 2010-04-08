@@ -9,7 +9,7 @@
 -define(IS_CHAR(C), ((C >= $A andalso C =< $Z) orelse (C >= $a andalso C =< $z))).
 -define(DEFAULT_INDEX, "search").
 -define(DEFAULT_FIELD, "default").
--define(DEFAULT_FACETS, ["search.color", "search.direction"]).
+-define(DEFAULT_FACETS, ["search.color", "search.direction", "search.subterm", "search.subterm"]).
 
 
 %% Run the specified search query.
@@ -66,6 +66,22 @@ index_file(File, Index, Field) ->
     {ok, Bytes} = file:read_file(File),
     Words = bytes_to_words(Bytes),
     [index_term(Index, Field, Word, Basename, Props) || Word <- Words],
+
+    %% Now index based on date...
+    case re:run(Bytes, "Date:\s*(.*)", [{capture, all, list}]) of
+        {match, [_, Date|_]} ->
+            case riak_search_dateutil:parse_datetime(Date) of
+                {YMD, HMS} -> 
+                    SubType = 1,
+                    SubTerm = riak_search_dateutil:date_to_subterm({YMD, HMS}),
+                    [index_term(Index, Field, Word, SubType, SubTerm, Basename, Props) || Word <- Words],
+                    ok;
+                _ ->
+                    io:format("Could not parse date: ~p~n", [Date])
+            end;
+        Other ->
+            io:format("Could not find date: ~p~n", [Other])
+    end,
     ok.
 
 %% Index         
@@ -73,7 +89,10 @@ index_term(Term, Value, Props) ->
     index_term(?DEFAULT_INDEX, ?DEFAULT_FIELD, Term, Value, Props).
 
 index_term(Index, Field, Term, Value, Props) ->
-    riak_search:index(Index, Field, Term, Value, Props).
+    riak_search:index(Index, Field, Term, 0, 0, Value, Props).
+
+index_term(Index, Field, Term, SubType, SubTerm, Value, Props) ->
+    riak_search:index(Index, Field, Term, SubType, SubTerm, Value, Props).
 
 %% This method returns fake properties. It is called by index_file and
 %% is here so that you can play around with facet search.

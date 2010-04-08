@@ -174,9 +174,11 @@ stream(StartIFT, EndIFT, Pid, Ref, FilterFun, Buffer, Segments) ->
     ok.
 stream_inner(Pid, Ref, LastIFT, LastValue, FilterFun, {{IFT, Value, Props, _}, Iter}) ->
     IsDuplicate = (LastIFT == IFT) andalso (LastValue == Value),
-    case (not IsDuplicate) andalso (FilterFun(Value, Props) == true) of
+    {_IndexID, _FieldID, _TermID, SubType, SubTerm} = mi_utils:ift_unpack(IFT),
+    NewProps = [{subterm, {SubType, SubTerm}}|Props],
+    case (not IsDuplicate) andalso (FilterFun(Value, NewProps) == true) of
         true ->
-            Pid!{result, {Value, Props}, Ref};
+            Pid!{result, {Value, NewProps}, Ref};
         false ->
             skip
     end,

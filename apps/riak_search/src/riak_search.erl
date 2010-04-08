@@ -2,8 +2,8 @@
 -export([
     execute/4,
     explain/4,
-    index/5,
-    stream/4,
+    index/7,
+    stream/7,
     info/3,
     info_range/5
 ]).
@@ -44,18 +44,18 @@ collect_results(Connections, Ref, Acc) ->
 explain(OpList, DefaultIndex, DefaultField, Facets) ->
     riak_search_preplan:preplan(OpList, DefaultIndex, DefaultField, Facets).
 
-index(Index, Field, Term, Value, Props) ->
+index(Index, Field, Term, SubType, SubTerm, Value, Props) ->
     %% Construct the operation...
     IndexBin = to_binary(Index),
     FieldTermBin = to_binary([Field, ".", Term]),
-    Payload = {index, Index, Field, Term, Value, Props},
+    Payload = {index, Index, Field, Term, SubType, SubTerm, Value, Props},
 
     %% Run the operation...
     {ok, Client} = riak:local_client(),
     Obj = riak_object:new(IndexBin, FieldTermBin, Payload),
     Client:put(Obj, 0, 0).
 
-stream(Index, Field, Term, FilterFun) ->
+stream(Index, Field, Term, SubType, StartSubTerm, EndSubTerm, FilterFun) ->
     %% Construct the operation...
     IndexBin = to_binary(Index),
     FieldTermBin = to_binary([Field, ".", Term]),
@@ -73,7 +73,7 @@ stream(Index, Field, Term, FilterFun) ->
     {ok, Partition, Node} = wait_for_ready(NVal, Ref, undefined, undefined),
 
     %% Run the operation...
-    Payload2 = {stream, Index, Field, Term, self(), Ref, Partition, Node, FilterFun},
+    Payload2 = {stream, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, self(), Ref, Partition, Node, FilterFun},
     Obj2 = riak_object:new(IndexBin, FieldTermBin, Payload2),
     Client:put(Obj2, 0, 0),
     {ok, Ref}.

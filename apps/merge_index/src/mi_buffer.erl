@@ -191,21 +191,3 @@ test() ->
     eof = FB2(),
 
     all_tests_passed.
-    
-
-%% OLD CODE
-
-%% %% Rename Buffer to supplied filename.
-%% %% Return the new buffer.
-%% rename(Filename, Buffer) when Buffer#buffer.filename /= Filename ->
-%%     file:delete(Filename),
-%%     file:rename(Buffer#buffer.filename, Filename),
-%%     open(Filename);
-%% rename(_, Buffer) ->
-%%     Buffer.
-
-%% %% Remove all data in the buffer.
-%% clear(Buffer) ->
-%%     file:delete(Buffer#buffer.filename),
-%%     open(Buffer#buffer.filename).    
-

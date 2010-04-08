@@ -13,8 +13,6 @@ chain_op(Op, OutputPid, OutputRef) ->
     chain_op(Op, OutputPid, OutputRef, 'land').
 
 chain_op(Op, OutputPid, OutputRef, Type) ->
-    %% Set some vars...
-
     %% Create a grouped iterator...
     OpList = Op#land.ops,
     Iterator = build_group_iterator(Type, OpList),

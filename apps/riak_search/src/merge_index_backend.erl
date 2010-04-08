@@ -50,18 +50,17 @@ put(State, _BKey, ObjBin) ->
     Command = riak_object:get_value(Obj),
     handle_command(State, Command).
     
-handle_command(State, {index, Index, Field, Term, Value, Props, Timestamp}) ->
-    %% io:format("Got a put: ~p ~p ~p~n", [BucketName, Timestamp, Value, Props]),
+handle_command(State, {index, Index, Field, Term, SubType, SubTerm, Value, Props, Timestamp}) ->
     %% Put with properties.
     Pid = State#state.pid,
-    merge_index:index(Pid, Index, Field, Term, Value, Props, Timestamp),
+    merge_index:index(Pid, Index, Field, Term, SubType, SubTerm, Value, Props, Timestamp),
     ok;
 
-handle_command(State, {index, Index, Field, Term, Value, Props}) ->
+handle_command(State, {index, Index, Field, Term, SubType, SubTerm, Value, Props}) ->
     %% io:format("Got a put: ~p ~p ~p~n", [BucketName, Value, Props]),
     %% Put with properties.
     Pid = State#state.pid,
-    merge_index:index(Pid, Index, Field, Term, Value, Props, now()),
+    merge_index:index(Pid, Index, Field, Term, SubType, SubTerm, Value, Props, now()),
     ok;
 
 handle_command(State, {init_stream, OutputPid, OutputRef}) ->
@@ -70,12 +69,12 @@ handle_command(State, {init_stream, OutputPid, OutputRef}) ->
     OutputPid!{stream_ready, Partition, node(), OutputRef},
     ok;
 
-handle_command(State, {stream, Index, Field, Term, OutputPid, OutputRef, Partition, Node, FilterFun}) ->
+handle_command(State, {stream, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, OutputPid, OutputRef, Partition, Node, FilterFun}) ->
     Pid = State#state.pid,
     case Partition == State#state.partition andalso Node == node() of
         true ->
             %% Stream some results.
-            merge_index:stream(Pid, Index, Field, Term, OutputPid, OutputRef, FilterFun);
+            merge_index:stream(Pid, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, OutputPid, OutputRef, FilterFun);
         false ->
             %% The requester doesn't want results from this node, so
             %% ignore. This is a hack, to get around the fact that
