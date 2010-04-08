@@ -118,7 +118,7 @@ group_iterator(land, {Term1, false, Iterator1}, {Term2, true, Iterator2}) when T
     group_iterator(land, Iterator1(), {Term2, true, Iterator2});
 
 group_iterator(land, {Term1, false, Iterator1}, {Term2, true, Iterator2}) when Term1 < Term2 ->
-    group_iterator(land, Iterator1(), {Term2, true, Iterator2});
+    {Term1, false, fun() -> group_iterator(land, Iterator1(), {Term2, true, Iterator2}) end};
 
 group_iterator(land, {Term1, false, Iterator1}, {Term2, true, Iterator2}) when Term1 > Term2 ->
     {Term2, true, fun() -> group_iterator(land, {Term1, false, Iterator1}, Iterator2()) end};
@@ -126,19 +126,19 @@ group_iterator(land, {Term1, false, Iterator1}, {Term2, true, Iterator2}) when T
 group_iterator(land, {eof, false}, {Term2, true, Iterator2}) ->
     {Term2, true, fun() -> group_iterator(land, {eof, false}, Iterator2()) end};
 
-group_iterator(land, {_Term1, false, _Iterator1}, {eof, true}) ->
-    {eof, false};
+group_iterator(land, {Term1, false, Iterator1}, {eof, true}) ->
+    {Term1, false, fun() -> group_iterator(land, Iterator1(), {eof, true}) end};
 
 
 %% Handle 'AND' cases, notflags = [true, false], use previous clauses...
 group_iterator(land, {Term1, true, Iterator1}, {Term2, false, Iterator2}) ->
     group_iterator(land, {Term2, false, Iterator2}, {Term1, true, Iterator1});
 
-group_iterator(land, {eof, true}, {_Term2, false, _Iterator2}) ->
-    {eof, false};
+group_iterator(land, {eof, true}, {Term2, false, Iterator2}) ->
+    group_iterator(land, {Term2, false, Iterator2}, {eof, true});
 
 group_iterator(land, {Term1, true, Iterator1}, {eof, false}) ->
-    {Term1, true, fun() -> group_iterator(land, Iterator1(), {eof, false}) end};
+    group_iterator(land, {eof, false}, {Term1, true, Iterator1});
 
 
 %% Handle 'AND' cases, notflags = [true, true]
@@ -149,7 +149,7 @@ group_iterator(land, {Term1, true, Iterator1}, {Term2, true, Iterator2}) when Te
     {Term1, true, fun() -> group_iterator(land, Iterator1(), {Term2, true, Iterator2}) end};
 
 group_iterator(land, {Term1, true, Iterator1}, {Term2, true, Iterator2}) when Term1 > Term2 ->
-    {Term2, true, fun() -> group_iterator(land, {Term1, true, Iterator1()}, Iterator2()) end};
+    {Term2, true, fun() -> group_iterator(land, {Term1, true, Iterator1}, Iterator2()) end};
 
 group_iterator(land, {eof, true}, {Term2, true, Iterator2}) ->
     {Term2, true, fun() -> group_iterator(land, {eof, true}, Iterator2()) end};
@@ -182,7 +182,8 @@ group_iterator(lor, {Term1, false, Iterator1}, {eof, false}) ->
     {Term1, false, fun() -> group_iterator(lor, Iterator1(), {eof, false}) end};
 
 
-%% Handle 'OR' cases, notflags = [false, true]
+%% Handle 'OR' cases, notflags = [false, true]. 
+%% Basically, not flags are ignored in an OR.
 
 group_iterator(lor, {Term1, false, Iterator1}, {_, true, _}) ->
     group_iterator(lor, {Term1, false, Iterator1}, {eof, false});
