@@ -40,7 +40,9 @@ build_group_iterator(_, [Op]) ->
 build_group_iterator(Type, [Op|OpList]) ->
     OpIterator = build_op_iterator(Op),
     GroupIterator = build_group_iterator(Type, OpList),
-    fun() -> group_iterator(Type, OpIterator(), GroupIterator()) end.
+    fun() -> group_iterator(Type, OpIterator(), GroupIterator()) end;
+build_group_iterator(_, []) ->
+    fun() -> {eof, false} end.
 
 %% Chain an operator, and build an iterator function around it. The
 %% iterator will return {Result, NotFlag, NewIteratorFun} each time it is called, or block

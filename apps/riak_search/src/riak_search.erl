@@ -95,14 +95,14 @@ info(Index, Field, Term) ->
     NVal = proplists:get_value(n_val, BucketProps),
     {ok, _Results} = collect_info(NVal, Ref, []).
 
-info_range(Index, Field, StartTerm, EndTerm, _Inclusive) ->
+info_range(Index, Field, StartTerm, EndTerm, Size) ->
     %% TODO - Handle inclusive.
     %% TODO - Handle wildcards.
     %% Construct the operation...
     Bucket = <<"search_broadcast">>,
     Key = <<"ignored">>,
     Ref = make_ref(),
-    Payload = {info_range, Index, Field, StartTerm, EndTerm, undefined, self(), Ref},
+    Payload = {info_range, Index, Field, StartTerm, EndTerm, Size, self(), Ref},
 
     %% Run the operation...
     {ok, Client} = riak:local_client(),

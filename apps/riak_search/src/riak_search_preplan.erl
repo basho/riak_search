@@ -241,7 +241,7 @@ pass4(Op = #term {}, Config) ->
         IsWildcardAll ->
             Start = Op#term.q,
             End = wildcard_all,
-             range_to_lor(Start, End, true, Facets, Config);
+            range_to_lor(Start, End, true, Facets, Config);
         IsWildcardOne ->
             Start = Op#term.q,
             End = wildcard_one,
@@ -254,11 +254,11 @@ pass4(Op, Config) ->
     F = fun(X) -> lists:flatten([pass4(Y, Config) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
 
-range_to_lor(Start, End, Inclusive, Facets, Config) ->
-    {Index, Field, StartTerm, EndTerm} = normalize_range(Start, End),
+range_to_lor(Start, End, Inclusive, Facets, _Config) ->
+    {Index, Field, StartTerm, EndTerm, Size} = normalize_range(Start, End, Inclusive),
 
     %% Results are of form {node, Index.Field.Term, Count}
-    {ok, Results} = riak_search:info_range(Index, Field, StartTerm, EndTerm, Inclusive),
+    {ok, Results} = riak_search:info_range(Index, Field, StartTerm, EndTerm, Size),
     
     %% Collapse results into a gb_tree to combine...
     F1 = fun({Term, Node, Count}, Acc) ->
@@ -281,12 +281,45 @@ range_to_lor(Start, End, Inclusive, Facets, Config) ->
     Ops = [F2(X) || X <- Results2],
     #lor { ops=Ops }.
 
-normalize_range({Index, Field, StartTerm}, {Index, Field, EndTerm}) ->
-    {Index, Field, StartTerm, EndTerm};
-normalize_range({Index, Field, StartTerm}, _) ->
-    {Index, Field, StartTerm, undefined};
-normalize_range(_, {Index, Field, EndTerm}) ->
-    {Index, Field, undefined, EndTerm}.
+normalize_range({Index, Field, StartTerm}, {Index, Field, EndTerm}, Inclusive) ->
+    {StartTerm1, EndTerm1} = case Inclusive of
+        true -> {StartTerm, EndTerm};
+        false ->{binary_inc(StartTerm, +1), binary_inc(EndTerm, -1)}
+    end,
+    {Index, Field, StartTerm1, EndTerm1, undefined};
+
+normalize_range({Index, Field, Term}, wildcard_all, _Inclusive) ->
+    {StartTerm, EndTerm} = wildcard(Term),
+    {Index, Field, StartTerm, EndTerm, undefined};
+
+normalize_range({Index, Field, Term}, wildcard_one, _Inclusive) ->
+    {StartTerm, EndTerm} = wildcard(Term),
+    {Index, Field, StartTerm, EndTerm, typesafe_size(Term) + 1};
+
+normalize_range(Q1, Q2, Inclusive) ->
+    throw({unhandled_case, normalize_range, Q1, Q2, Inclusive}).
+
+binary_inc(Term, Amt) when is_list(Term) ->
+    NewTerm = binary_inc(list_to_binary(Term), Amt),
+    binary_to_list(NewTerm);
+binary_inc(Term, Amt) when is_binary(Term) ->
+    Bits = size(Term) * 8,
+    <<Int:Bits/integer>> = Term,
+    NewInt = binary_inc(Int, Amt),
+    <<NewInt:Bits/integer>>;
+binary_inc(Term, Amt) when is_integer(Term) ->
+    Term + Amt;
+binary_inc(Term, _) ->
+    throw({unhandled_type, binary_inc, Term}).
+
+wildcard(Term) when is_binary(Term) ->
+    Size = size(Term),
+    {<<Term:Size/binary>>, <<Term:Size/binary, 255:8/integer>>};
+wildcard(Term) when is_list(Term) ->
+    {Term, Term ++ [255]}.
+
+typesafe_size(Term) when is_binary(Term) -> size(Term);
+typesafe_size(Term) when is_list(Term) -> length(Term).
 
 %% FIFTH PASS
 %% Collapse nested NOTs.

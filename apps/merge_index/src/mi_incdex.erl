@@ -110,7 +110,7 @@ select(StartKey, EndKey, Size, Incdex) ->
 select_1(StartKey, StopKey, Size, {Key, Value, Left, Right}, Acc) ->
     LBound = (StartKey =< Key orelse StartKey == undefined),
     RBound = (StopKey >= Key orelse StopKey == undefined),
-    SizeBound = Size == undefined orelse Size == size(Key),
+    SizeBound = Size == undefined orelse Size == typesafe_size(Key),
 
     %% Possibly go right...
     NewAcc1 = case RBound of
@@ -132,6 +132,9 @@ select_1(StartKey, StopKey, Size, {Key, Value, Left, Right}, Acc) ->
     NewAcc3;
 select_1(_, _, _, nil, Acc) -> 
     Acc.
+
+typesafe_size(Term) when is_binary(Term) -> size(Term);
+typesafe_size(Term) when is_list(Term) -> length(Term).
 
 test() ->
     IncdexA = open("/tmp/test_incdex"),
