@@ -73,7 +73,7 @@ index_term(Term, Value, Props) ->
     index_term(?DEFAULT_INDEX, ?DEFAULT_FIELD, Term, Value, Props).
 
 index_term(Index, Field, Term, Value, Props) ->
-    riak_search:put(Index, Field, Term, Value, Props).
+    riak_search:index(Index, Field, Term, Value, Props).
 
 %% This method returns fake properties. It is called by index_file and
 %% is here so that you can play around with facet search.

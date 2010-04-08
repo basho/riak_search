@@ -1,0 +1,218 @@
+#+SETUPFILE: html-style.org
+
+* Overview
+  
+  This describes a new type of merge\_index that solves a few problems
+  with the old merge\_index, namely:
+
+  + Data files are capped at a certain size and "rolled over", so that
+    the sort process works on a smaller subset of data. This means
+    that we need to merge results from a few different files at read
+    time.
+
+  + Indexes, Fields, and Terms are separated into their own gb\_trees
+    and each unique value is given its own ID. This allows us to store
+    integer IDs in the data files rather than strings, saving space.
+
+  + Adds the concept of a subterm, to be used for efficient date
+    matching, phrase searching, line searching, etc. A subterm is like
+    a facet that gets indexed. 
+
+* API
+
+   + index(Index, Field, Term, SubTermType, SubTerm, Value, Props)
+     Index a value.
+
+   + deindex(Index, Field, Term, SubTermType, SubTerm, Value)
+     De-index a value.
+
+** Use Default SubTypes
+
+  + info(Index, Field, Term)
+    Same as info (Index, Field, Term, 0, all, all).
+
+  + range(Index, Field, Term) 
+    Same as info (Index, Field, Term, 0, all, all).
+
+  + stream(Index, Field, Term)
+    Same as stream(Index, Field, Term, 0, all, all).
+
+** With SubTypes
+
+   + info(Index, Field, Term, SubTermType, Start, Stop)
+     Return the info for term subtype between start and stop.
+ 
+   + range(Index, Field, StartTerm, EndTerm, SubTermType, StartSub,
+     EndSub, Inclusive)
+     Return the infos for terms between start and stop.
+ 
+   + stream(Index, Field, Term, SubTermType, Start, Stop, FilterFun)
+     Stream out the keys for this term between the two ranges.
+
+  SubTerm acts like an integer facet, can be used for limiting based on
+  time or other things.
+
+  DEFAULT  = 0
+  TIME     = 1
+  CHARPOS  = 2
+  WORDPOS  = 3
+  LINEPOS  = 4
+
+  #term { index, field, term, subterm\_type=0, subterm=0, facets }
+  
+* Data Structures
+
+** PARTITION.indexes
+
+   Stored in memory as a gb\_tree mapping <<"index">> to integer.
+   Stored on disk as:
+   <<Size:16/integer>>
+   binary\_to\_term({<<"index">>, int}).
+
+   New entries are simply added to the end.
+   On startup, file\_sort the file, then read into a gb\_tree.
+   
+** PARTITION.fields
+
+   Same as indexes, mapping fields to integers.
+
+** PARTITION.terms
+
+   Same as indexes, mapping terms to integers.
+
+** PARTITION.offsets
+
+   Stored in memory as a gb\_tree of the form {IDF, [{FileNum, Offset,
+   Count}]}. IDF is a packed binary:
+
+   + IndexID:16/integer
+   + FieldID:32/integer, 
+   + TermID:32/integer,
+   + SubTermID:8/integer, 
+   + SubTerm:64/integer
+
+   Stored on disk as a series of terms:
+
+   + <<Size:8/integer>>
+   + {IDF, [{Filenum, Offset, Size}]}
+
+** PARTITION.seg.N
+
+   Stored on disk as:
+
+   <<Size:24/integer>>, <<Term/binary>>
+
+   Where Term is {UDF, Value, [{propkey, propvalue}]}.
+
+** cur\_segment\_num / cur\_segment\_size
+
+   Calculated on startup by looping through available segment numbers
+   until we find the last file, then getting the size.
+
+* Configuration Settings
+
+  + merge\_at\_interval - How often should we merge, in seconds?
+  + merge\_at\_buffer\_size - Merge if the unmerged data exceeds this size.
+  + segment\_size - What's the max size of a segment before rolling over and merging?
+  + temp\_directory - Where should we sort the segment.
+
+* State
+  
+  rootname : string
+  indexes  : gb\_tree
+  fields : gb\_tree
+  terms : gb\_tree
+  offsets : gb\_tree
+  cur\_segment\_num : integer
+  cur\_segment\_size : integer (segment + buffer size)
+  last\_merge : now()
+  buffer\_handle : either PARTITION.buffer or PARTITION.in\_merge\_buffer
+  
+* Events/Processes
+** On Startup
+
+   - Check if the offsets file exists, if not, then scan through all
+     PARTITION.seg.* files recreating the offsets gb\_tree. When done,
+     write it back out. Otherwise, just read offsets file into a gb\_tree.
+
+   - Read indexes, fields, and terms into gb\_trees.
+
+   - Open a handle to the non-merge buffer file.
+
+** Writing Data
+
+   - Look up the index in the 'indexes' tree. If it's not found, then add entry and log to disk.
+   - Repeat for fields and terms.
+   - Create the IDF, write the value to a segment.
+   - If size greater than segment\_size, then start a merge.
+
+** Merging Segments
+
+   - Only one merge at a time.
+   - Spawn a background process that sorts the latest segment and returns a new partial offsets tree.
+
+** At Merge Start
+  
+   - Close buffer handle, open merge buffer handle.
+   - Do file sort of current seg plus buffer.
+   - When done, call merge\_complete with new offsets for this segment.
+
+** At Merge Complete
+   
+   - Swap new segment file and old segment file.
+   - Copy offsets into offsets gbtree.
+
+** Range Searches
+
+   - Get index into term gbtree at first possible start. Generate a
+     list of the possible.
+   - Iterate through creating IDFs doing lookups into the offset file.
+   - Send back the counts that we find.
+
+** Streaming Data
+
+   - Look up the indexID, fieldID, and termID.
+   - Look up the [{file, offset, count}] list.
+   - Open a file handle on each file, read and do a merge.
+   - Close when done.
+   
+** Handoff
+
+   - Invert the indexes, fields, and terms gb\_trees.
+   - Plow through each segment doing reverse lookups. Things will be
+     roughly grouped, so just cache the last access for each gb\_tree.
+
+** Updates
+
+   No updates. User must explicitly delete a value.
+   Delete original document first, then index the new document. 
+
+* Tricky Stuff
+
+** SubType
+
+   Offset file will now have this: <<Index, Field, Term, SubTerm>> ->
+   [{File, Offset, Count}]
+
+** Time Series
+
+   + If we make it too granular (down to millisecond) then every value
+     will have its own offset.
+
+   + If we make it not granular enough (to year) then we will need to stream more results.
+
+   + Let the user set granularity, then do more filtering at the facet level.
+
+   Let the user figure out granularity. 
+
+** Phrase Search
+
+   Use the SubTerm field to store the term's position. Then expand the
+   first word and use it to narrow down the possible positions for the
+   second word, and use that to narrow down the positions for the third
+   word.
+
+   Can we do phrase search and date search at the same time? No. So how do we decide?
+   What does the time series search look like?
+
+
