@@ -66,8 +66,12 @@ grouping_test() ->
 field_range_test() ->
     [?assertMatch({ok, [{field, "title", [{inclusive_range, {term, "Aida", []}, {term, "Carmen", []}}]}]},
                   ?PARSE("title:[Aida TO Carmen]")),
+     ?assertMatch({ok, [{field, "title", [{inclusive_range, {term, "Aida", []}, {term, "Carmen", []}}]}]},
+                   ?PARSE("title:[Aida TO Carmen}")),
      ?assertMatch({ok, [{field, "mod_date", [{exclusive_range, {term, "20020101", []}, {term, "20030101", []}}]}]},
-                   ?PARSE("mod_date:{20020101 TO 20030101}"))].
+                   ?PARSE("mod_date:{20020101 TO 20030101}")),
+     ?assertMatch({ok, [{field, "mod_date", [{exclusive_range, {term, "20020101", []}, {term, "20030101", []}}]}]},
+                  ?PARSE("mod_date:{20020101 TO 20030101]"))].
 
 escaped_chars_gen([]) ->
     ?GEN_END;

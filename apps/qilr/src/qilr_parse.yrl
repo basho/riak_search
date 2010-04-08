@@ -95,8 +95,13 @@ query_term -> reqd_omit_prefix field_prefix plain_term tilde_suffix boost_suffix
 
 query_term -> field_prefix lbracket plain_term to plain_term rbracket:
     make_field_term('$1', {inclusive_range, '$3', '$5'}).
+query_term -> field_prefix lbracket plain_term to plain_term rstache:
+    make_field_term('$1', {inclusive_range, '$3', '$5'}).
 query_term -> field_prefix lstache plain_term to plain_term rstache:
     make_field_term('$1', {exclusive_range, '$3', '$5'}).
+query_term -> field_prefix lstache plain_term to plain_term rbracket:
+    make_field_term('$1', {exclusive_range, '$3', '$5'}).
+
 
 plain_term -> term:
     make_term('$1').
