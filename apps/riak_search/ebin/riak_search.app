@@ -18,6 +18,7 @@
              riak_search_op_inclusive_range,
              riak_search_op_exclusive_range,
              riak_search_op_node,
+             riak_search_dateutil,
              merge_index_backend
             ]},
   {registered, []},
