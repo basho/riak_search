@@ -5,6 +5,7 @@
 -define(IS_TERM_PROHIBITED(Op), lists:member(prohibited, Op#term.options)).
 -define(IS_TERM_REQUIRED(Op), lists:member(required, Op#term.options)).
 -define(IS_TERM_FACET(Op), lists:member(facet, Op#term.options)).
+-define(IS_TERM_PROXIMITY(Op), (proplists:get_value(proximity, Op#term.options) /= undefined)).
 -define(IS_TERM_WILDCARD_ALL(Op), lists:member({wildcard, all}, Op#term.options)).
 -define(IS_TERM_WILDCARD_ONE(Op), lists:member({wildcard, one}, Op#term.options)).
 
@@ -18,3 +19,4 @@
 -record(inclusive_range,  {start_op, end_op}).
 -record(exclusive_range,  {start_op, end_op}).
 -record(node,             {ops, node}).
+-record(proximity,        {ops, proximity}).

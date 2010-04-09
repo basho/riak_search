@@ -58,14 +58,20 @@ pass1(Op = #group {}, Config) ->
     end;
 
 pass1(Op = #term {}, Config) ->
-    case ?IS_TERM_PROHIBITED(Op) of
-        true -> 
+    IsProhibited = ?IS_TERM_PROHIBITED(Op),
+    IsProximity = ?IS_TERM_PROXIMITY(Op),
+    if 
+        IsProhibited ->
             %% Rewrite a prohibited term to be a not.
-            NewOp = #lnot { 
-              ops=[Op#term { options=[] }] 
-             },
+            NewOp = #lnot { ops=[Op#term { options=[] }] },
             pass1(NewOp, Config);
-        false ->
+        IsProximity ->
+            Proximity = proplists:get_value(proximity, Op#term.options),
+            NewOptions = Op#term.options -- [{proximity, Proximity}],
+            Tokens = string:tokens(Op#term.q, " "),
+            NewOps = [#term { q=X, options=NewOptions }|| X <- Tokens],
+            pass1(#proximity { ops=NewOps, proximity=Proximity }, Config);
+        true ->
             Op
     end;
 
@@ -153,9 +159,9 @@ normalize_field(Field, _) when is_tuple(Field) -> Field.
 %% Possibly rewrite a term. The term may be a "special" term, so 
 %% we rewrite it to a subterm_type. Or, it may be a facet.
 rewrite_term({Index, "date", Term}, Options, _Config) ->
-    case riak_search_dateutil:parse_datetime(Term) of
+    case riak_search_utils:parse_datetime(Term) of
         {YMD, HMS} ->
-            SubTerm = riak_search_dateutil:date_to_subterm({YMD, HMS}),
+            SubTerm = riak_search_utils:date_to_subterm({YMD, HMS}),
             #term { q={Index, subterm, {1, SubTerm}}, options=[facet|Options]};
         error ->
             throw({could_not_parse_date, Term})
