@@ -9,7 +9,7 @@
 ]).
 -include("riak_search.hrl").
 
-execute(OpList, DefaultIndex, DefaultField, Facets) -> 
+execute(OpList, DefaultIndex, DefaultField, Facets) ->
     %% Normalize, Optimize, and Expand Buckets.
     OpList1 = riak_search_preplan:preplan(OpList, DefaultIndex, DefaultField, Facets),
 
@@ -24,7 +24,7 @@ execute(OpList, DefaultIndex, DefaultField, Facets) ->
 %% Gather results from all connections
 collect_results(Connections, Ref, Acc) ->
     receive
-	{results, Results, Ref} -> 
+	{results, Results, Ref} ->
 	    collect_results(Connections, Ref, Acc ++ Results);
 
 	{disconnect, Ref} when Connections > 1  ->
@@ -110,8 +110,8 @@ info_range(Index, Field, StartTerm, EndTerm, Size) ->
     Client:put(Obj, 0, 0),
     {ok, _Results} = collect_info(ringsize(), Ref, []).
 
-collect_info(RepliesRemaining, Ref, Acc) ->    
-    receive 
+collect_info(RepliesRemaining, Ref, Acc) ->
+    receive
         {info_response, List, Ref} when RepliesRemaining > 1 ->
             collect_info(RepliesRemaining - 1, Ref, List ++ Acc);
         {info_response, List, Ref} when RepliesRemaining == 1 ->
@@ -134,17 +134,15 @@ to_binary(B) when is_binary(B) -> B.
 %% Get replies from all nodes that are willing to stream this
 %% bucket. If there is one on the local node, then use it, otherwise,
 %% use the first one that responds.
-wait_for_ready(0, _Ref, Partition, Node) -> 
+wait_for_ready(0, _Ref, Partition, Node) ->
     {ok, Partition, Node};
 wait_for_ready(RepliesRemaining, Ref, Partition, Node) ->
     LocalNode = node(),
-    receive 
-        {stream_ready, LocalPartition, LocalNode, Ref} -> 
+    receive
+        {stream_ready, LocalPartition, LocalNode, Ref} ->
             {ok, LocalPartition, LocalNode};
         {stream_ready, _NewPartition, _NewNode, Ref} when Node /= undefined ->
             wait_for_ready(RepliesRemaining - 1, Ref, Partition, Node);
         {stream_ready, NewPartition, NewNode, Ref} ->
             wait_for_ready(RepliesRemaining -1, Ref, NewPartition, NewNode)
     end.
-
-
