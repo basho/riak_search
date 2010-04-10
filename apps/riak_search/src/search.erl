@@ -10,7 +10,7 @@
 -define(DEFAULT_INDEX, "search").
 -define(DEFAULT_FIELD, "default").
 -define(DEFAULT_FACETS, ["search.color", "search.direction", "search.subterm", "search.subterm"]).
-
+-include("riak_search.hrl").
 
 %% Run the specified search query.
 search(Q) ->
@@ -65,15 +65,33 @@ index_file(File, Index, Field) ->
     %% Get the bytes...
     {ok, Bytes} = file:read_file(File),
     Words = bytes_to_words(Bytes),
-    [index_term(Index, Field, Word, Basename, Props) || Word <- Words],
+
+    %% Calculate word positions...
+    F1 = fun(Word, {Position, Acc}) ->
+        case gb_trees:lookup(Word, Acc) of
+            {value, Positions} ->
+                {Position + 1, gb_trees:update(Word, [Position|Positions], Acc)};
+            none ->
+                {Position + 1, gb_trees:insert(Word, [Position], Acc)}
+        end
+    end,
+    {_, PositionTree} = lists:foldl(F1, {1, gb_trees:empty()}, Words),
+
+    %% Index the words...
+    F2 = fun(Word) ->
+        {value, Positions} = gb_trees:lookup(Word, PositionTree),
+        NewProps = Props ++ [{word_pos, Positions}],
+        index_term(Index, Field, Word, Basename, NewProps)
+    end,
+    [F2(X) || X <- Words],
 
     %% Now index based on date...
     case re:run(Bytes, "Date:\s*(.*)", [{capture, all, list}]) of
         {match, [_, Date|_]} ->
-            case riak_search_dateutil:parse_datetime(Date) of
+            case riak_search_utils:parse_datetime(Date) of
                 {YMD, HMS} -> 
                     SubType = 1,
-                    SubTerm = riak_search_dateutil:date_to_subterm({YMD, HMS}),
+                    SubTerm = riak_search_utils:date_to_subterm({YMD, HMS}),
                     [index_term(Index, Field, Word, SubType, SubTerm, Basename, Props) || Word <- Words],
                     ok;
                 _ ->
