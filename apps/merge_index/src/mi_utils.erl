@@ -24,7 +24,8 @@
     write_value/2,
     file_exists/1,
     create_empty_file/1,
-    now_to_timestamp/1
+    now_to_timestamp/1,
+    select/3
 ]).
 
 ift_pack(IndexID, FieldID, TermID, SubType, SubTerm) ->

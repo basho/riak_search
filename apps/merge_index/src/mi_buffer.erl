@@ -46,11 +46,10 @@ open(Filename) ->
     end,
     
     %% Read existing buffer from disk...
-    io:format("Opening buffer: ~p~n", [Filename]),
     {ok, FH} = file:open(Filename, [read, write, {read_ahead, 1024 * 1024}, {delayed_write, 1024 * 1024, 10 * 1000}, raw, binary]),
     Tree = open_inner(FH, gb_trees:empty()),
     {ok, Size} = file:position(FH, cur),
-    io:format("Finished opening buffer: ~p~n", [Filename]),
+    io:format("Loaded Buffer: ~p~n", [Filename]),
     
     %% Return the buffer.
     #buffer { filename=Filename, handle=FH, tree=Tree, size=Size }.

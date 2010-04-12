@@ -25,14 +25,15 @@ chain_op(Op, OutputPid, OutputRef, Type) ->
     %% Return.
     {ok, 1}.
 
-gather_results(OutputPid, OutputRef, {Term, NotFlag, Iterator}) ->
-    case NotFlag of
+gather_results(OutputPid, OutputRef, {Term, Op, Iterator}) ->
+    case is_record(Op, lnot) of
         true  -> skip;
         false -> OutputPid!{results, [Term], OutputRef}
     end,
     gather_results(OutputPid, OutputRef, Iterator());
 gather_results(OutputPid, OutputRef, {eof, _}) ->
     OutputPid!{disconnect, OutputRef}.
+
 
 %% Now, treat the operation as a comparison between two terms. Return
 %% a term if it successfully meets our conditions, or else toss it and
