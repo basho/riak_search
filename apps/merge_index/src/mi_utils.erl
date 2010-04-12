@@ -79,3 +79,30 @@ now_to_timestamp({Mega, Sec, Micro}) ->
     <<TS:64/integer>> = <<Mega:16/integer, Sec:24/integer, Micro:24/integer>>,
     TS.
 
+%% Get the [{key, value}] list that falls within the provided range in a gb_tree.
+select(StartKey, EndKey, Tree) ->
+    select_1(StartKey, EndKey, element(2, Tree), []).
+select_1(StartKey, EndKey, {Key, Value, Left, Right}, Acc) ->
+    LBound = (StartKey =< Key),
+    RBound = (EndKey >= Key),
+
+    %% Possibly go right...
+    NewAcc1 = case RBound of
+        true -> select_1(StartKey, EndKey, Right, Acc);
+        false -> Acc
+    end,
+    
+    %% See if we match...
+    NewAcc2 = case LBound andalso RBound of
+        true  -> [{Key, Value}|NewAcc1];
+        false -> NewAcc1
+    end,
+
+    %% Possibly go left...
+    NewAcc3 = case LBound of
+        true  -> select_1(StartKey, EndKey, Left, NewAcc2);
+        false -> NewAcc2
+    end,
+    NewAcc3;
+select_1(_, _, nil, Acc) -> 
+    Acc.

@@ -101,7 +101,7 @@ handle_call({index, Index, Field, Term, SubType, SubTerm, Value, Props, NowTime}
 
 handle_call({info, Index, Field, Term, SubType, SubTerm}, _From, State) ->
     %% Calculate the IFT...
-    #state { indexes=Indexes, fields=Fields, terms=Terms } = State,
+    #state { indexes=Indexes, fields=Fields, terms=Terms, buffer=Buffer, segments=Segments } = State,
     IndexID = mi_incdex:lookup_nocreate(Index, Indexes),
     FieldID = mi_incdex:lookup_nocreate(Field, Fields),
     TermID = mi_incdex:lookup_nocreate(Term, Terms),
@@ -111,12 +111,13 @@ handle_call({info, Index, Field, Term, SubType, SubTerm}, _From, State) ->
     F = fun(X, Acc) ->
          mi_segment:info(IFT, X) + Acc
     end,
-    Count = lists:foldl(F, 0, State#state.segments),
-    {reply, {ok, Count}, State};
+    SegmentCount = lists:foldl(F, 0, Segments),
+    BufferCount = mi_buffer:info(IFT, Buffer),
+    {reply, {ok, SegmentCount + BufferCount}, State};
 
 handle_call({info_range, Index, Field, StartTerm, EndTerm, Size, SubType, StartSubTerm, EndSubTerm}, _From, State) ->
     %% Get the IDs...
-    #state { indexes=Indexes, fields=Fields, terms=Terms, segments=Segments } = State,
+    #state { indexes=Indexes, fields=Fields, terms=Terms, buffer=Buffer, segments=Segments } = State,
     IndexID = mi_incdex:lookup_nocreate(Index, Indexes),
     FieldID = mi_incdex:lookup_nocreate(Field, Fields),
     TermIDs = mi_incdex:select(StartTerm, EndTerm, Size, Terms),
@@ -125,8 +126,9 @@ handle_call({info_range, Index, Field, StartTerm, EndTerm, Size, SubType, StartS
     F = fun({Term, TermID}) ->
         StartIFT = mi_utils:ift_pack(IndexID, FieldID, TermID, SubType, StartSubTerm1),
         EndIFT = mi_utils:ift_pack(IndexID, FieldID, TermID, SubType, EndSubTerm1),
-        Count = lists:sum([mi_segment:info(StartIFT, EndIFT, X) || X <- Segments]),
-        {Term, Count}
+        SegmentCount = lists:sum([mi_segment:info(StartIFT, EndIFT, X) || X <- Segments]),
+        BufferCount = mi_buffer:info(StartIFT, EndIFT, Buffer),
+        {Term, SegmentCount + BufferCount}
     end,
     Counts = [F(X) || X <- TermIDs],
     {reply, {ok, Counts}, State};

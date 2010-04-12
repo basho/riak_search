@@ -22,6 +22,7 @@
     clear/1,
     size/1,
     write/5,
+    info/2, info/3,
     iterator/1, iterator/3,
     test/0
 ]).
@@ -45,11 +46,11 @@ open(Filename) ->
     end,
     
     %% Read existing buffer from disk...
-    ?PRINT({opening_buffer, Filename}),
+    io:format("Opening buffer: ~p~n", [Filename]),
     {ok, FH} = file:open(Filename, [read, write, {read_ahead, 1024 * 1024}, {delayed_write, 1024 * 1024, 10 * 1000}, raw, binary]),
     Tree = open_inner(FH, gb_trees:empty()),
     {ok, Size} = file:position(FH, cur),
-    ?PRINT({finished_opening_buffer, Filename}),
+    io:format("Finished opening buffer: ~p~n", [Filename]),
     
     %% Return the buffer.
     #buffer { filename=Filename, handle=FH, tree=Tree, size=Size }.
@@ -112,6 +113,22 @@ write_1(IFT, Value, Props, TS, Tree) ->
             gb_trees:insert(IFT, NewValues, Tree)
     end.
     
+%% Return the number of results under this IFT.
+info(IFT, Buffer) ->
+    Tree = Buffer#buffer.tree,
+    case gb_trees:lookup(IFT, Tree) of
+        {value, Values} -> 
+            gb_trees:size(Values);
+        none ->
+            0
+    end.
+
+%% Return the number of results for IFTs between the StartIFT and
+%% StopIFT, inclusive.
+info(StartIFT, EndIFT, Buffer) ->
+    Tree = Buffer#buffer.tree,
+    KeyValues = mi_utils:select(StartIFT, EndIFT, Tree),
+    lists:sum([gb_trees:size(X) || {_, X} <- KeyValues]).
 
 %% Return an iterator function.
 %% Returns Fun/0, which then returns {Term, NewFun} or eof.

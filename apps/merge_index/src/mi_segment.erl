@@ -126,7 +126,7 @@ info(IFT, Segment) ->
 %% StopIFT, inclusive.
 info(StartIFT, EndIFT, Segment) ->
     Tree = Segment#segment.tree,
-    KeyValues = select(StartIFT, EndIFT, Tree),
+    KeyValues = mi_utils:select(StartIFT, EndIFT, Tree),
     lists:sum([Count || {_, {_Offset, Count}} <- KeyValues]).
     
 
@@ -180,39 +180,6 @@ closest_1(_, undefined, undefined, nil) ->
     none;
 closest_1(_, _, BestValue, nil) ->
     {value, BestValue}.
-
-
-%% Get the [{key, value}] list that falls within the provided range in a gb_tree.
-%% Walk through a gb_tree, selecting values between a range. Special
-%% case for a wildcard, where we convert a prefix to the values that
-%% would come right before and right after it by adding -1 and 1,
-%% respectively.
-select(StartIFT, EndIFT, Tree) ->
-    select_1(StartIFT, EndIFT, element(2, Tree), []).
-select_1(StartIFT, EndIFT, {Key, Value, Left, Right}, Acc) ->
-    LBound = (StartIFT =< Key),
-    RBound = (EndIFT >= Key),
-
-    %% Possibly go right...
-    NewAcc1 = case RBound of
-        true -> select_1(StartIFT, EndIFT, Right, Acc);
-        false -> Acc
-    end,
-    
-    %% See if we match...
-    NewAcc2 = case LBound andalso RBound of
-        true  -> [{Key, Value}|NewAcc1];
-        false -> NewAcc1
-    end,
-
-    %% Possibly go left...
-    NewAcc3 = case LBound of
-        true  -> select_1(StartIFT, EndIFT, Left, NewAcc2);
-        false -> NewAcc2
-    end,
-    NewAcc3;
-select_1(_, _, nil, Acc) -> 
-    Acc.
 
 
 %% Read the offsets file from disk. If it's not found, then recreate
