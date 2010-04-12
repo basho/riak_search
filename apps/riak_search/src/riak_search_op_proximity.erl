@@ -45,7 +45,6 @@ gather_results(Proximity, OutputPid, OutputRef, {Term, Positions, Iterator}) whe
 gather_results(_, OutputPid, OutputRef, {eof, _}) ->
     OutputPid!{disconnect, OutputRef}.
 
-
 %% Return true if all of the terms exist within Proximity words from
 %% eachother.
 within_proximity(Proximity, Positions) ->
