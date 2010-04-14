@@ -1,0 +1,13 @@
+<add allowDups="false">
+  <doc boost="2.0">
+    <field name="first_name">Larry</field>
+    <field name="last_name">Johnson</field>
+    <field name="paygrade">11</field>
+    <field name="likes_cookies">true</field>
+  </doc>
+  <doc boost="2.0">
+    <field name="first_name">Wanda</field>
+    <field name="last_name">Brenton</field>
+    <field name="paygrade">8</field>
+  </doc>
+</add>

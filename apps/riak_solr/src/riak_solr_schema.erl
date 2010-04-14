@@ -1,54 +1,92 @@
--module(riak_solr_schema).
+-module(riak_solr_schema, [Name, Version, Fields]).
 
 -include_lib("riak_solr/include/riak_solr.hrl").
 
--export([new_schemadef/1]).
+-export([name/0, version/0, fields/0, find_field/1]).
+-export([validate_commands/1]).
 
-new_schemadef({schema, SchemaProps, FieldDefs}) ->
-    Name = proplists:get_value(name, SchemaProps),
-    Version = proplists:get_value(version, SchemaProps),
-    case Name =:= undefined orelse Version =:= undefined of
+name() ->
+    Name.
+
+version() ->
+    Version.
+
+fields() ->
+    Fields().
+
+find_field(FName) ->
+    case [F || F <- Fields,
+               F#riak_solr_field.name =:= FName] of
+        [] ->
+            undefined;
+        [Field] ->
+            Field
+    end.
+
+validate_commands(Doc) ->
+    DName = proplists:get_value(index, Doc),
+    case DName =:= Name of
         true ->
-            {error, {malformed_schema, {schema, SchemaProps}}};
+            Required = [F || F <- Fields,
+                             F#riak_solr_field.required =:= true],
+            Optional = [F || F <- Fields,
+                             F#riak_solr_field.required =:= false],
+            validate_docs(proplists:get_value(docs, Doc), Required, Optional, []);
         false ->
-            parse_fields(#riak_solr_schemadef{name=Name,
-                                              version=Version}, FieldDefs)
+            {error, {bad_schema_name, DName}}
     end.
 
 %% Internal functions
-parse_fields(Schema, []) ->
-    Schema;
-parse_fields(Schema, {fields, Fields}) ->
-    parse_fields(Schema, Fields);
-parse_fields(Schema, [{field, FieldProps}=Field0|T]) ->
-    Name = proplists:get_value(name, FieldProps),
-    Type = proplists:get_value(type, FieldProps, string),
-    Reqd = proplists:get_value(required, FieldProps, false),
-    case valid_type(Type) of
-        ok ->
-            if
-                Name =:= undefined ->
-                    {error, {missing_field_name, Field0}};
-                true ->
-                    parse_fields(add_field(Schema, Name, Type, Reqd), T)
+validate_docs([], _Reqd, _Optional, Accum) ->
+    {ok, lists:reverse(Accum)};
+validate_docs([H|T], Reqd, Optional, Accum) ->
+    case verify_required(H, Reqd) of
+        {ok, H1} ->
+            case verify_optional(H1, Optional) of
+                {ok, H2} ->
+                    validate_docs(T, Reqd, Optional, [H2|Accum]);
+                Error ->
+                    Error
             end;
         Error ->
             Error
     end.
 
-add_field(#riak_solr_schemadef{fields=Fields}=Schema, Name, Type, Reqd) ->
-    Field = #riak_solr_field{name=Name,
-                             type=Type,
-                             required=not(Reqd =:= false)},
-    Schema#riak_solr_schemadef{fields=dict:store(Name, Field, Fields)}.
+verify_required(Doc, []) ->
+    {ok, Doc};
+verify_required(Doc, [H|T]) ->
+    case dict:find(H#riak_solr_field.name, Doc) of
+        {ok, FieldValue} ->
+            Doc1 = dict:store(H#riak_solr_field.name, convert_types(FieldValue,
+                                                                    H#riak_solr_field.type), Doc),
+            verify_required(Doc1, T);
+        _ ->
+            {error, {reqd_field_missing, H#riak_solr_field.name}}
+    end.
 
-valid_type(string) ->
-    ok;
-valid_type(boolean) ->
-    ok;
-valid_type(integer) ->
-    ok;
-valid_type(float) ->
-    ok;
-valid_type(Type) ->
-    {error, {bad_field_type, Type}}.
+verify_optional(Doc, []) ->
+    {ok, Doc};
+verify_optional(Doc, [H|T]) ->
+    case dict:find(H#riak_solr_field.name, Doc) of
+        {ok, FieldValue} ->
+            Doc1 = dict:store(H#riak_solr_field.name, convert_types(FieldValue,
+                                                                    H#riak_solr_field.type), Doc),
+            verify_optional(Doc1, T);
+        _ ->
+            verify_optional(Doc, T)
+    end.
+
+convert_types(FieldValue, string) ->
+    FieldValue;
+convert_types("true", boolean) ->
+    true;
+convert_types("false", boolean) ->
+    false;
+convert_types("yes", boolean) ->
+    true;
+convert_types("no", boolean) ->
+    false;
+convert_types(FieldValue, integer) ->
+    list_to_integer(FieldValue);
+convert_types(FieldValue, float) ->
+    list_to_float(FieldValue).

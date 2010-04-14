@@ -65,7 +65,7 @@ load_schema(SchemaName, #state{schema_dir=Dir, schemas=Schemas}=State) ->
     Result = file:consult(filename:join([Dir, SchemaName ++ ".def"])),
     case Result of
         {ok, [RawSchema]} ->
-            case riak_solr_schema:new_schemadef(RawSchema) of
+            case riak_solr_schema_parser:from_eterm(RawSchema) of
                 {ok, Schema} ->
                     {{ok, Schema}, State#state{schemas=dict:store(SchemaName, Schema, Schemas)}};
                 Error ->
