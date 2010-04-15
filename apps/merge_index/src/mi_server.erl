@@ -113,7 +113,8 @@ handle_call({info, Index, Field, Term, SubType, SubTerm}, _From, State) ->
     end,
     SegmentCount = lists:foldl(F, 0, Segments),
     BufferCount = mi_buffer:info(IFT, Buffer),
-    {reply, {ok, SegmentCount + BufferCount}, State};
+    Counts = [{Term, SegmentCount + BufferCount}],
+    {reply, {ok, Counts}, State};
 
 handle_call({info_range, Index, Field, StartTerm, EndTerm, Size, SubType, StartSubTerm, EndSubTerm}, _From, State) ->
     %% Get the IDs...

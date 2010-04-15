@@ -87,14 +87,15 @@ handle_command(State, {stream, Index, Field, Term, SubType, StartSubTerm, EndSub
 handle_command(State, {info, Index, Field, Term, OutputPid, OutputRef}) ->
     Pid = State#state.pid,
     {ok, Info} = merge_index:info(Pid, Index, Field, Term),
-    OutputPid!{info_response, [Info], OutputRef},
+    Info1 = [{Term, node(), Count} || {_, Count} <- Info],
+    OutputPid!{info_response, Info1, OutputRef},
     ok;
 
 handle_command(State, {info_range, Index, Field, StartTerm, EndTerm, Size, OutputPid, OutputRef}) ->
     Pid = State#state.pid,
-    {ok, Range} = merge_index:info_range(Pid, Index, Field, StartTerm, EndTerm, Size),
-    Range1 = [{Term, node(), Count} || {Term, Count} <- Range],
-    OutputPid!{info_response, Range1, OutputRef},
+    {ok, Info} = merge_index:info_range(Pid, Index, Field, StartTerm, EndTerm, Size),
+    Info1 = [{Term, node(), Count} || {Term, Count} <- Info],
+    OutputPid!{info_response, Info1, OutputRef},
     ok;
 
 handle_command(_State, Other) ->

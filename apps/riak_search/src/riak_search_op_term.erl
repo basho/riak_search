@@ -1,41 +1,73 @@
 -module(riak_search_op_term).
 -export([
          preplan_op/2,
-         chain_op/3
+         chain_op/4
         ]).
 
 -include("riak_search.hrl").
-
+-record(scoring_vars, {term_boost, doc_frequency, num_docs}).
 preplan_op(Op, _F) -> Op.
 
-chain_op(Op, OutputPid, OutputRef) ->
-    Q = Op#term.q,
-    Facets = proplists:get_all_values(facets, Op#term.options),
-    spawn_link(fun() -> start_loop(Q, Facets, OutputPid, OutputRef) end),
+
+chain_op(Op, OutputPid, OutputRef, QueryProps) ->
+    spawn_link(fun() -> start_loop(Op, OutputPid, OutputRef, QueryProps) end),
     {ok, 1}.
 
-start_loop(Q, Facets, OutputPid, OutputRef) ->
-    {Index, Field, Term} = Q,
-    {SubType, StartSubTerm, EndSubTerm} = detect_subterms(lists:flatten(Facets)),
+start_loop(Op, OutputPid, OutputRef, QueryProps) ->
+    %% Get the scoring vars...
+    ScoringVars = #scoring_vars {
+        term_boost = proplists:get_value(boost, Op#term.options, 1),
+        doc_frequency = hd([X || {node_weight, _, X} <- Op#term.options]),
+        num_docs = proplists:get_value(num_docs, QueryProps)
+    },
 
-    %% Stream the results...
+    %% Create filter function...
+    Facets = proplists:get_all_values(facets, Op#term.options),
     Fun = fun(_Value, Props) ->
         riak_search_facets:passes_facets(Props, Facets)
     end,
+
+    %% Get the subterm range...
+    {Index, Field, Term} = Op#term.q,
+    {SubType, StartSubTerm, EndSubTerm} = detect_subterms(lists:flatten(Facets)),
+
+    %% Start streaming the results...
     {ok, Ref} = riak_search:stream(Index, Field, Term, SubType, StartSubTerm, EndSubTerm, Fun),
 
     %% Gather the results...
-    loop(Ref, OutputPid, OutputRef).
+    loop(ScoringVars, Ref, OutputPid, OutputRef).
 
-loop(Ref, OutputPid, OutputRef) ->
+loop(ScoringVars, Ref, OutputPid, OutputRef) ->
     receive 
         {result, '$end_of_table', Ref} ->
             OutputPid!{disconnect, OutputRef};
 
         {result, {Key, Props}, Ref} ->
-            OutputPid!{results, [{Key, Props}], OutputRef},
-            loop(Ref, OutputPid, OutputRef)
+            NewProps = calculate_score(ScoringVars, Props),
+            OutputPid!{results, [{Key, NewProps}], OutputRef},
+            loop(ScoringVars, Ref, OutputPid, OutputRef)
     end.
+
+calculate_score(ScoringVars, Props) ->
+    %% Pull from ScoringVars...
+    TermBoost = ScoringVars#scoring_vars.term_boost,
+    DocFrequency = ScoringVars#scoring_vars.doc_frequency,
+    NumDocs = ScoringVars#scoring_vars.num_docs,
+
+    %% Pull freq from Props. (If no exist, use 1).
+    Frequency = proplists:get_value(freq, Props, 1),
+    DocFieldBoost = proplists:get_value(boost, Props, 1),
+
+    %% Calculate the score for this term, based roughly on Lucene
+    %% scoring. http://lucene.apache.org/java/2_4_0/api/org/apache/lucene/search/Similarity.html
+    TF = math:pow(Frequency, 0.5),
+    IDF = (1 + math:log(NumDocs/(DocFrequency + 1))),
+    Norm = DocFieldBoost,
+    
+    Score = TF * math:pow(IDF, 2) * TermBoost * Norm,
+    Props ++ [{score, [Score]}].
+    
+    
 
 %% Detect a subterm filter if it's a top level facet
 %% operation. Otherwise, if it's anything fancy, we will handle it

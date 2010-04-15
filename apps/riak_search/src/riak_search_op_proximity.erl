@@ -1,7 +1,7 @@
 -module(riak_search_op_proximity).
 -export([
          preplan_op/2,
-         chain_op/3
+         chain_op/4
         ]).
 -include("riak_search.hrl").
 
@@ -9,10 +9,10 @@ preplan_op(Op, F) ->
     Op#proximity { ops=F(Op#proximity.ops) }.
 
 
-chain_op(Op, OutputPid, OutputRef) ->
+chain_op(Op, OutputPid, OutputRef, QueryProps) ->
     %% Create an iterator chain...
     OpList = Op#proximity.ops,
-    Iterator = riak_search_utils:iterator_chain(fun select_fun/2, OpList),
+    Iterator = riak_search_utils:iterator_chain(fun select_fun/2, OpList, QueryProps),
 
     %% Spawn up pid to gather and send results...
     Proximity = Op#proximity.proximity,
