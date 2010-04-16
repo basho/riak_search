@@ -145,11 +145,9 @@ drop(State) ->
     ok.
 
 fold(State, Fun, Extra) ->    
-    F = fun({_, Module, SubState}) ->
-        Module:fold(SubState, Fun, Extra)
-    end,
-    [F(X) || X <- State#state.backends],
-    Extra.
+    lists:foldl(fun({_, Module, SubState}, Acc) ->
+                        Module:fold(SubState, Fun, Acc)
+                end, Extra, State#state.backends).
 
 % Given a Bucket name and the State, return the
 % backend definition. (ie: {Name, Module, SubState})
@@ -173,6 +171,7 @@ assert(false, Error) -> throw({?MODULE, Error}).
 simple_test() ->    
     % Start the ring manager...
     crypto:start(),
+    riak_core_ring_events:start_link(),
     riak_core_ring_manager:start_link(test),
     
     % Set some buckets...
@@ -187,6 +186,7 @@ simple_test() ->
 get_backend_test() ->
     % Start the ring manager...
     crypto:start(),
+    riak_core_ring_events:start_link(),
     riak_core_ring_manager:start_link(test),
     
     % Set some buckets...

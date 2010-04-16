@@ -27,7 +27,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 -include_lib("riakc/include/riakclient_pb.hrl").
--behaviour(gen_server2).
+-include_lib("riakc/include/riakc_pb.hrl").
+-behaviour(gen_server).
 
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -36,7 +37,6 @@
 -type msg() ::  atom() | tuple().
 
 -record(state, {sock,      % protocol buffers socket
-                hello,     % hello message from client
                 client,    % local client
                 req,       % current request (for multi-message requests like list keys)
                 req_ctx}). % context to go along with request (partial results, request ids etc)
@@ -55,7 +55,8 @@ start_link(Socket) ->
 
 init([Socket]) -> 
     inet:setopts(Socket, [{active, once}, {packet, 4}, {header, 1}]),
-    {ok, #state{sock = Socket}}.
+    {ok, C} = riak:local_client(),
+    {ok, #state{sock = Socket, client = C}}.
 
 handle_call(_Request, _From, State) ->
     {reply, not_implemented, State}.
@@ -87,29 +88,6 @@ handle_info({ReqId, {keys, []}}, State=#state{req=#rpblistkeysreq{}, req_ctx=Req
 handle_info({ReqId, {keys, Keys}}, State=#state{req=#rpblistkeysreq{}, req_ctx=ReqId}) ->
     {noreply, send_msg(#rpblistkeysresp{keys = Keys}, State)};
 
-%% Handle response from mapred_stream/mapred_bucket_stream
-handle_info({flow_results, ReqId, done},
-            State=#state{sock = Socket, req=#rpbmapredreq{}, req_ctx=ReqId}) ->
-    NewState = send_msg(#rpbmapredresp{done = 1}, State),
-    inet:setopts(Socket, [{active, once}]),
-    {noreply, NewState#state{req = undefined, req_ctx = undefined}};
-
-handle_info({flow_results, ReqId, {error, Reason}},
-            State=#state{sock = Socket, req=#rpbmapredreq{}, req_ctx=ReqId}) ->
-    NewState = send_error("~p", [Reason], State),
-    inet:setopts(Socket, [{active, once}]),
-    {noreply, NewState#state{req = undefined, req_ctx = undefined}};
-
-handle_info({flow_results, PhaseId, ReqId, Res},
-            State=#state{req=#rpbmapredreq{}, req_ctx=ReqId}) ->
-    {noreply, send_msg(#rpbmapredresp{phase=PhaseId, data = riakc_pb:pbify_rpbterm(Res)}, State)};
-
-handle_info({flow_error, ReqId, Error},
-            State=#state{sock = Socket, req=#rpbmapredreq{}, req_ctx=ReqId}) ->
-    NewState = send_error("~p", [Error], State),
-    inet:setopts(Socket, [{active, once}]),
-    {noreply, NewState#state{req = undefined, req_ctx = undefined}};
-
 handle_info(_, State) -> % Ignore any late replies from gen_servers/messages from fsms
     {noreply, State}.
 
@@ -130,28 +108,25 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %% callbacks are waiting for it.
 %%
 -spec process_message(msg(), #state{}) ->  #state{} | {pause, #state{}}.
-process_message(#rpbhelloreq{proto_major = 1, client_id = ClientId} = Hello, State) ->
-    {ok, Client} = riak:local_client(ClientId), % optional, will be undefined if not given
-    send_msg(#rpbhelloresp{proto_major = ?PROTO_MAJOR, 
-                           proto_minor = ?PROTO_MINOR,
-                           node = list_to_binary(atom_to_list(node())),
-                           client_id = Client:get_client_id(),
-                           server_version = get_riak_version()},
-             State#state{hello = Hello, client = Client});
-
-process_message(#rpbhelloreq{}, State) ->
-    send_error("Only proto_major 1 currently supported", [], State);
-
-process_message(_Req, #state{hello = undefined} = State) ->
-    send_error("Please say Hello first", [], State);
-
 process_message(rpbpingreq, State) ->
     send_msg(rpbpingresp, State);
 
-process_message(#rpbgetreq{bucket=B, key=K, options=RpbOptions0}, 
+process_message(rpbgetclientidreq, #state{client=C} = State) ->
+    Resp = #rpbgetclientidresp{client_id = C:get_client_id()},
+    send_msg(Resp, State);
+
+process_message(#rpbsetclientidreq{client_id = ClientId}, State) ->
+    {ok, C} = riak:local_client(ClientId),
+    send_msg(rpbsetclientidresp, State#state{client = C});
+
+process_message(rpbgetserverinforeq, State) ->
+    Resp = #rpbgetserverinforesp{node = riakc_pb:to_binary(node()), 
+                                 server_version = get_riak_version()},
+    send_msg(Resp, State);
+
+process_message(#rpbgetreq{bucket=B, key=K, r=R}, 
                 #state{client=C} = State) ->
-    Opts = default_rpboptions(RpbOptions0),
-    case C:get(B, K, Opts#rpboptions.r) of
+    case C:get(B, K, default_r(R)) of
         {ok, O} ->
             PbContent = riakc_pb:pbify_rpbcontents(riak_object:get_contents(O), []),
             GetResp = #rpbgetresp{content = PbContent,
@@ -163,105 +138,59 @@ process_message(#rpbgetreq{bucket=B, key=K, options=RpbOptions0},
             send_error("~p", [Reason], State)
     end;
 
-process_message(#rpbputreq{bucket=B, key=K, vclock=PbVC, 
-                           content = RpbContent, options=RpbOptions0}, 
+process_message(#rpbputreq{bucket=B, key=K, vclock=PbVC, content=RpbContent,
+                           w=W, dw=DW, return_body=ReturnBody}, 
                 #state{client=C} = State) ->
 
-    Opts = default_rpboptions(RpbOptions0),
     O0 = riak_object:new(B, K, <<>>),  
     O1 = update_rpbcontent(O0, RpbContent),
     O  = update_pbvc(O1, PbVC),
 
-    case C:put(O, Opts#rpboptions.w, Opts#rpboptions.dw) of
+    case C:put(O, default_w(W), default_dw(DW)) of
         ok ->
-            case Opts#rpboptions.return_body of % erlang_protobuffs encodes as 1/0/undefined
+            case ReturnBody of % erlang_protobuffs encodes as 1/0/undefined
                 1 ->
-                    send_put_return_body(B, K, Opts, State);
+                    send_put_return_body(B, K, State);
                 _ ->
                     send_msg(#rpbputresp{}, State)
             end;
-        {error, precommit_fail} ->
-            send_error("precommit fail", [], State);
-        {error, {precommit_fail, Reason}} ->
-            send_error("precommit fail - ~p", [Reason], State);
         {error, Reason} ->
             send_error("~p", [Reason], State)
     end;
 
-process_message(#rpbdelreq{bucket=B, key=K, options=RpbOptions0}, 
+process_message(#rpbdelreq{bucket=B, key=K, rw=RW}, 
                 #state{client=C} = State) ->
-    Opts = default_rpboptions(RpbOptions0),
-    case C:delete(B, K, Opts#rpboptions.rw) of
+    case C:delete(B, K, default_rw(RW)) of
         ok ->
             send_msg(rpbdelresp, State);
         {error, notfound} ->  %% delete succeeds if already deleted
             send_msg(rpbdelresp, State);
-        {error, precommit_fail} ->
-            send_error("precommit fail", [], State);
-        {error, {precommit_fail, Reason}} ->
-            send_error("precommit fail - ~p", [Reason], State);
         {error, Reason} ->
             send_error("~p", [Reason], State)
     end;
-
-process_message(#rpbgetbucketpropsreq{bucket=B, names = Names}, 
-                #state{client=C} = State) ->
-    Props = C:get_bucket(B),
-    PbProps = riakc_pb:pbify_bucket_props(filter_props(Names, Props)),
-    Resp = #rpbgetbucketpropsresp{properties = PbProps},
-    send_msg(Resp, State);
-
-process_message(#rpbsetbucketpropsreq{bucket=B, properties = RpbTerm}, 
-                #state{client=C} = State) ->
-    ErlProps = riakc_pb:erlify_bucket_props(RpbTerm),
-    C:set_bucket(B, ErlProps),
-    send_msg(rpbsetbucketpropsresp, State);
 
 process_message(rpblistbucketsreq, 
                 #state{client=C} = State) ->
     case C:list_buckets() of
         {ok, Buckets} ->
-            send_msg(#rpblistbucketsresp{buckets = Buckets, done = 1}, State);
+            send_msg(#rpblistbucketsresp{buckets = Buckets}, State);
         {error, Reason} ->
             send_error("~p", [Reason], State)
     end;
 
-%% Start streaming in list keys - results will be processed in handle_info
+%% Start streaming in list keys 
 process_message(#rpblistkeysreq{bucket=B}=Req, 
                 #state{client=C} = State) ->
-    case C:stream_list_keys(B) of
-        {ok, ReqId} ->
-            {pause, State#state{req = Req, req_ctx = ReqId}}
-    end;
-
-%% Start map/reduce job - results will be processed in handle_info
-process_message(#rpbmapredreq{input_bucket=B, input_keys=PbKeys, phases=PbQuery}=Req, 
-                #state{client=C} = State) ->
-    case riakc_pb:erlify_mapred_query(PbQuery) of
-        {error, Reason} ->
-            send_error("~p", [Reason], State);
-
-        {ok, Query} ->
-            if %% Check we have B or PbKeys
-                (B =/= undefined andalso PbKeys =:= undefined) ->
-                    {ok, ReqId} = C:mapred_bucket_stream(B, Query, self(), ?DEFAULT_TIMEOUT),
-                    {pause, State#state{req = Req, req_ctx = ReqId}};
-                (B =:= undefined andalso PbKeys =/= undefined) -> %
-                    Inputs = [riakc_pb:erlify_mapred_input(PbKey) || PbKey <- PbKeys],
-                    {ok, {ReqId, FSM}} = C:mapred_stream(Query, self(), ?DEFAULT_TIMEOUT),
-                    luke_flow:add_inputs(FSM, Inputs),
-                    luke_flow:finish_inputs(FSM),
-                    {pause, State#state{req = Req, req_ctx = ReqId}};
-                true ->
-                    send_error("map/reduce takes either an input_bucket or input_keys, not both", 
-                               [], State)
-            end
-    end.
+    %% Pause incoming packets - stream_list_keys results
+    %% will be processed by handle_info, it will 
+    %% set socket active again on completion of streaming.
+    {ok, ReqId} = C:stream_list_keys(B),
+    {pause, State#state{req = Req, req_ctx = ReqId}}.
 
 %% @private
 %% @doc if return_body was requested, call the client to get it and return
-send_put_return_body(B, K, Opts, State=#state{client = C}) ->
-    case C:get(B, K, Opts#rpboptions.r) of
+send_put_return_body(B, K, State=#state{client = C}) ->
+    case C:get(B, K, default_r(undefined)) of
         {ok, O} ->
             PbContents = riakc_pb:pbify_rpbcontents(riak_object:get_contents(O), []),
             PutResp = #rpbputresp{contents = PbContents,
@@ -278,14 +207,19 @@ send_put_return_body(B, K, Opts, State=#state{client = C}) ->
 -spec send_msg(msg(), #state{}) -> #state{}.
 send_msg(Msg, State) ->
     Pkt = riakc_pb:encode(Msg),
-    ok = gen_tcp:send(State#state.sock, Pkt),
+    gen_tcp:send(State#state.sock, Pkt),
     State.
     
 %% Send an error to the client
 -spec send_error(string(), list(), #state{}) -> #state{}.
 send_error(Msg, Fmt, State) ->
-    ErrMsg = lists:flatten(io_lib:format(Msg, Fmt)),
-    send_msg(#rpberrorresp{errmsg = ErrMsg}, State).
+    send_error(Msg, Fmt, ?RIAKC_ERR_GENERAL, State).
+
+-spec send_error(string(), list(), non_neg_integer(), #state{}) -> #state{}.
+send_error(Msg, Fmt, ErrCode, State) ->
+    %% protocol buffers accepts nested lists for binaries so no need to flatten the list
+    ErrMsg = io_lib:format(Msg, Fmt),
+    send_msg(#rpberrorresp{errmsg=ErrMsg, errcode=ErrCode}, State).
 
 %% Update riak_object with the pbcontent provided
 update_rpbcontent(O0, RpbContent) -> 
@@ -300,53 +234,26 @@ update_pbvc(O0, PbVc) ->
 
 %% Set default values in the options record if none are provided.
 %% Erlang protobuffs does not support default, so have to do it here.
-default_rpboptions(undefined) ->
-    #rpboptions{r = 2, w = 2, dw = 0, rw = 2};
-default_rpboptions(RpbOptions) ->
-    lists:foldl(fun default_rpboption/2, RpbOptions, 
-                [{#rpboptions.r, 2},
-                 {#rpboptions.w, 2},
-                 {#rpboptions.dw, 0},
-                 {#rpboptions.rw, 2}]).
+default_r(undefined) ->
+    2;
+default_r(R) ->
+    R.
 
-default_rpboption({Idx, Default}, RpbOptions) ->
-    case element(Idx, RpbOptions) of
-        undefined ->
-            setelement(Idx, RpbOptions, Default);
-        _ ->
-            RpbOptions
-    end.
-            
-%% Filter out the requested properties
-filter_props(undefined, Props) ->
-    Props;
-filter_props(Names, Props) ->
-    Atoms = make_bucket_prop_names(Names, []),
-    [Prop || {Name,_Value}=Prop <- Props, lists:member(Name, Atoms)].
+default_w(undefined) ->
+    2;
+default_w(W) ->
+    W.
+
+default_dw(undefined) ->
+    0;
+default_dw(DW) ->
+    DW.
+
+default_rw(undefined) ->
+    2;
+default_rw(RW) ->
+    RW.
         
-%% Make bucket prop names - converting any binaries/lists to atoms   
-%% Drop any unknown names
-make_bucket_prop_names([], Acc) ->
-    Acc;
-make_bucket_prop_names([Name|Rest], Acc) when is_binary(Name) ->   
-    make_bucket_prop_names([binary_to_list(Name) | Rest], Acc);
-make_bucket_prop_names([Name|Rest], Acc) when is_list(Name) ->
-    case catch list_to_existing_atom(Name) of
-        {'EXIT', _} ->
-            make_bucket_prop_names(Rest, Acc);
-        Atom ->
-            make_bucket_prop_names(Rest, [Atom | Acc])
-    end;
-make_bucket_prop_names([Name|Rest], Acc) when is_atom(Name) ->
-    make_bucket_prop_names(Rest, [Name | Acc]).
-
-%% Return the current version of riak_kv
--spec get_riak_version() -> binary().
-get_riak_version() ->
-    Apps = application:which_applications(),
-    {value,{riak_kv,_,Vsn}} = lists:keysearch(riak_kv, 1, Apps),
-    riakc_pb:to_binary(Vsn).
-
 %% Convert a vector clock to erlang
 erlify_rpbvc(undefined) ->
     vclock:fresh();
@@ -356,4 +263,10 @@ erlify_rpbvc(PbVc) ->
 %% Convert a vector clock to protocol buffers
 pbify_rpbvc(Vc) ->
     zlib:zip(term_to_binary(Vc)).
+
+%% Return the current version of riak_kv
+-spec get_riak_version() -> binary().
+get_riak_version() ->
+    {ok, Vsn} = application:get_key(riak_kv, vsn),
+    riakc_pb:to_binary(Vsn).
 

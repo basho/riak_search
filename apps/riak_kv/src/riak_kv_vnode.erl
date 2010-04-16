@@ -102,6 +102,7 @@ do_list_handoff(TargetNode, BKeyList, StateData=#state{idx=Idx}) ->
 
 %% @private
 delete_and_exit(StateData=#state{idx=Idx, mod=Mod, modstate=ModState}) ->
+    error_logger:info_msg("Dropping partition ~p~n", [Idx]),
     ok = Mod:drop(ModState),
     gen_server:cast(riak_kv_vnode_master, {add_exclusion, Idx}),
     {stop, normal, StateData}.
@@ -125,7 +126,7 @@ active({map, ClientPid, QTerm, BKey, KeyData}, StateData) ->
     NewState = do_map(ClientPid,QTerm,BKey,KeyData,StateData,self()),
     {next_state,active,NewState,?TIMEOUT};
 active(handoff_complete, StateData=#state{idx=Idx,handoff_token=HT}) ->
-    global:del_lock({HT, {node(), Idx}}),
+    global:del_lock({HT, {node(), Idx}}, [node()]),
     hometest(StateData);
 active({put, FSM_pid, BKey, RObj, ReqID, FSMTime},
        StateData=#state{idx=Idx,mapcache=Cache,handoff_q=HQ0}) ->
@@ -369,14 +370,14 @@ do_map({javascript, {map, FunTerm, Arg, _}=QTerm}, BKey, Mod, ModState, KeyData,
     CacheVal = cache_fetch(BKey, CacheKey, Cache),
     case CacheVal of
         not_cached ->
-            V = case Mod:get(ModState, BKey) of
-                    {ok, Binary} ->
-                        binary_to_term(Binary);
-                    {error, notfound} ->
-                        {error, notfound}
-                end,
-            riak_kv_js_manager:dispatch({ClientPid, QTerm, V, KeyData, BKey}),
-            map_executing;
+            case Mod:get(ModState, BKey) of
+                {ok, Binary} ->
+                    V = binary_to_term(Binary),
+                    riak_kv_js_manager:dispatch({ClientPid, QTerm, V, KeyData, BKey}),
+                    map_executing;
+                {error, notfound} ->
+                    {error, notfound}
+            end;
         CV ->
             {ok, CV}
     end.
