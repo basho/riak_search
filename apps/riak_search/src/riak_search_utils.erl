@@ -1,6 +1,6 @@
 -module(riak_search_utils).
 -export([
-    iterator_chain/2,
+    iterator_chain/3,
     combine_terms/2,
     date_to_subterm/1,
     parse_datetime/1
@@ -13,26 +13,26 @@
 %% Props, IteratorFun}). The SelectFun is responsible for choosing
 %% which value is next in the series, and returning {Value, Props,
 %% NewIteratorFun}.
-iterator_chain(_, [Op]) ->
-    iterator_chain_op(Op);
-iterator_chain(SelectFun, [Op|OpList]) ->
-    OpIterator = iterator_chain_op(Op),
-    GroupIterator = iterator_chain(SelectFun, OpList),
+iterator_chain(_, [Op], QueryProps) ->
+    iterator_chain_op(Op, QueryProps);
+iterator_chain(SelectFun, [Op|OpList], QueryProps) ->
+    OpIterator = iterator_chain_op(Op, QueryProps),
+    GroupIterator = iterator_chain(SelectFun, OpList, QueryProps),
     fun() -> SelectFun(OpIterator(), GroupIterator()) end;
-iterator_chain(_, []) ->
+iterator_chain(_, [], _) ->
     fun() -> {eof, false} end.
 
 %% Chain an operator, and build an iterator function around it. The
 %% iterator will return {Result, NotFlag, NewIteratorFun} each time it is called, or block
 %% until one is available. When there are no more results, it will
 %% return {eof, NotFlag, NewIteratorFun}.
-iterator_chain_op(Op) ->
+iterator_chain_op(Op, QueryProps) ->
     %% Spawn a collection process...
     Ref = make_ref(),
     Pid = spawn_link(fun() -> collector_loop(Ref, []) end),
     
     %% Chain the op...
-    riak_search_op:chain_op(Op, Pid, Ref),
+    riak_search_op:chain_op(Op, Pid, Ref, QueryProps),
 
     %% Return an iterator function. Returns
     %% a new result.
@@ -75,8 +75,10 @@ collector_loop(_Ref, eof) ->
 
 %% Gine
 combine_terms({Value, Props1}, {Value, Props2}) ->
+    ScoreList1 = proplists:get_value(score, Props1),
+    ScoreList2 = proplists:get_value(score, Props1),
     NewProps = sets:to_list(sets:intersection(sets:from_list(Props1), sets:from_list(Props2))),
-    {Value, NewProps};
+    {Value, NewProps ++ [{score, ScoreList1 ++ ScoreList2 }]};
 combine_terms(Other1, Other2) ->
     error_logger:error_msg("Could not combine terms: [~p, ~p]~n", [Other1, Other2]),
     throw({could_not_combine, Other1, Other2}).

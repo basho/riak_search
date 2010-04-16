@@ -78,12 +78,12 @@ index_file(File, Index, Field) ->
     {_, PositionTree} = lists:foldl(F1, {1, gb_trees:empty()}, Words),
 
     %% Index the words...
-    F2 = fun(Word) ->
+    F2 = fun(Word, SubType, SubTerm) ->
         {value, Positions} = gb_trees:lookup(Word, PositionTree),
-        NewProps = Props ++ [{word_pos, Positions}],
-        index_term(Index, Field, Word, Basename, NewProps)
+        NewProps = Props ++ [{word_pos, Positions}, {freq, length(Positions)}],
+        index_term(Index, Field, Word, SubType, SubTerm, Basename, NewProps)
     end,
-    [F2(X) || X <- Words],
+    [F2(X, 0, 0) || X <- Words],
 
     %% Now index based on date...
     case re:run(Bytes, "Date:\s*(.*)", [{capture, all, list}]) of
@@ -92,7 +92,7 @@ index_file(File, Index, Field) ->
                 {YMD, HMS} -> 
                     SubType = 1,
                     SubTerm = riak_search_utils:date_to_subterm({YMD, HMS}),
-                    [index_term(Index, Field, Word, SubType, SubTerm, Basename, Props) || Word <- Words],
+                    [F2(Word, SubType, SubTerm) || Word <- Words],
                     ok;
                 _ ->
                     io:format("Could not parse date: ~p~n", [Date])

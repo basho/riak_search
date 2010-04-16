@@ -13,13 +13,20 @@ execute(OpList, DefaultIndex, DefaultField, Facets) ->
     %% Normalize, Optimize, and Expand Buckets.
     OpList1 = riak_search_preplan:preplan(OpList, DefaultIndex, DefaultField, Facets),
 
+    %% Get the total number of terms and weight in query...
+    {NumTerms, NumDocs, QueryNorm} = get_scoring_info(OpList1),
+
     %% Set up the operators. They automatically start when created...
     Ref = make_ref(),
-    {ok, NumInputs} = riak_search_op:chain_op(OpList1, self(), Ref),
+    QueryProps = [{num_docs, NumDocs}],
+    {ok, NumInputs} = riak_search_op:chain_op(OpList1, self(), Ref, QueryProps),
 
     %% Gather and return results...
     Results = collect_results(NumInputs, Ref, []),
-    {ok, Results}.
+    
+    %% Score and sort results...
+    NewResults = sort_by_score(QueryNorm, NumTerms, Results),
+    {ok, NewResults}.
 
 %% Gather results from all connections
 collect_results(Connections, Ref, Acc) ->
@@ -40,6 +47,52 @@ collect_results(Connections, Ref, Acc) ->
             ?PRINT(timeout),
             throw({timeout, Connections, Acc})
     end.
+
+
+%% Return {NumTerms, NumDocs, QueryNorm}...
+%% http://lucene.apache.org/java/2_4_0/api/org/apache/lucene/search/Similarity.html
+get_scoring_info(Op) ->
+    %% Get a list of scoring info...
+    List = lists:flatten(get_scoring_info_1(Op)),
+
+    %% Calculate NumTerms and NumDocs...
+    NumTerms = length(List),
+    NumDocs = lists:sum([NodeWeight || {NodeWeight, _} <- List]),
+
+    %% Calculate the QueryNorm...
+    F = fun({DocFrequency, Boost}, Acc) ->
+        IDF = 1 + math:log((NumDocs + 1) / (DocFrequency + 1)),
+        Acc + math:pow(IDF * Boost, 2)
+    end,
+    SumOfSquaredWeights = lists:foldl(F, 0, List),
+    QueryNorm = 1 / math:pow(SumOfSquaredWeights, 0.5),
+
+    %% Return.
+    {NumTerms, NumDocs, QueryNorm}.
+get_scoring_info_1(Op) when is_record(Op, term) ->
+    DocFrequency = hd([X || {node_weight, _, X} <- Op#term.options]),
+    Boost = proplists:get_value(boost, Op#term.options, 1),
+    [{DocFrequency, Boost}];
+get_scoring_info_1(Op) when is_tuple(Op) ->
+    get_scoring_info_1(element(2, Op));
+get_scoring_info_1(Ops) ->
+    [get_scoring_info_1(X) || X <- Ops].
+    
+
+sort_by_score(QueryNorm, NumTerms, Results) ->
+    SortedResults = lists:sort(calculate_scores(QueryNorm, NumTerms, Results)),
+    [{Value, Props} || {_, Value, Props} <- SortedResults].
+
+calculate_scores(QueryNorm, NumTerms, [{Value, Props}|Results]) ->
+    ScoreList = proplists:get_value(score, Props),
+    Coord = length(ScoreList) / NumTerms,
+    Score = Coord * QueryNorm * lists:sum(ScoreList),
+    NewProps = lists:keystore(score, 1, Props, {score, Score}),
+    [{-1 * Score, Value, NewProps}|calculate_scores(QueryNorm, NumTerms, Results)];
+calculate_scores(_, _, []) ->
+    [].
+
+
 
 explain(OpList, DefaultIndex, DefaultField, Facets) ->
     riak_search_preplan:preplan(OpList, DefaultIndex, DefaultField, Facets).
@@ -93,7 +146,8 @@ info(Index, Field, Term) ->
     %% How many replicas?
     BucketProps = riak_core_bucket:get_bucket(IndexBin),
     NVal = proplists:get_value(n_val, BucketProps),
-    {ok, _Results} = collect_info(NVal, Ref, []).
+    {ok, Results} = collect_info(NVal, Ref, []),
+    {ok, hd(Results)}.
 
 info_range(Index, Field, StartTerm, EndTerm, Size) ->
     %% TODO - Handle inclusive.

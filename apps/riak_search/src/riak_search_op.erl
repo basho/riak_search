@@ -1,7 +1,7 @@
 -module(riak_search_op).
 -export([
          preplan_op/2,
-         chain_op/3
+         chain_op/4
         ]).
 -include("riak_search.hrl").
 
@@ -15,17 +15,17 @@ preplan_op(Op, F) ->
     end.
 
 
-chain_op(OpList, OutputPid, Ref) when is_list(OpList)->
-    [chain_op(Op, OutputPid, Ref) || Op <- OpList],
+chain_op(OpList, OutputPid, Ref, QueryProps) when is_list(OpList)->
+    [chain_op(Op, OutputPid, Ref, QueryProps) || Op <- OpList],
     {ok, length(OpList)};
 
-chain_op(Op, OutputPid, Ref) ->
+chain_op(Op, OutputPid, Ref, QueryProps) ->
     case op_to_module(Op) of
 	undefined ->
 	    ?PRINT({unknown_op, Op}),
 	    throw({unknown_op, Op});
 	Module ->
-	    Module:chain_op(Op, OutputPid, Ref),
+	    Module:chain_op(Op, OutputPid, Ref, QueryProps),
             {ok, 1}
     end.
 

@@ -1,22 +1,22 @@
 -module(riak_search_op_land).
 -export([
          preplan_op/2,
-         chain_op/3,
-         chain_op/4
+         chain_op/4,
+         chain_op/5
         ]).
 -include("riak_search.hrl").
 
 preplan_op(Op, F) ->
     Op#land { ops=F(Op#land.ops) }.
 
-chain_op(Op, OutputPid, OutputRef) ->
-    chain_op(Op, OutputPid, OutputRef, 'land').
+chain_op(Op, OutputPid, OutputRef, QueryProps) ->
+    chain_op(Op, OutputPid, OutputRef, QueryProps, 'land').
 
-chain_op(Op, OutputPid, OutputRef, Type) ->
+chain_op(Op, OutputPid, OutputRef, QueryProps, Type) ->
     %% Create an iterator chain...
     OpList = Op#land.ops,
     SelectFun = fun(I1, I2) -> select_fun(Type, I1, I2) end,
-    Iterator = riak_search_utils:iterator_chain(SelectFun, OpList),
+    Iterator = riak_search_utils:iterator_chain(SelectFun, OpList, QueryProps),
 
     %% Spawn up pid to gather and send results...
     F = fun() -> gather_results(OutputPid, OutputRef, Iterator()) end,

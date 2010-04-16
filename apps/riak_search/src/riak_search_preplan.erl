@@ -173,8 +173,8 @@ rewrite_term(Q, Options, Config) ->
             [#term { q=Q, options=[facet|Options] }];
         false -> 
             {Index, Field, Term} = Q,
-            {ok, Results} = riak_search:info(Index, Field, Term),
-            Weights = [{node_weight, Node, Count} || {_, Node, Count} <- Results],
+            {ok, {Term, Node, Count}} = riak_search:info(Index, Field, Term),
+            Weights = [{node_weight, Node, Count}],
             [#term { q=Q, options=Weights ++ Options }]
     end.
 
@@ -243,6 +243,7 @@ inject_facets(Ops, Facets) when is_list(Ops) ->
 
 %% FOURTH PASS
 %% Expand wildcards and ranges into a #lor operator.
+%% Add doc_freq counts to all terms.
 pass4(OpList, Config) when is_list(OpList) ->
     [pass4(X, Config) || X <- OpList];
 
@@ -272,6 +273,9 @@ pass4(Op = #term {}, Config) ->
             End = wildcard_one,
             range_to_lor(Start, End, true, Facets, Config);
         true ->
+%%             %% Results are of form {node, Index.Field.Term, Count}
+%%             {ok, Results} = riak_search:info_range(Index, Field, StartTerm, EndTerm, Size),
+            
             Op
     end;
 
