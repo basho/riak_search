@@ -1,0 +1,38 @@
+<project name="analysis_master" basedir="." default="rel">
+
+  <property name="build.dir" value="build" />
+  <property name="src.dir" value="src" />
+  <property name="project.version" value="0.1" />
+  <property name="project.jar" value="analysis_master-${project.version}.jar" />
+  <path id="project.classpath">
+    <fileset dir="lib" includes="*.jar" />
+  </path>
+
+  <target name="clean">
+    <delete dir="rel" />
+    <delete dir="${build.dir}" />
+  </target>
+  <target name="prepare">
+    <mkdir dir="${build.dir}" />
+  </target>
+  <target name="compile" depends="prepare">
+    <javac srcdir="${src.dir}"
+	   destdir="${build.dir}"
+	   classpathref="project.classpath" />
+  </target>
+  <target name="package" depends="compile">
+    <jar destfile="${project.jar}"
+	 basedir="${build.dir}"
+	 compress="true"
+	 includes="**/*.class" />
+  </target>
+  <target name="rel" depends="package">
+    <mkdir dir="rel" />
+    <mkdir dir="rel/lib" />
+    <copy file="scripts/analysis_master.sh" todir="rel" />
+    <copy todir="rel/lib">
+      <fileset dir="lib" includes="*.jar" />
+    </copy>
+    <copy file="${project.jar}" todir="rel/lib" />
+  </target>
+</project>

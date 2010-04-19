@@ -1,0 +1,17 @@
+package basho.search.analysis;
+option java_package = "com.basho.search.proto";
+
+message AnalysisRequest {
+  required string text = 1;
+}
+
+message AnalysisError {
+  required string message = 1;
+  optional string description = 2;
+  optional int32 error_number = 3;
+}
+
+message AnalysisResult {
+  optional string token = 1;
+  required int32 done = 2;
+}
