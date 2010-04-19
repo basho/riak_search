@@ -29,7 +29,7 @@
   <target name="rel" depends="package">
     <mkdir dir="rel" />
     <mkdir dir="rel/lib" />
-    <copy file="scripts/analysis_master.sh" todir="rel" />
+    <copy file="scripts/analysis_server.sh" todir="rel" />
     <copy todir="rel/lib">
       <fileset dir="lib" includes="*.jar" />
     </copy>

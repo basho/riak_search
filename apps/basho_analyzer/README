@@ -1,0 +1,17 @@
+This is a text analyzer component used by Riak Search. It leverages the tokenizing and analysis logic
+in Lucene and exposes it to Erlang via a simple socket server which speaks Google's protocol buffers.
+
+-- BUILDING --
+Running 'make' should build both the Java and Erlang code.
+
+-- RUNNING --
+
+Java:
+  Build the code and cd into java_src/analysis_server/rel. Run the analysis_server.sh script
+  to start the server. Edit the PORT variable if 127.0.0.1:6098 is not available on your machine.
+
+Erlang:
+  Build the code and start an Erlang VM. Make sure the sasl application is running. In the Erlang
+  shell type 'application:start(basho_analyzer.)'. If all is well the application should start.
+  Make sure the application environment entry, analysis_port, matches the PORT value used by the
+  Java server.
