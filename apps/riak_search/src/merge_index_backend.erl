@@ -38,18 +38,21 @@ start(Partition, Config) ->
     {ok, #state { partition=Partition, pid=Pid }}.
 
 %% @spec stop(state()) -> ok | {error, Reason :: term()}
-stop(State) -> 
+stop(State) ->
     Pid = State#state.pid,
     ok = merge_index:stop(Pid).
 
 %% @spec put(state(), BKey :: riak_object:bkey(), Val :: binary()) ->
 %%         ok | {error, Reason :: term()}
 %% @doc Route all commands through the object's value.
-put(State, _BKey, ObjBin) ->      
+put(State, _BKey, ObjBin) ->
     Obj = binary_to_term(ObjBin),
     Command = riak_object:get_value(Obj),
     handle_command(State, Command).
-    
+
+handle_command(State, {index, Index, Field, Term, Value, Props}) ->
+    handle_command(State, {index, Index, Field, Term, 0, 0, Value, Props, erlang:now()});
+
 handle_command(State, {index, Index, Field, Term, SubType, SubTerm, Value, Props, Timestamp}) ->
     %% Put with properties.
     Pid = State#state.pid,
@@ -111,7 +114,7 @@ handle_command(_State, Other) ->
 get(_State, _BKey) ->
     {error, notfound}.
 
-is_empty(State) -> 
+is_empty(State) ->
     ?PRINT(is_empty),
     Pid = State#state.pid,
     merge_index:is_empty(Pid).

@@ -10,7 +10,7 @@
 -define(IS_TERM_WILDCARD_ONE(Op), lists:member({wildcard, one}, Op#term.options)).
 
 %% Pre-plan Operators...
--record(term,             {q, options}). 
+-record(term,             {q, options}).
 -record(lnot,             {ops}).
 -record(land,             {ops}).
 -record(lor,              {ops}).
@@ -20,3 +20,7 @@
 -record(exclusive_range,  {start_op, end_op}).
 -record(node,             {ops, node}).
 -record(proximity,        {ops, proximity}).
+
+-record(riak_indexed_doc, {id,
+                           index="search",
+                           fields=[]}).

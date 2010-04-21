@@ -1,10 +1,11 @@
 -module(riak_search_utils).
--export([
-    iterator_chain/3,
-    combine_terms/2,
-    date_to_subterm/1,
-    parse_datetime/1
-]).
+
+-export([iterator_chain/3,
+         combine_terms/2,
+         date_to_subterm/1,
+         parse_datetime/1,
+         to_binary/1]).
+
 -include("riak_search.hrl").
 
 
@@ -30,7 +31,7 @@ iterator_chain_op(Op, QueryProps) ->
     %% Spawn a collection process...
     Ref = make_ref(),
     Pid = spawn_link(fun() -> collector_loop(Ref, []) end),
-    
+
     %% Chain the op...
     riak_search_op:chain_op(Op, Pid, Ref, QueryProps),
 
@@ -42,7 +43,7 @@ iterator_chain_op(Op, QueryProps) ->
 %% Iterator function body.
 iterator_chain_inner(Pid, Ref, Op) ->
     Pid!{get_result, self(), Ref},
-    receive 
+    receive
         {result, eof, Ref} ->
             {eof, Op};
 
@@ -83,7 +84,8 @@ combine_terms(Other1, Other2) ->
     error_logger:error_msg("Could not combine terms: [~p, ~p]~n", [Other1, Other2]),
     throw({could_not_combine, Other1, Other2}).
 
-
+to_binary(L) when is_list(L) -> list_to_binary(L);
+to_binary(B) when is_binary(B) -> B.
 
 %%% Convert a date to a 64-bit SubTerm integer.
 date_to_subterm(min) ->
@@ -111,7 +113,7 @@ parse_datetime([_,_,_,_,$\s,D1,$\s,M1,M2,M3,$\s,Y1,Y2,Y3,Y4,$\s,HH1,HH2,$:,MM1,M
     YMD = {list_to_integer([Y1,Y2,Y3,Y4]), month([M1,M2,M3]), list_to_integer([D1])},
     HMS = {list_to_integer([HH1,HH2]), list_to_integer([MM1,MM2]), list_to_integer([SS1,SS2])},
     {YMD, HMS};
-        
+
 %% EXAMPLE: Wed, 14 Feb 2001 09:07:00 -0800
 parse_datetime([_,_,_,_,$\s,D1,D2,$\s,M1,M2,M3,$\s,Y1,Y2,Y3,Y4,$\s,HH1,HH2,$:,MM1,MM2,$:,SS1,SS2|_]) ->
     YMD = {list_to_integer([Y1,Y2,Y3,Y4]), month([M1,M2,M3]), list_to_integer([D1, D2])},

@@ -19,11 +19,11 @@
 
 -export([
     %% GEN SERVER
-    init/1, 
-    handle_call/3, 
-    handle_cast/2, 
-    handle_info/2, 
-    terminate/2, 
+    init/1,
+    handle_call/3,
+    handle_cast/2,
+    handle_info/2,
+    terminate/2,
     code_change/3
 ]).
 
@@ -40,7 +40,7 @@ init([Root, Config]) ->
         merge_pid = undefined,
         config = Config
     },
-    
+
     %% Return.
     {ok, State}.
 
@@ -51,7 +51,7 @@ read_segments(Root) ->
 read_segments(Root, N) ->
     SegmentFile = join(Root, "segment." ++ integer_to_list(N)),
     case mi_segment:exists(SegmentFile) of
-        true -> 
+        true ->
             [mi_segment:open(SegmentFile)|read_segments(Root, N + 1)];
         false ->
             []
@@ -64,14 +64,14 @@ handle_call({index, Index, Field, Term, SubType, SubTerm, Value, Props, NowTime}
     {FieldID, NewFields} = mi_incdex:lookup(Field, Fields),
     {TermID, NewTerms} = mi_incdex:lookup(Term, Terms),
     IFT = mi_utils:ift_pack(IndexID, FieldID, TermID, SubType, SubTerm),
-    
+
     %% Write to the buffer...
     Timestamp = mi_utils:now_to_timestamp(NowTime),
     NewBuffer = mi_buffer:write(IFT, Value, Props, Timestamp, Buffer),
-    
+
     %% Update the state...
-    NewState = State#state { 
-        indexes=NewIndexes, 
+    NewState = State#state {
+        indexes=NewIndexes,
         fields=NewFields,
         terms=NewTerms,
         buffer = NewBuffer
@@ -91,7 +91,7 @@ handle_call({index, Index, Field, Term, SubType, SubTerm, Value, Props, NowTime}
 
             %% Clear the buffer...
             NewBuffer1 = mi_buffer:clear(NewBuffer),
-            
+
             %% Update the state...
             NewState1 = NewState#state { buffer=NewBuffer1, segments=NewSegments},
             {reply, ok, NewState1};
@@ -189,7 +189,7 @@ stream_inner(Pid, Ref, LastIFT, LastValue, FilterFun, {{IFT, Value, Props, _}, I
 stream_inner(Pid, Ref, _, _, _, eof) ->
     Pid!{result, '$end_of_table', Ref}.
 
-%% Chain a list of iterators into what looks like one single iterator.    
+%% Chain a list of iterators into what looks like one single iterator.
 build_group_iterator([Iterator|Iterators]) ->
     GroupIterator = build_group_iterator(Iterators),
     fun() -> group_iterator(Iterator(), GroupIterator()) end;
@@ -216,7 +216,7 @@ compare_fun({IFT1, Value1, _, TS1}, {IFT2, Value2, _, TS2}) ->
     (IFT1 < IFT2) orelse
     ((IFT1 == IFT2) andalso (Value1 < Value2)) orelse
     ((IFT1 == IFT2) andalso (Value1 == Value2) andalso (TS1 > TS2)).
-    
+
 
 %% SubTerm range...
 normalize_subterm(StartSubTerm, EndSubTerm) ->
@@ -234,5 +234,5 @@ normalize_subterm(StartSubTerm, EndSubTerm) ->
 join(#state { root=Root }, Name) ->
     join(Root, Name);
 
-join(Root, Name) ->            
+join(Root, Name) ->
     filename:join([Root, Name]).

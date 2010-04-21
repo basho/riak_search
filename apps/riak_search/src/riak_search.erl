@@ -23,7 +23,7 @@ execute(OpList, DefaultIndex, DefaultField, Facets) ->
 
     %% Gather and return results...
     Results = collect_results(NumInputs, Ref, []),
-    
+
     %% Score and sort results...
     NewResults = sort_by_score(QueryNorm, NumTerms, Results),
     {ok, NewResults}.
@@ -77,7 +77,7 @@ get_scoring_info_1(Op) when is_tuple(Op) ->
     get_scoring_info_1(element(2, Op));
 get_scoring_info_1(Ops) ->
     [get_scoring_info_1(X) || X <- Ops].
-    
+
 
 sort_by_score(QueryNorm, NumTerms, Results) ->
     SortedResults = lists:sort(calculate_scores(QueryNorm, NumTerms, Results)),
@@ -99,8 +99,8 @@ explain(OpList, DefaultIndex, DefaultField, Facets) ->
 
 index(Index, Field, Term, SubType, SubTerm, Value, Props) ->
     %% Construct the operation...
-    IndexBin = to_binary(Index),
-    FieldTermBin = to_binary([Field, ".", Term]),
+    IndexBin = riak_search_utils:to_binary(Index),
+    FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
     Payload = {index, Index, Field, Term, SubType, SubTerm, Value, Props},
 
     %% Run the operation...
@@ -110,8 +110,8 @@ index(Index, Field, Term, SubType, SubTerm, Value, Props) ->
 
 stream(Index, Field, Term, SubType, StartSubTerm, EndSubTerm, FilterFun) ->
     %% Construct the operation...
-    IndexBin = to_binary(Index),
-    FieldTermBin = to_binary([Field, ".", Term]),
+    IndexBin = riak_search_utils:to_binary(Index),
+    FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
     {ok, Client} = riak:local_client(),
     Ref = make_ref(),
 
@@ -133,8 +133,8 @@ stream(Index, Field, Term, SubType, StartSubTerm, EndSubTerm, FilterFun) ->
 
 info(Index, Field, Term) ->
     %% Construct the operation...
-    IndexBin = to_binary(Index),
-    FieldTermBin = to_binary([Field, ".", Term]),
+    IndexBin = riak_search_utils:to_binary(Index),
+    FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
     Ref = make_ref(),
     Payload = {info, Index, Field, Term, self(), Ref},
 
@@ -180,10 +180,6 @@ collect_info(RepliesRemaining, Ref, Acc) ->
 
 ringsize() ->
     app_helper:get_env(riak_core, ring_creation_size).
-
-
-to_binary(L) when is_list(L) -> list_to_binary(L);
-to_binary(B) when is_binary(B) -> B.
 
 %% Get replies from all nodes that are willing to stream this
 %% bucket. If there is one on the local node, then use it, otherwise,

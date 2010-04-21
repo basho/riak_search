@@ -7,6 +7,7 @@
              riak_search,
              riak_search_app,
              riak_search_sup,
+             riak_search_indexer,
              riak_search_preplan,
              riak_search_facets,
              riak_search_op,
