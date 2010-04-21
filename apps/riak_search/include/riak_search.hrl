@@ -23,4 +23,5 @@
 
 -record(riak_indexed_doc, {id,
                            index="search",
-                           fields=[]}).
+                           fields=[],
+                           props=[]}).

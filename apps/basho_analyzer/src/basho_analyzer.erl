@@ -17,6 +17,8 @@
                 results=dict:new(),
                 connections=dict:new()}).
 
+analyze(Text) when is_list(Text) ->
+    analyze(list_to_binary(Text));
 analyze(Text) when is_binary(Text) ->
     gen_server:call(?SERVER, {analyze, Text}).
 
@@ -39,7 +41,8 @@ handle_call({analyze, Text}, From, #state{connections=Cn, port=Port}=State) ->
             inet:setopts(Sock, [{active, once}]),
             {noreply, State#state{connections=dict:store(Sock, From, Cn)}};
         Error ->
-            {reply, Error, State}
+            error_logger:error_msg("Error connecting to analysis server: ~p", [Error]),
+            {reply, error, State}
     end;
 
 handle_call(_Request, _From, State) ->
