@@ -1,5 +1,6 @@
 -module(riak_search).
 -export([client_connect/1,
+         local_client/0,
          stream/7,
          info/3,
          info_range/5]).
@@ -7,6 +8,10 @@
 
 client_connect(Node) when is_atom(Node) ->
     {ok, Client} = riak:client_connect(Node),
+    {ok, riak_search_client:new(Client)}.
+
+local_client() ->
+    {ok, Client} = riak:local_client(),
     {ok, riak_search_client:new(Client)}.
 
 stream(Index, Field, Term, SubType, StartSubTerm, EndSubTerm, FilterFun) ->
@@ -70,10 +75,10 @@ collect_info(RepliesRemaining, Ref, Acc) ->
         {info_response, List, Ref} when RepliesRemaining > 1 ->
             collect_info(RepliesRemaining - 1, Ref, List ++ Acc);
         {info_response, List, Ref} when RepliesRemaining == 1 ->
-            {ok, List ++ Acc};
-        Other ->
-            error_logger:info_msg("Unexpected response: ~p~n", [Other]),
-            collect_info(RepliesRemaining, Ref, Acc)
+            {ok, List ++ Acc}
+%%         Other ->
+%%             error_logger:info_msg("Unexpected response: ~p~n", [Other]),
+%%             collect_info(RepliesRemaining, Ref, Acc)
     after 1000 ->
         error_logger:error_msg("range_loop timed out!"),
         throw({timeout, range_loop})

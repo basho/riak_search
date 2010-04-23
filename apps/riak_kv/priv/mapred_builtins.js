@@ -73,3 +73,13 @@ var Riak = function() {
     }
   };
 }();
+
+var RiakSearch = function() {
+  return {
+    getField: function(doc, arg) {
+      doc = JSON.parse(doc);
+      ejsLog("/tmp/debug.log", doc.fields.content);
+      return [doc.fields.content];
+    }
+  };
+}();

@@ -80,7 +80,7 @@ check_query_syntax([QTerm={QTermType, QueryFun, Misc, Acc}|Rest], Accum) when is
     PhaseDef = case QTermType of
                    link ->
                        {phase_mod(link), phase_behavior(link, QueryFun, Acc), [{erlang, QTerm}]};
-                   T when T =:= map orelse T=:= reduce ->
+                   T when T =:= map orelse T=:= reduce orelse T=:= search ->
                        case QueryFun of
                            {modfun, Mod, Fun} when is_atom(Mod),
                                                    is_atom(Fun) ->
@@ -111,6 +111,8 @@ check_query_syntax([QTerm={QTermType, QueryFun, Misc, Acc}|Rest], Accum) when is
             check_query_syntax(Rest, [PhaseDef|Accum])
     end.
 
+phase_mod(search) ->
+    riak_search_phase;
 phase_mod(link) ->
     riak_kv_map_phase;
 phase_mod(map) ->
@@ -125,6 +127,10 @@ phase_behavior(link, _QueryFun, false) ->
 phase_behavior(map, _QueryFun, true) ->
     [accumulate];
 phase_behavior(map, _QueryFun, false) ->
+    [];
+phase_behavior(search, _QueryFun, true) ->
+    [accumulate];
+phase_behavior(search, _QueryFun, false) ->
     [];
 %% Turn off parallel converges for jsanon since
 %% they take too long to execute and wind up

@@ -21,7 +21,12 @@
 -record(node,             {ops, node}).
 -record(proximity,        {ops, proximity}).
 
--record(riak_indexed_doc, {id,
-                           index="search",
-                           fields=[],
-                           props=[]}).
+-record(riak_idx_doc, {id,
+                       index="search",
+                       fields=[],
+                       props=[]}).
+
+-record(riak_search_ref, {id,
+                          termcount,
+                          inputcount,
+                          querynorm}).

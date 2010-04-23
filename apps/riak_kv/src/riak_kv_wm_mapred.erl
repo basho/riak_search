@@ -81,13 +81,14 @@ process_post(RD, #state{inputs=Inputs, mrquery=Query, timeout=Timeout}=State) ->
     case wrq:get_qs_value("chunked", RD) of
         "true" ->
             {ok, ReqId} =
-                if is_list(Inputs) ->
+                case classify_input(Inputs) of
+                    mapred ->
                         {ok, {RId, FSM}} = Client:mapred_stream(Query, Me,
                                                                 Timeout),
                         luke_flow:add_inputs(FSM, Inputs),
                         luke_flow:finish_inputs(FSM),
                         {ok, RId};
-                   is_binary(Inputs) ->
+                    bucket ->
                         Client:mapred_bucket_stream(Inputs, Query, Me,
                                                     Timeout)
                 end,
@@ -97,9 +98,10 @@ process_post(RD, #state{inputs=Inputs, mrquery=Query, timeout=Timeout}=State) ->
             {true, wrq:set_resp_body({stream, stream_mapred_results(RD1, ReqId, State1)}, RD1), State1};
         Param when Param =:= "false";
                    Param =:= undefined ->
-            Results = if is_list(Inputs) ->
+            Results = case classify_input(Inputs) of
+                          mapred ->
                               Client:mapred(Inputs, Query);
-                         is_binary(Inputs) ->
+                          bucket ->
                               Client:mapred_bucket(Inputs, Query)
                       end,
             RD1 = wrq:set_resp_header("Content-Type", "application/json", RD),
@@ -112,6 +114,16 @@ process_post(RD, #state{inputs=Inputs, mrquery=Query, timeout=Timeout}=State) ->
     end.
 
 %% Internal functions
+classify_input(Inputs) when is_binary(Inputs) ->
+    case qilr_parse:string(binary_to_list(Inputs)) of
+        {ok, _} ->
+            mapred;
+        _ ->
+            bucket
+    end;
+classify_input(Inputs) when is_list(Inputs) ->
+    mapred.
+
 send_error(Error, RD)  ->
     wrq:set_resp_body(format_error(Error), RD).
 

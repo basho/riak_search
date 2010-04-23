@@ -4,11 +4,11 @@
   {vsn, "0.9"},
   {modules, [
              search,
+             riak_indexed_doc,
              riak_search,
              riak_search_app,
              riak_search_client,
              riak_search_sup,
-             riak_search_indexer,
              riak_search_preplan,
              riak_search_facets,
              riak_search_op,
@@ -21,6 +21,8 @@
              riak_search_op_exclusive_range,
              riak_search_op_proximity,
              riak_search_op_node,
+             riak_search_phase,
+             riak_search_test,
              riak_search_utils,
              merge_index_backend
             ]},

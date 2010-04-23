@@ -4,7 +4,8 @@
          combine_terms/2,
          date_to_subterm/1,
          parse_datetime/1,
-         to_binary/1]).
+         to_binary/1,
+         from_binary/1]).
 
 -include("riak_search.hrl").
 
@@ -85,7 +86,10 @@ combine_terms(Other1, Other2) ->
     throw({could_not_combine, Other1, Other2}).
 
 to_binary(L) when is_list(L) -> list_to_binary(L);
-to_binary(B) when is_binary(B) -> B.
+to_binary(B) -> B.
+
+from_binary(B) when is_binary(B) -> binary_to_list(B);
+from_binary(L) -> L.
 
 %%% Convert a date to a 64-bit SubTerm integer.
 date_to_subterm(min) ->

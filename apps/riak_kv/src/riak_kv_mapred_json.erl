@@ -69,11 +69,13 @@ parse_query([], Accum) ->
             {error, "No query phases were given\n"}
     end;
 parse_query([{struct, [{Type, {struct, StepDef}}]}|T], Accum)
-  when Type =:= <<"map">>; Type =:= <<"reduce">>; Type =:= <<"link">> ->
+  when Type =:= <<"map">>; Type =:= <<"reduce">>; Type =:= <<"link">>;
+       Type =:= <<"search">> ->
     StepType = case Type of
                    <<"map">> -> map;
                    <<"reduce">> -> reduce;
-                   <<"link">> -> link
+                   <<"link">> -> link;
+                   <<"search">> -> search
                end,
     Keep = proplists:get_value(<<"keep">>, StepDef, T==[]),
     Step = case not(Keep =:= true orelse Keep =:= false) of

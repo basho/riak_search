@@ -59,7 +59,7 @@
 %% @equiv mapred(Inputs, Query, default_timeout())
 mapred(Inputs,Query) -> mapred(Inputs,Query,?DEFAULT_TIMEOUT).
 
-%% @spec mapred(Inputs :: list(),
+%% @spec mapred(Inputs :: list() | binary()
 %%              Query :: [riak_kv_mapred_query:mapred_queryterm()],
 %%              TimeoutMillisecs :: integer()  | 'infinity') ->
 %%       {ok, riak_kv_mapred_query:mapred_result()} |
@@ -69,7 +69,7 @@ mapred(Inputs,Query) -> mapred(Inputs,Query,?DEFAULT_TIMEOUT).
 %% @doc Perform a map/reduce job across the cluster.
 %%      See the map/reduce documentation for explanation of behavior.
 mapred(Inputs,Query,Timeout)
-  when is_list(Inputs), is_list(Query),
+  when (is_list(Inputs) orelse is_binary(Inputs)), is_list(Query),
        (is_integer(Timeout) orelse Timeout =:= infinity) ->
     Me = self(),
     case mapred_stream(Query,Me,Timeout) of
