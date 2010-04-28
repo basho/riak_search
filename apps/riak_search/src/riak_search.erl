@@ -73,8 +73,10 @@ info_range(Index, Field, StartTerm, EndTerm, Size) ->
 collect_info(RepliesRemaining, Ref, Acc) ->
     receive
         {info_response, List, Ref} when RepliesRemaining > 1 ->
+            ?PRINT({info_response, List, Ref}),
             collect_info(RepliesRemaining - 1, Ref, List ++ Acc);
         {info_response, List, Ref} when RepliesRemaining == 1 ->
+            ?PRINT({info_response, List, Ref}),
             {ok, List ++ Acc}
 %%         Other ->
 %%             error_logger:info_msg("Unexpected response: ~p~n", [Other]),

@@ -148,6 +148,44 @@ handle_call({stream, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, Pid,
     spawn_link(fun() -> stream(StartIFT, EndIFT, Pid, Ref, FilterFun, Buffer, Segments) end),
     {reply, ok, State};
 
+handle_call({fold, Fun, Acc}, _From, State) ->
+    #state { indexes=Indexes, fields=Fields, terms=Terms, buffer=Buffer, segments=Segments } = State,
+    
+    %% Reverse the incdexes. Normally, they map "Value" to ID.  The
+    %% invert/1 command returns a gbtree mapping ID to "Value".
+    InvertedIndexes = mi_incdex:invert(Indexes),
+    InvertedFields = mi_incdex:invert(Fields),
+    InvertedTerms = mi_incdex:invert(Terms),
+
+    %% Create the fold function.
+    WrappedFun = fun({IFT, Value, Props, TS}, AccIn) ->
+        %% Look up the Index, Field, and Term...
+        {IndexID, FieldID, TermID, SubType, SubTerm} = mi_utils:ift_unpack(IFT),
+        {value, Index} = gb_trees:lookup(IndexID, InvertedIndexes),
+        {value, Field} = gb_trees:lookup(FieldID, InvertedFields),
+        {value, Term} = gb_trees:lookup(TermID, InvertedTerms),
+
+        %% Call the fold function...
+        Fun(Index, Field, Term, SubType, SubTerm, Value, Props, TS, AccIn)
+    end,
+
+    %% Fold over each segment...
+    F = fun(Segment, AccIn) ->
+        Begin = mi_utils:ift_pack(0, 0, 0, 0, 0),
+        End = all,
+        SegmentIterator = mi_segment:iterator(Begin, End, Segment),
+        fold(WrappedFun, AccIn, SegmentIterator())
+    end,
+    Acc1 = lists:foldl(F, Acc, Segments),
+
+    %% Fold over the buffer...
+    BufferIterator = mi_buffer:iterator(Buffer),
+    Acc2 = fold(WrappedFun, Acc1, BufferIterator()),
+    
+    %% Reply...
+    {reply, {ok, Acc2}, State};
+    
+
 handle_call(Request, _From, State) ->
     ?PRINT({unhandled_call, Request}),
     {reply, ok, State}.
@@ -230,6 +268,11 @@ normalize_subterm(StartSubTerm, EndSubTerm) ->
     end,
     {StartSubTerm1, EndSubTerm1}.
 
+
+fold(_Fun, Acc, eof) -> 
+    Acc;
+fold(Fun, Acc, {Term, IteratorFun}) ->
+    fold(Fun, Fun(Term, Acc), IteratorFun()).
 
 join(#state { root=Root }, Name) ->
     join(Root, Name);

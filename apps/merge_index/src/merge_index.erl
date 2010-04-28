@@ -25,7 +25,8 @@
     stream/7, stream/10,
     merge/1,
     info/4, info/6,
-    info_range/6, info_range/9
+    info_range/6, info_range/9,
+    fold/3
 ]).
 
 start_link(Root, Config) ->
@@ -60,3 +61,6 @@ stream(ServerPid, Index, Field, Term, Pid, Ref, FilterFun) ->
 stream(ServerPid, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, Pid, Ref, FilterFun) ->
     gen_server:call(ServerPid, 
         {stream, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, Pid, Ref, FilterFun}).
+
+fold(ServerPid, Fun, Acc) ->
+    gen_server:call(ServerPid, {fold, Fun, Acc}).

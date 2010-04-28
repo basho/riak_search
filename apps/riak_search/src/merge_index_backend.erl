@@ -120,9 +120,19 @@ is_empty(State) ->
     merge_index:is_empty(Pid).
 
 fold(State, Fun, Acc) ->
-    ?PRINT({fold, Fun, Acc}),
+    %% The supplied function expects a BKey and an Object. Wrap this
+    %% So that we can use the format that merge_index expects.
+    WrappedFun = fun(Index, Field, Term, SubType, SubTerm, Value, Props, TS, AccIn) ->
+        %% Construct the object...
+        IndexBin = riak_search_utils:to_binary(Index),
+        FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
+        Payload = {index, Index, Field, Term, SubType, SubTerm, Value, Props, TS},
+        Obj = riak_object:new(IndexBin, FieldTermBin, Payload),
+        Fun({IndexBin, FieldTermBin}, Obj, AccIn)
+    end,
     Pid = State#state.pid,
-    merge_index:fold(Pid, Fun, Acc).
+    {ok, FoldResult} = merge_index:fold(Pid, WrappedFun, Acc),
+    FoldResult.
 
 drop(State) ->
     ?PRINT(drop),
