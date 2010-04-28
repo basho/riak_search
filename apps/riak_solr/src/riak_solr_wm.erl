@@ -66,14 +66,10 @@ process_post(Req, #state{index=Index, body=Body}=State) ->
 
 %% Internal functions
 handle_command(add, Index, Commands, Req, State) ->
-    Docs = [build_idx_doc(Index, Doc) || Doc <- Commands],
-    [D|_] = Docs,
-    io:format("D: ~p~n", [D]),
     {ok, Client} = riak_search:local_client(),
-    Client:index_doc(D),
-%% [store(Client, build_idx_doc(Index, Doc)) ||
-%%  Doc <- proplists:get_value(docs, Commands)],
+    [Client:index_doc(build_idx_doc(Index, Doc)) || Doc <- Commands],
     {true, Req, State}.
+
 build_idx_doc(Index, Doc0) ->
     Id = dict:fetch("id", Doc0),
     Doc = dict:erase(Id, Doc0),
