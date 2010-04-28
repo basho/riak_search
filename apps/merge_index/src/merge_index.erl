@@ -26,7 +26,9 @@
     merge/1,
     info/4, info/6,
     info_range/6, info_range/9,
-    fold/3
+    is_empty/1,
+    fold/3,
+    drop/1
 ]).
 
 start_link(Root, Config) ->
@@ -62,5 +64,11 @@ stream(ServerPid, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, Pid, Re
     gen_server:call(ServerPid, 
         {stream, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, Pid, Ref, FilterFun}).
 
+is_empty(ServerPid) ->
+    gen_server:call(ServerPid, is_empty).
+
 fold(ServerPid, Fun, Acc) ->
     gen_server:call(ServerPid, {fold, Fun, Acc}).
+
+drop(ServerPid) ->
+    gen_server:call(ServerPid, drop).

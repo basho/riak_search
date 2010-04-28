@@ -37,7 +37,6 @@ init([Root, Config]) ->
         buffer   = mi_buffer:open(join(Root, "buffer")),
         segments = read_segments(Root),
         last_merge = now(),
-        merge_pid = undefined,
         config = Config
     },
 
@@ -57,7 +56,7 @@ read_segments(Root, N) ->
             []
     end.
 
-handle_call({index, Index, Field, Term, SubType, SubTerm, Value, Props, NowTime}, _From, State) ->
+handle_call({index, Index, Field, Term, SubType, SubTerm, Value, Props, TS}, _From, State) ->
     %% Calculate the IFT...
     #state { indexes=Indexes, fields=Fields, terms=Terms, buffer=Buffer, segments=Segments } = State,
     {IndexID, NewIndexes} = mi_incdex:lookup(Index, Indexes),
@@ -66,8 +65,7 @@ handle_call({index, Index, Field, Term, SubType, SubTerm, Value, Props, NowTime}
     IFT = mi_utils:ift_pack(IndexID, FieldID, TermID, SubType, SubTerm),
 
     %% Write to the buffer...
-    Timestamp = mi_utils:now_to_timestamp(NowTime),
-    NewBuffer = mi_buffer:write(IFT, Value, Props, Timestamp, Buffer),
+    NewBuffer = mi_buffer:write(IFT, Value, Props, TS, Buffer),
 
     %% Update the state...
     NewState = State#state {
@@ -185,6 +183,24 @@ handle_call({fold, Fun, Acc}, _From, State) ->
     %% Reply...
     {reply, {ok, Acc2}, State};
     
+handle_call(is_empty, _From, State) ->
+    #state { terms=Terms } = State,
+    IsEmpty = (mi_incdex:size(Terms) == 0),
+    {reply, IsEmpty, State};
+
+handle_call(drop, _From, State) ->
+    #state { root=Root, indexes=Indexes, fields=Fields, terms=Terms, buffer=Buffer, segments=Segments } = State,
+    
+    %% Delete files, reset state...
+    [mi_segment:delete(Segment) || Segment <- Segments],
+    NewState = State#state { 
+        indexes = mi_incdex:clear(Indexes),
+        fields = mi_incdex:clear(Fields),
+        terms = mi_incdex:clear(Terms),
+        buffer = mi_buffer:clear(Buffer),
+        segments = read_segments(Root)
+    },
+    {reply, ok, NewState};
 
 handle_call(Request, _From, State) ->
     ?PRINT({unhandled_call, Request}),

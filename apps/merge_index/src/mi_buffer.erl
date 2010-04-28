@@ -101,7 +101,7 @@ write_1(IFT, Value, Props, TS, Tree) ->
                 {value, {_, OldTS}} when OldTS < TS ->
                     NewValues = gb_trees:update(Value, {Props, TS}, Values),
                     gb_trees:update(IFT, NewValues, Tree);
-                {value, {_, OldTS}} when OldTS > TS ->
+                {value, {_, OldTS}} when OldTS >= TS ->
                     Tree;
                 none ->
                     NewValues = gb_trees:insert(Value, {Props, TS}, Values),

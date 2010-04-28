@@ -51,7 +51,8 @@ put(State, _BKey, ObjBin) ->
     handle_command(State, Command).
 
 handle_command(State, {index, Index, Field, Term, Value, Props}) ->
-    handle_command(State, {index, Index, Field, Term, 0, 0, Value, Props, erlang:now()});
+    TS = mi_utils:now_to_timestamp(erlang:now()),
+    handle_command(State, {index, Index, Field, Term, 0, 0, Value, Props, TS});
 
 handle_command(State, {index, Index, Field, Term, SubType, SubTerm, Value, Props, Timestamp}) ->
     %% Put with properties.
@@ -63,7 +64,8 @@ handle_command(State, {index, Index, Field, Term, SubType, SubTerm, Value, Props
     %% io:format("Got a put: ~p ~p ~p~n", [BucketName, Value, Props]),
     %% Put with properties.
     Pid = State#state.pid,
-    merge_index:index(Pid, Index, Field, Term, SubType, SubTerm, Value, Props, now()),
+    TS = mi_utils:now_to_timestamp(erlang:now()),
+    merge_index:index(Pid, Index, Field, Term, SubType, SubTerm, Value, Props, TS),
     ok;
 
 handle_command(State, {init_stream, OutputPid, OutputRef}) ->
@@ -115,27 +117,27 @@ get(_State, _BKey) ->
     {error, notfound}.
 
 is_empty(State) ->
-    ?PRINT(is_empty),
     Pid = State#state.pid,
     merge_index:is_empty(Pid).
 
 fold(State, Fun, Acc) ->
+    ?PRINT({fold, State, Fun, Acc}),
     %% The supplied function expects a BKey and an Object. Wrap this
     %% So that we can use the format that merge_index expects.
     WrappedFun = fun(Index, Field, Term, SubType, SubTerm, Value, Props, TS, AccIn) ->
+        ?PRINT({wrapped_fun, Index, Field}),
         %% Construct the object...
         IndexBin = riak_search_utils:to_binary(Index),
         FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
         Payload = {index, Index, Field, Term, SubType, SubTerm, Value, Props, TS},
-        Obj = riak_object:new(IndexBin, FieldTermBin, Payload),
-        Fun({IndexBin, FieldTermBin}, Obj, AccIn)
+        BObj = term_to_binary(riak_object:new(IndexBin, FieldTermBin, Payload)),
+        Fun({IndexBin, FieldTermBin}, BObj, AccIn)
     end,
     Pid = State#state.pid,
     {ok, FoldResult} = merge_index:fold(Pid, WrappedFun, Acc),
     FoldResult.
 
 drop(State) ->
-    ?PRINT(drop),
     Pid = State#state.pid,
     merge_index:drop(Pid).
 

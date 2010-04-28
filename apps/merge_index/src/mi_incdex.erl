@@ -18,6 +18,8 @@
 -author("Rusty Klophaus <rusty@basho.com>").
 -export([
     open/1,
+    clear/1,
+    size/1,
     lookup/2,
     lookup_nocreate/2,
     lookup/3,
@@ -69,6 +71,14 @@ open_inner(FH, Incdex) ->
         eof ->
             {ok, Incdex}
     end.
+
+clear(Incdex) ->
+    mi_utils:create_empty_file(Incdex#incdex.filename),
+    open(Incdex#incdex.filename).
+
+size(Incdex) ->
+    Tree = Incdex#incdex.tree,
+    gb_trees:size(Tree).
 
 %% Same as lookup(Key, Incdex, true).
 lookup(Key, Incdex) ->
@@ -147,7 +157,7 @@ invert_1(Tree, {Key, Value, Iterator}) ->
     invert_1(gb_trees:insert(Value, Key, Tree), gb_trees:next(Iterator)).
     
 
-typesafe_size(Term) when is_binary(Term) -> size(Term);
+typesafe_size(Term) when is_binary(Term) -> erlang:size(Term);
 typesafe_size(Term) when is_list(Term) -> length(Term).
 
 test() ->
