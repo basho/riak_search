@@ -1,8 +1,8 @@
--module(riak_solr_schema, [Name, Version, Fields]).
+-module(riak_solr_schema, [Name, Version, DefaultField, Fields]).
 
 -include_lib("riak_solr/include/riak_solr.hrl").
 
--export([name/0, version/0, fields/0, find_field/1]).
+-export([name/0, version/0, fields/0, default_field/0, find_field/1]).
 -export([validate_commands/1]).
 
 name() ->
@@ -12,7 +12,10 @@ version() ->
     Version.
 
 fields() ->
-    Fields().
+    Fields.
+
+default_field() ->
+    DefaultField.
 
 find_field(FName) ->
     case [F || F <- Fields,

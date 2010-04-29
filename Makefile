@@ -23,6 +23,7 @@ test:
 ## Release targets
 ##
 rel:
+	make -C apps/basho_analyzer/java_src
 	./rebar compile generate
 
 relclean:
