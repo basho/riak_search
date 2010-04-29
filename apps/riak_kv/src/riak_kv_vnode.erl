@@ -78,10 +78,8 @@ hometest(StateData0=#state{idx=Idx,handoff_q=HQ}) ->
 do_handoff(TargetNode, StateData=#state{idx=Idx, mod=Mod, modstate=ModState}) ->
     case Mod:is_empty(ModState) of
         true ->
-            ?PRINT({is_empty, Idx}),
             delete_and_exit(StateData);
         false ->
-            ?PRINT({is_not_empty, Idx}),
             {HQ,TO,HT} = case riak_kv_handoff_sender:start_link(TargetNode, Idx, all) of
                 {ok, _Pid, HandoffToken} -> {[], ?TIMEOUT, HandoffToken};
                 {error, locked} -> {not_in_handoff, ?LOCK_RETRY_TIMEOUT, undefined}

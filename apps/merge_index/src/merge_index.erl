@@ -23,7 +23,6 @@
     start_link/2,
     index/7, index/9,
     stream/7, stream/10,
-    merge/1,
     info/4, info/6,
     info_range/6, info_range/9,
     is_empty/1,
@@ -34,41 +33,38 @@
 start_link(Root, Config) ->
     gen_server:start_link(mi_server, [Root, Config], [{timeout, infinity}]).
 
-merge(ServerPid) ->
-    gen_server:call(ServerPid, merge).
-
 index(ServerPid, Index, Field, Term, Value, Props, Timestamp) ->
     index(ServerPid, Index, Field, Term, 0, 0, Value, Props, Timestamp).
     
 index(ServerPid, Index, Field, Term, SubType, SubTerm, Value, Props, Timestamp) ->
     gen_server:call(ServerPid, 
-        {index, Index, Field, Term, SubType, SubTerm, Value, Props, Timestamp}).
+        {index, Index, Field, Term, SubType, SubTerm, Value, Props, Timestamp}, infinity).
 
 info(ServerPid, Index, Field, Term) ->
     info(ServerPid, Index, Field, Term, 0, 0).
 
 info(ServerPid, Index, Field, Term, SubType, SubTerm) ->
-    gen_server:call(ServerPid, {info, Index, Field, Term, SubType, SubTerm}).
+    gen_server:call(ServerPid, {info, Index, Field, Term, SubType, SubTerm}, infinity).
 
 info_range(ServerPid, Index, Field, StartTerm, EndTerm, Size) ->
     info_range(ServerPid, Index, Field, StartTerm, EndTerm, Size, 0, all, all).
 
 info_range(ServerPid, Index, Field, StartTerm, EndTerm, Size, SubType, StartSubTerm, EndSubTerm) ->
     gen_server:call(ServerPid,
-        {info_range, Index, Field, StartTerm, EndTerm, Size, SubType, StartSubTerm, EndSubTerm}).
+        {info_range, Index, Field, StartTerm, EndTerm, Size, SubType, StartSubTerm, EndSubTerm}, infinity).
 
 stream(ServerPid, Index, Field, Term, Pid, Ref, FilterFun) ->
     stream(ServerPid, Index, Field, Term, 0, 0, 0, Pid, Ref, FilterFun).
 
 stream(ServerPid, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, Pid, Ref, FilterFun) ->
     gen_server:call(ServerPid, 
-        {stream, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, Pid, Ref, FilterFun}).
+        {stream, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, Pid, Ref, FilterFun}, infinity).
 
 is_empty(ServerPid) ->
-    gen_server:call(ServerPid, is_empty).
+    gen_server:call(ServerPid, is_empty, infinity).
 
 fold(ServerPid, Fun, Acc) ->
-    gen_server:call(ServerPid, {fold, Fun, Acc}).
+    gen_server:call(ServerPid, {fold, Fun, Acc}, infinity).
 
 drop(ServerPid) ->
-    gen_server:call(ServerPid, drop).
+    gen_server:call(ServerPid, drop, infinity).

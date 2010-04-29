@@ -18,8 +18,9 @@
 -include("merge_index.hrl").
 -export([
     open/1,
+    filename/1,
     close/1,
-    clear/1,
+    delete/1,
     size/1,
     write/5,
     info/2, info/3,
@@ -63,15 +64,16 @@ open_inner(FH, Tree) ->
             Tree
     end.
 
-clear(Buffer) ->
+filename(Buffer) ->
+    Buffer#buffer.filename.
+
+delete(Buffer) ->
     close(Buffer),
-    mi_utils:create_empty_file(Buffer#buffer.filename),
-    open(Buffer#buffer.filename).
-    
+    file:delete(Buffer#buffer.filename),
+    ok.
 
 close(Buffer) ->
-    file:close(Buffer#buffer.handle),
-    ok.
+    file:close(Buffer#buffer.handle).
 
 %% Return the current size of the buffer file.
 size(Buffer) ->

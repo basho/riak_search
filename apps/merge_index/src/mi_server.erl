@@ -28,37 +28,85 @@
 ]).
 
 init([Root, Config]) ->
+    filelib:ensure_dir(join(Root, "ignore")),
+    {Buffers, Segments} = read_buf_and_seg(Root),
+
     %% Create the state...
     State = #state {
         root = Root,
         indexes  = mi_incdex:open(join(Root, "indexes")),
         fields   = mi_incdex:open(join(Root, "fields")),
         terms    = mi_incdex:open(join(Root, "terms")),
-        buffer   = mi_buffer:open(join(Root, "buffer")),
-        segments = read_segments(Root),
-        last_merge = now(),
+        buffers  = Buffers,
+        segments = Segments,
         config = Config
     },
 
     %% Return.
     {ok, State}.
 
-%% Return a list of segments. We will merge new data into the first
-%% segment in the list.
-read_segments(Root) ->
-    lists:reverse(read_segments(Root, 1)).
-read_segments(Root, N) ->
-    SegmentFile = join(Root, "segment." ++ integer_to_list(N)),
-    case mi_segment:exists(SegmentFile) of
-        true ->
-            [mi_segment:open(SegmentFile)|read_segments(Root, N + 1)];
-        false ->
-            []
-    end.
+%% Return {Buffers, Segments}, after cleaning up/repairing any partially merged buffers.
+read_buf_and_seg(Root) ->
+    %% Create a list of wildcards and segments in ascending order...
+    F1 = fun(Filename) -> 
+        [_, Num] = string:tokens(Filename, "."),
+        {list_to_integer(Num), Filename}
+    end,
+    BFiles = lists:sort([F1(X) || X <- filelib:wildcard(join(Root, "buffer.*"))]),
+    ?PRINT(BFiles),
+    F2 = fun(Filename) ->
+        F1(filename:rootname(Filename))
+    end,
+    SFiles = lists:sort([F2(X) || X <- filelib:wildcard(join(Root, "segment.*.data"))]),
+    ?PRINT(SFiles),
+    read_buf_and_seg_1(Root, BFiles, SFiles, [], []).
+
+read_buf_and_seg_1(Root, [], [], Buffers, Segments) ->
+    BNum = length(Buffers) + length(Segments) + 1,
+    BName = join(Root, "buffer." ++ integer_to_list(BNum)),
+    Buffer = mi_buffer:open(BName),
+    {[Buffer|Buffers], Segments};
+read_buf_and_seg_1(_Root, [BFile], [], Buffers, Segments) ->
+    %% Reached the last buffer file, open it...
+    {_BNum, BName} = BFile,
+    Buffer = mi_buffer:open(BName),
+    {[Buffer|Buffers], Segments};
+read_buf_and_seg_1(Root, [BFile|BFiles], [], Buffers, Segments) ->
+    %% Convert buffer files to segment files...
+    {BNum, BName} = BFile,
+    SName = join(Root, "segment." ++ integer_to_list(BNum)),
+    Buffer = mi_buffer:open(BName),
+    mi_buffer:close(Buffer),
+    Segment = mi_segment:from_buffer(SName, Buffer),
+    mi_buffer:delete(Buffer),
+    read_buf_and_seg_1(Root, BFiles, [], Buffers, [Segment|Segments]);
+read_buf_and_seg_1(Root, [BFile|BFiles], [SFile|SFiles], Buffers, Segments) ->
+    {BNum, BName} = BFile,
+    {SNum, SName} = SFile,
+    if 
+        BNum < SNum ->
+            %% Should not have this case...
+            throw({missing_segment_file, element(2, SFile)});
+        BNum == SNum ->
+            ?PRINT({converting, BName, to, SName}),
+            %% Remove and recreate segment...
+            file:delete(SName),
+            Buffer = mi_buffer:open(BName),
+            mi_buffer:close(Buffer),
+            Segment = mi_segment:from_buffer(SName, Buffer),
+            mi_buffer:delete(Buffer),
+            read_buf_and_seg_1(Root, BFiles, SFiles, Buffers, [Segment|Segments]);
+        BNum > SNum ->
+            %% Open the segment and loop...
+            Segment = mi_segment:open(SName),
+            read_buf_and_seg_1(Root, [BFile|BFiles], SFiles, Buffers, [Segment|Segments])
+    end;
+read_buf_and_seg_1(_Root, [], SFiles, _Buffers, _Segments) ->
+    throw({too_many_segment_files, SFiles}).
 
 handle_call({index, Index, Field, Term, SubType, SubTerm, Value, Props, TS}, _From, State) ->
     %% Calculate the IFT...
-    #state { indexes=Indexes, fields=Fields, terms=Terms, buffer=Buffer, segments=Segments } = State,
+    #state { root=Root, indexes=Indexes, fields=Fields, terms=Terms, buffers=[Buffer|Buffers], segments=Segments } = State,
     {IndexID, NewIndexes} = mi_incdex:lookup(Index, Indexes),
     {FieldID, NewFields} = mi_incdex:lookup(Field, Fields),
     {TermID, NewTerms} = mi_incdex:lookup(Term, Terms),
@@ -72,51 +120,65 @@ handle_call({index, Index, Field, Term, SubType, SubTerm, Value, Props, TS}, _Fr
         indexes=NewIndexes,
         fields=NewFields,
         terms=NewTerms,
-        buffer = NewBuffer
+        buffers=[NewBuffer|Buffers]
     },
 
     %% Possibly dump buffer to a new segment...
     case mi_buffer:size(NewBuffer) > ?ROLLOVERSIZE(State) of
         true ->
-            %% Get the new segment name...
-            SegNum  = length(Segments) + 1,
-            SegFile = join(NewState, "segment." ++ integer_to_list(SegNum)),
-
-            %% Create the new segment...
+            %% Start processing the latest buffer.
+            Pid = self(),
             mi_buffer:close(NewBuffer),
-            NewSegment = mi_segment:from_buffer(SegFile, NewBuffer),
-            NewSegments = [NewSegment|Segments],
-
-            %% Clear the buffer...
-            NewBuffer1 = mi_buffer:clear(NewBuffer),
-
-            %% Update the state...
-            NewState1 = NewState#state { buffer=NewBuffer1, segments=NewSegments},
+            spawn_link(fun() ->
+                Segment = buffer_to_segment(Root, NewBuffer),
+                gen_server:call(Pid, {buffer_to_segment, NewBuffer, Segment})
+            end),
+            
+            %% Create a new empty buffer...
+            BNum = length(Buffers) + length(Segments) + 1,
+            BName = join(NewState, "buffer." ++ integer_to_list(BNum)),
+            EmptyBuffer = mi_buffer:open(BName),
+            
+            NewState1 = NewState#state {
+                buffers=[EmptyBuffer|NewState#state.buffers]
+            },
             {reply, ok, NewState1};
         false ->
             {reply, ok, NewState}
     end;
 
+handle_call({buffer_to_segment, Buffer, Segment}, _From, State) ->
+    #state { buffers=Buffers, segments=Segments } = State,
+
+    %% Delete the buffer...
+    mi_buffer:delete(Buffer),
+    
+    %% Update state and return...
+    NewState = State#state {
+        buffers=Buffers -- [Buffer],
+        segments=[Segment|Segments]
+    },
+    {reply, ok, NewState};
+
 handle_call({info, Index, Field, Term, SubType, SubTerm}, _From, State) ->
     %% Calculate the IFT...
-    #state { indexes=Indexes, fields=Fields, terms=Terms, buffer=Buffer, segments=Segments } = State,
+    #state { indexes=Indexes, fields=Fields, terms=Terms, buffers=Buffers, segments=Segments } = State,
     IndexID = mi_incdex:lookup_nocreate(Index, Indexes),
     FieldID = mi_incdex:lookup_nocreate(Field, Fields),
     TermID = mi_incdex:lookup_nocreate(Term, Terms),
     IFT = mi_utils:ift_pack(IndexID, FieldID, TermID, SubType, SubTerm),
 
-    %% Look up the offset information...
-    F = fun(X, Acc) ->
-         mi_segment:info(IFT, X) + Acc
-    end,
-    SegmentCount = lists:foldl(F, 0, Segments),
-    BufferCount = mi_buffer:info(IFT, Buffer),
-    Counts = [{Term, SegmentCount + BufferCount}],
+    %% Look up the counts in buffers and segments...
+    BufferCount = lists:sum([mi_buffer:info(IFT, X) || X <- Buffers]),
+    SegmentCount = lists:sum([mi_segment:info(IFT, X) || X <- Segments]),
+    Counts = [{Term, BufferCount + SegmentCount}],
+
+    %% Return...
     {reply, {ok, Counts}, State};
 
 handle_call({info_range, Index, Field, StartTerm, EndTerm, Size, SubType, StartSubTerm, EndSubTerm}, _From, State) ->
     %% Get the IDs...
-    #state { indexes=Indexes, fields=Fields, terms=Terms, buffer=Buffer, segments=Segments } = State,
+    #state { indexes=Indexes, fields=Fields, terms=Terms, buffers=Buffers, segments=Segments } = State,
     IndexID = mi_incdex:lookup_nocreate(Index, Indexes),
     FieldID = mi_incdex:lookup_nocreate(Field, Fields),
     TermIDs = mi_incdex:select(StartTerm, EndTerm, Size, Terms),
@@ -125,16 +187,16 @@ handle_call({info_range, Index, Field, StartTerm, EndTerm, Size, SubType, StartS
     F = fun({Term, TermID}) ->
         StartIFT = mi_utils:ift_pack(IndexID, FieldID, TermID, SubType, StartSubTerm1),
         EndIFT = mi_utils:ift_pack(IndexID, FieldID, TermID, SubType, EndSubTerm1),
+        BufferCount = lists:sum([mi_buffer:info(StartIFT, EndIFT, X) || X <- Buffers]),
         SegmentCount = lists:sum([mi_segment:info(StartIFT, EndIFT, X) || X <- Segments]),
-        BufferCount = mi_buffer:info(StartIFT, EndIFT, Buffer),
-        {Term, SegmentCount + BufferCount}
+        {Term, BufferCount + SegmentCount}
     end,
     Counts = [F(X) || X <- TermIDs],
     {reply, {ok, Counts}, State};
 
 handle_call({stream, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, Pid, Ref, FilterFun}, _From, State) ->
     %% Get the IDs...
-    #state { indexes=Indexes, fields=Fields, terms=Terms, buffer=Buffer, segments=Segments } = State,
+    #state { indexes=Indexes, fields=Fields, terms=Terms, buffers=Buffers, segments=Segments } = State,
     IndexID = mi_incdex:lookup_nocreate(Index, Indexes),
     FieldID = mi_incdex:lookup_nocreate(Field, Fields),
     TermID = mi_incdex:lookup_nocreate(Term, Terms),
@@ -143,11 +205,11 @@ handle_call({stream, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, Pid,
     EndIFT = mi_utils:ift_pack(IndexID, FieldID, TermID, SubType, EndSubTerm1),
 
     %% Get an iterator for each segment...
-    spawn_link(fun() -> stream(StartIFT, EndIFT, Pid, Ref, FilterFun, Buffer, Segments) end),
+    spawn_link(fun() -> stream(StartIFT, EndIFT, Pid, Ref, FilterFun, Buffers, Segments) end),
     {reply, ok, State};
 
 handle_call({fold, Fun, Acc}, _From, State) ->
-    #state { indexes=Indexes, fields=Fields, terms=Terms, buffer=Buffer, segments=Segments } = State,
+    #state { indexes=Indexes, fields=Fields, terms=Terms, buffers=Buffers, segments=Segments } = State,
     
     %% Reverse the incdexes. Normally, they map "Value" to ID.  The
     %% invert/1 command returns a gbtree mapping ID to "Value".
@@ -167,19 +229,24 @@ handle_call({fold, Fun, Acc}, _From, State) ->
         Fun(Index, Field, Term, SubType, SubTerm, Value, Props, TS, AccIn)
     end,
 
+    %% Fold over each buffer...
+    F1 = fun(Buffer, AccIn) ->
+        Begin = mi_utils:ift_pack(0, 0, 0, 0, 0),
+        End = all,
+        BufferIterator = mi_buffer:iterator(Begin, End, Buffer),
+        fold(WrappedFun, AccIn, BufferIterator())
+    end,
+    Acc1 = lists:foldl(F1, Acc, Buffers),
+
     %% Fold over each segment...
-    F = fun(Segment, AccIn) ->
+    F2 = fun(Segment, AccIn) ->
         Begin = mi_utils:ift_pack(0, 0, 0, 0, 0),
         End = all,
         SegmentIterator = mi_segment:iterator(Begin, End, Segment),
         fold(WrappedFun, AccIn, SegmentIterator())
     end,
-    Acc1 = lists:foldl(F, Acc, Segments),
+    Acc2 = lists:foldl(F2, Acc1, Segments),
 
-    %% Fold over the buffer...
-    BufferIterator = mi_buffer:iterator(Buffer),
-    Acc2 = fold(WrappedFun, Acc1, BufferIterator()),
-    
     %% Reply...
     {reply, {ok, Acc2}, State};
     
@@ -189,16 +256,18 @@ handle_call(is_empty, _From, State) ->
     {reply, IsEmpty, State};
 
 handle_call(drop, _From, State) ->
-    #state { root=Root, indexes=Indexes, fields=Fields, terms=Terms, buffer=Buffer, segments=Segments } = State,
+    #state { indexes=Indexes, fields=Fields, terms=Terms, buffers=Buffers, segments=Segments } = State,
     
     %% Delete files, reset state...
-    [mi_segment:delete(Segment) || Segment <- Segments],
+    [mi_buffer:delete(X) || X <- Buffers],
+    [mi_segment:delete(X) || X <- Segments],
+    BufferFile = join(State, "buffer.1"),
     NewState = State#state { 
         indexes = mi_incdex:clear(Indexes),
         fields = mi_incdex:clear(Fields),
         terms = mi_incdex:clear(Terms),
-        buffer = mi_buffer:clear(Buffer),
-        segments = read_segments(Root)
+        buffers = [mi_buffer:open(BufferFile)],
+        segments = []
     },
     {reply, ok, NewState};
 
@@ -220,11 +289,11 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% Merge-sort the results from Iterators, and stream to the pid.
-stream(StartIFT, EndIFT, Pid, Ref, FilterFun, Buffer, Segments) ->
+stream(StartIFT, EndIFT, Pid, Ref, FilterFun, Buffers, Segments) ->
     %% Put together the group iterator...
-    BufferIterator = mi_buffer:iterator(StartIFT, EndIFT, Buffer),
+    BufferIterators = [mi_buffer:iterator(StartIFT, EndIFT, X) || X <- Buffers],
     SegmentIterators = [mi_segment:iterator(StartIFT, EndIFT, X) || X <- Segments],
-    GroupIterator = build_group_iterator([BufferIterator|SegmentIterators]),
+    GroupIterator = build_group_iterator(BufferIterators ++ SegmentIterators),
 
     %% Start streaming...
     stream_inner(Pid, Ref, undefined, undefined, FilterFun, GroupIterator()),
@@ -289,6 +358,15 @@ fold(_Fun, Acc, eof) ->
     Acc;
 fold(Fun, Acc, {Term, IteratorFun}) ->
     fold(Fun, Fun(Term, Acc), IteratorFun()).
+
+buffer_to_segment(Root, Buffer) ->
+    %% Get the new segment name...
+    SegNum  = tl(filename:extension(mi_buffer:filename(Buffer))),
+    SegFile = join(Root, "segment." ++ SegNum),
+    
+    %% Create and return the new segment.
+    mi_segment:from_buffer(SegFile, Buffer).
+
 
 join(#state { root=Root }, Name) ->
     join(Root, Name);
