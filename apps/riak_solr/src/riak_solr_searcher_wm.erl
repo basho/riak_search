@@ -1,11 +1,11 @@
--module(riak_solr_wm).
+-module(riak_solr_searcher_wm).
 
 -include_lib("riak_search/include/riak_search.hrl").
 
 -export([init/1, allowed_methods/2, malformed_request/2]).
--export([content_types_provided/2, process_post/2, to_json/2]).
+-export([content_types_provided/2, to_json/2]).
 
--record(state, {method, body, schema, sq}).
+-record(state, {schema, sq}).
 -record(squery, {q, df, wt, start, rows}).
 
 -include_lib("webmachine/include/webmachine.hrl").
@@ -14,12 +14,10 @@
 -define(DEFAULT_FIELD, "default").
 
 init(_) ->
-    {{trace, "/tmp"}, #state{}}.
-    %{ok, #state{}}.
+    {ok, #state{}}.
 
 allowed_methods(Req, State) ->
-    io:format("Method: ~p~n", [wrq:method(Req)]),
-    {['GET', 'POST'], Req, State#state{method=wrq:method(Req)}}.
+    {['GET'], Req, State}.
 
 malformed_request(Req, State) ->
     case get_schema(Req) of
@@ -28,23 +26,11 @@ malformed_request(Req, State) ->
         SchemaName ->
             case riak_solr_config:get_schema(SchemaName) of
                 {ok, Schema} ->
-                    case wrq:method(Req) of
-                        'POST' ->
-                            case wrq:req_body(Req) of
-                                undefined ->
-                                    {true, Req, State};
-                                Body ->
-                                    io:format("malformed_request: ~p~n", [Schema]),
-                                    {false, Req, State#state{body=Body,
-                                                             schema=Schema}}
-                            end;
-                        'GET' ->
-                            case parse_query(Req) of
-                                {ok, SQuery} ->
-                                    {false, Req, State#state{schema=Schema, sq=SQuery}};
-                                _Error ->
-                                    {true, Req, State}
-                            end
+                    case parse_query(Req) of
+                        {ok, SQuery} ->
+                            {false, Req, State#state{schema=Schema, sq=SQuery}};
+                        _Error ->
+                            {true, Req, State}
                     end
             end
     end.
@@ -52,30 +38,14 @@ malformed_request(Req, State) ->
 content_types_provided(Req, State) ->
     {[{"application/json", to_json}], Req, State}.
 
-process_post(Req, #state{schema=Schema, body=Body}=State) ->
-    io:format("Schema: ~p~n", [Schema]),
-    case catch riak_solr_xml_xform:xform(Schema:name(), Body) of
-        {'EXIT', Error} ->
-            io:format("Unabled to parse XML: ~p~n", [Error]),
-            {false, Req, State};
-        Commands0 ->
-            case Schema:validate_commands(Commands0) of
-                {ok, Commands} ->
-                    Cmd = proplists:get_value(cmd, Commands0),
-                    handle_command(Cmd, Schema, Commands, Req, State);
-                _Error ->
-                    io:format("Error validating commands~n"),
-                    {false, Req, State}
-            end
-    end.
-
 to_json(Req, #state{schema=Schema, sq=SQuery}=State) ->
     #squery{q=QText, rows=Rows, start=Start}=SQuery,
     DefaultField = get_default_field(SQuery, Schema),
     {ok, Client} = riak_search:local_client(),
-    Start = erlang:now(),
+    StartTime = erlang:now(),
+    io:format("Index: ~p, Default: ~p, Query: ~p~n", [Schema:name(), DefaultField, QText]),
     Docs = Client:doc_search(Schema:name(), DefaultField, QText),
-    ElapsedTime = erlang:trunc(timer:now_diff(erlang:now(), Start) / 1000),
+    ElapsedTime = erlang:trunc(timer:now_diff(erlang:now(), StartTime) / 1000),
     {build_json_response(ElapsedTime, QText, Start, Rows, Docs), Req, State}.
 
 %% Internal functions
@@ -83,13 +53,13 @@ build_json_response(ElapsedTime, QText, _Start, _Rows, []) ->
     Response = [{<<"responseHeader">>,
                  {struct, [{<<"status">>, 0},
                            {<<"QTime">>, ElapsedTime},
-                           {<<"q">>, QText},
+                           {<<"q">>, list_to_binary(QText)},
                            {<<"wt">>, <<"json">>}]}},
                  {<<"response">>,
                   {struct, [{<<"numFound">>, 0}]}}],
     mochijson2:encode({struct, Response});
 build_json_response(ElapsedTime, QText, Start, Rows, Docs0) ->
-    Docs = truncate_results(Start, Rows, Docs0),
+    Docs = truncate_results(Start + 1, Rows, Docs0),
     Response = [{<<"responseHeader">>,
                  {struct, [{<<"status">>, 0},
                            {<<"QTime">>, ElapsedTime},
@@ -106,21 +76,13 @@ truncate_results(Start, _Rows, Docs) when Start > length(Docs) ->
 truncate_results(Start, Rows, Docs) ->
     lists:sublist(Docs, Start, Rows).
 
-get_default_field(#squery{df=undefined}, Schema) ->
-    Schema:default_field();
+get_default_field(#squery{df=""}, Schema) ->
+    R = Schema:default_field(),
+    R;
 get_default_field(#squery{df=DefaultField}, _Schema) ->
-    DefaultField.
+    R = DefaultField,
+    R.
 
-handle_command(add, Schema, Commands, Req, State) ->
-    {ok, Client} = riak_search:local_client(),
-    [Client:index_doc(build_idx_doc(Schema:name(), Doc)) || Doc <- Commands],
-    {true, Req, State}.
-
-build_idx_doc(Index, Doc0) ->
-    Id = dict:fetch("id", Doc0),
-    Doc = dict:erase(Id, Doc0),
-    #riak_idx_doc{id=Id, index=Index,
-                  fields=dict:to_list(Doc), props=[]}.
 get_schema(Req) ->
     case wrq:path_info(index, Req) of
         undefined ->

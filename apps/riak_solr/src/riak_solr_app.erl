@@ -9,11 +9,9 @@ start(_StartType, _StartArgs) ->
     case riak_solr_sup:start_link() of
         {ok, _}=Result ->
             webmachine_router:add_route({["solr", index, "select"],
-                                         riak_solr_wm, []}),
-            webmachine_router:add_route({["solr", "select"],
-                                         riak_solr_wm, []}),
+                                         riak_solr_searcher_wm, []}),
             webmachine_router:add_route({["solr", index],
-                                         riak_solr_wm, []}),
+                                         riak_solr_indexer_wm, []}),
             Result;
         Error ->
             Error
