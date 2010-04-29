@@ -23,6 +23,15 @@ public class AnalysisHandler extends SimpleChannelUpstreamHandler {
 
    public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) {
       AnalysisRequest request = (AnalysisRequest) e.getMessage();
+      if (request.getText().equals("__basho_analyzer_monitor_stop__")) {
+         System.exit(0);
+      }
+      else {
+         doAnalyze(request, e);
+      }
+   }
+   
+   private void doAnalyze(AnalysisRequest request, MessageEvent e) {
       String text = request.getText();
       Channel chan = e.getChannel();
       try {
@@ -39,6 +48,6 @@ public class AnalysisHandler extends SimpleChannelUpstreamHandler {
          AnalysisError.Builder builder = AnalysisError.newBuilder();
          builder.setDescription(ex.getMessage());
          chan.write(builder.build());
-      }
+      }      
    }
 }

@@ -296,6 +296,290 @@ public final class Analysis {
     // @@protoc_insertion_point(class_scope:basho.search.analysis.AnalysisRequest)
   }
   
+  public static final class AnalysisStop extends
+      com.google.protobuf.GeneratedMessage {
+    // Use AnalysisStop.newBuilder() to construct.
+    private AnalysisStop() {
+      initFields();
+    }
+    private AnalysisStop(boolean noInit) {}
+    
+    private static final AnalysisStop defaultInstance;
+    public static AnalysisStop getDefaultInstance() {
+      return defaultInstance;
+    }
+    
+    public AnalysisStop getDefaultInstanceForType() {
+      return defaultInstance;
+    }
+    
+    public static final com.google.protobuf.Descriptors.Descriptor
+        getDescriptor() {
+      return com.basho.search.proto.Analysis.internal_static_basho_search_analysis_AnalysisStop_descriptor;
+    }
+    
+    protected com.google.protobuf.GeneratedMessage.FieldAccessorTable
+        internalGetFieldAccessorTable() {
+      return com.basho.search.proto.Analysis.internal_static_basho_search_analysis_AnalysisStop_fieldAccessorTable;
+    }
+    
+    // optional int32 wait = 1;
+    public static final int WAIT_FIELD_NUMBER = 1;
+    private boolean hasWait;
+    private int wait_ = 0;
+    public boolean hasWait() { return hasWait; }
+    public int getWait() { return wait_; }
+    
+    private void initFields() {
+    }
+    public final boolean isInitialized() {
+      return true;
+    }
+    
+    public void writeTo(com.google.protobuf.CodedOutputStream output)
+                        throws java.io.IOException {
+      getSerializedSize();
+      if (hasWait()) {
+        output.writeInt32(1, getWait());
+      }
+      getUnknownFields().writeTo(output);
+    }
+    
+    private int memoizedSerializedSize = -1;
+    public int getSerializedSize() {
+      int size = memoizedSerializedSize;
+      if (size != -1) return size;
+    
+      size = 0;
+      if (hasWait()) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeInt32Size(1, getWait());
+      }
+      size += getUnknownFields().getSerializedSize();
+      memoizedSerializedSize = size;
+      return size;
+    }
+    
+    public static com.basho.search.proto.Analysis.AnalysisStop parseFrom(
+        com.google.protobuf.ByteString data)
+        throws com.google.protobuf.InvalidProtocolBufferException {
+      return newBuilder().mergeFrom(data).buildParsed();
+    }
+    public static com.basho.search.proto.Analysis.AnalysisStop parseFrom(
+        com.google.protobuf.ByteString data,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws com.google.protobuf.InvalidProtocolBufferException {
+      return newBuilder().mergeFrom(data, extensionRegistry)
+               .buildParsed();
+    }
+    public static com.basho.search.proto.Analysis.AnalysisStop parseFrom(byte[] data)
+        throws com.google.protobuf.InvalidProtocolBufferException {
+      return newBuilder().mergeFrom(data).buildParsed();
+    }
+    public static com.basho.search.proto.Analysis.AnalysisStop parseFrom(
+        byte[] data,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws com.google.protobuf.InvalidProtocolBufferException {
+      return newBuilder().mergeFrom(data, extensionRegistry)
+               .buildParsed();
+    }
+    public static com.basho.search.proto.Analysis.AnalysisStop parseFrom(java.io.InputStream input)
+        throws java.io.IOException {
+      return newBuilder().mergeFrom(input).buildParsed();
+    }
+    public static com.basho.search.proto.Analysis.AnalysisStop parseFrom(
+        java.io.InputStream input,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws java.io.IOException {
+      return newBuilder().mergeFrom(input, extensionRegistry)
+               .buildParsed();
+    }
+    public static com.basho.search.proto.Analysis.AnalysisStop parseDelimitedFrom(java.io.InputStream input)
+        throws java.io.IOException {
+      Builder builder = newBuilder();
+      if (builder.mergeDelimitedFrom(input)) {
+        return builder.buildParsed();
+      } else {
+        return null;
+      }
+    }
+    public static com.basho.search.proto.Analysis.AnalysisStop parseDelimitedFrom(
+        java.io.InputStream input,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws java.io.IOException {
+      Builder builder = newBuilder();
+      if (builder.mergeDelimitedFrom(input, extensionRegistry)) {
+        return builder.buildParsed();
+      } else {
+        return null;
+      }
+    }
+    public static com.basho.search.proto.Analysis.AnalysisStop parseFrom(
+        com.google.protobuf.CodedInputStream input)
+        throws java.io.IOException {
+      return newBuilder().mergeFrom(input).buildParsed();
+    }
+    public static com.basho.search.proto.Analysis.AnalysisStop parseFrom(
+        com.google.protobuf.CodedInputStream input,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws java.io.IOException {
+      return newBuilder().mergeFrom(input, extensionRegistry)
+               .buildParsed();
+    }
+    
+    public static Builder newBuilder() { return Builder.create(); }
+    public Builder newBuilderForType() { return newBuilder(); }
+    public static Builder newBuilder(com.basho.search.proto.Analysis.AnalysisStop prototype) {
+      return newBuilder().mergeFrom(prototype);
+    }
+    public Builder toBuilder() { return newBuilder(this); }
+    
+    public static final class Builder extends
+        com.google.protobuf.GeneratedMessage.Builder<Builder> {
+      private com.basho.search.proto.Analysis.AnalysisStop result;
+      
+      // Construct using com.basho.search.proto.Analysis.AnalysisStop.newBuilder()
+      private Builder() {}
+      
+      private static Builder create() {
+        Builder builder = new Builder();
+        builder.result = new com.basho.search.proto.Analysis.AnalysisStop();
+        return builder;
+      }
+      
+      protected com.basho.search.proto.Analysis.AnalysisStop internalGetResult() {
+        return result;
+      }
+      
+      public Builder clear() {
+        if (result == null) {
+          throw new IllegalStateException(
+            "Cannot call clear() after build().");
+        }
+        result = new com.basho.search.proto.Analysis.AnalysisStop();
+        return this;
+      }
+      
+      public Builder clone() {
+        return create().mergeFrom(result);
+      }
+      
+      public com.google.protobuf.Descriptors.Descriptor
+          getDescriptorForType() {
+        return com.basho.search.proto.Analysis.AnalysisStop.getDescriptor();
+      }
+      
+      public com.basho.search.proto.Analysis.AnalysisStop getDefaultInstanceForType() {
+        return com.basho.search.proto.Analysis.AnalysisStop.getDefaultInstance();
+      }
+      
+      public boolean isInitialized() {
+        return result.isInitialized();
+      }
+      public com.basho.search.proto.Analysis.AnalysisStop build() {
+        if (result != null && !isInitialized()) {
+          throw newUninitializedMessageException(result);
+        }
+        return buildPartial();
+      }
+      
+      private com.basho.search.proto.Analysis.AnalysisStop buildParsed()
+          throws com.google.protobuf.InvalidProtocolBufferException {
+        if (!isInitialized()) {
+          throw newUninitializedMessageException(
+            result).asInvalidProtocolBufferException();
+        }
+        return buildPartial();
+      }
+      
+      public com.basho.search.proto.Analysis.AnalysisStop buildPartial() {
+        if (result == null) {
+          throw new IllegalStateException(
+            "build() has already been called on this Builder.");
+        }
+        com.basho.search.proto.Analysis.AnalysisStop returnMe = result;
+        result = null;
+        return returnMe;
+      }
+      
+      public Builder mergeFrom(com.google.protobuf.Message other) {
+        if (other instanceof com.basho.search.proto.Analysis.AnalysisStop) {
+          return mergeFrom((com.basho.search.proto.Analysis.AnalysisStop)other);
+        } else {
+          super.mergeFrom(other);
+          return this;
+        }
+      }
+      
+      public Builder mergeFrom(com.basho.search.proto.Analysis.AnalysisStop other) {
+        if (other == com.basho.search.proto.Analysis.AnalysisStop.getDefaultInstance()) return this;
+        if (other.hasWait()) {
+          setWait(other.getWait());
+        }
+        this.mergeUnknownFields(other.getUnknownFields());
+        return this;
+      }
+      
+      public Builder mergeFrom(
+          com.google.protobuf.CodedInputStream input,
+          com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+          throws java.io.IOException {
+        com.google.protobuf.UnknownFieldSet.Builder unknownFields =
+          com.google.protobuf.UnknownFieldSet.newBuilder(
+            this.getUnknownFields());
+        while (true) {
+          int tag = input.readTag();
+          switch (tag) {
+            case 0:
+              this.setUnknownFields(unknownFields.build());
+              return this;
+            default: {
+              if (!parseUnknownField(input, unknownFields,
+                                     extensionRegistry, tag)) {
+                this.setUnknownFields(unknownFields.build());
+                return this;
+              }
+              break;
+            }
+            case 8: {
+              setWait(input.readInt32());
+              break;
+            }
+          }
+        }
+      }
+      
+      
+      // optional int32 wait = 1;
+      public boolean hasWait() {
+        return result.hasWait();
+      }
+      public int getWait() {
+        return result.getWait();
+      }
+      public Builder setWait(int value) {
+        result.hasWait = true;
+        result.wait_ = value;
+        return this;
+      }
+      public Builder clearWait() {
+        result.hasWait = false;
+        result.wait_ = 0;
+        return this;
+      }
+      
+      // @@protoc_insertion_point(builder_scope:basho.search.analysis.AnalysisStop)
+    }
+    
+    static {
+      defaultInstance = new AnalysisStop(true);
+      com.basho.search.proto.Analysis.internalForceInit();
+      defaultInstance.initFields();
+    }
+    
+    // @@protoc_insertion_point(class_scope:basho.search.analysis.AnalysisStop)
+  }
+  
   public static final class AnalysisError extends
       com.google.protobuf.GeneratedMessage {
     // Use AnalysisError.newBuilder() to construct.
@@ -998,6 +1282,11 @@ public final class Analysis {
     com.google.protobuf.GeneratedMessage.FieldAccessorTable
       internal_static_basho_search_analysis_AnalysisRequest_fieldAccessorTable;
   private static com.google.protobuf.Descriptors.Descriptor
+    internal_static_basho_search_analysis_AnalysisStop_descriptor;
+  private static
+    com.google.protobuf.GeneratedMessage.FieldAccessorTable
+      internal_static_basho_search_analysis_AnalysisStop_fieldAccessorTable;
+  private static com.google.protobuf.Descriptors.Descriptor
     internal_static_basho_search_analysis_AnalysisError_descriptor;
   private static
     com.google.protobuf.GeneratedMessage.FieldAccessorTable
@@ -1017,11 +1306,12 @@ public final class Analysis {
   static {
     java.lang.String[] descriptorData = {
       "\n\016analysis.proto\022\025basho.search.analysis\"" +
-      "\037\n\017AnalysisRequest\022\014\n\004text\030\001 \002(\t\"K\n\rAnal" +
-      "ysisError\022\017\n\007message\030\001 \002(\t\022\023\n\013descriptio" +
-      "n\030\002 \001(\t\022\024\n\014error_number\030\003 \001(\005\"-\n\016Analysi" +
-      "sResult\022\r\n\005token\030\001 \001(\t\022\014\n\004done\030\002 \002(\005B\030\n\026" +
-      "com.basho.search.proto"
+      "\037\n\017AnalysisRequest\022\014\n\004text\030\001 \002(\t\"\034\n\014Anal" +
+      "ysisStop\022\014\n\004wait\030\001 \001(\005\"K\n\rAnalysisError\022" +
+      "\017\n\007message\030\001 \002(\t\022\023\n\013description\030\002 \001(\t\022\024\n" +
+      "\014error_number\030\003 \001(\005\"-\n\016AnalysisResult\022\r\n" +
+      "\005token\030\001 \001(\t\022\014\n\004done\030\002 \002(\005B\030\n\026com.basho." +
+      "search.proto"
     };
     com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner assigner =
       new com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner() {
@@ -1036,8 +1326,16 @@ public final class Analysis {
               new java.lang.String[] { "Text", },
               com.basho.search.proto.Analysis.AnalysisRequest.class,
               com.basho.search.proto.Analysis.AnalysisRequest.Builder.class);
-          internal_static_basho_search_analysis_AnalysisError_descriptor =
+          internal_static_basho_search_analysis_AnalysisStop_descriptor =
             getDescriptor().getMessageTypes().get(1);
+          internal_static_basho_search_analysis_AnalysisStop_fieldAccessorTable = new
+            com.google.protobuf.GeneratedMessage.FieldAccessorTable(
+              internal_static_basho_search_analysis_AnalysisStop_descriptor,
+              new java.lang.String[] { "Wait", },
+              com.basho.search.proto.Analysis.AnalysisStop.class,
+              com.basho.search.proto.Analysis.AnalysisStop.Builder.class);
+          internal_static_basho_search_analysis_AnalysisError_descriptor =
+            getDescriptor().getMessageTypes().get(2);
           internal_static_basho_search_analysis_AnalysisError_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_basho_search_analysis_AnalysisError_descriptor,
@@ -1045,7 +1343,7 @@ public final class Analysis {
               com.basho.search.proto.Analysis.AnalysisError.class,
               com.basho.search.proto.Analysis.AnalysisError.Builder.class);
           internal_static_basho_search_analysis_AnalysisResult_descriptor =
-            getDescriptor().getMessageTypes().get(2);
+            getDescriptor().getMessageTypes().get(3);
           internal_static_basho_search_analysis_AnalysisResult_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_basho_search_analysis_AnalysisResult_descriptor,

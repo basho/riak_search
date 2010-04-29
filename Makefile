@@ -4,24 +4,26 @@ all: deps compile
 
 compile:
 	./rebar compile
+	make -C apps/basho_analyzer/java_src
 
 deps:
 	./rebar get-deps
 
 clean:
 	./rebar clean
+	make -C apps/basho_analyzer/java_src clean
 
 distclean: clean devclean relclean
 	./rebar delete-deps
 
-test: 
+test:
 	./rebar eunit
 
 ##
 ## Release targets
 ##
 rel:
-	./rebar compile generate 
+	./rebar compile generate
 
 relclean:
 	rm -rf rel/riak
@@ -32,7 +34,7 @@ relclean:
 
 devrel: dev1 dev2 dev3
 
-dev: 
+dev:
 	mkdir dev
 	cp -R rel/overlay rel/reltool.config dev
 	./rebar compile && cd dev && ../rebar generate
@@ -64,7 +66,7 @@ stage : rel
 ## Doc targets
 ##
 docs:
-	@erl -noshell -run edoc_run application riak '"apps/riak"' '[]' 
+	@erl -noshell -run edoc_run application riak '"apps/riak"' '[]'
 	@cp -R apps/riak/doc doc/riak
 
 orgs: orgs-doc orgs-README
@@ -78,5 +80,3 @@ orgs-README:
 
 dialyzer: compile
 	@dialyzer -Wno_return -c apps/riak/ebin
-
-
