@@ -4,7 +4,7 @@
 
 -export([new/2, fields/1, add_field/3, set_fields/2, clear_fields/1,
          props/1, add_prop/3, set_props/2, clear_props/1, to_json/1,
-         from_json/1]).
+         from_json/1, to_mochijson2/1]).
 
 new(Id, Index) ->
     #riak_idx_doc{id=Id, index=Index}.
@@ -33,13 +33,16 @@ set_props(Props, Doc) ->
 clear_props(Doc) ->
     Doc#riak_idx_doc{props=[]}.
 
-to_json(#riak_idx_doc{id=Id, index=Index, fields=Fields, props=Props}) ->
-    mochijson2:encode({struct, [{id, riak_search_utils:to_binary(Id)},
-                                {index, riak_search_utils:to_binary(Index)},
-                                {fields, {struct, [{riak_search_utils:to_binary(Name),
-                                                    riak_search_utils:to_binary(Value)} || {Name, Value} <- Fields]}},
-                                {props, {struct, [{riak_search_utils:to_binary(Name),
-                                                   riak_search_utils:to_binary(Value)} || {Name, Value} <- Props]}}]}).
+to_json(Doc) ->
+    mochijson2:encode(to_mochijson2(Doc)).
+
+to_mochijson2(#riak_idx_doc{id=Id, index=Index, fields=Fields, props=Props}) ->
+    {struct, [{id, riak_search_utils:to_binary(Id)},
+              {index, riak_search_utils:to_binary(Index)},
+              {fields, {struct, [{riak_search_utils:to_binary(Name),
+                                  riak_search_utils:to_binary(Value)} || {Name, Value} <- Fields]}},
+              {props, {struct, [{riak_search_utils:to_binary(Name),
+                                 riak_search_utils:to_binary(Value)} || {Name, Value} <- Props]}}]}.
 
 from_json(Json) ->
     case mochijson2:decode(Json) of
@@ -49,7 +52,7 @@ from_json(Json) ->
             build_doc(Id, Index, Data);
         {error, _} = Error ->
             Error;
-        NonsenseJson ->
+        _NonsenseJson ->
             {error, bad_json_format}
     end.
 

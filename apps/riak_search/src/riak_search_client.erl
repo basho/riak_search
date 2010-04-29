@@ -72,9 +72,12 @@ index_internal(Index, Field, Term, Payload) ->
 
 analyze_fields([], Accum) ->
     Accum;
-analyze_fields([{Name, Value}|T], Accum) ->
+analyze_fields([{Name, Value}|T], Accum) when is_list(Value);
+                                              is_binary(Value) ->
     {ok, Tokens} = basho_analyzer:analyze(Value),
-    analyze_fields(T, [{Name, binary_to_list(Token)} || Token <- Tokens] ++ Accum).
+    analyze_fields(T, [{Name, binary_to_list(Token)} || Token <- Tokens] ++ Accum);
+analyze_fields([{Name, Value}|T], Accum) ->
+    analyze_fields(T, [{Name, Value}|Accum]).
 
 truncate_list(Size, List) when Size >= length(List) ->
     List;

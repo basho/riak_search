@@ -7,12 +7,14 @@
 from_eterm({schema, SchemaProps, FieldDefs}) ->
     Name = proplists:get_value(name, SchemaProps),
     Version = proplists:get_value(version, SchemaProps),
-    case Name =:= undefined orelse Version =:= undefined of
+    DefaultField = proplists:get_value(default_field, SchemaProps),
+    case Name =:= undefined orelse Version =:= undefined orelse
+        DefaultField =:= undefined of
         true ->
             {error, {malformed_schema, {schema, SchemaProps}}};
         false ->
             Fields = parse_fields(FieldDefs, []),
-            {ok, riak_solr_schema:new(Name, Version, Fields)}
+            {ok, riak_solr_schema:new(Name, Version, DefaultField, Fields)}
     end.
 
 

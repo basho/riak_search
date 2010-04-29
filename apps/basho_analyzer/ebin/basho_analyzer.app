@@ -5,6 +5,7 @@
   {modules,      [analysis_pb,
                   basho_analyzer_app,
                   basho_analyzer_sup,
+                  basho_analyzer_monitor,
                   basho_analyzer]},
   {registered,   [basho_analyzer_sup,
                   basho_analyzer]},

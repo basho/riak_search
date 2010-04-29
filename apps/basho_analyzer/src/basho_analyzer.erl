@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--include_lib("basho_analyzer/include/analysis_pb.hrl").
+-include("analysis_pb.hrl").
 
 %% API
 -export([start_link/0, analyze/1]).

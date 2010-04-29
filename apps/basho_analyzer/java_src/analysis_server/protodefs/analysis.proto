@@ -5,6 +5,10 @@ message AnalysisRequest {
   required string text = 1;
 }
 
+message AnalysisStop {
+  optional int32 wait = 1;
+}
+
 message AnalysisError {
   required string message = 1;
   optional string description = 2;
