@@ -9,7 +9,8 @@
             mi_server,
             mi_utils,
             sync,
-            test
+            test,
+            basho_bench_driver_merge_index
         ]},
         {applications, [kernel,
             stdlib,
