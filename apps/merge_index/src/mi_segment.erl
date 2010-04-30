@@ -30,7 +30,7 @@
 
 -record(segment, {
     root,
-    tree
+    table
 }).
 
 %%% Creates a segment file, which is an disk-based ordered set with a
@@ -57,12 +57,12 @@ open(Root) ->
     end,
 
     %% Read the offsets...
-    Offsets = read_offsets(Root),
+    Table = read_offsets(Root),
 
     %% Return the new segment...
     #segment { 
         root=Root, 
-        tree=Offsets
+        table=Table
     }.
 
 
@@ -73,21 +73,22 @@ from_buffer(Root, Buffer) ->
     
     %% Write to buffer file in order...
     {ok, FH} = file:open(data_file(Root), [write, {delayed_write, 1 * 1024 * 1024, 10 * 1000}, raw, binary]),
-    NewOffsets = from_buffer_inner(FH, 0, 0, 0, undefined, Iterator(), gb_trees:empty()),
+    Table = ets:new(segment, [ordered_set, public]),
+    from_buffer_inner(FH, 0, 0, 0, undefined, Iterator(), Table),
     file:close(FH),
 
     %% Write the offsets file...
-    offsets_write(Root, NewOffsets),
+    offsets_write(Root, Table),
 
     %% Return the new segment.
-    #segment { root=Root, tree=NewOffsets }.
+    #segment { root=Root, table=Table }.
 
-from_buffer_inner(FH, Offset, Pos, Count, LastIFT, {{IFT, Value, Props, TS}, Iterator}, Offsets)
+from_buffer_inner(FH, Offset, Pos, Count, LastIFT, {{IFT, Value, Props, TS}, Iterator}, Table)
 when LastIFT /= IFT ->
     %% Close the last keyspace if it existed...
-    NewOffsets = case Count > 0 of
-        true -> gb_trees:enter(LastIFT, {Offset, Count}, Offsets);
-        false -> Offsets
+    case Count > 0 of
+        true -> ets:insert(Table, {LastIFT, {Offset, Count}});
+        false -> ignore
     end,
 
     %% Start a new keyspace...
@@ -95,22 +96,23 @@ when LastIFT /= IFT ->
     BytesWritten1 = write_key(FH, IFT),
     BytesWritten2 = write_seg_value(FH, Value, Props, TS),
     NewPos = Pos + BytesWritten1 + BytesWritten2,
-    from_buffer_inner(FH, NewOffset, NewPos, 1, IFT, Iterator(), NewOffsets);
+    from_buffer_inner(FH, NewOffset, NewPos, 1, IFT, Iterator(), Table);
 
-from_buffer_inner(FH, Offset, Pos, Count, LastIFT, {{IFT, Value, Props, TS}, Iterator}, Offsets)
+from_buffer_inner(FH, Offset, Pos, Count, LastIFT, {{IFT, Value, Props, TS}, Iterator}, Table)
 when LastIFT == IFT ->
     %% Write the new value...
     BytesWritten = write_seg_value(FH, Value, Props, TS),
     NewPos = Pos + BytesWritten,
     NewCount = Count + 1,
-    from_buffer_inner(FH, Offset, NewPos, NewCount, LastIFT, Iterator(), Offsets);
+    from_buffer_inner(FH, Offset, NewPos, NewCount, LastIFT, Iterator(), Table);
 
-from_buffer_inner(_FH, 0, 0, 0, undefined, eof, Offsets) ->
+from_buffer_inner(_FH, 0, 0, 0, undefined, eof, _Table) ->
     %% No input, so just finish.
-    Offsets;
+    ok;
 
-from_buffer_inner(_FH, Offset, _, Count, LastIFT, eof, Offsets) ->
-    gb_trees:enter(LastIFT, {Offset, Count}, Offsets).
+from_buffer_inner(_FH, Offset, _, Count, LastIFT, eof, Table) ->
+    ets:insert(Table, {LastIFT, {Offset, Count}}).
+
 
 %% Delete all segment data.
 delete(Segment) ->
@@ -120,20 +122,27 @@ delete(Segment) ->
 
 %% return the number of results under this IFT.
 info(IFT, Segment) ->
-    Tree = Segment#segment.tree,
-    case gb_trees:lookup(IFT, Tree) of
-        {value, {_Offset, Count}} -> 
+    Table = Segment#segment.table,
+    case ets:lookup(Table, IFT) of
+        [{IFT, {_Offset, Count}}] -> 
             Count;
-        none ->
+        [] ->
             0
     end.
 
 %% Return the number of results for IFTs between the StartIFT and
 %% StopIFT, inclusive.
 info(StartIFT, EndIFT, Segment) ->
-    Tree = Segment#segment.tree,
-    KeyValues = mi_utils:select(StartIFT, EndIFT, Tree),
-    lists:sum([Count || {_, {_Offset, Count}} <- KeyValues]).
+    Table = Segment#segment.table,
+    IFT = mi_utils:ets_next(Table, StartIFT),
+    info_1(Table, IFT, EndIFT, 0).
+info_1(_Table, IFT, EndIFT, Count)
+when IFT == '$end_of_table' orelse (EndIFT /= undefined andalso IFT > EndIFT) ->
+    Count;
+info_1(Table, IFT, EndIFT, Count) ->
+    [{IFT, {_, NewCount}}] = ets:lookup(Table, IFT),
+    NextIFT = ets:next(Table, IFT),
+    info_1(Table, NextIFT, EndIFT, Count + NewCount).
     
 
 %% Create a value iterator starting at StartIFT and stopping at
@@ -141,12 +150,14 @@ info(StartIFT, EndIFT, Segment) ->
 %% NewIteratorFun} or 'eof' when called.
 iterator(StartIFT, EndIFT, Segment) ->
     %% Lookup the nearest key after StartIFT.
-    FH = case closest(StartIFT, Segment) of
-        {value, {Offset, _}} ->
+    Table = Segment#segment.table,
+    FH = case mi_utils:ets_next(Table, StartIFT) of
+        IFT when IFT /= '$end_of_table' ->
+            [{IFT, {Offset, _}}] = ets:lookup(Table, IFT),
             {ok, Handle} = file:open(data_file(Segment), [read, raw, read_ahead, binary]),
             file:position(Handle, Offset),
             Handle;
-        none ->
+        '$end_of_table' ->
             undefined
     end,
     fun() -> iterator_fun(FH, undefined, EndIFT) end.
@@ -166,26 +177,26 @@ iterator_fun(FH, CurrentKey, EndIFT) ->
     end.
 
 
-%% Get the position of the provided key, or the next one up.  The big
-%% change from gb_trees:lookup_1 is if we are going to the right side
-%% of the tree, but the key is smaller than our last best key, then
-%% "save" it. When we hit a dead end, return the last best key/value.
-closest(Key, Segment) ->    
-    Tree = Segment#segment.tree,
-    closest_1(Key, undefined, undefined, element(2, Tree)).
-closest_1(Key, BestKey, BestValue, {Key1, Value1, Smaller, _}) when Key =< Key1 ->
-    case BestKey == undefined orelse Key1 < BestKey of
-        true  -> closest_1(Key, Key1, Value1, Smaller);
-        false -> closest_1(Key, BestKey, BestValue, Smaller)
-    end;
-closest_1(Key, BestKey, BestValue, {Key1, _, _, Bigger}) when Key > Key1 ->
-    closest_1(Key, BestKey, BestValue, Bigger);
-closest_1(_, _, _, {_, Value, _, _}) ->
-    {value, Value};
-closest_1(_, undefined, undefined, nil) ->
-    none;
-closest_1(_, _, BestValue, nil) ->
-    {value, BestValue}.
+%% %% Get the position of the provided key, or the next one up.  The big
+%% %% change from gb_trees:lookup_1 is if we are going to the right side
+%% %% of the tree, but the key is smaller than our last best key, then
+%% %% "save" it. When we hit a dead end, return the last best key/value.
+%% closest(Key, Segment) ->    
+%%     Tree = Segment#segment.tree,
+%%     closest_1(Key, undefined, undefined, element(2, Tree)).
+%% closest_1(Key, BestKey, BestValue, {Key1, Value1, Smaller, _}) when Key =< Key1 ->
+%%     case BestKey == undefined orelse Key1 < BestKey of
+%%         true  -> closest_1(Key, Key1, Value1, Smaller);
+%%         false -> closest_1(Key, BestKey, BestValue, Smaller)
+%%     end;
+%% closest_1(Key, BestKey, BestValue, {Key1, _, _, Bigger}) when Key > Key1 ->
+%%     closest_1(Key, BestKey, BestValue, Bigger);
+%% closest_1(_, _, _, {_, Value, _, _}) ->
+%%     {value, Value};
+%% closest_1(_, undefined, undefined, nil) ->
+%%     none;
+%% closest_1(_, _, BestValue, nil) ->
+%%     {value, BestValue}.
 
 
 %% Read the offsets file from disk. If it's not found, then recreate
@@ -193,63 +204,43 @@ closest_1(_, _, BestValue, nil) ->
 read_offsets(Root) ->
     case filelib:is_file(offsets_file(Root)) of
         true ->
-            {ok, FH} = file:open(offsets_file(Root), [read, read_ahead, raw, binary]),
-            {ok, Tree} = read_offsets_inner(FH, gb_trees:empty()),
-            file:close(FH),
-            Tree;
+            {ok, Table} = ets:file2tab(offsets_file(Root)),
+            Table;
         false ->
             repair_offsets(Root)
-    end.
-
-read_offsets_inner(FH, Acc) ->
-    case mi_utils:read_value(FH) of
-        {ok, {IFT, Offset}} ->
-            NewAcc = gb_trees:enter(IFT, Offset, Acc),
-            read_offsets_inner(FH, NewAcc);
-        eof ->
-            {ok, Acc}
     end.
 
 repair_offsets(Root) ->
     case filelib:is_file(data_file(Root)) of
         true -> 
             {ok, FH} = file:open(data_file(Root), [read, read_ahead, raw, binary]),
-            {ok, Tree} = repair_offsets_inner(FH, 0, 0, undefined, gb_trees:empty()),
+            Table = ets:new(segment, [ordered_set, public]),
+            repair_offsets_inner(FH, 0, 0, undefined, Table),
             file:close(FH),
-            Tree;
+            Table;
         false ->
-            gb_trees:empty()
+            ets:new(segment, [ordered_set, public])
     end.
 
-repair_offsets_inner(FH, Offset, Count, LastIFT, Acc) ->
+repair_offsets_inner(FH, Offset, Count, LastIFT, Table) ->
     Pos = file:position(FH, cur),
     case read_seg_value(FH) of
         {key, IFT} when LastIFT == undefined ->
-            repair_offsets_inner(FH, Pos, 0, IFT, Acc);
+            repair_offsets_inner(FH, Pos, 0, IFT, Table);
         {key, IFT} when LastIFT /= undefined ->
-            NewAcc = gb_trees:enter(LastIFT, {Offset, Count}, Acc),
-            repair_offsets_inner(FH, Pos, 0, IFT, NewAcc);
+            ets:insert(Table, {LastIFT, {Offset, Count}}),
+            repair_offsets_inner(FH, Pos, 0, IFT, Table);
         {value, _, _} ->
-            repair_offsets_inner(FH, Offset, Count + 1, LastIFT, Acc);
+            repair_offsets_inner(FH, Offset, Count + 1, LastIFT, Table);
         eof when LastIFT == undefined ->
-            {ok, Acc};
+            ok;
         eof when LastIFT /= undefined ->
-            NewAcc = gb_trees:enter(LastIFT, {Offset, Count}, Acc),
-            {ok, NewAcc}
+            ets:insert(Table, {LastIFT, {Offset, Count}}),
+            ok
     end.
                         
-offsets_write(Root, Offsets) ->
-    {ok, FH} = file:open(offsets_file(Root), [write, {delayed_write, 1 * 1024 * 1024, 10 * 1000}, raw, binary]),
-    Iter = gb_trees:next(gb_trees:iterator(Offsets)),
-    offsets_write_inner(Iter, FH),
-    file:close(FH).
-
-offsets_write_inner({IFT, Offset, Iter}, FH) ->
-    mi_utils:write_value(FH, {IFT, Offset}),
-    offsets_write_inner(gb_trees:next(Iter), FH);
-offsets_write_inner(none, _FH) ->
-    ok.
-
+offsets_write(Root, Table) ->
+    ok = ets:tab2file(Table, offsets_file(Root)).
 
 read_seg_value(undefined) ->
     eof;

@@ -25,6 +25,7 @@
     file_exists/1,
     create_empty_file/1,
     now_to_timestamp/1,
+    ets_next/2,
     select/3
 ]).
 
@@ -79,6 +80,21 @@ create_empty_file(Filename) ->
 now_to_timestamp({Mega, Sec, Micro}) ->
     <<TS:64/integer>> = <<Mega:16/integer, Sec:24/integer, Micro:24/integer>>,
     TS.
+
+%% Return the next key greater than or equal to the supplied key.
+ets_next(Table, Key) ->
+    case Key == undefined of 
+        true ->
+             ets:first(Table);
+        false ->
+            case ets:lookup(Table, Key) of
+                [{Key, _Values}] -> 
+                    Key;
+                [] ->
+                    ets:next(Table, Key)
+            end
+    end.
+
 
 %% Get the [{key, value}] list that falls within the provided range in a gb_tree.
 select(StartKey, EndKey, Tree) ->

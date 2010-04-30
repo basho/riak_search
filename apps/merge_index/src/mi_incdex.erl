@@ -119,13 +119,8 @@ select(StartKey, EndKey, Incdex) ->
 
 select(StartKey, EndKey, Size, Incdex) ->
     Table = Incdex#incdex.table,
-    case ets:lookup(Table, StartKey) of
-        [{Key, _ID}] ->
-            Iterator = {Table, Key, EndKey};
-        [] ->
-            Key = ets:next(Table, StartKey),
-            Iterator = {Table, Key, EndKey}
-    end,
+    Key = mi_utils:ets_next(Table, StartKey),
+    Iterator = {Table, Key, EndKey},
     select_1(Iterator, Size, []).
 
 select_1({_Table, Key, EndKey}, _Size, Acc) 

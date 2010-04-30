@@ -12,23 +12,32 @@
 -define(DEFAULT_FACETS, ["search.color", "search.direction", "search.subterm", "search.subterm"]).
 -include("riak_search.hrl").
 
-%% Run the specified search query.
 search(Q) ->
-    {ok, Qilr} = qilr_parse:string(Q),
-    {ok, Results} = riak_search:execute(Qilr, ?DEFAULT_INDEX, ?DEFAULT_FIELD, ?DEFAULT_FACETS),
-    F = fun({Key, Props}) ->
-                io:format("key:   ~p~n", [Key]),
-                io:format("props: ~p~n", [Props]),
-                io:format("~n")
-        end,
-    [F(X) || X <- Results],
-    io:format("Found ~p results~n", [length(Results)]),
-    ok.
+    {ok, Client} = riak_search:local_client(),
+    Client:search("search", "payload", Q).
 
-%% Display the execution path of the specified search query.
 explain(Q) ->
-    {ok, Qilr} = qilr_parse:string(Q),
-    riak_search:explain(Qilr, ?DEFAULT_INDEX, ?DEFAULT_FIELD, ?DEFAULT_FACETS).
+    {ok, Client} = riak_search:local_client(),
+    Client:explain("search", "payload", Q).
+
+
+%% Run the specified search query.
+%% search(Q) ->
+%%     {ok, Qilr} = qilr_parse:string(Q),
+%%     {ok, Results} = riak_search:execute(Qilr, ?DEFAULT_INDEX, ?DEFAULT_FIELD, ?DEFAULT_FACETS),
+%%     F = fun({Key, Props}) ->
+%%                 io:format("key:   ~p~n", [Key]),
+%%                 io:format("props: ~p~n", [Props]),
+%%                 io:format("~n")
+%%         end,
+%%     [F(X) || X <- Results],
+%%     io:format("Found ~p results~n", [length(Results)]),
+%%     ok.
+
+%% %% Display the execution path of the specified search query.
+%% explain(Q) ->
+%%     {ok, Qilr} = qilr_parse:string(Q),
+%%     riak_search:explain(Qilr, ?DEFAULT_INDEX, ?DEFAULT_FIELD, ?DEFAULT_FACETS).
 
 
 %% Full-text index the files within the specified directory.
