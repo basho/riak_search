@@ -19,7 +19,7 @@
 -export([
     open/1,
     filename/1,
-    close/1,
+    close_filehandle/1,
     delete/1,
     size/1,
     write/5,
@@ -31,7 +31,7 @@
 -record(buffer, {
     filename,
     handle,
-    tree,
+    table,
     size
 }).
 
@@ -48,31 +48,33 @@ open(Filename) ->
     
     %% Read existing buffer from disk...
     {ok, FH} = file:open(Filename, [read, write, {read_ahead, 1024 * 1024}, {delayed_write, 1024 * 1024, 10 * 1000}, raw, binary]),
-    Tree = open_inner(FH, gb_trees:empty()),
+    Table = ets:new(buffer, [ordered_set, public]),
+    open_inner(FH, Table),
     {ok, Size} = file:position(FH, cur),
     io:format("Loaded Buffer: ~p~n", [Filename]),
     
     %% Return the buffer.
-    #buffer { filename=Filename, handle=FH, tree=Tree, size=Size }.
+    #buffer { filename=Filename, handle=FH, table=Table, size=Size }.
 
-open_inner(FH, Tree) ->
+open_inner(FH, Table) ->
     case mi_utils:read_value(FH) of
         {ok, {IFT, Value, Props, TS}} ->
-            NewTree = write_1(IFT, Value, Props, TS, Tree),
-            open_inner(FH, NewTree);
+            write_1(IFT, Value, Props, TS, Table),
+            open_inner(FH, Table);
         eof ->
-            Tree
+            ok
     end.
 
 filename(Buffer) ->
     Buffer#buffer.filename.
 
 delete(Buffer) ->
-    close(Buffer),
+    close_filehandle(Buffer),
     file:delete(Buffer#buffer.filename),
+    ets:delete(Buffer#buffer.table),
     ok.
 
-close(Buffer) ->
+close_filehandle(Buffer) ->
     file:close(Buffer#buffer.handle).
 
 %% Return the current size of the buffer file.
@@ -88,48 +90,51 @@ write(IFT, Value, Props, TS, Buffer) ->
     mi_utils:write_value(FH, {IFT, Value, Props, TS}),
 
     %% Return a new buffer with a new tree and size...
-    NewTree = write_1(IFT, Value, Props, TS, Buffer#buffer.tree),
+    write_1(IFT, Value, Props, TS, Buffer#buffer.table),
     {ok, NewSize} = file:position(FH, cur),
     Buffer#buffer {
-        tree = NewTree,
         size = NewSize
     }.
 
-write_1(IFT, Value, Props, TS, Tree) ->
+write_1(IFT, Value, Props, TS, Table) ->
     %% Update and return the tree...
-    case gb_trees:lookup(IFT, Tree) of
-        {value, Values} ->
+    case ets:lookup(Table, IFT) of
+        [{IFT, Values}] ->
             case gb_trees:lookup(Value, Values) of
                 {value, {_, OldTS}} when OldTS < TS ->
                     NewValues = gb_trees:update(Value, {Props, TS}, Values),
-                    gb_trees:update(IFT, NewValues, Tree);
+                    ets:insert(Table, {IFT, NewValues});
                 {value, {_, OldTS}} when OldTS >= TS ->
-                    Tree;
+                    ok;
                 none ->
                     NewValues = gb_trees:insert(Value, {Props, TS}, Values),
-                    gb_trees:update(IFT, NewValues, Tree)
+                    ets:insert(Table, {IFT, NewValues})
             end;
-        none ->
+        [] ->
             NewValues = gb_trees:from_orddict([{Value, {Props, TS}}]),
-            gb_trees:insert(IFT, NewValues, Tree)
+            ets:insert(Table, {IFT, NewValues})
     end.
     
 %% Return the number of results under this IFT.
 info(IFT, Buffer) ->
-    Tree = Buffer#buffer.tree,
-    case gb_trees:lookup(IFT, Tree) of
-        {value, Values} -> 
+    Table = Buffer#buffer.table,
+    case ets:lookup(Table, IFT) of
+        [{IFT, Values}] -> 
             gb_trees:size(Values);
-        none ->
+        [] ->
             0
     end.
 
 %% Return the number of results for IFTs between the StartIFT and
 %% StopIFT, inclusive.
 info(StartIFT, EndIFT, Buffer) ->
-    Tree = Buffer#buffer.tree,
-    KeyValues = mi_utils:select(StartIFT, EndIFT, Tree),
-    lists:sum([gb_trees:size(X) || {_, X} <- KeyValues]).
+    Table = Buffer#buffer.table,
+    MatchHead = {'$1', '$2'},
+    MatchGuard = [{'>=', $1, StartIFT}, {'=<', $1, EndIFT}],
+    Result = ['$_'],
+    MatchSpec = [{MatchHead, MatchGuard, Result}],
+    Results = ets:select(Table, MatchSpec),
+    lists:sum([gb_trees:size(X) || {_, X} <- Results]).
 
 %% Return an iterator function.
 %% Returns Fun/0, which then returns {Term, NewFun} or eof.
@@ -139,50 +144,41 @@ iterator(Buffer) ->
 %% Return an iterator function.
 %% Returns Fun/0, which then returns {Term, NewFun} or eof.
 iterator(StartIFT, EndIFT, Buffer) ->
-    Tree = Buffer#buffer.tree,
-    Iterator = iterator_1(StartIFT, EndIFT, element(2, Tree), []),
-    fun() -> iterator_2(Iterator) end.
-
-%% Create an iterator structure from a tree...
-iterator_1(StartIFT, EndIFT, {IFT, Values, Left, Right}, Acc) ->
-    LBound = (StartIFT =< IFT orelse StartIFT == undefined),
-    RBound = (EndIFT >= IFT orelse EndIFT == undefined),
-    
-    %% Possibly go right...
-    NewAcc1 = case RBound of 
-        true  -> iterator_1(StartIFT, EndIFT, Right, Acc);
-        false -> Acc
+    Table = Buffer#buffer.table,
+    case StartIFT == undefined of 
+        true ->
+            IFT = ets:first(Table),
+            Iterator = {Table, IFT, EndIFT};
+        false ->
+            case ets:lookup(Table, StartIFT) of
+                [{IFT, _Values}] ->
+                    Iterator = {Table, IFT, EndIFT};
+                [] ->
+                    IFT = ets:next(Table, StartIFT),
+                    Iterator = {Table, IFT, EndIFT}
+            end
     end,
-
-    %% Possibly use the current pos...
-    NewAcc2 = case LBound andalso RBound of
-        true  -> [{IFT, Values}|NewAcc1];
-        false -> NewAcc1
-    end,
-
-    %% Possibly go left...
-    NewAcc3 = case LBound of
-        true  -> iterator_1(StartIFT, EndIFT, Left, NewAcc2);
-        false -> NewAcc2
-    end,
-    NewAcc3;
-iterator_1(_, _, nil, Acc) ->
-    Acc.
+    fun() -> iterator_1(Iterator) end.
 
 %% Iterate through IFTs...
-iterator_2([{IFT, Values}|Rest]) ->
+iterator_1({_Table, IFT, EndIFT}) 
+when IFT == '$end_of_table' orelse (EndIFT /= undefined andalso IFT > EndIFT) ->
+    eof;
+iterator_1({Table, IFT, EndIFT}) ->
+    [{IFT, Values}] = ets:lookup(Table, IFT),
     ValuesIterator = gb_trees:next(gb_trees:iterator(Values)),
-    iterator_3(IFT, ValuesIterator, Rest);
-iterator_2([]) ->
+    NextIFT = ets:next(Table, IFT),
+    iterator_2(IFT, ValuesIterator, {Table, NextIFT, EndIFT});
+iterator_1('$end_of_table') ->
     eof.
 
 %% Iterate through values. at a values level...
-iterator_3(IFT, {Value, {Props, TS}, Iter}, Rest) ->
+iterator_2(IFT, {Value, {Props, TS}, Iter}, Continuation) ->
     Term = {IFT, Value, Props, TS},
-    F = fun() -> iterator_3(IFT, gb_trees:next(Iter), Rest) end,
+    F = fun() -> iterator_2(IFT, gb_trees:next(Iter), Continuation) end,
     {Term, F};
-iterator_3(_IFT, none, Rest) ->
-    iterator_2(Rest).
+iterator_2(_IFT, none, Continuation) ->
+    iterator_1(Continuation).
 
 test() ->
     %% Write some stuff into the buffer...

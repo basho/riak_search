@@ -7,6 +7,7 @@
 
 -record(state,  { 
     root,
+    locks,
     indexes,
     fields,
     terms,

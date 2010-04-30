@@ -31,7 +31,7 @@
 
 -record(incdex, {
     last_id=0,
-    tree=gb_trees:empty(),
+    table=ets:new(incdex, [ordered_set, public]),
     filename
 }).
 
@@ -59,13 +59,13 @@ open(Filename) ->
 %% Called by open. Puts each value of the incdex file into the
 %% #incdex.tree.
 open_inner(FH, Incdex) ->
-    Tree = Incdex#incdex.tree,
+    Table = Incdex#incdex.table,
     case mi_utils:read_value(FH) of
         {ok, {Key, ID}} ->
             LastID = Incdex#incdex.last_id,
-            NewIncdex = Incdex#incdex { 
-                last_id=lists:max([ID, LastID]),
-                tree=gb_trees:insert(Key, ID, Tree)
+            ets:insert(Table, {Key, ID}),
+            NewIncdex = Incdex#incdex {
+                last_id=lists:max([ID, LastID])
             },
             open_inner(FH, NewIncdex);
         eof ->
@@ -77,8 +77,8 @@ clear(Incdex) ->
     open(Incdex#incdex.filename).
 
 size(Incdex) ->
-    Tree = Incdex#incdex.tree,
-    gb_trees:size(Tree).
+    Table = Incdex#incdex.table,
+    ets:info(Table, size).
 
 %% Same as lookup(Key, Incdex, true).
 lookup(Key, Incdex) ->
@@ -91,71 +91,66 @@ lookup_nocreate(Key, Incdex) ->
 %% Returns the ID associated with a key, or creates it if it doesn't
 %% exist. Writes out to the incdex file if a creation is needed.
 lookup(Key, Incdex, true) ->
-    Tree = Incdex#incdex.tree,
+    Table = Incdex#incdex.table,
     Filename = Incdex#incdex.filename,
-    case gb_trees:lookup(Key, Tree) of 
-        {value, ID} -> 
+    case ets:lookup(Table, Key) of 
+        [{Key, ID}] ->
             {ID, Incdex};
-        none ->
+        [] ->
             ID = Incdex#incdex.last_id + 1,
-            NewTree = gb_trees:enter(Key, ID, Tree),
+            ets:insert(Table, {Key, ID}),
             {ok, FH} = file:open(Filename, [append, raw, binary]),
             mi_utils:write_value(FH, {Key, ID}),
             file:close(FH),
-            {ID, Incdex#incdex { last_id=ID, tree=NewTree }}
+            {ID, Incdex#incdex { last_id=ID }}
     end;
 
 %% Returns the ID of the provided key, or 0 if it doesn't exist.
 lookup(Key, Incdex, false) ->
-    Tree = Incdex#incdex.tree,
-    case gb_trees:lookup(Key, Tree) of
-        {value, ID} -> {ID, Incdex};
-        none -> {0, Incdex}
+    Table = Incdex#incdex.table,
+    case ets:lookup(Table, Key) of
+        [{Key, ID}] -> {ID, Incdex};
+        [] -> {0, Incdex}
     end.
+
 
 select(StartKey, EndKey, Incdex) ->
     select(StartKey, EndKey, undefined, Incdex).
+
 select(StartKey, EndKey, Size, Incdex) ->
-    Tree = Incdex#incdex.tree,
-    select_1(StartKey, EndKey, Size, element(2, Tree), []).
-select_1(StartKey, StopKey, Size, {Key, Value, Left, Right}, Acc) ->
-    LBound = (StartKey =< Key orelse StartKey == undefined),
-    RBound = (StopKey >= Key orelse StopKey == undefined),
-    SizeBound = Size == undefined orelse Size == typesafe_size(Key),
+    Table = Incdex#incdex.table,
+    case ets:lookup(Table, StartKey) of
+        [{Key, _ID}] ->
+            Iterator = {Table, Key, EndKey};
+        [] ->
+            Key = ets:next(Table, StartKey),
+            Iterator = {Table, Key, EndKey}
+    end,
+    select_1(Iterator, Size, []).
 
-    %% Possibly go right...
-    NewAcc1 = case RBound of
-        true -> select_1(StartKey, StopKey, Size, Right, Acc);
-        false -> Acc
-    end,
-    
-    %% See if we match...
-    NewAcc2 = case LBound andalso RBound andalso SizeBound of
-        true  -> [{Key, Value}|NewAcc1];
-        false -> NewAcc1
-    end,
-
-    %% Possibly go left...
-    NewAcc3 = case LBound of
-        true  -> select_1(StartKey, StopKey, Size, Left, NewAcc2);
-        false -> NewAcc2
-    end,
-    NewAcc3;
-select_1(_, _, _, nil, Acc) -> 
-    Acc.
+select_1({_Table, Key, EndKey}, _Size, Acc) 
+when Key == '$end_of_table' orelse (EndKey /= undefined andalso Key > EndKey) ->
+    lists:reverse(Acc);
+select_1({Table, Key, EndKey}, Size, Acc) ->
+    NextKey = ets:next(Table, Key),
+    case Size == undefined orelse typesafe_size(Key) == Size of
+        true -> 
+            [{Key, ID}] = ets:lookup(Table, Key),
+            select_1({Table, NextKey, EndKey}, Size, [{Key, ID}|Acc]);
+        false ->
+            select_1({Table, NextKey, EndKey}, Size, Acc)
+    end.
 
 %% Normally, an incdex maps a key to some sequentially incremented ID
 %% value. invert/1 inverts the index, returning a gb_tree where the
 %% key and value are swapped. In other words, mapping the ID value to
 %% the key.
 invert(Incdex) ->
-    TreeIterator = gb_trees:iterator(Incdex#incdex.tree),
-    invert_1(gb_trees:empty(), gb_trees:next(TreeIterator)).
-invert_1(Tree, none) ->
-    Tree;
-invert_1(Tree, {Key, Value, Iterator}) ->
-    invert_1(gb_trees:insert(Value, Key, Tree), gb_trees:next(Iterator)).
-    
+    Table = Incdex#incdex.table,
+    F = fun({Key, ID}, AccIn) ->
+        gb_trees:insert(Key, ID, AccIn)
+    end,
+    ets:foldl(F, gb_trees:empty(), Table).
 
 typesafe_size(Term) when is_binary(Term) -> erlang:size(Term);
 typesafe_size(Term) when is_list(Term) -> length(Term).

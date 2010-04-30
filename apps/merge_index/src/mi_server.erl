@@ -29,11 +29,12 @@
 
 init([Root, Config]) ->
     filelib:ensure_dir(join(Root, "ignore")),
-    {Buffers, Segments} = read_buf_and_seg(Root),
+    {Buffers, Segments, Locks} = read_buf_and_seg(Root, mi_locks:new()),
 
     %% Create the state...
     State = #state {
         root = Root,
+        locks = Locks,
         indexes  = mi_incdex:open(join(Root, "indexes")),
         fields   = mi_incdex:open(join(Root, "fields")),
         terms    = mi_incdex:open(join(Root, "terms")),
@@ -46,41 +47,45 @@ init([Root, Config]) ->
     {ok, State}.
 
 %% Return {Buffers, Segments}, after cleaning up/repairing any partially merged buffers.
-read_buf_and_seg(Root) ->
-    %% Create a list of wildcards and segments in ascending order...
+read_buf_and_seg(Root, Locks) ->
+    %% Get a list of buffers...
     F1 = fun(Filename) -> 
         [_, Num] = string:tokens(Filename, "."),
         {list_to_integer(Num), Filename}
     end,
     BFiles = lists:sort([F1(X) || X <- filelib:wildcard(join(Root, "buffer.*"))]),
     ?PRINT(BFiles),
+
+    %% Get a list of segments...
     F2 = fun(Filename) ->
         F1(filename:rootname(Filename))
     end,
     SFiles = lists:sort([F2(X) || X <- filelib:wildcard(join(Root, "segment.*.data"))]),
     ?PRINT(SFiles),
-    read_buf_and_seg_1(Root, BFiles, SFiles, [], []).
+    read_buf_and_seg_1(Root, Locks, BFiles, SFiles, [], []).
 
-read_buf_and_seg_1(Root, [], [], Buffers, Segments) ->
+read_buf_and_seg_1(Root, Locks, [], [], Buffers, Segments) ->
     BNum = length(Buffers) + length(Segments) + 1,
     BName = join(Root, "buffer." ++ integer_to_list(BNum)),
     Buffer = mi_buffer:open(BName),
-    {[Buffer|Buffers], Segments};
-read_buf_and_seg_1(_Root, [BFile], [], Buffers, Segments) ->
+    NewLocks = mi_locks:claim(mi_buffer:filename(Buffer), fun() -> mi_buffer:delete(Buffer) end, Locks),
+    {[Buffer|Buffers], Segments, NewLocks};
+read_buf_and_seg_1(_Root, Locks, [BFile], [], Buffers, Segments) ->
     %% Reached the last buffer file, open it...
     {_BNum, BName} = BFile,
     Buffer = mi_buffer:open(BName),
-    {[Buffer|Buffers], Segments};
-read_buf_and_seg_1(Root, [BFile|BFiles], [], Buffers, Segments) ->
+    NewLocks = mi_locks:claim(mi_buffer:filename(Buffer), fun() -> mi_buffer:delete(Buffer) end, Locks),
+    {[Buffer|Buffers], Segments, NewLocks};
+read_buf_and_seg_1(Root, Locks, [BFile|BFiles], [], Buffers, Segments) ->
     %% Convert buffer files to segment files...
     {BNum, BName} = BFile,
     SName = join(Root, "segment." ++ integer_to_list(BNum)),
     Buffer = mi_buffer:open(BName),
-    mi_buffer:close(Buffer),
+    mi_buffer:close_filehandle(Buffer),
     Segment = mi_segment:from_buffer(SName, Buffer),
     mi_buffer:delete(Buffer),
-    read_buf_and_seg_1(Root, BFiles, [], Buffers, [Segment|Segments]);
-read_buf_and_seg_1(Root, [BFile|BFiles], [SFile|SFiles], Buffers, Segments) ->
+    read_buf_and_seg_1(Root, Locks, BFiles, [], Buffers, [Segment|Segments]);
+read_buf_and_seg_1(Root, Locks, [BFile|BFiles], [SFile|SFiles], Buffers, Segments) ->
     {BNum, BName} = BFile,
     {SNum, SName} = SFile,
     if 
@@ -92,21 +97,21 @@ read_buf_and_seg_1(Root, [BFile|BFiles], [SFile|SFiles], Buffers, Segments) ->
             %% Remove and recreate segment...
             file:delete(SName),
             Buffer = mi_buffer:open(BName),
-            mi_buffer:close(Buffer),
+            mi_buffer:close_filehandle(Buffer),
             Segment = mi_segment:from_buffer(SName, Buffer),
             mi_buffer:delete(Buffer),
-            read_buf_and_seg_1(Root, BFiles, SFiles, Buffers, [Segment|Segments]);
+            read_buf_and_seg_1(Root, Locks, BFiles, SFiles, Buffers, [Segment|Segments]);
         BNum > SNum ->
             %% Open the segment and loop...
             Segment = mi_segment:open(SName),
-            read_buf_and_seg_1(Root, [BFile|BFiles], SFiles, Buffers, [Segment|Segments])
+            read_buf_and_seg_1(Root, Locks, [BFile|BFiles], SFiles, Buffers, [Segment|Segments])
     end;
-read_buf_and_seg_1(_Root, [], SFiles, _Buffers, _Segments) ->
+read_buf_and_seg_1(_Root, _Locks, [], SFiles, _Buffers, _Segments) ->
     throw({too_many_segment_files, SFiles}).
 
 handle_call({index, Index, Field, Term, SubType, SubTerm, Value, Props, TS}, _From, State) ->
     %% Calculate the IFT...
-    #state { root=Root, indexes=Indexes, fields=Fields, terms=Terms, buffers=[Buffer|Buffers], segments=Segments } = State,
+    #state { root=Root, locks=Locks, indexes=Indexes, fields=Fields, terms=Terms, buffers=[Buffer|Buffers], segments=Segments } = State,
     {IndexID, NewIndexes} = mi_incdex:lookup(Index, Indexes),
     {FieldID, NewFields} = mi_incdex:lookup(Field, Fields),
     {TermID, NewTerms} = mi_incdex:lookup(Term, Terms),
@@ -128,18 +133,20 @@ handle_call({index, Index, Field, Term, SubType, SubTerm, Value, Props, TS}, _Fr
         true ->
             %% Start processing the latest buffer.
             Pid = self(),
-            mi_buffer:close(NewBuffer),
+            mi_buffer:close_filehandle(NewBuffer),
             spawn_link(fun() ->
                 Segment = buffer_to_segment(Root, NewBuffer),
-                gen_server:call(Pid, {buffer_to_segment, NewBuffer, Segment})
+                gen_server:call(Pid, {buffer_to_segment, NewBuffer, Segment}, infinity)
             end),
             
             %% Create a new empty buffer...
-            BNum = length(Buffers) + length(Segments) + 1,
+            BNum = length([NewBuffer|Buffers]) + length(Segments) + 1,
             BName = join(NewState, "buffer." ++ integer_to_list(BNum)),
             EmptyBuffer = mi_buffer:open(BName),
+            NewLocks = mi_locks:claim(mi_buffer:filename(EmptyBuffer), fun() -> mi_buffer:delete(EmptyBuffer) end, Locks),
             
             NewState1 = NewState#state {
+                locks=NewLocks,
                 buffers=[EmptyBuffer|NewState#state.buffers]
             },
             {reply, ok, NewState1};
@@ -148,13 +155,14 @@ handle_call({index, Index, Field, Term, SubType, SubTerm, Value, Props, TS}, _Fr
     end;
 
 handle_call({buffer_to_segment, Buffer, Segment}, _From, State) ->
-    #state { buffers=Buffers, segments=Segments } = State,
+    #state { locks=Locks, buffers=Buffers, segments=Segments } = State,
 
     %% Delete the buffer...
-    mi_buffer:delete(Buffer),
+    NewLocks = mi_locks:release(mi_buffer:filename(Buffer), Locks),
     
     %% Update state and return...
     NewState = State#state {
+        locks=NewLocks,
         buffers=Buffers -- [Buffer],
         segments=[Segment|Segments]
     },
@@ -196,7 +204,7 @@ handle_call({info_range, Index, Field, StartTerm, EndTerm, Size, SubType, StartS
 
 handle_call({stream, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, Pid, Ref, FilterFun}, _From, State) ->
     %% Get the IDs...
-    #state { indexes=Indexes, fields=Fields, terms=Terms, buffers=Buffers, segments=Segments } = State,
+    #state { locks=Locks, indexes=Indexes, fields=Fields, terms=Terms, buffers=Buffers, segments=Segments } = State,
     IndexID = mi_incdex:lookup_nocreate(Index, Indexes),
     FieldID = mi_incdex:lookup_nocreate(Field, Fields),
     TermID = mi_incdex:lookup_nocreate(Term, Terms),
@@ -204,9 +212,31 @@ handle_call({stream, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, Pid,
     StartIFT = mi_utils:ift_pack(IndexID, FieldID, TermID, SubType, StartSubTerm1),
     EndIFT = mi_utils:ift_pack(IndexID, FieldID, TermID, SubType, EndSubTerm1),
 
+    %% Add locks to all buffers...
+    F = fun(Buffer, Acc) ->
+        mi_locks:claim(mi_buffer:filename(Buffer), Acc)
+    end,
+    NewLocks = lists:foldl(F, Locks, Buffers),
+
     %% Get an iterator for each segment...
-    spawn_link(fun() -> stream(StartIFT, EndIFT, Pid, Ref, FilterFun, Buffers, Segments) end),
-    {reply, ok, State};
+    Self = self(),
+    spawn_link(fun() -> 
+        stream(StartIFT, EndIFT, Pid, Ref, FilterFun, Buffers, Segments),
+        gen_server:call(Self, {stream_finished, Buffers}, infinity)
+    end),
+
+    %% Reply...
+    {reply, ok, State#state { locks=NewLocks }};
+
+handle_call({stream_finished, Buffers}, _From, State) ->
+    #state { locks=Locks } = State,
+
+    %% Remove locks from all buffers...
+    F = fun(Buffer, Acc) ->
+        mi_locks:release(mi_buffer:filename(Buffer), Acc)
+    end,
+    NewLocks = lists:foldl(F, Locks, Buffers),
+    {reply, ok, State#state { locks=NewLocks }};
 
 handle_call({fold, Fun, Acc}, _From, State) ->
     #state { indexes=Indexes, fields=Fields, terms=Terms, buffers=Buffers, segments=Segments } = State,
@@ -256,17 +286,20 @@ handle_call(is_empty, _From, State) ->
     {reply, IsEmpty, State};
 
 handle_call(drop, _From, State) ->
-    #state { indexes=Indexes, fields=Fields, terms=Terms, buffers=Buffers, segments=Segments } = State,
+    #state { locks=Locks, indexes=Indexes, fields=Fields, terms=Terms, buffers=Buffers, segments=Segments } = State,
     
     %% Delete files, reset state...
     [mi_buffer:delete(X) || X <- Buffers],
     [mi_segment:delete(X) || X <- Segments],
     BufferFile = join(State, "buffer.1"),
+    Buffer = mi_buffer:open(BufferFile),
+    NewLocks = mi_locks:claim(mi_buffer:filename(Buffer), fun() -> mi_buffer:delete(Buffer) end, Locks),
     NewState = State#state { 
+        locks = NewLocks,
         indexes = mi_incdex:clear(Indexes),
         fields = mi_incdex:clear(Fields),
         terms = mi_incdex:clear(Terms),
-        buffers = [mi_buffer:open(BufferFile)],
+        buffers = [Buffer],
         segments = []
     },
     {reply, ok, NewState};
