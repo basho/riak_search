@@ -29,7 +29,9 @@
 
 init([Root, Config]) ->
     filelib:ensure_dir(join(Root, "ignore")),
+    io:format("Loading merge_index from '~s'~n", [Root]),
     {Buffers, Segments, Locks} = read_buf_and_seg(Root, mi_locks:new()),
+    io:format("Finished loading merge_index from '~s'~n", [Root]),
 
     %% Create the state...
     State = #state {
@@ -54,14 +56,12 @@ read_buf_and_seg(Root, Locks) ->
         {list_to_integer(Num), Filename}
     end,
     BFiles = lists:sort([F1(X) || X <- filelib:wildcard(join(Root, "buffer.*"))]),
-    ?PRINT(BFiles),
 
     %% Get a list of segments...
     F2 = fun(Filename) ->
         F1(filename:rootname(Filename))
     end,
     SFiles = lists:sort([F2(X) || X <- filelib:wildcard(join(Root, "segment.*.data"))]),
-    ?PRINT(SFiles),
     read_buf_and_seg_1(Root, Locks, BFiles, SFiles, [], []).
 
 read_buf_and_seg_1(Root, Locks, [], [], Buffers, Segments) ->
@@ -73,6 +73,7 @@ read_buf_and_seg_1(Root, Locks, [], [], Buffers, Segments) ->
 read_buf_and_seg_1(_Root, Locks, [BFile], [], Buffers, Segments) ->
     %% Reached the last buffer file, open it...
     {_BNum, BName} = BFile,
+    io:format("Loading buffer: '~s'~n", [BName]),
     Buffer = mi_buffer:open(BName),
     NewLocks = mi_locks:claim(mi_buffer:filename(Buffer), fun() -> mi_buffer:delete(Buffer) end, Locks),
     {[Buffer|Buffers], Segments, NewLocks};
@@ -80,6 +81,7 @@ read_buf_and_seg_1(Root, Locks, [BFile|BFiles], [], Buffers, Segments) ->
     %% Convert buffer files to segment files...
     {BNum, BName} = BFile,
     SName = join(Root, "segment." ++ integer_to_list(BNum)),
+    io:format("Converting buffer: '~s'~n", [BName]),
     Buffer = mi_buffer:open(BName),
     mi_buffer:close_filehandle(Buffer),
     Segment = mi_segment:from_buffer(SName, Buffer),
@@ -93,9 +95,9 @@ read_buf_and_seg_1(Root, Locks, [BFile|BFiles], [SFile|SFiles], Buffers, Segment
             %% Should not have this case...
             throw({missing_segment_file, element(2, SFile)});
         BNum == SNum ->
-            ?PRINT({converting, BName, to, SName}),
             %% Remove and recreate segment...
             file:delete(SName),
+            io:format("Converting buffer: '~s'~n", [BName]),
             Buffer = mi_buffer:open(BName),
             mi_buffer:close_filehandle(Buffer),
             Segment = mi_segment:from_buffer(SName, Buffer),
@@ -103,6 +105,7 @@ read_buf_and_seg_1(Root, Locks, [BFile|BFiles], [SFile|SFiles], Buffers, Segment
             read_buf_and_seg_1(Root, Locks, BFiles, SFiles, Buffers, [Segment|Segments]);
         BNum > SNum ->
             %% Open the segment and loop...
+            io:format("Loading segment: '~s'~n", [SName]),
             Segment = mi_segment:open(SName),
             read_buf_and_seg_1(Root, Locks, [BFile|BFiles], SFiles, Buffers, [Segment|Segments])
     end;

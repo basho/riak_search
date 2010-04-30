@@ -25,8 +25,7 @@
     file_exists/1,
     create_empty_file/1,
     now_to_timestamp/1,
-    ets_next/2,
-    select/3
+    ets_next/2
 ]).
 
 ift_pack(IndexID, FieldID, TermID, SubType, SubTerm) ->
@@ -94,32 +93,3 @@ ets_next(Table, Key) ->
                     ets:next(Table, Key)
             end
     end.
-
-
-%% Get the [{key, value}] list that falls within the provided range in a gb_tree.
-select(StartKey, EndKey, Tree) ->
-    select_1(StartKey, EndKey, element(2, Tree), []).
-select_1(StartKey, EndKey, {Key, Value, Left, Right}, Acc) ->
-    LBound = (StartKey =< Key),
-    RBound = (EndKey >= Key),
-
-    %% Possibly go right...
-    NewAcc1 = case RBound of
-        true -> select_1(StartKey, EndKey, Right, Acc);
-        false -> Acc
-    end,
-    
-    %% See if we match...
-    NewAcc2 = case LBound andalso RBound of
-        true  -> [{Key, Value}|NewAcc1];
-        false -> NewAcc1
-    end,
-
-    %% Possibly go left...
-    NewAcc3 = case LBound of
-        true  -> select_1(StartKey, EndKey, Left, NewAcc2);
-        false -> NewAcc2
-    end,
-    NewAcc3;
-select_1(_, _, nil, Acc) -> 
-    Acc.

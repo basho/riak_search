@@ -177,28 +177,6 @@ iterator_fun(FH, CurrentKey, EndIFT) ->
     end.
 
 
-%% %% Get the position of the provided key, or the next one up.  The big
-%% %% change from gb_trees:lookup_1 is if we are going to the right side
-%% %% of the tree, but the key is smaller than our last best key, then
-%% %% "save" it. When we hit a dead end, return the last best key/value.
-%% closest(Key, Segment) ->    
-%%     Tree = Segment#segment.tree,
-%%     closest_1(Key, undefined, undefined, element(2, Tree)).
-%% closest_1(Key, BestKey, BestValue, {Key1, Value1, Smaller, _}) when Key =< Key1 ->
-%%     case BestKey == undefined orelse Key1 < BestKey of
-%%         true  -> closest_1(Key, Key1, Value1, Smaller);
-%%         false -> closest_1(Key, BestKey, BestValue, Smaller)
-%%     end;
-%% closest_1(Key, BestKey, BestValue, {Key1, _, _, Bigger}) when Key > Key1 ->
-%%     closest_1(Key, BestKey, BestValue, Bigger);
-%% closest_1(_, _, _, {_, Value, _, _}) ->
-%%     {value, Value};
-%% closest_1(_, undefined, undefined, nil) ->
-%%     none;
-%% closest_1(_, _, BestValue, nil) ->
-%%     {value, BestValue}.
-
-
 %% Read the offsets file from disk. If it's not found, then recreate
 %% it from the data file. Return the offsets tree.
 read_offsets(Root) ->

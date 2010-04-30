@@ -51,7 +51,6 @@ open(Filename) ->
     Table = ets:new(buffer, [ordered_set, public]),
     open_inner(FH, Table),
     {ok, Size} = file:position(FH, cur),
-    io:format("Loaded Buffer: ~p~n", [Filename]),
     
     %% Return the buffer.
     #buffer { filename=Filename, handle=FH, table=Table, size=Size }.
