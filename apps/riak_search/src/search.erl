@@ -2,9 +2,9 @@
 -export([
     search/1,
     explain/1,
-    index_dir/1, index_dir/3,
-    index_file/1, index_file/3,
-    index_term/3, index_term/5
+    index_dir/1 %index_dir/3,
+%%     index_file/1, %index_file/3,
+%%     index_term/3 %index_term/5
 ]).
 -define(IS_CHAR(C), ((C >= $A andalso C =< $Z) orelse (C >= $a andalso C =< $z))).
 -define(DEFAULT_INDEX, "search").
@@ -31,12 +31,12 @@ explain(Q) ->
     riak_search:explain(Qilr, ?DEFAULT_INDEX, ?DEFAULT_FIELD, ?DEFAULT_FACETS).
 
 
-
 %% Full-text index the files within the specified directory.
 index_dir(Directory) ->
-    index_dir(Directory, ?DEFAULT_INDEX, ?DEFAULT_FIELD).
+    {ok, SearchClient} = riak_search:local_client(),
+    index_dir(SearchClient, Directory, ?DEFAULT_INDEX, ?DEFAULT_FIELD).
 
-index_dir(Directory, Index, Field) ->
+index_dir(SearchClient, Directory, Index, Field) ->
     io:format(" :: Indexing directory: ~s~n", [Directory]),
 
     %% Get a list of files in the directory, and index them.
@@ -46,71 +46,117 @@ index_dir(Directory, Index, Field) ->
     end,
     Files = filelib:wildcard(Directory1),
     io:format(" :: Found ~p files...~n", [length(Files)]),
-    [index_file(File, Index, Field) || File <- Files],
+    ?PRINT({Index, Field}),
+    [index_file(SearchClient, File, Index, Field) || File <- Files],
+%%     plists:map(fun(File) -> index_file(SearchClient, File, Index, Field) end,
+%%         Files, {processes, 4}),
     ok.
 
+%% %% Full-text index the specified file.
+%% index_file(SearchClient, File) ->
+%%     index_file(SearchClient, File, ?DEFAULT_INDEX, ?DEFAULT_FIELD).
 
-
-%% Full-text index the specified file.
-index_file(File) ->
-    index_file(File, ?DEFAULT_INDEX, ?DEFAULT_FIELD).
-
-index_file(File, Index, Field) ->
-    %% TODO - discover something about the file for properties.
-    Props = random_properties(),
+index_file(SearchClient, File, Index, Field) ->
+%%     Props = random_properties(),
     Basename = filename:basename(File),
-
     io:format(" :: Indexing file: ~s~n", [Basename]),
     
-    %% Get the bytes...
-    {ok, Bytes} = file:read_file(File),
-    Words = bytes_to_words(Bytes),
-
-    %% Calculate word positions...
-    F1 = fun(Word, {Position, Acc}) ->
-        case gb_trees:lookup(Word, Acc) of
-            {value, Positions} ->
-                {Position + 1, gb_trees:update(Word, [Position|Positions], Acc)};
-            none ->
-                {Position + 1, gb_trees:insert(Word, [Position], Acc)}
-        end
-    end,
-    {_, PositionTree} = lists:foldl(F1, {1, gb_trees:empty()}, Words),
-
-    %% Index the words...
-    F2 = fun(Word, SubType, SubTerm) ->
-        {value, Positions} = gb_trees:lookup(Word, PositionTree),
-        NewProps = Props ++ [{word_pos, Positions}, {freq, length(Positions)}],
-        index_term(Index, Field, Word, SubType, SubTerm, Basename, NewProps)
-    end,
-    [F2(X, 0, 0) || X <- Words],
-
-    %% Now index based on date...
-    case re:run(Bytes, "Date:\s*(.*)", [{capture, all, list}]) of
-        {match, [_, Date|_]} ->
-            case riak_search_utils:parse_datetime(Date) of
-                {YMD, HMS} -> 
-                    SubType = 1,
-                    SubTerm = riak_search_utils:date_to_subterm({YMD, HMS}),
-                    [F2(Word, SubType, SubTerm) || Word <- Words],
-                    ok;
-                _ ->
-                    io:format("Could not parse date: ~p~n", [Date])
-            end;
-        Other ->
-            io:format("Could not find date: ~p~n", [Other])
+    case file:read_file(File) of
+        {ok, Bytes} ->
+            %% build doc
+            IdxDoc = riak_indexed_doc:new(Basename, Index),
+            IdxDoc2 = riak_indexed_doc:set_fields([
+                {"payload", binary_to_list(Bytes)}], IdxDoc),
+            %% index
+            ok = SearchClient:index_doc(IdxDoc2);
+        {error, eisdir} ->
+            io:format("following directory: ~p~n", [File]),
+            index_dir(SearchClient, File, Index, Field);
+        Err ->
+            io:format("index_file(~p, ~p, ~p): error: ~p~n",
+                [File, Index, Field, Err])
     end,
     ok.
 
-%% Index         
-index_term(Term, Value, Props) ->
-    index_term(?DEFAULT_INDEX, ?DEFAULT_FIELD, Term, Value, Props).
+%% %% Full-text index the files within the specified directory.
+%% index_dir(Directory) ->
+%%     index_dir(Directory, ?DEFAULT_INDEX, ?DEFAULT_FIELD).
 
-index_term(Index, Field, Term, Value, Props) ->
-    riak_search:index(Index, Field, Term, 0, 0, Value, Props).
+%% index_dir(Directory, Index, Field) ->
+%%     io:format(" :: Indexing directory: ~s~n", [Directory]),
 
-index_term(Index, Field, Term, SubType, SubTerm, Value, Props) ->
-    riak_search:index(Index, Field, Term, SubType, SubTerm, Value, Props).
+%%     %% Get a list of files in the directory, and index them.
+%%     Directory1 = case string:str(Directory, "*") of
+%%         0 -> filename:join([Directory, "*"]);
+%%         _ -> Directory
+%%     end,
+%%     Files = filelib:wildcard(Directory1),
+%%     io:format(" :: Found ~p files...~n", [length(Files)]),
+%%     [index_file(File, Index, Field) || File <- Files],
+%%     ok.
+
+
+
+%% %% Full-text index the specified file.
+%% index_file(File) ->
+%%     index_file(File, ?DEFAULT_INDEX, ?DEFAULT_FIELD).
+
+%% index_file(File, Index, Field) ->
+%%     %% TODO - discover something about the file for properties.
+%%     Props = random_properties(),
+%%     Basename = filename:basename(File),
+
+%%     io:format(" :: Indexing file: ~s~n", [Basename]),
+    
+%%     %% Get the bytes...
+%%     {ok, Bytes} = file:read_file(File),
+%%     Words = bytes_to_words(Bytes),
+
+%%     %% Calculate word positions...
+%%     F1 = fun(Word, {Position, Acc}) ->
+%%         case gb_trees:lookup(Word, Acc) of
+%%             {value, Positions} ->
+%%                 {Position + 1, gb_trees:update(Word, [Position|Positions], Acc)};
+%%             none ->
+%%                 {Position + 1, gb_trees:insert(Word, [Position], Acc)}
+%%         end
+%%     end,
+%%     {_, PositionTree} = lists:foldl(F1, {1, gb_trees:empty()}, Words),
+
+%%     %% Index the words...
+%%     F2 = fun(Word, SubType, SubTerm) ->
+%%         {value, Positions} = gb_trees:lookup(Word, PositionTree),
+%%         NewProps = Props ++ [{word_pos, Positions}, {freq, length(Positions)}],
+%%         index_term(Index, Field, Word, SubType, SubTerm, Basename, NewProps)
+%%     end,
+%%     [F2(X, 0, 0) || X <- Words],
+
+%%     %% Now index based on date...
+%%     case re:run(Bytes, "Date:\s*(.*)", [{capture, all, list}]) of
+%%         {match, [_, Date|_]} ->
+%%             case riak_search_utils:parse_datetime(Date) of
+%%                 {YMD, HMS} -> 
+%%                     SubType = 1,
+%%                     SubTerm = riak_search_utils:date_to_subterm({YMD, HMS}),
+%%                     [F2(Word, SubType, SubTerm) || Word <- Words],
+%%                     ok;
+%%                 _ ->
+%%                     io:format("Could not parse date: ~p~n", [Date])
+%%             end;
+%%         Other ->
+%%             io:format("Could not find date: ~p~n", [Other])
+%%     end,
+%%     ok.
+
+%% %% Index         
+%% index_term(Term, Value, Props) ->
+%%     index_term(?DEFAULT_INDEX, ?DEFAULT_FIELD, Term, Value, Props).
+
+%% index_term(Index, Field, Term, Value, Props) ->
+%%     riak_search:index(Index, Field, Term, 0, 0, Value, Props).
+
+%% index_term(Index, Field, Term, SubType, SubTerm, Value, Props) ->
+%%     riak_search:index(Index, Field, Term, SubType, SubTerm, Value, Props).
 
 %% This method returns fake properties. It is called by index_file and
 %% is here so that you can play around with facet search.

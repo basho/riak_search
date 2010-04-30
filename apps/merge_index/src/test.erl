@@ -25,7 +25,8 @@ write_inner(_, 0) ->
     io:format("finished write.~n");
 write_inner(Pid, N) ->
     NB = list_to_binary(integer_to_list(N)),
-    merge_index:index(Pid, <<"a">>, <<"b">>, <<"c", NB/binary>>, N, [], now()),
+    TS = mi_utils:now_to_timestamp(erlang:now()),
+    merge_index:index(Pid, <<"a">>, <<"b">>, <<"c", NB/binary>>, N, [], TS),
     write_inner(Pid, N - 1).
 
 info(N) ->

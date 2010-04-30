@@ -18,11 +18,14 @@
 -author("Rusty Klophaus <rusty@basho.com>").
 -export([
     open/1,
+    clear/1,
+    size/1,
     lookup/2,
     lookup_nocreate/2,
     lookup/3,
     select/3, 
     select/4,
+    invert/1,
     test/0
 ]).
 
@@ -68,6 +71,14 @@ open_inner(FH, Incdex) ->
         eof ->
             {ok, Incdex}
     end.
+
+clear(Incdex) ->
+    mi_utils:create_empty_file(Incdex#incdex.filename),
+    open(Incdex#incdex.filename).
+
+size(Incdex) ->
+    Tree = Incdex#incdex.tree,
+    gb_trees:size(Tree).
 
 %% Same as lookup(Key, Incdex, true).
 lookup(Key, Incdex) ->
@@ -133,7 +144,20 @@ select_1(StartKey, StopKey, Size, {Key, Value, Left, Right}, Acc) ->
 select_1(_, _, _, nil, Acc) -> 
     Acc.
 
-typesafe_size(Term) when is_binary(Term) -> size(Term);
+%% Normally, an incdex maps a key to some sequentially incremented ID
+%% value. invert/1 inverts the index, returning a gb_tree where the
+%% key and value are swapped. In other words, mapping the ID value to
+%% the key.
+invert(Incdex) ->
+    TreeIterator = gb_trees:iterator(Incdex#incdex.tree),
+    invert_1(gb_trees:empty(), gb_trees:next(TreeIterator)).
+invert_1(Tree, none) ->
+    Tree;
+invert_1(Tree, {Key, Value, Iterator}) ->
+    invert_1(gb_trees:insert(Value, Key, Tree), gb_trees:next(Iterator)).
+    
+
+typesafe_size(Term) when is_binary(Term) -> erlang:size(Term);
 typesafe_size(Term) when is_list(Term) -> length(Term).
 
 test() ->

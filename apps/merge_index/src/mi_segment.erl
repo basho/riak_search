@@ -21,6 +21,7 @@
     exists/1,
     open/1,
     from_buffer/2,
+    delete/1,
     info/2,
     info/3,
     iterator/3,
@@ -111,8 +112,13 @@ from_buffer_inner(_FH, 0, 0, 0, undefined, eof, Offsets) ->
 from_buffer_inner(_FH, Offset, _, Count, LastIFT, eof, Offsets) ->
     gb_trees:enter(LastIFT, {Offset, Count}, Offsets).
 
+%% Delete all segment data.
+delete(Segment) ->
+    file:delete(data_file(Segment)),
+    file:delete(offsets_file(Segment)),
+    ok.
 
-%% Return the number of results under this IFT.
+%% return the number of results under this IFT.
 info(IFT, Segment) ->
     Tree = Segment#segment.tree,
     case gb_trees:lookup(IFT, Tree) of
