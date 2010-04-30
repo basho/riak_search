@@ -125,17 +125,34 @@ info(IFT, Buffer) ->
             0
     end.
 
+
+ets_next(Table, StartIFT) ->
+    case StartIFT == undefined of 
+        true ->
+             ets:first(Table);
+        false ->
+            case ets:lookup(Table, StartIFT) of
+                [{IFT, _Values}] -> 
+                    IFT;
+                [] ->
+                    ets:next(Table, StartIFT)
+            end
+    end.
+
 %% Return the number of results for IFTs between the StartIFT and
 %% StopIFT, inclusive.
 info(StartIFT, EndIFT, Buffer) ->
     Table = Buffer#buffer.table,
-    MatchHead = {'$1', '$2'},
-    MatchGuard = [{'>=', $1, StartIFT}, {'=<', $1, EndIFT}],
-    Result = ['$_'],
-    MatchSpec = [{MatchHead, MatchGuard, Result}],
-    Results = ets:select(Table, MatchSpec),
-    lists:sum([gb_trees:size(X) || {_, X} <- Results]).
-
+    IFT = ets_next(Table, StartIFT),
+    info_1(Table, IFT, EndIFT, 0).
+info_1(_Table, IFT, EndIFT, Count)
+when IFT == '$end_of_table' orelse (EndIFT /= undefined andalso IFT > EndIFT) ->
+    Count;
+info_1(Table, IFT, EndIFT, Count) ->
+    [{IFT, Values}] = ets:lookup(Table, IFT),
+    NextIFT = ets:next(Table, IFT),
+    info_1(Table, NextIFT, EndIFT, Count + gb_trees:size(Values)).
+    
 %% Return an iterator function.
 %% Returns Fun/0, which then returns {Term, NewFun} or eof.
 iterator(Buffer) ->
@@ -145,19 +162,8 @@ iterator(Buffer) ->
 %% Returns Fun/0, which then returns {Term, NewFun} or eof.
 iterator(StartIFT, EndIFT, Buffer) ->
     Table = Buffer#buffer.table,
-    case StartIFT == undefined of 
-        true ->
-            IFT = ets:first(Table),
-            Iterator = {Table, IFT, EndIFT};
-        false ->
-            case ets:lookup(Table, StartIFT) of
-                [{IFT, _Values}] ->
-                    Iterator = {Table, IFT, EndIFT};
-                [] ->
-                    IFT = ets:next(Table, StartIFT),
-                    Iterator = {Table, IFT, EndIFT}
-            end
-    end,
+    IFT = ets_next(Table, StartIFT),
+    Iterator = {Table, IFT, EndIFT},
     fun() -> iterator_1(Iterator) end.
 
 %% Iterate through IFTs...

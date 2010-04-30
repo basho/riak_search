@@ -8,6 +8,7 @@
             mi_segment,
             mi_server,
             mi_utils,
+            mi_locks,
             sync,
             test,
             basho_bench_driver_merge_index
