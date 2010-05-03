@@ -3,6 +3,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 -define(PARSE(X), qilr_parse:string(X)).
+-define(BOOL_PARSE(Term, Bool), qilr_parse:string(Term, Bool)).
 
 -define(GEN_END, {generator, fun() -> [] end}).
 
@@ -41,7 +42,14 @@ bool_test() ->
      ?assertMatch({ok, [{lor, [{term, "pizza", []}, {term, "spaghetti", []}]}]},
                   ?PARSE("pizza OR spaghetti")),
      ?assertMatch({ok, [{lor, [{term, "basil", []}, {term, "oregano", []}]}]},
-                  ?PARSE("basil oregano"))].
+                  ?PARSE("basil oregano")),
+     ?assertMatch({ok, [{land, [{term, "basil", []}, {term, "oregano", []}]}]},
+                   ?BOOL_PARSE("basil oregano", 'and')),
+     ?assertMatch({ok, [{land, [{term, "fettucini", []}, {term, "alfredo", []}]}]},
+                  ?BOOL_PARSE("fettucini && alfredo", 'and')),
+     ?assertMatch({ok, [{lor, [{term, "apples", []}, {term, "oranges", []}]}]},
+                  ?BOOL_PARSE("apples oranges", 'or'))].
+
 
 grouping_test() ->
     [?assertMatch({ok, [{group, [{land, [{term, "erlang", []}, {term, "sweden", []}]}]}]},

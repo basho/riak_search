@@ -1,5 +1,7 @@
 {schema, [{name, "employees"},
-          {version, "1.1"}],
+          {version, "1.1"},
+	  {default_field, "last_name"},
+          {default_op, "and"}],
  {fields,
   [{field, [{name, "id"},
             {type, string},
