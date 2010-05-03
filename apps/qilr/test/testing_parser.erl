@@ -44,11 +44,11 @@ bool_test() ->
      ?assertMatch({ok, [{lor, [{term, "basil", []}, {term, "oregano", []}]}]},
                   ?PARSE("basil oregano")),
      ?assertMatch({ok, [{land, [{term, "basil", []}, {term, "oregano", []}]}]},
-                   ?BOOL_PARSE("basil oregano", land)),
+                   ?BOOL_PARSE("basil oregano", 'and')),
      ?assertMatch({ok, [{land, [{term, "fettucini", []}, {term, "alfredo", []}]}]},
-                  ?BOOL_PARSE("fettucini && alfredo", land)),
+                  ?BOOL_PARSE("fettucini && alfredo", 'and')),
      ?assertMatch({ok, [{lor, [{term, "apples", []}, {term, "oranges", []}]}]},
-                  ?BOOL_PARSE("apples oranges", lor))].
+                  ?BOOL_PARSE("apples oranges", 'or'))].
 
 
 grouping_test() ->

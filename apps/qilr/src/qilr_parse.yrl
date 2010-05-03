@@ -126,9 +126,15 @@ boost_suffix -> caret term:
 Erlang code.
 -export([string/1, string/2]).
 string(Query) ->
-    string(Query, lor).
-string(Query, Bool) when Bool =:= land orelse
-                         Bool =:= lor ->
+    string(Query, 'or').
+string(Query, Bool0) when Bool0 =:= 'and' orelse
+                          Bool0 =:= 'or' ->
+    Bool = if
+               Bool0 =:= 'and' ->
+                   land;
+               true ->
+                   lor
+           end,
     {ok, Tokens, _} = qilr_scan:string(Query),
     qilr_optimizer:optimize(parse(Tokens), [{default_bool, Bool}]).
 
