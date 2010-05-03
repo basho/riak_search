@@ -114,43 +114,46 @@ read_buf_and_seg_1(_Root, _Locks, [], SFiles, _Buffers, _Segments) ->
 
 handle_call({index, Index, Field, Term, SubType, SubTerm, Value, Props, TS}, _From, State) ->
     %% Calculate the IFT...
-    #state { root=Root, locks=Locks, indexes=Indexes, fields=Fields, terms=Terms, buffers=[Buffer|Buffers], segments=Segments } = State,
+    #state { root=Root, locks=Locks, indexes=Indexes, fields=Fields, terms=Terms, buffers=[CurrentBuffer0|Buffers], segments=Segments } = State,
     {IndexID, NewIndexes} = mi_incdex:lookup(Index, Indexes),
     {FieldID, NewFields} = mi_incdex:lookup(Field, Fields),
     {TermID, NewTerms} = mi_incdex:lookup(Term, Terms),
     IFT = mi_utils:ift_pack(IndexID, FieldID, TermID, SubType, SubTerm),
 
     %% Write to the buffer...
-    NewBuffer = mi_buffer:write(IFT, Value, Props, TS, Buffer),
+    CurrentBuffer = mi_buffer:write(IFT, Value, Props, TS, CurrentBuffer0),
 
     %% Update the state...
     NewState = State#state {
         indexes=NewIndexes,
         fields=NewFields,
         terms=NewTerms,
-        buffers=[NewBuffer|Buffers]
+        buffers=[CurrentBuffer|Buffers]
     },
 
     %% Possibly dump buffer to a new segment...
-    case mi_buffer:size(NewBuffer) > ?ROLLOVERSIZE(State) of
+    case mi_buffer:size(CurrentBuffer) > ?ROLLOVERSIZE(State) of
         true ->
             %% Start processing the latest buffer.
+            mi_buffer:close_filehandle(CurrentBuffer),
+            SegNum  = tl(filename:extension(mi_buffer:filename(CurrentBuffer))),
+            SegFile = join(Root, "segment." ++ SegNum),
+            Segment = mi_segment:open(SegFile),
             Pid = self(),
-            mi_buffer:close_filehandle(NewBuffer),
             spawn_link(fun() ->
-                Segment = buffer_to_segment(Root, NewBuffer),
-                gen_server:call(Pid, {buffer_to_segment, NewBuffer, Segment}, infinity)
+                mi_segment:from_buffer(CurrentBuffer, Segment),
+                gen_server:call(Pid, {buffer_to_segment, CurrentBuffer, Segment}, infinity)
             end),
             
             %% Create a new empty buffer...
-            BNum = length([NewBuffer|Buffers]) + length(Segments) + 1,
+            BNum = length([CurrentBuffer|Buffers]) + length(Segments) + 1,
             BName = join(NewState, "buffer." ++ integer_to_list(BNum)),
-            EmptyBuffer = mi_buffer:open(BName),
-            NewLocks = mi_locks:claim(mi_buffer:filename(EmptyBuffer), fun() -> mi_buffer:delete(EmptyBuffer) end, Locks),
+            NewBuffer = mi_buffer:open(BName),
+            NewLocks = mi_locks:claim(mi_buffer:filename(NewBuffer), fun() -> mi_buffer:delete(NewBuffer) end, Locks),
             
             NewState1 = NewState#state {
                 locks=NewLocks,
-                buffers=[EmptyBuffer|NewState#state.buffers]
+                buffers=[NewBuffer|NewState#state.buffers]
             },
             {reply, ok, NewState1};
         false ->
@@ -394,15 +397,6 @@ fold(_Fun, Acc, eof) ->
     Acc;
 fold(Fun, Acc, {Term, IteratorFun}) ->
     fold(Fun, Fun(Term, Acc), IteratorFun()).
-
-buffer_to_segment(Root, Buffer) ->
-    %% Get the new segment name...
-    SegNum  = tl(filename:extension(mi_buffer:filename(Buffer))),
-    SegFile = join(Root, "segment." ++ SegNum),
-    
-    %% Create and return the new segment.
-    mi_segment:from_buffer(SegFile, Buffer).
-
 
 join(#state { root=Root }, Name) ->
     join(Root, Name);

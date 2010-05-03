@@ -67,21 +67,18 @@ open(Root) ->
 
 
 %% Create a segment from a Buffer (see mi_buffer.erl)
-from_buffer(Root, Buffer) ->
+from_buffer(Buffer, Segment) ->
     %% Open the iterator...
     Iterator = mi_buffer:iterator(Buffer),
     
     %% Write to buffer file in order...
-    {ok, FH} = file:open(data_file(Root), [write, {delayed_write, 1 * 1024 * 1024, 10 * 1000}, raw, binary]),
-    Table = ets:new(segment, [ordered_set, public]),
+    Table = Segment#segment.table,
+    {ok, FH} = file:open(data_file(Segment), [write, {delayed_write, 1 * 1024 * 1024, 10 * 1000}, raw, binary]),
     from_buffer_inner(FH, 0, 0, 0, undefined, Iterator(), Table),
     file:close(FH),
 
     %% Write the offsets file...
-    offsets_write(Root, Table),
-
-    %% Return the new segment.
-    #segment { root=Root, table=Table }.
+    write_offsets(Segment).
 
 from_buffer_inner(FH, Offset, Pos, Count, LastIFT, {{IFT, Value, Props, TS}, Iterator}, Table)
 when LastIFT /= IFT ->
@@ -151,30 +148,49 @@ info_1(Table, IFT, EndIFT, Count) ->
 iterator(StartIFT, EndIFT, Segment) ->
     %% Lookup the nearest key after StartIFT.
     Table = Segment#segment.table,
-    FH = case mi_utils:ets_next(Table, StartIFT) of
+    case mi_utils:ets_next(Table, StartIFT) of
         IFT when IFT /= '$end_of_table' ->
             [{IFT, {Offset, _}}] = ets:lookup(Table, IFT),
-            {ok, Handle} = file:open(data_file(Segment), [read, raw, read_ahead, binary]),
-            file:position(Handle, Offset),
-            Handle;
+            {ok, FH} = file:open(data_file(Segment), [read, raw, read_ahead, binary]),
+            file:position(FH, Offset),
+            fun() -> iterator_fun(FH, undefined, EndIFT, []) end;
         '$end_of_table' ->
-            undefined
-    end,
-    fun() -> iterator_fun(FH, undefined, EndIFT) end.
+            fun() -> eof end
+    end.
+   
+%% This works by reading a batch of 1000 results into a list, and then
+%% serving those results up before reading the next 1000. This is done
+%% to balance the tradeoff between open file handles and memory. If we didn't read
+%% ahead and close the file handle, then all file handles involved in a stream
+%% would remain open until the stream ended.
+iterator_fun(_FH, _CurrentKey, _EndIFT, [eof]) ->
+    eof;
+iterator_fun(FH, CurrentKey, EndIFT, [H|T]) ->
+    {H, fun() -> iterator_fun(FH, CurrentKey, EndIFT, T) end};
+iterator_fun(FH, CurrentKey, EndIFT, []) ->
+    {NewCurrentKey, Results} = iterator_fun_1(FH, CurrentKey, EndIFT, []),
+    iterator_fun(FH, NewCurrentKey, EndIFT, Results).
 
-iterator_fun(FH, CurrentKey, EndIFT) ->
+%% Read the next batch of 1000 entries, or up to the end of the file, whichever
+%% comes sooner.
+iterator_fun_1(_, CurrentKey, _, Acc) when length(Acc) > 1000 ->
+    {CurrentKey, lists:reverse(Acc)};
+iterator_fun_1(FH, CurrentKey, EndIFT, Acc) ->
     case read_seg_value(FH) of
         {key, Key} when EndIFT == all orelse Key =< EndIFT ->
-            iterator_fun(FH, Key, EndIFT);
+            iterator_fun_1(FH, Key, EndIFT, Acc);
         {key, Key} when Key > EndIFT ->
-            eof;
+            file:close(FH),
+            {CurrentKey, lists:reverse([eof|Acc])};
         {value, {Value, Props}, TS} ->
-            F = fun() -> iterator_fun(FH, CurrentKey, EndIFT) end,
-            {{CurrentKey, Value, Props, TS}, F};
+            Term = {CurrentKey, Value, Props, TS},
+            iterator_fun_1(FH, CurrentKey, EndIFT, [Term|Acc]);
         eof ->
             file:close(FH),
-            eof
+            {CurrentKey, lists:reverse([eof|Acc])}
     end.
+
+
 
 
 %% Read the offsets file from disk. If it's not found, then recreate
@@ -217,8 +233,9 @@ repair_offsets_inner(FH, Offset, Count, LastIFT, Table) ->
             ok
     end.
                         
-offsets_write(Root, Table) ->
-    ok = ets:tab2file(Table, offsets_file(Root)).
+write_offsets(Segment) ->
+    Table = Segment#segment.table,
+    ok = ets:tab2file(Table, offsets_file(Segment)).
 
 read_seg_value(undefined) ->
     eof;
