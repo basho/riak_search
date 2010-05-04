@@ -17,7 +17,7 @@
 -author("Rusty Klophaus <rusty@basho.com>").
 -include("merge_index.hrl").
 -export([
-    open/1,
+    open/2,
     filename/1,
     close_filehandle/1,
     delete/1,
@@ -39,15 +39,15 @@
 %%% sorted iterator.
 
 %% Open a new buffer. Returns a buffer structure.
-open(Filename) ->
-    %% Make sure the file exists...
-    case filelib:is_file(Filename) of
-        true -> ok;
-        false -> mi_utils:create_empty_file(Filename)
-    end,
-    
-    %% Read existing buffer from disk...
-    {ok, FH} = file:open(Filename, [read, write, {read_ahead, 1024 * 1024}, {delayed_write, 1024 * 1024, 10 * 1000}, raw, binary]),
+open(Filename, Options) ->
+    %% Open the existing buffer file...
+    filelib:ensure_dir(Filename),
+    ReadBuffer = 1024 * 1024,
+    WriteInterval = proplists:get_value(write_interval, Options, 2 * 1000),
+    WriteBuffer = proplists:get_value(write_buffer, Options, 1024 * 1024),
+    {ok, FH} = file:open(Filename, [read, write, {read_ahead, ReadBuffer}, {delayed_write, WriteBuffer, WriteInterval}, raw, binary]),
+
+    %% Read into an ets table...
     Table = ets:new(buffer, [ordered_set, public]),
     open_inner(FH, Table),
     {ok, Size} = file:position(FH, cur),
@@ -176,7 +176,7 @@ iterator_2(_IFT, none, Continuation) ->
 test() ->
     %% Write some stuff into the buffer...
     file:delete("/tmp/test_buffer"),
-    Buffer = open("/tmp/test_buffer"),
+    Buffer = open("/tmp/test_buffer", []),
     Buffer1 = write(3, 11, [], 1, Buffer),
     Buffer2 = write(3, 11, [], 2, Buffer1),
     Buffer3 = write(1, 12, [], 1, Buffer2),

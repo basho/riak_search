@@ -13,6 +13,7 @@
 %% under the License.
 
 %% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+
 -module(mi_server).
 -author("Rusty Klophaus <rusty@basho.com>").
 -include("merge_index.hrl").
@@ -27,29 +28,50 @@
     code_change/3
 ]).
 
+-record(state, { 
+    root,
+    locks,
+    indexes,
+    fields,
+    terms,
+    segments,
+    buffers,
+    config
+}).
+
 init([Root, Config]) ->
+    %% Get incdex and buffer options...
+    TempState = #state { config=Config },
+    SyncInterval = ?SYNC_INTERVAL(TempState),
+    IncdexOptions = [{write_interval, SyncInterval}],
+    BufferOptions = [{write_interval, SyncInterval}],
+    
+    ?PRINT(IncdexOptions),
+    ?PRINT(BufferOptions),
+
+    %% Load from disk...
     filelib:ensure_dir(join(Root, "ignore")),
     io:format("Loading merge_index from '~s'~n", [Root]),
-    {Buffers, Segments, Locks} = read_buf_and_seg(Root, mi_locks:new()),
+    {Buffers, Segments, Locks} = read_buf_and_seg(Root, BufferOptions, mi_locks:new()),
     io:format("Finished loading merge_index from '~s'~n", [Root]),
 
     %% Create the state...
     State = #state {
-        root = Root,
-        locks = Locks,
-        indexes  = mi_incdex:open(join(Root, "indexes")),
-        fields   = mi_incdex:open(join(Root, "fields")),
-        terms    = mi_incdex:open(join(Root, "terms")),
+        root     = Root,
+        locks    = Locks,
+        indexes  = mi_incdex:open(join(Root, "indexes"), IncdexOptions),
+        fields   = mi_incdex:open(join(Root, "fields"), IncdexOptions),
+        terms    = mi_incdex:open(join(Root, "terms"), IncdexOptions),
         buffers  = Buffers,
         segments = Segments,
-        config = Config
+        config   = Config
     },
 
     %% Return.
     {ok, State}.
 
 %% Return {Buffers, Segments}, after cleaning up/repairing any partially merged buffers.
-read_buf_and_seg(Root, Locks) ->
+read_buf_and_seg(Root, BufferOptions, Locks) ->
     %% Get a list of buffers...
     F1 = fun(Filename) -> 
         [_, Num] = string:tokens(Filename, "."),
@@ -62,32 +84,32 @@ read_buf_and_seg(Root, Locks) ->
         F1(filename:rootname(Filename))
     end,
     SFiles = lists:sort([F2(X) || X <- filelib:wildcard(join(Root, "segment.*.data"))]),
-    read_buf_and_seg_1(Root, Locks, BFiles, SFiles, [], []).
+    read_buf_and_seg_1(Root, BufferOptions, Locks, BFiles, SFiles, [], []).
 
-read_buf_and_seg_1(Root, Locks, [], [], Buffers, Segments) ->
+read_buf_and_seg_1(Root, BOptions, Locks, [], [], Buffers, Segments) ->
     BNum = length(Buffers) + length(Segments) + 1,
     BName = join(Root, "buffer." ++ integer_to_list(BNum)),
-    Buffer = mi_buffer:open(BName),
+    Buffer = mi_buffer:open(BName, BOptions),
     NewLocks = mi_locks:claim(mi_buffer:filename(Buffer), fun() -> mi_buffer:delete(Buffer) end, Locks),
     {[Buffer|Buffers], Segments, NewLocks};
-read_buf_and_seg_1(_Root, Locks, [BFile], [], Buffers, Segments) ->
+read_buf_and_seg_1(_Root, BOptions, Locks, [BFile], [], Buffers, Segments) ->
     %% Reached the last buffer file, open it...
     {_BNum, BName} = BFile,
     io:format("Loading buffer: '~s'~n", [BName]),
-    Buffer = mi_buffer:open(BName),
+    Buffer = mi_buffer:open(BName, BOptions),
     NewLocks = mi_locks:claim(mi_buffer:filename(Buffer), fun() -> mi_buffer:delete(Buffer) end, Locks),
     {[Buffer|Buffers], Segments, NewLocks};
-read_buf_and_seg_1(Root, Locks, [BFile|BFiles], [], Buffers, Segments) ->
+read_buf_and_seg_1(Root, BOptions, Locks, [BFile|BFiles], [], Buffers, Segments) ->
     %% Convert buffer files to segment files...
     {BNum, BName} = BFile,
     SName = join(Root, "segment." ++ integer_to_list(BNum)),
     io:format("Converting buffer: '~s'~n", [BName]),
-    Buffer = mi_buffer:open(BName),
+    Buffer = mi_buffer:open(BName, BOptions),
     mi_buffer:close_filehandle(Buffer),
     Segment = mi_segment:from_buffer(SName, Buffer),
     mi_buffer:delete(Buffer),
-    read_buf_and_seg_1(Root, Locks, BFiles, [], Buffers, [Segment|Segments]);
-read_buf_and_seg_1(Root, Locks, [BFile|BFiles], [SFile|SFiles], Buffers, Segments) ->
+    read_buf_and_seg_1(Root, BOptions, Locks, BFiles, [], Buffers, [Segment|Segments]);
+read_buf_and_seg_1(Root, BOptions, Locks, [BFile|BFiles], [SFile|SFiles], Buffers, Segments) ->
     {BNum, BName} = BFile,
     {SNum, SName} = SFile,
     if 
@@ -98,18 +120,18 @@ read_buf_and_seg_1(Root, Locks, [BFile|BFiles], [SFile|SFiles], Buffers, Segment
             %% Remove and recreate segment...
             file:delete(SName),
             io:format("Converting buffer: '~s'~n", [BName]),
-            Buffer = mi_buffer:open(BName),
+            Buffer = mi_buffer:open(BName, BOptions),
             mi_buffer:close_filehandle(Buffer),
             Segment = mi_segment:from_buffer(SName, Buffer),
             mi_buffer:delete(Buffer),
-            read_buf_and_seg_1(Root, Locks, BFiles, SFiles, Buffers, [Segment|Segments]);
+            read_buf_and_seg_1(Root, BOptions, Locks, BFiles, SFiles, Buffers, [Segment|Segments]);
         BNum > SNum ->
             %% Open the segment and loop...
             io:format("Loading segment: '~s'~n", [SName]),
             Segment = mi_segment:open(SName),
-            read_buf_and_seg_1(Root, Locks, [BFile|BFiles], SFiles, Buffers, [Segment|Segments])
+            read_buf_and_seg_1(Root, BOptions, Locks, [BFile|BFiles], SFiles, Buffers, [Segment|Segments])
     end;
-read_buf_and_seg_1(_Root, _Locks, [], SFiles, _Buffers, _Segments) ->
+read_buf_and_seg_1(_Root, _BOptions, _Locks, [], SFiles, _Buffers, _Segments) ->
     throw({too_many_segment_files, SFiles}).
 
 handle_call({index, Index, Field, Term, SubType, SubTerm, Value, Props, TS}, _From, State) ->
@@ -132,7 +154,7 @@ handle_call({index, Index, Field, Term, SubType, SubTerm, Value, Props, TS}, _Fr
     },
 
     %% Possibly dump buffer to a new segment...
-    case mi_buffer:size(CurrentBuffer) > ?ROLLOVERSIZE(State) of
+    case mi_buffer:size(CurrentBuffer) > ?ROLLOVER_SIZE(State) of
         true ->
             %% Start processing the latest buffer.
             mi_buffer:close_filehandle(CurrentBuffer),
@@ -148,7 +170,8 @@ handle_call({index, Index, Field, Term, SubType, SubTerm, Value, Props, TS}, _Fr
             %% Create a new empty buffer...
             BNum = length([CurrentBuffer|Buffers]) + length(Segments) + 1,
             BName = join(NewState, "buffer." ++ integer_to_list(BNum)),
-            NewBuffer = mi_buffer:open(BName),
+            BufferOptions = [{write_interval, ?SYNC_INTERVAL(State)}],
+            NewBuffer = mi_buffer:open(BName, BufferOptions),
             NewLocks = mi_locks:claim(mi_buffer:filename(NewBuffer), fun() -> mi_buffer:delete(NewBuffer) end, Locks),
             
             NewState1 = NewState#state {

@@ -40,7 +40,10 @@ new(_Id) ->
     Root = "../data",
     case erlang:whereis(merge_index) of
         undefined -> 
-            {ok, Pid} = merge_index:start_link(Root, []),
+            SyncInterval = basho_bench_config:get(merge_index_sync_interval, 30 * 1000),
+            RolloverSize = basho_bench_config:get(merge_index_rollover_size, 50 * 1024 * 1024),
+            Options = [{merge_index_sync_interval, SyncInterval}, {merge_index_rollover_size, RolloverSize}],
+            {ok, Pid} = merge_index:start_link(Root, Options),
             ?PRINT(Pid),
             erlang:register(merge_index, Pid);
         Pid ->
@@ -73,14 +76,16 @@ run(stream, KeyGen, _ValueGen, State) ->
     Ref = make_ref(),
     F = fun(_X, _Y) -> true end,
     merge_index:stream(Pid, ?INDEX, ?FIELD, KeyGen(), self(), Ref, F),
-    collect_stream(Ref),
+    collect_stream(Ref, 0, undefined),
     {ok, State}.
 
-collect_stream(Ref) ->
-%%     ?PRINT(collect_stream),
+collect_stream(Ref, Count, LastKey) ->
     receive 
         {result, '$end_of_table', Ref} ->
+            %% ?PRINT({stream_count, Count}),
             ok;
-        {result, {_Key, _Props}, Ref} ->
-            collect_stream(Ref)
+        {result, {Key, _Props}, Ref} when (LastKey == undefined orelse LastKey =< Key) ->
+            collect_stream(Ref, Count + 1, Key);
+        {result, {Key, _Props}, Ref} ->
+            throw({key_out_of_order, Key})
     end.

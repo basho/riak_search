@@ -17,7 +17,7 @@
 -include("merge_index.hrl").
 -author("Rusty Klophaus <rusty@basho.com>").
 -export([
-    open/1,
+    open/2,
     clear/1,
     size/1,
     lookup/2,
@@ -30,9 +30,11 @@
 ]).
 
 -record(incdex, {
-    last_id=0,
-    table=ets:new(incdex, [ordered_set, public]),
-    filename
+    filename,
+    options,
+    handle,
+    last_id,
+    table
 }).
 
 %%% A memory-cached, disk-backed, sequentially-incrementing
@@ -42,39 +44,36 @@
 
 %% Open an incdex on the specified file.
 %% Returns a new incdex structure.
-open(Filename) ->
+open(Filename, Options) ->
+    %% Open the existing incdex file...
     filelib:ensure_dir(Filename),
-    Incdex = #incdex { filename=Filename },
+    ReadBuffer = 1024 * 1024,
+    WriteInterval = proplists:get_value(write_interval, Options, 2 * 1000),
+    WriteBuffer = proplists:get_value(write_buffer, Options, 1024 * 1024),
+    {ok, FH} = file:open(Filename, [read, write, {read_ahead, ReadBuffer}, {delayed_write, WriteBuffer, WriteInterval}, raw, binary]),
 
-    case filelib:is_file(Filename) of
-        true ->
-            {ok, FH} = file:open(Filename, [read, read_ahead, raw, binary]),
-            {ok, NewIncdex} = open_inner(FH, Incdex),
-            file:close(FH),
-            NewIncdex;
-        false -> 
-            Incdex
-    end.
+    %% Read into an ets table...
+    Table = ets:new(incdex, [ordered_set, public]),
+    LastID = open_inner(FH, Table, 0),
+    
+    %% Return the incdex...
+    #incdex { filename=Filename, options=Options, handle=FH, table=Table, last_id=LastID }.
 
 %% Called by open. Puts each value of the incdex file into the
 %% #incdex.tree.
-open_inner(FH, Incdex) ->
-    Table = Incdex#incdex.table,
+open_inner(FH, Table, LastID) ->
     case mi_utils:read_value(FH) of
         {ok, {Key, ID}} ->
-            LastID = Incdex#incdex.last_id,
             ets:insert(Table, {Key, ID}),
-            NewIncdex = Incdex#incdex {
-                last_id=lists:max([ID, LastID])
-            },
-            open_inner(FH, NewIncdex);
+            NewLastID = lists:max([ID, LastID]),
+            open_inner(FH, Table, NewLastID);
         eof ->
-            {ok, Incdex}
+            LastID
     end.
 
 clear(Incdex) ->
     mi_utils:create_empty_file(Incdex#incdex.filename),
-    open(Incdex#incdex.filename).
+    open(Incdex#incdex.filename, Incdex#incdex.options).
 
 size(Incdex) ->
     Table = Incdex#incdex.table,
@@ -91,17 +90,21 @@ lookup_nocreate(Key, Incdex) ->
 %% Returns the ID associated with a key, or creates it if it doesn't
 %% exist. Writes out to the incdex file if a creation is needed.
 lookup(Key, Incdex, true) ->
+    %% Look up the entry...
     Table = Incdex#incdex.table,
-    Filename = Incdex#incdex.filename,
     case ets:lookup(Table, Key) of 
         [{Key, ID}] ->
             {ID, Incdex};
         [] ->
+            %% Write to table...
             ID = Incdex#incdex.last_id + 1,
             ets:insert(Table, {Key, ID}),
-            {ok, FH} = file:open(Filename, [append, raw, binary]),
+
+            %% Write to disk...
+            FH = Incdex#incdex.handle,
             mi_utils:write_value(FH, {Key, ID}),
-            file:close(FH),
+
+            %% Return...
             {ID, Incdex#incdex { last_id=ID }}
     end;
 
@@ -112,7 +115,6 @@ lookup(Key, Incdex, false) ->
         [{Key, ID}] -> {ID, Incdex};
         [] -> {0, Incdex}
     end.
-
 
 select(StartKey, EndKey, Incdex) ->
     select(StartKey, EndKey, undefined, Incdex).
@@ -151,7 +153,7 @@ typesafe_size(Term) when is_binary(Term) -> erlang:size(Term);
 typesafe_size(Term) when is_list(Term) -> length(Term).
 
 test() ->
-    IncdexA = open("/tmp/test_incdex"),
+    IncdexA = open("/tmp/test_incdex", []),
     
     %% Return 0 if something is not found...
     0 = lookup_nocreate("missing", IncdexA),
@@ -170,7 +172,7 @@ test() ->
     0 = lookup_nocreate("missing", IncdexA6),
 
     %% Now, open another one...
-    IncdexB = open("/tmp/test_incdex"),
+    IncdexB = open("/tmp/test_incdex", []),
     1 = lookup_nocreate("found1", IncdexB),
     2 = lookup_nocreate("found2", IncdexB),
     all_tests_passed.
