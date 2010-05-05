@@ -118,7 +118,7 @@ pass2(Op = #land {}, Config) ->
     end;
 
 pass2(Op = #lor {}, Config) ->
-    %% Collapse nested and operations.
+    %% Collapse nested or operations.
     F = fun
         (X = #lor {}, {_, Acc}) -> {loop, X#lor.ops ++ Acc};
         (X, {Again, Acc}) -> {Again, [X|Acc]}
@@ -273,9 +273,6 @@ pass4(Op = #term {}, Config) ->
             End = wildcard_one,
             range_to_lor(Start, End, true, Facets, Config);
         true ->
-%%             %% Results are of form {node, Index.Field.Term, Count}
-%%             {ok, Results} = riak_search:info_range(Index, Field, StartTerm, EndTerm, Size),
-            
             Op
     end;
 
