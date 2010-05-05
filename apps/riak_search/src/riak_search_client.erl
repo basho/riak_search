@@ -74,7 +74,7 @@ analyze_fields([], Accum) ->
     Accum;
 analyze_fields([{Name, Value}|T], Accum) when is_list(Value);
                                               is_binary(Value) ->
-    {ok, Tokens} = basho_analyzer:analyze(Value),
+    {ok, Tokens} = qilr_analyzer:analyze(Value),
     analyze_fields(T, [{Name, binary_to_list(Token)} || Token <- Tokens] ++ Accum);
 analyze_fields([{Name, Value}|T], Accum) ->
     analyze_fields(T, [{Name, Value}|Accum]).
