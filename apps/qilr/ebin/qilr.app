@@ -5,7 +5,7 @@
   {modules,      [qilr_sup, qilr_app, qilr_scan, qilr_parse, qilr_repl,
                   qilr_optimizer, qilr_analyzer, qilr_analyzer_monitor,
                   analysis_pb]},
-  {registered,   [basho_analyzer, basho_analyzer_monitor]},
+  {registered,   [qilr_analyzer, qilr_analyzer_monitor]},
   {applications, [kernel, stdlib, sasl]},
   {env, [{analysis_port, 6098}]},
   {mod, {qilr_app, []}}]}.
