@@ -1,4 +1,4 @@
--module(basho_analyzer).
+-module(qilr_analyzer).
 
 -behaviour(gen_server).
 
@@ -18,9 +18,24 @@
                 connections=dict:new()}).
 
 analyze(Text) when is_list(Text) ->
-    analyze(list_to_binary(Text));
+    case analyze(list_to_binary(Text)) of
+        Token when is_binary(Token) ->
+            binary_to_list(Token);
+        Tokens ->
+            Tokens
+    end;
 analyze(Text) when is_binary(Text) ->
-    gen_server:call(?SERVER, {analyze, Text}).
+    case whereis(?SERVER) of
+        undefined ->
+            Text;
+        _ ->
+            case gen_server:call(?SERVER, {analyze, Text}) of
+                [Token] ->
+                    Token;
+                Tokens ->
+                    Tokens
+            end
+    end.
 
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).

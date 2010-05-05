@@ -1,4 +1,4 @@
--module(basho_analyzer_monitor).
+-module(qilr_analyzer_monitor).
 
 -behaviour(gen_server).
 
@@ -28,7 +28,7 @@ init([]) ->
     {ok, PortNum} = application:get_env(analysis_port),
     case application:get_env(analysis_port) of
         {ok, PortNum} when is_integer(PortNum) ->
-            CmdDir = filename:join([code:priv_dir(basho_analyzer), "analysis_server"]),
+            CmdDir = filename:join([priv_dir(), "analysis_server"]),
             Cmd = filename:join([CmdDir, "analysis_server.sh"]),
             case catch erlang:open_port({spawn, Cmd}, [stderr_to_stdout,
                                                        {cd, CmdDir}]) of
@@ -71,3 +71,14 @@ terminate(_Reason, #state{sock=Sock}) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+%% Private functions
+priv_dir() ->
+    case code:priv_dir(qilr) of
+        {error, bad_name} ->
+            Path0 = filename:dirname(code:which(?MODULE)),
+            Path1 = filename:absname_join(Path0, ".."),
+            filename:join([Path1, "priv"]);
+        Path ->
+            filename:absname(Path)
+    end.
