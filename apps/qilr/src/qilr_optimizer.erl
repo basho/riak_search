@@ -4,6 +4,8 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+optimize({ok, Query}, Opts) when not is_list(Query) ->
+    optimize({ok, [Query]}, Opts);
 optimize({ok, Query0}, Opts) ->
     Query1 = process_terms(Query0, Opts),
     {ok, default_bool(Query1, Opts)}.
