@@ -20,8 +20,12 @@
 -export([
     exists/1,
     open/1,
-    from_buffer/2,
+    filename/1,
     delete/1,
+    data_file/1,
+    offsets_file/1,
+    from_buffer/2,
+    from_iterator/2,
     info/2,
     info/3,
     iterator/3,
@@ -65,22 +69,33 @@ open(Root) ->
         table=Table
     }.
 
+filename(Segment) ->
+    Segment#segment.root.
+
+delete(Segment) ->
+    file:delete(data_file(Segment)),
+    file:delete(offsets_file(Segment)),
+    ets:delete(Segment#segment.table),
+    ok.
 
 %% Create a segment from a Buffer (see mi_buffer.erl)
 from_buffer(Buffer, Segment) ->
     %% Open the iterator...
     Iterator = mi_buffer:iterator(Buffer),
-    
-    %% Write to buffer file in order...
+    from_iterator(Iterator, Segment).
+
+from_iterator(Iterator, Segment) ->
+    %% Write to segment file in order...
     Table = Segment#segment.table,
     {ok, FH} = file:open(data_file(Segment), [write, {delayed_write, 1 * 1024 * 1024, 10 * 1000}, raw, binary]),
-    from_buffer_inner(FH, 0, 0, 0, undefined, Iterator(), Table),
+    from_iterator_inner(FH, 0, 0, 0, undefined, Iterator(), Table),
     file:close(FH),
 
     %% Write the offsets file...
     write_offsets(Segment).
+    
 
-from_buffer_inner(FH, Offset, Pos, Count, LastIFT, {{IFT, Value, Props, TS}, Iterator}, Table)
+from_iterator_inner(FH, Offset, Pos, Count, LastIFT, {{IFT, Value, Props, TS}, Iterator}, Table)
 when LastIFT /= IFT ->
     %% Close the last keyspace if it existed...
     case Count > 0 of
@@ -93,29 +108,23 @@ when LastIFT /= IFT ->
     BytesWritten1 = write_key(FH, IFT),
     BytesWritten2 = write_seg_value(FH, Value, Props, TS),
     NewPos = Pos + BytesWritten1 + BytesWritten2,
-    from_buffer_inner(FH, NewOffset, NewPos, 1, IFT, Iterator(), Table);
+    from_iterator_inner(FH, NewOffset, NewPos, 1, IFT, Iterator(), Table);
 
-from_buffer_inner(FH, Offset, Pos, Count, LastIFT, {{IFT, Value, Props, TS}, Iterator}, Table)
+from_iterator_inner(FH, Offset, Pos, Count, LastIFT, {{IFT, Value, Props, TS}, Iterator}, Table)
 when LastIFT == IFT ->
     %% Write the new value...
     BytesWritten = write_seg_value(FH, Value, Props, TS),
     NewPos = Pos + BytesWritten,
     NewCount = Count + 1,
-    from_buffer_inner(FH, Offset, NewPos, NewCount, LastIFT, Iterator(), Table);
+    from_iterator_inner(FH, Offset, NewPos, NewCount, LastIFT, Iterator(), Table);
 
-from_buffer_inner(_FH, 0, 0, 0, undefined, eof, _Table) ->
+from_iterator_inner(_FH, 0, 0, 0, undefined, eof, _Table) ->
     %% No input, so just finish.
     ok;
 
-from_buffer_inner(_FH, Offset, _, Count, LastIFT, eof, Table) ->
+from_iterator_inner(_FH, Offset, _, Count, LastIFT, eof, Table) ->
     ets:insert(Table, {LastIFT, {Offset, Count}}).
 
-
-%% Delete all segment data.
-delete(Segment) ->
-    file:delete(data_file(Segment)),
-    file:delete(offsets_file(Segment)),
-    ok.
 
 %% return the number of results under this IFT.
 info(IFT, Segment) ->
@@ -134,7 +143,7 @@ info(StartIFT, EndIFT, Segment) ->
     IFT = mi_utils:ets_next(Table, StartIFT),
     info_1(Table, IFT, EndIFT, 0).
 info_1(_Table, IFT, EndIFT, Count)
-when IFT == '$end_of_table' orelse (EndIFT /= undefined andalso IFT > EndIFT) ->
+when IFT == '$end_of_table' orelse (EndIFT /= all andalso IFT > EndIFT) ->
     Count;
 info_1(Table, IFT, EndIFT, Count) ->
     [{IFT, {_, NewCount}}] = ets:lookup(Table, IFT),

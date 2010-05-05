@@ -117,7 +117,7 @@ lookup(Key, Incdex, false) ->
     end.
 
 select(StartKey, EndKey, Incdex) ->
-    select(StartKey, EndKey, undefined, Incdex).
+    select(StartKey, EndKey, all, Incdex).
 
 select(StartKey, EndKey, Size, Incdex) ->
     Table = Incdex#incdex.table,
@@ -126,11 +126,11 @@ select(StartKey, EndKey, Size, Incdex) ->
     select_1(Iterator, Size, []).
 
 select_1({_Table, Key, EndKey}, _Size, Acc) 
-when Key == '$end_of_table' orelse (EndKey /= undefined andalso Key > EndKey) ->
+when Key == '$end_of_table' orelse (EndKey /= all andalso Key > EndKey) ->
     lists:reverse(Acc);
 select_1({Table, Key, EndKey}, Size, Acc) ->
     NextKey = ets:next(Table, Key),
-    case Size == undefined orelse typesafe_size(Key) == Size of
+    case Size == all orelse typesafe_size(Key) == Size of
         true -> 
             [{Key, ID}] = ets:lookup(Table, Key),
             select_1({Table, NextKey, EndKey}, Size, [{Key, ID}|Acc]);

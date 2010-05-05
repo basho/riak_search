@@ -25,29 +25,33 @@
 -record(lock, {
     key,
     count,
-    function
+    funs=[]
 }).
 
 new() -> [].
 
 claim(Key, Fun, Locks) ->
-    not lists:keymember(Key, #lock.key, Locks) orelse throw({lock_already_exists, Key}),
-    Lock = #lock { key=Key, count=1, function=Fun },
-    [Lock|Locks].
+    case lists:keyfind(Key, #lock.key, Locks) of
+        #lock { count=Count, funs=Funs} ->
+            NewLock = #lock { key=Key, count=Count + 1, funs=[Fun|Funs] };
+        false ->
+            NewLock = #lock { key=Key, count=1, funs=[Fun] }
+    end,
+    lists:keystore(Key, #lock.key, Locks, NewLock).
 
 claim(Key, Locks) ->
     case lists:keyfind(Key, #lock.key, Locks) of
-        Lock = #lock { count=Count } ->
-            NewLock = Lock#lock { count = Count + 1 },
-            lists:keystore(Key, #lock.key, Locks, NewLock);
+        #lock { count=Count, funs=Funs} ->
+            NewLock = #lock { key=Key, count=Count + 1, funs=Funs };
         false ->
-            throw({lock_does_not_exist, Key})
-    end.
+            NewLock = #lock { key=Key, count=1, funs=[] }
+    end,
+    lists:keystore(Key, #lock.key, Locks, NewLock).
 
 release(Key, Locks) ->
     case lists:keyfind(Key, #lock.key, Locks) of
-        Lock = #lock { count=1, function=Fun } ->
-            Fun(),
+        Lock = #lock { count=1, funs=Funs } ->
+            [X() || X <- Funs],
             Locks -- [Lock];
         Lock = #lock { count=Count } ->
             NewLock = Lock#lock { count = Count - 1 },
@@ -55,4 +59,3 @@ release(Key, Locks) ->
         false ->
             throw({lock_does_not_exist, Key})
     end.
-    
