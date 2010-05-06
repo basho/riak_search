@@ -35,23 +35,14 @@
 %% API
 %% ====================================================================
 
-new(_Id) ->
+new(Id) ->
     %% Get reference to local merge_index.
-    Root = "../data",
-    case erlang:whereis(merge_index) of
-        undefined -> 
-            SyncInterval = basho_bench_config:get(merge_index_sync_interval, 30 * 1000),
-            RolloverSize = basho_bench_config:get(merge_index_rollover_size, 50 * 1024 * 1024),
-            Options = [{merge_index_sync_interval, SyncInterval}, {merge_index_rollover_size, RolloverSize}],
-            {ok, Pid} = merge_index:start_link(Root, Options),
-            ?PRINT(Pid),
-            erlang:register(merge_index, Pid);
-        Pid ->
-            ?PRINT(Pid),
-            Pid
-    end,
-    State = #state { pid=Pid },
-    {ok, State}.
+    Root = "../data_" ++ integer_to_list(Id),
+    SyncInterval = basho_bench_config:get(merge_index_sync_interval, 30 * 1000),
+    RolloverSize = basho_bench_config:get(merge_index_rollover_size, 50 * 1024 * 1024),
+    Options = [{merge_index_sync_interval, SyncInterval}, {merge_index_rollover_size, RolloverSize}],
+    {ok, Pid} = merge_index:start_link(Root, Options),
+    {ok, #state { pid=Pid }}.
 
 now_to_timestamp({Mega, Sec, Micro}) ->
     <<TS:64/integer>> = <<Mega:16/integer, Sec:24/integer, Micro:24/integer>>,

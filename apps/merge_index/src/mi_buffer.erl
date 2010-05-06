@@ -68,9 +68,10 @@ filename(Buffer) ->
     Buffer#buffer.filename.
 
 delete(Buffer) ->
+    ets:delete(Buffer#buffer.table),
     close_filehandle(Buffer),
     file:delete(Buffer#buffer.filename),
-    ets:delete(Buffer#buffer.table),
+    file:delete(Buffer#buffer.filename ++ ".deleted"),
     ok.
 
 close_filehandle(Buffer) ->

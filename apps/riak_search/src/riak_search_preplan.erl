@@ -312,11 +312,11 @@ normalize_range({Index, Field, StartTerm}, {Index, Field, EndTerm}, Inclusive) -
         true -> {StartTerm, EndTerm};
         false ->{binary_inc(StartTerm, +1), binary_inc(EndTerm, -1)}
     end,
-    {Index, Field, StartTerm1, EndTerm1, undefined};
+    {Index, Field, StartTerm1, EndTerm1, all};
 
 normalize_range({Index, Field, Term}, wildcard_all, _Inclusive) ->
     {StartTerm, EndTerm} = wildcard(Term),
-    {Index, Field, StartTerm, EndTerm, undefined};
+    {Index, Field, StartTerm, EndTerm, all};
 
 normalize_range({Index, Field, Term}, wildcard_one, _Inclusive) ->
     {StartTerm, EndTerm} = wildcard(Term),

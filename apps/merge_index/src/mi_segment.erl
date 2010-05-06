@@ -73,9 +73,8 @@ filename(Segment) ->
     Segment#segment.root.
 
 delete(Segment) ->
-    file:delete(data_file(Segment)),
-    file:delete(offsets_file(Segment)),
-    ets:delete(Segment#segment.table),
+    true = ets:delete(Segment#segment.table),
+    [ok = file:delete(X) || X <- filelib:wildcard(Segment#segment.root ++ ".*")],
     ok.
 
 %% Create a segment from a Buffer (see mi_buffer.erl)
