@@ -33,7 +33,7 @@ analyze(Text) when is_binary(Text) ->
                 {ok, [Token]} ->
                     {ok, Token};
                 Tokens ->
-                    {ok, Tokens}
+                    Tokens
             end
     end.
 
