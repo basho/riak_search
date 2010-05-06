@@ -56,8 +56,6 @@ info(Index, Field, Term) ->
     {ok, hd(Results)}.
 
 info_range(Index, Field, StartTerm, EndTerm, Size) ->
-    %% TODO - Handle inclusive.
-    %% TODO - Handle wildcards.
     %% Construct the operation...
     Bucket = <<"search_broadcast">>,
     Key = <<"ignored">>,

@@ -68,9 +68,10 @@ filename(Buffer) ->
     Buffer#buffer.filename.
 
 delete(Buffer) ->
+    ets:delete(Buffer#buffer.table),
     close_filehandle(Buffer),
     file:delete(Buffer#buffer.filename),
-    ets:delete(Buffer#buffer.table),
+    file:delete(Buffer#buffer.filename ++ ".deleted"),
     ok.
 
 close_filehandle(Buffer) ->
@@ -133,7 +134,7 @@ info(StartIFT, EndIFT, Buffer) ->
     IFT = mi_utils:ets_next(Table, StartIFT),
     info_1(Table, IFT, EndIFT, 0).
 info_1(_Table, IFT, EndIFT, Count)
-when IFT == '$end_of_table' orelse (EndIFT /= undefined andalso IFT > EndIFT) ->
+when IFT == '$end_of_table' orelse (EndIFT /= all andalso IFT > EndIFT) ->
     Count;
 info_1(Table, IFT, EndIFT, Count) ->
     [{IFT, Values}] = ets:lookup(Table, IFT),
@@ -143,7 +144,7 @@ info_1(Table, IFT, EndIFT, Count) ->
 %% Return an iterator function.
 %% Returns Fun/0, which then returns {Term, NewFun} or eof.
 iterator(Buffer) ->
-    iterator(undefined, undefined, Buffer).
+    iterator(all, all, Buffer).
 
 %% Return an iterator function.
 %% Returns Fun/0, which then returns {Term, NewFun} or eof.
@@ -155,7 +156,7 @@ iterator(StartIFT, EndIFT, Buffer) ->
 
 %% Iterate through IFTs...
 iterator_1({_Table, IFT, EndIFT}) 
-when IFT == '$end_of_table' orelse (EndIFT /= undefined andalso IFT > EndIFT) ->
+when IFT == '$end_of_table' orelse (EndIFT /= all andalso IFT > EndIFT) ->
     eof;
 iterator_1({Table, IFT, EndIFT}) ->
     [{IFT, Values}] = ets:lookup(Table, IFT),

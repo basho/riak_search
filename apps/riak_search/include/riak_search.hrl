@@ -9,9 +9,16 @@
 -define(IS_TERM_WILDCARD_ALL(Op), lists:member({wildcard, all}, Op#term.options)).
 -define(IS_TERM_WILDCARD_ONE(Op), lists:member({wildcard, one}, Op#term.options)).
 
-%% Pre-plan Operators...
--record(term,             {q, options}).
+%% Pre-plan Operators...  
+
+%% Q will be normalized to {"index", "field", "term"} in
+%% riak_search_preplan:normalize_term/2
+-record(term,             {q, options}). 
+
+%% #lnot's are collapsed down to the #term level in
+%% riak_search_preplan:pass5/2.
 -record(lnot,             {ops}).
+
 -record(land,             {ops}).
 -record(lor,              {ops}).
 -record(group,            {ops}).

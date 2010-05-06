@@ -18,41 +18,57 @@
 -author("Rusty Klophaus <rusty@basho.com>").
 -export([
     new/0,
-    claim/3, claim/2,
-    release/2
+    claim/2,
+    release/2,
+    when_free/3
 ]).
 
 -record(lock, {
     key,
     count,
-    function
+    funs=[]
 }).
 
 new() -> [].
 
-claim(Key, Fun, Locks) ->
-    not lists:keymember(Key, #lock.key, Locks) orelse throw({lock_already_exists, Key}),
-    Lock = #lock { key=Key, count=1, function=Fun },
-    [Lock|Locks].
-
 claim(Key, Locks) ->
     case lists:keyfind(Key, #lock.key, Locks) of
         Lock = #lock { count=Count } ->
-            NewLock = Lock#lock { count = Count + 1 },
+            NewLock = Lock#lock { count=Count + 1 },
             lists:keystore(Key, #lock.key, Locks, NewLock);
+
         false ->
-            throw({lock_does_not_exist, Key})
+            NewLock = #lock { key=Key, count=1, funs=[] },
+            lists:keystore(Key, #lock.key, Locks, NewLock)
     end.
 
 release(Key, Locks) ->
     case lists:keyfind(Key, #lock.key, Locks) of
-        Lock = #lock { count=1, function=Fun } ->
-            Fun(),
-            Locks -- [Lock];
+        #lock { count=1, funs=Funs } ->
+            [X() || X <- Funs],
+            lists:keydelete(Key, #lock.key, Locks);
+
         Lock = #lock { count=Count } ->
             NewLock = Lock#lock { count = Count - 1 },
             lists:keystore(Key, #lock.key, Locks, NewLock);
+
         false ->
             throw({lock_does_not_exist, Key})
     end.
-    
+
+%% Run the provided function when the key is free. If the key is
+%% currently free, then this is run immeditaely.
+when_free(Key, Fun, Locks) ->
+    case lists:keyfind(Key, #lock.key, Locks) of
+        false ->
+            Fun(),
+            Locks;
+
+        #lock { count=0, funs=Funs } ->
+            [X() || X <- [Fun|Funs]],
+            lists:keydelete(Key, #lock.key, Locks);
+            
+        Lock = #lock { funs=Funs} ->
+            NewLock = Lock#lock { funs=[Fun|Funs] },
+            lists:keystore(Key, #lock.key, Locks, NewLock)
+    end.
