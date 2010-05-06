@@ -30,10 +30,10 @@ analyze(Text) when is_binary(Text) ->
             Text;
         _ ->
             case gen_server:call(?SERVER, {analyze, Text}) of
-                [Token] ->
-                    Token;
+                {ok, [Token]} ->
+                    {ok, Token};
                 Tokens ->
-                    Tokens
+                    {ok, Tokens}
             end
     end.
 
