@@ -36,10 +36,18 @@ public class AnalysisHandler extends SimpleChannelUpstreamHandler {
       Channel chan = e.getChannel();
       try {
          List<String> tokens = TextAnalyzer.analyze(text);
-         for(Iterator<String> i = tokens.iterator(); i.hasNext();) {
+         if (tokens.size() > 0) {
+            for(Iterator<String> i = tokens.iterator(); i.hasNext();) {
+               AnalysisResult.Builder builder = AnalysisResult.newBuilder();
+               builder.setToken(i.next());
+               builder.setDone(i.hasNext() ? 0 : 1);
+               chan.write(builder.build());
+            }
+         }
+         else {
             AnalysisResult.Builder builder = AnalysisResult.newBuilder();
-            builder.setToken(i.next());
-            builder.setDone(i.hasNext() ? 0 : 1);
+            builder.setToken("");
+            builder.setDone(1);
             chan.write(builder.build());
          }
       }

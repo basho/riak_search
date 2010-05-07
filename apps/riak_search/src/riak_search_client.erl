@@ -8,20 +8,42 @@
 -export([index_doc/1, index_store/2, index_store/3]).
 
 %% Querying
--export([explain/3, explain/4, stream_search/3, search/3, search/4, doc_search/3,
+-export([explain/3, explain/4, stream_search/4, search/3, search/4, search/5, doc_search/3,
          doc_search/5, collect_result/2, get_document/2]).
 
 search(Index, DefaultField, Query) ->
     search(Index, DefaultField, Query, 60000).
 
-search(Index, DefaultField, Query, Timeout) ->
+search(Index, DefaultField, Query, Arg) when is_integer(Arg) ->
     SearchRef = stream_search(Index, DefaultField, Query),
+    Results = collect_results(SearchRef, Arg, []),
+    [Key || {Key, _Props} <- Results];
+search(Index, DefaultField, Query, Arg) when is_atom(Arg) ->
+    SearchRef = stream_search(Index, DefaultField, Query, Arg),
+    Results = collect_results(SearchRef, 60000, []),
+    [Key || {Key, _Props} <- Results].
+
+search(Index, DefaultField, Query, Arg, Timeout) when is_integer(Timeout) ->
+    SearchRef = stream_search(Index, DefaultField, Query, Arg),
     Results = collect_results(SearchRef, Timeout, []),
     [Key || {Key, _Props} <- Results].
 
+
 stream_search(Index, DefaultField, Query) ->
-    {ok, Qilr} = qilr_parse:string(Query),
-    execute(Qilr, Index, DefaultField, []).
+    case qilr_parse:string(Query) of
+        {ok, AST} ->
+            execute(AST, Index, DefaultField, []);
+        Error ->
+            throw(Error)
+    end.
+
+stream_search(Index, DefaultField, Query, DefaultBool) ->
+    case qilr_parse:string(Query, DefaultBool) of
+        {ok, AST} ->
+            execute(AST, Index, DefaultField, []);
+        Error ->
+            throw(Error)
+    end.
 
 doc_search(Index, DefaultField, Query) ->
     doc_search(Index, DefaultField, Query, ?DEFAULT_RESULT_SIZE, 60000).

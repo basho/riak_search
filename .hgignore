@@ -37,5 +37,6 @@ erlang_js/priv/.*.so$
 client_lib/python/.*.pyc
 apps/qilr/src/qilr_(parse|scan).erl
 apps/qilr/java_src/analysis_server/build/.*
+apps/qilr/java_src/analysis_server/bin/.*
 apps/qilr/priv/analysis_server/.*
 apps/qilr/java_src/analysis_server/.*\.jar

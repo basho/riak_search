@@ -27,8 +27,7 @@ OR			: {token, {lor, TokenLine, TokenChars}}.
 TO			: {token, {to, TokenLine, TokenChars}}.
 \^			: {token, {caret, TokenLine, TokenChars}}.
 \~			: {token, {tilde, TokenLine, TokenChars}}.
-{STRING}		: S = lists:sublist(TokenChars, 2, TokenLen - 2),
-			  {token, {phrase, TokenLine, S}}.
+{STRING}		: {token, {phrase, TokenLine, TokenChars}}.
 {TERM}			: {token, {term, TokenLine, TokenChars}}.
 
 %% Without the next line, the scanner would hang on unrecognized tokens...
