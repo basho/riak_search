@@ -35,12 +35,15 @@ init([]) ->
                 {'EXIT', Error} ->
                     {stop, Error};
                 Port when is_port(Port) ->
-                    timer:sleep(1000),
-                    {ok, Sock} = gen_tcp:connect({127,0,0,1}, PortNum, [{active, false},
-                                                                        binary, {packet, 4}]),
-                    erlang:link(Port),
-                    erlang:link(Sock),
-                    {ok, #state{port=Port, portnum=PortNum, sock=Sock}}
+                    case connect({127,0,0,1}, PortNum, [{active, false},
+                                                        binary, {packet, 4}], 10) of
+                        {ok, Sock} ->
+                            erlang:link(Port),
+                            erlang:link(Sock),
+                            {ok, #state{port=Port, portnum=PortNum, sock=Sock}};
+                        _ ->
+                            {stop, connect_error}
+                    end
             end;
         _ ->
             {stop, {error, missing_port}}
@@ -58,8 +61,7 @@ handle_info({Sock, _}, #state{portnum=PortNum, sock=Sock}=State) ->
     {ok, NewSock} = gen_tcp:connect({127,0,0,1}, PortNum, [{active, false}, binary, {packet, 4}]),
     {noreply, State#state{sock=NewSock}};
 
-handle_info({Port, Message}, #state{port=Port}=State) ->
-    error_logger:error_msg("Java process error: ~p~n", [Message]),
+handle_info({_Port, _Message}, State) ->
     {stop, java_error, State};
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -67,12 +69,24 @@ handle_info(_Info, State) ->
 terminate(_Reason, #state{sock=Sock}) ->
     StopCmd = #analysisrequest{text= <<"__basho_analyzer_monitor_stop__">>},
     gen_tcp:send(Sock, analysis_pb:encode_analysisrequest(StopCmd)),
+    io:format("Sent terminate~n"),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% Private functions
+connect(_Addr, _PortNum, _Options, 0) ->
+    {error, no_connection};
+connect(Addr, PortNum, Options, Tries) ->
+    case gen_tcp:connect(Addr, PortNum, Options) of
+        {ok, Sock} ->
+            {ok, Sock};
+        _ ->
+            timer:sleep(250),
+            connect(Addr, PortNum, Options, Tries - 1)
+    end.
+
 priv_dir() ->
     case code:priv_dir(qilr) of
         {error, bad_name} ->

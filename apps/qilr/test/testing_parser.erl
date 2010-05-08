@@ -7,20 +7,26 @@
 
 -define(GEN_END, {generator, fun() -> [] end}).
 
-escaped_chars_test_() ->
-    escaped_chars_gen([$:,$(,$),$[,$],$+,$-,$!,$&,$|,$^,$~,$*,$?]).
+%% escaped_chars_test_() ->
+%%     escaped_chars_gen([$:,$(,$),$[,$],$+,$-,$!,$&,$|,$^,$~,$*,$?]).
 
 multiple_terms_test() ->
     [?assertMatch({ok, [{lor, [{term, "planes", []},
-                              {term, "trains", []},
-                              {term, "automobiles", []}]}]},
+                               {term, "trains", []},
+                               {term, "automobiles", []}]}]},
                    ?PARSE("planes trains automobiles"))].
 
 prefix_test() ->
     [?assertMatch({ok, [{term, "planes", [required]}]}, ?PARSE("+planes")),
      ?assertMatch({ok, [{term, "planes", [prohibited]}]}, ?PARSE("-planes")),
-     ?assertMatch({ok, [{term, "planes trains", [required]}]}, ?PARSE("+\"planes trains\"")),
-     ?assertMatch({ok, [{term, "planes trains", [prohibited]}]}, ?PARSE("-\"planes trains\""))].
+     ?assertMatch({ok, [{group, [{land,
+                                 [{term, "planes", [required]},
+                                  {term, "trains", [required]}]}]}]},
+                  ?PARSE("+\"planes trains\"")),
+     ?assertMatch({ok, [{group, [{land,
+                                  [{term, "planes", [prohibited]},
+                                   {term, "trains", [prohibited]}]}]}]},
+                  ?PARSE("-\"planes trains\""))].
 
 suffix_test() ->
     [?assertMatch({ok, [{term, "solar", [{fuzzy, 0.5}]}]}, ?PARSE("solar~")),
@@ -28,11 +34,31 @@ suffix_test() ->
      ?assertMatch({ok, [{term, "solar", [{fuzzy, 0.85}]}]}, ?PARSE("solar~0.85")),
      ?assertMatch({ok, [{term, "solar", [{boost, 2}]}]}, ?PARSE("solar^2")),
      ?assertMatch({ok, [{term, "solar", [{boost, 0.9}]}]}, ?PARSE("solar^0.9")),
-     ?assertMatch({ok, [{term, "solar power", [{fuzzy, 0.5}]}]}, ?PARSE("\"solar power\"~")),
-     ?assertMatch({ok, [{term, "solar power", [{proximity, 5}]}]}, ?PARSE("\"solar power\"~5")),
-     ?assertMatch({ok, [{term, "solar power", [{fuzzy, 0.85}]}]}, ?PARSE("\"solar power\"~0.85")),
-     ?assertMatch({ok, [{term, "solar power", [{boost, 2}]}]}, ?PARSE("\"solar power\"^2")),
-     ?assertMatch({ok, [{term, "solar power", [{boost, 0.9}]}]}, ?PARSE("\"solar power\"^0.9"))].
+     ?assertMatch({ok,[{group,
+                        [{land,
+                          [{term,"solar",[{fuzzy,0.5}]},
+                           {term,"power",[{fuzzy,0.5}]}]}]}]},
+                  ?PARSE("\"solar power\"~")),
+     ?assertMatch({ok,[{group,
+                        [{land,
+                          [{term,"solar",[{proximity, 5}]},
+                           {term,"power",[{proximity, 5}]}]}]}]},
+                  ?PARSE("\"solar power\"~5")),
+     ?assertMatch({ok,[{group,
+                        [{land,
+                          [{term,"solar",[{fuzzy, 0.85}]},
+                           {term,"power",[{fuzzy, 0.85}]}]}]}]},
+                  ?PARSE("\"solar power\"~0.85")),
+     ?assertMatch({ok,[{group,
+                        [{land,
+                          [{term,"solar",[{boost, 2}]},
+                           {term,"power",[{boost, 2}]}]}]}]},
+                  ?PARSE("\"solar power\"^2")),
+     ?assertMatch({ok,[{group,
+                        [{land,
+                          [{term,"solar",[{boost, 0.9}]},
+                           {term,"power",[{boost, 0.9}]}]}]}]},
+                  ?PARSE("\"solar power\"^0.9"))].
 
 bool_test() ->
     [?assertMatch({ok, [{land, [{term, "fish", []}, {term, "bicycle", []}]}]},
@@ -81,18 +107,20 @@ field_range_test() ->
      ?assertMatch({ok, [{field, "mod_date", [{exclusive_range, {term, "20020101", []}, {term, "20030101", []}}]}]},
                   ?PARSE("mod_date:{20020101 TO 20030101]"))].
 
-escaped_chars_gen([]) ->
-    ?GEN_END;
-escaped_chars_gen([H|T]) ->
-    Term1 = lists:flatten(["\\", H, "lion"]),
-    Term2 = lists:flatten(["li\\", H, "on"]),
-    Term3 = lists:flatten(["lion\\", H]),
-    {generator,
-     fun() ->
-             [?_test([?assertMatch({ok, [{term, Term1, []}]},
-                                   ?PARSE(Term1)),
-                      ?assertMatch({ok, [{term, Term2, []}]},
-                                   ?PARSE(Term2)),
-                      ?assertMatch({ok, [{term, Term3, []}]},
-                                   ?PARSE(Term3))]) | escaped_chars_gen(T) ]
-     end}.
+%% escaped_chars_gen(Chars) ->
+%%     escaped_chars_gen(Chars, []).
+
+%% escaped_chars_gen([], Accum) ->
+%%     Accum;
+%% escaped_chars_gen([H|T], Accum) ->
+%%     Term1 = lists:flatten(["\\", H, "lion"]),
+%%     Term2 = lists:flatten(["li\\", H, "on"]),
+%%     Term3 = lists:flatten(["lion\\", H]),
+%%     F = fun() ->
+%%                 ?assertMatch({ok, [{term, Term1, []}]},
+%%                              ?PARSE(Term1)),
+%%                 ?assertMatch({ok, [{term, Term2, []}]},
+%%                              ?PARSE(Term2)),
+%%                 ?assertMatch({ok, [{term, Term3, []}]},
+%%                              ?PARSE(Term3)) end,
+%%     escaped_chars_gen(T, [F|Accum]).

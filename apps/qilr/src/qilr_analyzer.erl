@@ -25,16 +25,11 @@ analyze(Text) when is_list(Text) ->
             Tokens
     end;
 analyze(Text) when is_binary(Text) ->
-    case whereis(?SERVER) of
-        undefined ->
-            Text;
-        _ ->
-            case gen_server:call(?SERVER, {analyze, Text}) of
-                {ok, [Token]} ->
-                    {ok, Token};
-                Tokens ->
-                    Tokens
-            end
+    case gen_server:call(?SERVER, {analyze, Text}) of
+        {ok, [Token]} ->
+            {ok, Token};
+        Tokens ->
+            Tokens
     end.
 
 start_link() ->

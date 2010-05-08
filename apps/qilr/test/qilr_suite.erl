@@ -5,7 +5,7 @@
 all_test_() ->
     code:add_patha("../ebin"),
     application:start(sasl),
-    ok = application:start(qilr),
-    {setup, fun() -> ok end,
-     fun(_) -> application:stop(qilr) end,
-     [{module, testing_parser}]}.
+    application:start(qilr),
+    [{setup, fun() -> ok end,
+      fun(_) -> ok end,
+      [{module, testing_parser}]}].

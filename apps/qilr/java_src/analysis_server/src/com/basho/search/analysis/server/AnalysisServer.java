@@ -13,6 +13,8 @@ public class AnalysisServer {
             new NioServerSocketChannelFactory(
                   Executors.newCachedThreadPool(),
                   Executors.newCachedThreadPool()));
+      bootstrap.setOption("reuseAddress", true);
+      bootstrap.setOption("child.tcpNoDelay", true);
       bootstrap.setPipelineFactory(new AnalysisPipelineFactory());
       bootstrap.bind(new InetSocketAddress(6098));
    }

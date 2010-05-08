@@ -21,4 +21,4 @@ init([]) ->
                 permanent, 2000, worker, [qilr_analyzer]},
 
 
-    {ok, {{one_for_one, 10, 10}, [AnalyzerMonitor, Analyzer]}}.
+    {ok, {{one_for_all, 100, 10}, [AnalyzerMonitor, Analyzer]}}.

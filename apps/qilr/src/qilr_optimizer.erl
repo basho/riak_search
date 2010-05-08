@@ -6,7 +6,8 @@
 
 optimize({ok, Query}, Opts) when not is_list(Query) ->
     optimize({ok, [Query]}, Opts);
-optimize({ok, Query0}, Opts) ->
+optimize({ok, Query0}, Opts) when is_list(Query0) ->
+    io:format("Query0: ~p~n", [Query0]),
     Debug = proplists:get_value(debug, Opts, false),
     log(Debug, "Initial query: ~p~n", [Query0]),
     case process_terms(Query0, Opts) of
@@ -104,7 +105,7 @@ analyze_term_text(Text0) ->
         {ok, Token} when is_binary(Token) ->
             {single, binary_to_list(Token)};
         {ok, Tokens} when is_list(Tokens) ->
-            case [Tok || Tok <- Tokens,
+            case [binary_to_list(Tok) || Tok <- Tokens,
                          not(Tok =:= <<"">>)] of
                 [] ->
                     none;

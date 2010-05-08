@@ -26,13 +26,13 @@ expr -> group_expr:
 expr -> field_group:
     ['$1'].
 expr -> expr query_term:
-    '$1' ++ ['$2'].
+    add_node('$1', '$2').
 expr -> expr bool_expr:
     [add_operand('$2', '$1')].
 expr -> expr group_expr:
-    ['$1'] ++ '$2'.
+    add_node('$1', '$2').
 expr -> expr field_group:
-    ['$1'] ++ '$2'.
+    add_node('$1', '$2').
 
 group_body -> bool_expr:
     '$1'.
@@ -41,7 +41,7 @@ group_body -> query_term:
 group_body -> group_body bool_expr:
     [add_operand('$2', '$1')].
 group_body -> group_body query_term:
-    ['$1'] ++ ['$2'].
+    add_node('$1', '$2').
 
 group_expr -> lparen group_body rparen:
     collapse_group({group, emit_group_expr('$2')}).
@@ -139,6 +139,11 @@ string(Query, Bool0) when Bool0 =:= 'and' orelse
     qilr_optimizer:optimize(parse(Tokens), [{default_bool, Bool}]).
 
 %% Internal functions
+add_node(Parent, Child) when is_list(Parent) ->
+    Parent ++ [Child];
+add_node(Parent, Child) ->
+    [Parent] ++ [Child].
+
 emit_group_expr(Expr) when is_list(Expr) ->
     Expr;
 emit_group_expr(Expr) ->
