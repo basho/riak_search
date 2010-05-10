@@ -1,0 +1,12 @@
+% -*- mode: erlang -*-
+{application, raptor,
+ [{description,  "Interface to Raptor indexing engine"},
+  {vsn,          "0.1"},
+  {modules,      [raptor_pb,
+                  raptor_conn,
+                  raptor_sup,
+                  raptor_app]},
+  {registered,   [raptor_conn_sup]},
+  {applications, [kernel, stdlib, sasl]},
+  {env, [{raptor_port, 5098}]},
+  {mod, {raptor_app, []}}]}.

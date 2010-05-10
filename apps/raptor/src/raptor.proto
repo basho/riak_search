@@ -1,0 +1,44 @@
+message Index {
+    required string index = 1;
+    required string field = 2;
+    required string term = 3;
+    required string subtype = 4;
+    required string subterm = 5;
+    required string value = 6;
+    required string partition = 7;
+}
+
+message Stream {
+    required string index = 1;
+    required string field = 2;
+    required string term = 3;
+    required string subtype = 4;
+    required string start_subterm = 5;
+    required string end_subterm = 6;
+    required string partition = 7;
+}
+
+message Info {
+    required string index = 1;
+    required string field = 2;
+    required string term = 3;
+    required string partition = 4;
+}
+
+message InfoRange {
+    required string index = 1;
+    required string field = 2;
+    required string start_term = 3;
+    required string end_term = 4;
+    required string partition = 5;
+}
+
+message StreamResponse {
+    required string value = 1;
+    required string props = 2;
+}
+
+message InfoResponse {
+    required string term = 1;
+    required int64 count = 2;
+}
