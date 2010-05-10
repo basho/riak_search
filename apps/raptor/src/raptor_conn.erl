@@ -2,6 +2,8 @@
 
 -behaviour(gen_server).
 
+-include("raptor_pb.hrl").
+
 %% API
 -export([start_link/0,
          index/8,
@@ -15,26 +17,39 @@
 
 -define(SERVER, ?MODULE).
 
--record(state, {sock, caller}).
+-record(state, {sock, caller, req_type, reqid, dest}).
 
 index(ConnPid, IndexName, FieldName, Term, SubType,
       SubTerm, Value, Partition) ->
-    gen_server:call(ConnPid, {index, IndexName, FieldName, Term,
-                              SubType, SubTerm, Value, Partition}).
+    IndexRec = #index{index=IndexName, field=FieldName,
+                      term=Term, subtype=SubType,
+                      subterm=SubTerm, value=Value,
+                      partition=Partition},
+    gen_server:call(ConnPid, {index, IndexRec}).
 
 stream(ConnPid, IndexName, FieldName, Term, SubType, StartSubTerm,
        EndSubTerm, Partition) ->
-    gen_server:call(ConnPid, {stream, IndexName, FieldName, Term,
-                              SubType, StartSubTerm, EndSubTerm,
-                              Partition}).
+    StreamRec = #stream{index=IndexName, field=FieldName,
+                        term=Term, subtype=SubType,
+                        start_subterm=StartSubTerm,
+                        end_subterm=EndSubTerm,
+                        partition=Partition},
+    Ref = erlang:make_ref(),
+    gen_server:call(ConnPid, {stream, self(), Ref, StreamRec}).
 
 info(ConnPid, IndexName, FieldName, Term, Partition) ->
-    gen_server:call(ConnPid, {info, IndexName, FieldName, Term, Partition}).
+    InfoRec = #info{index=IndexName, field=FieldName, term=Term,
+                    partition=Partition},
+    Ref = erlang:make_ref(),
+    gen_server:call(ConnPid, {info, self(), Ref, InfoRec}).
 
 info_range(ConnPid, IndexName, FieldName, StartTerm,
            EndTerm, Partition) ->
-    gen_server:call(ConnPid, {info_range, IndexName, FieldName, StartTerm,
-                              EndTerm, Partition}).
+    InfoRangeRec = #inforange{index=IndexName, field=FieldName,
+                              start_term=StartTerm, end_term=EndTerm,
+                              partition=Partition},
+    Ref = erlang:make_ref(),
+    gen_server:call(ConnPid, {info_range, self(), Ref, InfoRangeRec}).
 
 start_link() ->
     gen_server:start_link(?MODULE, [], []).
@@ -54,12 +69,65 @@ init([]) ->
             end
     end.
 
+handle_call({index, IndexRec}, _From, #state{sock=Sock}=State) ->
+    Data = raptor_pb:encode_index(IndexRec),
+    gen_tcp:send(Sock, Data),
+    {reply, ok, State};
+
+handle_call({stream, Caller, ReqId, StreamRec}, _From, #state{sock=Sock}=State) ->
+    Data = raptor_pb:encode_stream(StreamRec),
+    gen_tcp:send(Sock, Data),
+    {reply, {ok, ReqId}, State#state{req_type=stream, reqid=ReqId, dest=Caller}};
+
+handle_call({info, Caller, ReqId, InfoRec}, _From, #state{sock=Sock}=State) ->
+    Data = raptor_pb:encode_info(InfoRec),
+    gen_tcp:send(Sock, Data),
+    {reply, {ok, ReqId}, State#state{req_type=info, reqid=ReqId, dest=Caller}};
+
+handle_call({inforange, Caller, ReqId, InfoRec}, _From, #state{sock=Sock}=State) ->
+    Data = raptor_pb:encode_inforange(InfoRec),
+    gen_tcp:send(Sock, Data),
+    {reply, {ok, ReqId}, State#state{req_type=info, reqid=ReqId, dest=Caller}};
+
+
 handle_call(_Request, _From, State) ->
     {reply, ignore, State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+handle_info({tcp, Sock, Data}, #state{req_type=stream, reqid=ReqId, dest=Dest}=State) ->
+    StreamResponse = raptor_pb:decode_streamresponse(Data),
+    Dest ! {stream, ReqId, StreamResponse#streamresponse.value, StreamResponse#streamresponse.props},
+    NewState = if
+                   StreamResponse#streamresponse.value =:= "$end_of_table" ->
+                       State#state{req_type=undefined,
+                                   reqid=undefined,
+                                   dest=undefined};
+                   true ->
+                       gen_tcp:setopts(Sock, [{active, once}]),
+                       State
+               end,
+    {noreply, NewState};
+
+handle_info({tcp, Sock, Data}, #state{req_type=info, reqid=ReqId, dest=Dest}=State) ->
+    InfoResponse = raptor_pb:decode_inforesponse(Data),
+    Dest ! {info, ReqId, InfoResponse#inforesponse.term, InfoResponse#inforesponse.count},
+    NewState = if
+                   InfoResponse#inforesponse.term =:= "$end_of_info" ->
+                       State#state{req_type=undefined,
+                                   reqid=undefined,
+                                   dest=undefined};
+                   true ->
+                       gen_tcp:setopts(Sock, [{active, once}]),
+                       State
+               end,
+    {noreply, NewState};
+
+handle_info({tcp_error, _Sock, Reason}, State) ->
+    {stop, Reason, State};
+handle_info({tcp_closed, _Sock}, State) ->
+    {stop, normal, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 
