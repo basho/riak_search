@@ -108,11 +108,13 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({tcp, Sock, Data}, #state{req_type=stream, reqid=ReqId, dest=Dest}=State) ->
+handle_info({tcp, Sock, Data}, #state{registered=Flag, req_type=stream, reqid=ReqId,
+                                      dest=Dest}=State) ->
     StreamResponse = raptor_pb:decode_streamresponse(Data),
     Dest ! {stream, ReqId, StreamResponse#streamresponse.value, StreamResponse#streamresponse.props},
     NewState = if
                    StreamResponse#streamresponse.value =:= "$end_of_table" ->
+                       register_conn(Flag),
                        State#state{req_type=undefined,
                                    reqid=undefined,
                                    dest=undefined};
@@ -120,13 +122,19 @@ handle_info({tcp, Sock, Data}, #state{req_type=stream, reqid=ReqId, dest=Dest}=S
                        inet:setopts(Sock, [{active, once}]),
                        State
                end,
-    {noreply, NewState};
+    if
+        Flag =:= true ->
+            {noreply, NewState};
+        true ->
+            {stop, normal, NewState}
+    end;
 
-handle_info({tcp, Sock, Data}, #state{req_type=info, reqid=ReqId, dest=Dest}=State) ->
+handle_info({tcp, Sock, Data}, #state{registered=Flag, req_type=info, reqid=ReqId, dest=Dest}=State) ->
     InfoResponse = raptor_pb:decode_inforesponse(Data),
     Dest ! {info, ReqId, InfoResponse#inforesponse.term, InfoResponse#inforesponse.count},
     NewState = if
                    InfoResponse#inforesponse.term =:= "$end_of_info" ->
+                       register_conn(Flag),
                        State#state{req_type=undefined,
                                    reqid=undefined,
                                    dest=undefined};
@@ -134,7 +142,12 @@ handle_info({tcp, Sock, Data}, #state{req_type=info, reqid=ReqId, dest=Dest}=Sta
                        inet:setopts(Sock, [{active, once}]),
                        State
                end,
-    {noreply, NewState};
+    if
+        Flag =:= true ->
+            {noreply, NewState};
+        true ->
+            {stop, normal, NewState}
+    end;
 
 handle_info({tcp_error, _Sock, Reason}, State) ->
     {stop, Reason, State};
