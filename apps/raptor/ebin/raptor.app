@@ -11,5 +11,5 @@
                   raptor_app]},
   {registered,   [raptor_conn_sup]},
   {applications, [kernel, stdlib, sasl]},
-  {env, [{raptor_port, 5098}]},
+  {env, [{raptor_port, 6099}]},
   {mod, {raptor_app, []}}]}.
