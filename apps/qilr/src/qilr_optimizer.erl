@@ -7,26 +7,47 @@
 optimize({ok, Query}, Opts) when not is_list(Query) ->
     optimize({ok, [Query]}, Opts);
 optimize({ok, Query0}, Opts) when is_list(Query0) ->
-    io:format("Query0: ~p~n", [Query0]),
-    Debug = proplists:get_value(debug, Opts, false),
-    log(Debug, "Initial query: ~p~n", [Query0]),
     case process_terms(Query0, Opts) of
         [] ->
-            log(Debug, "After analysis: ~p~n", [{error, no_terms}]),
             {error, no_terms};
         Query1 ->
-            log(Debug, "After analysis: ~p~n", [Query1]),
-            Query2 = default_bool(Query1, Opts),
-            log(Debug, "After adding default boolean op: ~p~n", [Query2]),
-            {ok, Query2}
+            Query2 = consolidate_exprs(Query1, []),
+            Query3 = default_bool(Query2, Opts),
+            {ok, Query3}
     end.
 
 %% Internal functions
+consolidate_exprs([], Acc) ->
+    lists:reverse(Acc);
+consolidate_exprs([{Op, [Term]}|T], Acc) when is_atom(Op) ->
+    case get_type(Term) of
+        Type when Type =:= term;
+                  Type =:= field ->
+            consolidate_exprs(T, [Term|Acc]);
+        _ ->
+            consolidate_exprs(T, [{Op, [Term]}|Acc])
+    end;
+consolidate_exprs([{Op, Terms}|T], Acc) when is_atom(Op) ->
+    NewTerms = consolidate_exprs(Terms, []),
+    consolidate_exprs(T, [{Op, NewTerms}|Acc]);
+consolidate_exprs([H|T], Acc) ->
+    consolidate_exprs(T, [H|Acc]);
+consolidate_exprs(Term, Acc) ->
+    lists:reverse([Term|Acc]).
 process_terms(Query, _Opts) ->
   analyze_terms(Query, []).
 
 analyze_terms([], Acc) ->
   lists:reverse(Acc);
+analyze_terms([{Op, Terms}|T], Acc) when Op =:= land;
+                                         Op =:= lor;
+                                         Op =:= group ->
+    case analyze_terms(Terms, []) of
+        [] ->
+            analyze_terms(T, Acc);
+        NewTerms ->
+            analyze_terms(T, [{Op, NewTerms}|Acc])
+    end;
 analyze_terms([{field, FieldName, TermText, TProps}|T], Acc) ->
     NewTerm = case analyze_term_text(TermText) of
                   {single, NewText} ->
@@ -114,7 +135,15 @@ analyze_term_text(Text0) ->
             end
     end.
 
-log(false, _, _) ->
-    ok;
-log(true, Format, Args) ->
-    error_log:info_msg(Format, Args).
+get_type({land, _}) ->
+    land;
+get_type({lor, _}) ->
+    lor;
+get_type({lnot, _}) ->
+    lnot;
+get_type({group, _}) ->
+    group;
+get_type({field, _, _, _}) ->
+    field;
+get_type({term, _, _}) ->
+    term.

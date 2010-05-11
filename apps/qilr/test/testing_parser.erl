@@ -63,7 +63,8 @@ suffix_test() ->
 bool_test() ->
     [?assertMatch({ok, [{land, [{term, "fish", []}, {term, "bicycle", []}]}]},
                   ?PARSE("fish AND bicycle")),
-     ?assertMatch({ok, [{land, [{lnot, {term, "budweiser", []}}, {term, "beer", []}]}]},
+     ?assertMatch({ok, [{land,[{lnot,[{term,"budweiser",[]}]},
+                               {term,"beer",[]}]}]},
                   ?PARSE("NOT budweiser AND beer")),
      ?assertMatch({ok, [{lor, [{term, "pizza", []}, {term, "spaghetti", []}]}]},
                   ?PARSE("pizza OR spaghetti")),
@@ -78,7 +79,7 @@ bool_test() ->
 
 
 grouping_test() ->
-    [?assertMatch({ok, [{group, [{land, [{term, "erlang", []}, {term, "sweden", []}]}]}]},
+    [?assertMatch({ok, [{group, [{land,[{term,"erlang",[]},{term,"sweden",[]}]}]}]},
                   ?PARSE("(erlang && sweden)")),
      ?assertMatch({ok,[{lor,[{term,"broccoli",[]},
                              {group,[{land,[{term,"green",[]},{term,"tasty",[]}]}]}]}]},
@@ -86,7 +87,7 @@ grouping_test() ->
      ?assertMatch({ok,[{lor,[{term,"broccoli",[]},
                               {group,[{land,[{term,"green",[]},{term,"tasty",[]}]}]}]}]},
                   ?PARSE("broccoli || (green AND tasty)")),
-     ?assertMatch({ok, [{group, [{term, "lisp", []}]}]},
+     ?assertMatch({ok, [{term, "lisp", []}]},
                   ?PARSE("((((lisp))))")),
      ?assertMatch({ok,[{land,[{group,[{lor,[{term,"jakarta",[]},
                                             {term,"apache",[]}]}]},
@@ -106,6 +107,10 @@ field_range_test() ->
                    ?PARSE("mod_date:{20020101 TO 20030101}")),
      ?assertMatch({ok, [{field, "mod_date", [{exclusive_range, {term, "20020101", []}, {term, "20030101", []}}]}]},
                   ?PARSE("mod_date:{20020101 TO 20030101]"))].
+
+analysis_trimming_test() ->
+    [?assertMatch({ok, [{term, "television", []}]}, ?PARSE("the && television")),
+     ?assertMatch({ok, [{land,[{term,"pen",[]},{term,"pad",[]}]}]}, ?PARSE("pen && (a pad)"))].
 
 %% escaped_chars_gen(Chars) ->
 %%     escaped_chars_gen(Chars, []).
