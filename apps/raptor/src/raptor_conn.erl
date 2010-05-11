@@ -81,10 +81,16 @@ init([RegisterFlag]) ->
 handle_call(_Msg, _From, #state{req_type=ReqType}=State) when ReqType /= undefined ->
     {reply, {error, busy}, State};
 
-handle_call({index, IndexRec}, _From, #state{sock=Sock}=State) ->
+handle_call({index, IndexRec}, _From, #state{registered=Flag, sock=Sock}=State) ->
     Data = raptor_pb:encode_index(IndexRec),
     gen_tcp:send(Sock, Data),
-    {reply, ok, State};
+    if
+        Flag =:= true ->
+            register_conn(Flag),
+            {reply, ok, State};
+        true ->
+            {stop, normal, State}
+    end;
 
 handle_call({stream, Caller, ReqId, StreamRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_stream(StreamRec),
