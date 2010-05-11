@@ -1,10 +1,10 @@
 -module(raptor_conn_sup).
 -behaviour(supervisor).
 -export([start_link/0, init/1, stop/1]).
--export([new_conn/1]).
+-export([new_conn/0]).
 
-new_conn(RegisterFlag) ->
-    supervisor:start_child(?MODULE, [RegisterFlag]).
+new_conn() ->
+    supervisor:start_child(?MODULE, []).
 
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).

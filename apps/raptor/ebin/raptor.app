@@ -4,7 +4,6 @@
   {vsn,          "0.1"},
   {modules,      [raptor_pb,
                   raptor_conn,
-                  raptor_conn_pool,
                   raptor_conn_sup,
                   raptor_sup,
                   raptor_util,

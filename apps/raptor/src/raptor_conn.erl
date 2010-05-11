@@ -5,7 +5,7 @@
 -include("raptor_pb.hrl").
 
 %% API
--export([start_link/1,
+-export([start_link/0,
          index/8,
          stream/8,
          info/5,
@@ -17,7 +17,7 @@
 
 -define(SERVER, ?MODULE).
 
--record(state, {registered, sock, caller, req_type, reqid, dest}).
+-record(state, {sock, caller, req_type, reqid, dest}).
 
 index(ConnPid, IndexName, FieldName, Term, SubType,
       SubTerm, Value, Partition) ->
@@ -59,10 +59,10 @@ info_range(ConnPid, IndexName, FieldName, StartTerm,
     Ref = erlang:make_ref(),
     gen_server:call(ConnPid, {info_range, self(), Ref, InfoRangeRec}).
 
-start_link(RegisterFlag) ->
-    gen_server:start_link(?MODULE, [RegisterFlag], []).
+start_link() ->
+    gen_server:start_link(?MODULE, [], []).
 
-init([RegisterFlag]) ->
+init([]) ->
     case raptor_util:get_env(raptor, raptor_port, undefined) of
         P when not(is_integer(P)) ->
             {stop, {error, bad_raptor_port, P}};
@@ -70,8 +70,7 @@ init([RegisterFlag]) ->
             case raptor_connect(Port) of
                 {ok, Sock} ->
                     erlang:link(Sock),
-                    register_conn(RegisterFlag),
-                    {ok, #state{registered=RegisterFlag, sock=Sock}};
+                    {ok, #state{sock=Sock}};
                 Error ->
                     error_logger:error_msg("Error connecting to Raptor: ~p~n", [Error]),
                     {stop, raptor_connect_error}
@@ -81,16 +80,10 @@ init([RegisterFlag]) ->
 handle_call(_Msg, _From, #state{req_type=ReqType}=State) when ReqType /= undefined ->
     {reply, {error, busy}, State};
 
-handle_call({index, IndexRec}, _From, #state{registered=Flag, sock=Sock}=State) ->
+handle_call({index, IndexRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_index(IndexRec),
     gen_tcp:send(Sock, Data),
-    if
-        Flag =:= true ->
-            register_conn(Flag),
-            {reply, ok, State};
-        true ->
-            {stop, normal, State}
-    end;
+    {reply, ok, State};
 
 handle_call({stream, Caller, ReqId, StreamRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_stream(StreamRec),
@@ -114,13 +107,11 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({tcp, Sock, Data}, #state{registered=Flag, req_type=stream, reqid=ReqId,
-                                      dest=Dest}=State) ->
+handle_info({tcp, Sock, Data}, #state{req_type=stream, reqid=ReqId, dest=Dest}=State) ->
     StreamResponse = raptor_pb:decode_streamresponse(Data),
     Dest ! {stream, ReqId, StreamResponse#streamresponse.value, StreamResponse#streamresponse.props},
     NewState = if
                    StreamResponse#streamresponse.value =:= "$end_of_table" ->
-                       register_conn(Flag),
                        State#state{req_type=undefined,
                                    reqid=undefined,
                                    dest=undefined};
@@ -128,19 +119,13 @@ handle_info({tcp, Sock, Data}, #state{registered=Flag, req_type=stream, reqid=Re
                        inet:setopts(Sock, [{active, once}]),
                        State
                end,
-    if
-        Flag =:= true ->
-            {noreply, NewState};
-        true ->
-            {stop, normal, NewState}
-    end;
+    {noreply, NewState};
 
-handle_info({tcp, Sock, Data}, #state{registered=Flag, req_type=info, reqid=ReqId, dest=Dest}=State) ->
+handle_info({tcp, Sock, Data}, #state{req_type=info, reqid=ReqId, dest=Dest}=State) ->
     InfoResponse = raptor_pb:decode_inforesponse(Data),
     Dest ! {info, ReqId, InfoResponse#inforesponse.term, InfoResponse#inforesponse.count},
     NewState = if
                    InfoResponse#inforesponse.term =:= "$end_of_info" ->
-                       register_conn(Flag),
                        State#state{req_type=undefined,
                                    reqid=undefined,
                                    dest=undefined};
@@ -148,12 +133,7 @@ handle_info({tcp, Sock, Data}, #state{registered=Flag, req_type=info, reqid=ReqI
                        inet:setopts(Sock, [{active, once}]),
                        State
                end,
-    if
-        Flag =:= true ->
-            {noreply, NewState};
-        true ->
-            {stop, normal, NewState}
-    end;
+    {noreply, NewState};
 
 handle_info({tcp_error, _Sock, Reason}, State) ->
     {stop, Reason, State};
@@ -172,8 +152,3 @@ code_change(_OldVsn, State, _Extra) ->
 raptor_connect(Port) ->
     gen_tcp:connect("127.0.0.1", Port, [binary, {active, once},
                                         {packet, 4}], 250).
-
-register_conn(false) ->
-    ok;
-register_conn(true) ->
-    raptor_conn_pool:add_conn().
