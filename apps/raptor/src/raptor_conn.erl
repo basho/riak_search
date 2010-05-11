@@ -5,7 +5,7 @@
 -include("raptor_pb.hrl").
 
 %% API
--export([start_link/0,
+-export([start_link/1,
          index/8,
          stream/8,
          info/5,
@@ -17,7 +17,7 @@
 
 -define(SERVER, ?MODULE).
 
--record(state, {sock, caller, req_type, reqid, dest}).
+-record(state, {registered, sock, caller, req_type, reqid, dest}).
 
 index(ConnPid, IndexName, FieldName, Term, SubType,
       SubTerm, Value, Partition) ->
@@ -51,23 +51,27 @@ info_range(ConnPid, IndexName, FieldName, StartTerm,
     Ref = erlang:make_ref(),
     gen_server:call(ConnPid, {info_range, self(), Ref, InfoRangeRec}).
 
-start_link() ->
-    gen_server:start_link(?MODULE, [], []).
+start_link(RegisterFlag) ->
+    gen_server:start_link(?MODULE, [RegisterFlag], []).
 
-init([]) ->
-    case app_helper:get_env(raptor, raptor_port, undefined) of
+init([RegisterFlag]) ->
+    case raptor_util:get_env(raptor, raptor_port, undefined) of
         P when not(is_integer(P)) ->
-            {error, bad_raptor_port};
+            {stop, {error, bad_raptor_port, P}};
         Port ->
             case raptor_connect(Port) of
                 {ok, Sock} ->
                     erlang:link(Sock),
-                    {ok, #state{sock=Sock}};
+                    register_conn(RegisterFlag),
+                    {ok, #state{registered=RegisterFlag, sock=Sock}};
                 Error ->
                     error_logger:error_msg("Error connecting to Raptor: ~p~n", [Error]),
                     {stop, raptor_connect_error}
             end
     end.
+
+handle_call(_Msg, _From, #state{req_type=ReqType}=State) when ReqType /= undefined ->
+    {reply, {error, busy}, State};
 
 handle_call({index, IndexRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_index(IndexRec),
@@ -141,3 +145,8 @@ code_change(_OldVsn, State, _Extra) ->
 raptor_connect(Port) ->
     gen_tcp:connect("127.0.0.1", Port, [binary, {active, once},
                                         {packet, 4}], 250).
+
+register_conn(false) ->
+    ok;
+register_conn(true) ->
+    raptor_conn_pool:add_conn().
