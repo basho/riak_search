@@ -21,33 +21,41 @@
 
 index(ConnPid, IndexName, FieldName, Term, SubType,
       SubTerm, Value, Partition) ->
+    MessageType = <<"Index">>,
     IndexRec = #index{index=IndexName, field=FieldName,
                       term=Term, subtype=SubType,
                       subterm=SubTerm, value=Value,
-                      partition=Partition},
+                      partition=Partition,
+                      message_type=MessageType},
     gen_server:call(ConnPid, {index, IndexRec}).
 
 stream(ConnPid, IndexName, FieldName, Term, SubType, StartSubTerm,
        EndSubTerm, Partition) ->
+    MessageType = <<"Stream">>,
     StreamRec = #stream{index=IndexName, field=FieldName,
                         term=Term, subtype=SubType,
                         start_subterm=StartSubTerm,
                         end_subterm=EndSubTerm,
-                        partition=Partition},
+                        partition=Partition,
+                        message_type=MessageType},
     Ref = erlang:make_ref(),
     gen_server:call(ConnPid, {stream, self(), Ref, StreamRec}).
 
 info(ConnPid, IndexName, FieldName, Term, Partition) ->
+    MessageType = <<"Info">>,
     InfoRec = #info{index=IndexName, field=FieldName, term=Term,
-                    partition=Partition},
+                    partition=Partition,
+                    message_type=MessageType},
     Ref = erlang:make_ref(),
     gen_server:call(ConnPid, {info, self(), Ref, InfoRec}).
 
 info_range(ConnPid, IndexName, FieldName, StartTerm,
            EndTerm, Partition) ->
+    MessageType = <<"InfoRange">>,
     InfoRangeRec = #inforange{index=IndexName, field=FieldName,
                               start_term=StartTerm, end_term=EndTerm,
-                              partition=Partition},
+                              partition=Partition,
+                              message_type=MessageType},
     Ref = erlang:make_ref(),
     gen_server:call(ConnPid, {info_range, self(), Ref, InfoRangeRec}).
 
@@ -88,7 +96,7 @@ handle_call({info, Caller, ReqId, InfoRec}, _From, #state{sock=Sock}=State) ->
     gen_tcp:send(Sock, Data),
     {reply, {ok, ReqId}, State#state{req_type=info, reqid=ReqId, dest=Caller}};
 
-handle_call({inforange, Caller, ReqId, InfoRec}, _From, #state{sock=Sock}=State) ->
+handle_call({info_range, Caller, ReqId, InfoRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_inforange(InfoRec),
     gen_tcp:send(Sock, Data),
     {reply, {ok, ReqId}, State#state{req_type=info, reqid=ReqId, dest=Caller}};
@@ -109,7 +117,7 @@ handle_info({tcp, Sock, Data}, #state{req_type=stream, reqid=ReqId, dest=Dest}=S
                                    reqid=undefined,
                                    dest=undefined};
                    true ->
-                       gen_tcp:setopts(Sock, [{active, once}]),
+                       inet:setopts(Sock, [{active, once}]),
                        State
                end,
     {noreply, NewState};
@@ -123,7 +131,7 @@ handle_info({tcp, Sock, Data}, #state{req_type=info, reqid=ReqId, dest=Dest}=Sta
                                    reqid=undefined,
                                    dest=undefined};
                    true ->
-                       gen_tcp:setopts(Sock, [{active, once}]),
+                       inet:setopts(Sock, [{active, once}]),
                        State
                end,
     {noreply, NewState};

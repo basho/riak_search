@@ -35,6 +35,9 @@ handle_call(get_conn, _From, #state{tid=Tid}=State) ->
                    Pid;
                {CPid} ->
                    ets:delete(Tid, CPid),
+                   CPid;
+               CPid ->
+                   ets:delete(Tid, CPid),
                    CPid
            end,
     {reply, Conn, State};

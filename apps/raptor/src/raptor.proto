@@ -6,6 +6,7 @@ message Index {
     required string subterm = 5;
     required string value = 6;
     required string partition = 7;
+    required string message_type = 8;
 }
 
 message Stream {
@@ -16,6 +17,7 @@ message Stream {
     required string start_subterm = 5;
     required string end_subterm = 6;
     required string partition = 7;
+    required string message_type = 8;
 }
 
 message Info {
@@ -23,6 +25,7 @@ message Info {
     required string field = 2;
     required string term = 3;
     required string partition = 4;
+    required string message_type = 8;
 }
 
 message InfoRange {
@@ -31,6 +34,7 @@ message InfoRange {
     required string start_term = 3;
     required string end_term = 4;
     required string partition = 5;
+    required string message_type = 8;
 }
 
 message StreamResponse {
@@ -42,3 +46,4 @@ message InfoResponse {
     required string term = 1;
     required int64 count = 2;
 }
+
