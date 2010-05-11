@@ -6,6 +6,7 @@
 
 %% API
 -export([start_link/0,
+         close/1,
          index/8,
          stream/8,
          info/5,
@@ -18,6 +19,9 @@
 -define(SERVER, ?MODULE).
 
 -record(state, {sock, caller, req_type, reqid, dest}).
+
+close(ConnPid) ->
+    gen_server:call(ConnPid, close_conn).
 
 index(ConnPid, IndexName, FieldName, Term, SubType,
       SubTerm, Value, Partition) ->
@@ -79,6 +83,9 @@ init([]) ->
 
 handle_call(_Msg, _From, #state{req_type=ReqType}=State) when ReqType /= undefined ->
     {reply, {error, busy}, State};
+
+handle_call(close_conn, _From, State) ->
+    {stop, normal, ok, State};
 
 handle_call({index, IndexRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_index(IndexRec),
