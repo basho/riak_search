@@ -151,4 +151,6 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal functions
 raptor_connect(Port) ->
     gen_tcp:connect("127.0.0.1", Port, [binary, {active, once},
-                                        {packet, 4}], 250).
+                                        {packet, 4},
+                                        {keepalive, true},
+                                        {nodelay, true}], 250).
