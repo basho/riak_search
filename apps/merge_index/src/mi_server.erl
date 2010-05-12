@@ -397,15 +397,18 @@ handle_call(is_empty, _From, State) ->
 
 handle_call(drop, _From, State) ->
     #state { indexes=Indexes, fields=Fields, terms=Terms, buffers=Buffers, segments=Segments } = State,
-    
+
+    %% Figure out some options...
+    SyncInterval = ?SYNC_INTERVAL(State),
+    BufferOptions = [{write_interval, SyncInterval}],
+
     %% Delete files, reset state...
     [mi_buffer:delete(X) || X <- Buffers],
     [mi_segment:delete(X) || X <- Segments],
     BufferFile = join(State, "buffer.1"),
-    Buffer = mi_buffer:open(BufferFile),
-    NewLocks = mi_locks:claim(mi_buffer:filename(Buffer), fun() -> mi_buffer:delete(Buffer) end, mi_locks:new()),
+    Buffer = mi_buffer:open(BufferFile, BufferOptions),
     NewState = State#state { 
-        locks = NewLocks,
+        locks = mi_locks:new(),
         indexes = mi_incdex:clear(Indexes),
         fields = mi_incdex:clear(Fields),
         terms = mi_incdex:clear(Terms),
