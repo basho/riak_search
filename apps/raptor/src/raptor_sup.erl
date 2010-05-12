@@ -20,9 +20,7 @@ init([]) ->
 
     SupFlags = {RestartStrategy, MaxRestarts, MaxSecondsBetweenRestarts},
 
-    ConnMgr = {raptor_conn_pool, {raptor_conn_pool, start_link, []},
-               permanent, 2000, worker, [raptor_conn_pool]},
     ConnSup = {raptor_conn_sup, {raptor_conn_sup, start_link, []},
                permanent, infinity, supervisor, [raptor_conn_sup]},
 
-    {ok, {SupFlags, [ConnSup, ConnMgr]}}.
+    {ok, {SupFlags, [ConnSup]}}.

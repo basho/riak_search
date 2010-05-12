@@ -17,8 +17,8 @@ init([]) ->
     AnalyzerMonitor = {qilr_analyzer_monitor, {qilr_analyzer_monitor, start_link, []},
                        permanent, 60000, worker, [qilr_analyzer_monitor]},
 
-    Analyzer = {qilr_analyzer, {qilr_analyzer, start_link, []},
-                permanent, 2000, worker, [qilr_analyzer]},
+    AnalyzerSup = {qilr_analyzer_sup, {qilr_analyzer_sup, start_link, []},
+                permanent, infinity, supervisor, [qilr_analyzer_sup]},
 
 
-    {ok, {{one_for_all, 100, 10}, [AnalyzerMonitor, Analyzer]}}.
+    {ok, {{one_for_all, 100, 10}, [AnalyzerMonitor, AnalyzerSup]}}.

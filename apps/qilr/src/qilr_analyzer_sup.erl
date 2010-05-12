@@ -1,9 +1,9 @@
--module(raptor_conn_sup).
+-module(qilr_analyzer_sup).
 -behaviour(supervisor).
 -export([start_link/0, init/1, stop/1]).
--export([new_conn/0]).
+-export([new_analyzer/0]).
 
-new_conn() ->
+new_analyzer() ->
     supervisor:start_child(?MODULE, []).
 
 start_link() ->
@@ -16,5 +16,5 @@ init([]) ->
     {ok,
      {{simple_one_for_one, 10, 10},
       [{undefined,
-        {raptor_conn, start_link, []},
-        temporary, 2000, worker, [raptor_conn]}]}}.
+        {qilr_analyzer, start_link, []},
+        temporary, 2000, worker, [qilr_analyzer]}]}}.

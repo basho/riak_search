@@ -30,8 +30,9 @@ init([]) ->
         {ok, PortNum} when is_integer(PortNum) ->
             CmdDir = filename:join([priv_dir(), "analysis_server"]),
             Cmd = filename:join([CmdDir, "analysis_server.sh"]),
-            case catch erlang:open_port({spawn, Cmd}, [stderr_to_stdout,
-                                                       {cd, CmdDir}]) of
+            case catch erlang:open_port({spawn_executable, Cmd}, [stderr_to_stdout,
+                                                                  {args, [integer_to_list(PortNum)]},
+                                                                  {cd, CmdDir}]) of
                 {'EXIT', Error} ->
                     {stop, Error};
                 Port when is_port(Port) ->
