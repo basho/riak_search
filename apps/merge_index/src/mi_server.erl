@@ -443,11 +443,14 @@ stream(StartIFT, EndIFT, F, Buffers, Segments) ->
     ok.
 stream_inner(F, LastIFT, LastValue, {{IFT, Value, Props, TS}, Iter}) ->
     IsDuplicate = (LastIFT == IFT) andalso (LastValue == Value),
-    {_IndexID, _FieldID, _TermID, SubType, SubTerm} = mi_utils:ift_unpack(IFT),
-    NewProps = [{subterm, {SubType, SubTerm}}|Props],
-    case (not IsDuplicate) of
-        true  -> F(IFT, Value, NewProps, TS);
-        false -> skip
+    IsDeleted = (Props == undefined),
+    case (not IsDuplicate) andalso (not IsDeleted) of
+        true  -> 
+            {_IndexID, _FieldID, _TermID, SubType, SubTerm} = mi_utils:ift_unpack(IFT),
+            NewProps = [{subterm, {SubType, SubTerm}}|Props],
+            F(IFT, Value, NewProps, TS);
+        false -> 
+            skip
     end,
     stream_inner(F, IFT, Value, Iter());
 stream_inner(_, _, _, eof) -> ok.
@@ -475,6 +478,7 @@ group_iterator({Term, Iterator}) ->
 group_iterator(eof) ->
     eof.
 
+%% Return true if the two tuples are in sorted order. 
 compare_fun({IFT1, Value1, _, TS1}, {IFT2, Value2, _, TS2}) ->
     (IFT1 < IFT2) orelse
     ((IFT1 == IFT2) andalso (Value1 < Value2)) orelse
