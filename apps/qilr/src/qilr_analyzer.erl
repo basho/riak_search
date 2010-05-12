@@ -19,19 +19,14 @@
 
 analyze(Text) when is_list(Text) ->
     case analyze(list_to_binary(Text)) of
-        Token when is_binary(Token) ->
-            binary_to_list(Token);
-        Tokens ->
-            Tokens
+        {ok, Tokens} ->
+            {ok, [binary_to_list(Token) || Token <- Tokens]};
+        Error ->
+            Error
     end;
 analyze(Text) when is_binary(Text) ->
     {ok, Pid} = qilr_analyzer_sup:new_analyzer(),
-    case gen_server:call(Pid, {analyze, Text}) of
-        {ok, [Token]} ->
-            {ok, Token};
-        Tokens ->
-            Tokens
-    end.
+    gen_server:call(Pid, {analyze, Text}).
 
 start_link() ->
     gen_server:start_link(?MODULE, [], []).
@@ -87,4 +82,5 @@ code_change(_OldVsn, State, _Extra) ->
 
 service_connect(Port) ->
     gen_tcp:connect("127.0.0.1", Port, [binary, {active, once},
-                                        {packet, 4}], 250).
+                                        {packet, 4},
+                                        {nodelay, true}], 250).

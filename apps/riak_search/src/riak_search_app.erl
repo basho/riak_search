@@ -33,6 +33,10 @@ start(_StartType, _StartArgs) ->
                 {n_val, 1},
                 {backend, search_backend}
             ]),
+            riak_core_bucket:set_bucket(<<"books">>, [
+                {n_val, 1},
+                {backend, search_backend}
+            ]),
             %% Set up the search_broadcast bucket. Any operations on
             %% this bucket will broadcast to all search_backend
             %% partitions.
