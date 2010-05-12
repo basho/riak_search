@@ -17,6 +17,7 @@
          terminate/2, code_change/3]).
 
 -define(SERVER, ?MODULE).
+-define(TIMEOUT, 30000).
 
 -record(state, {sock, caller, req_type, reqid, dest}).
 
@@ -31,7 +32,7 @@ index(ConnPid, IndexName, FieldName, Term, SubType,
                       subterm=SubTerm, value=Value,
                       partition=Partition,
                       message_type=MessageType},
-    gen_server:call(ConnPid, {index, IndexRec}).
+    gen_server:call(ConnPid, {index, IndexRec}, ?TIMEOUT).
 
 stream(ConnPid, IndexName, FieldName, Term, SubType, StartSubTerm,
        EndSubTerm, Partition) ->
@@ -43,7 +44,7 @@ stream(ConnPid, IndexName, FieldName, Term, SubType, StartSubTerm,
                         partition=Partition,
                         message_type=MessageType},
     Ref = erlang:make_ref(),
-    gen_server:call(ConnPid, {stream, self(), Ref, StreamRec}).
+    gen_server:call(ConnPid, {stream, self(), Ref, StreamRec}, ?TIMEOUT).
 
 info(ConnPid, IndexName, FieldName, Term, Partition) ->
     MessageType = <<"Info">>,
@@ -51,7 +52,7 @@ info(ConnPid, IndexName, FieldName, Term, Partition) ->
                     partition=Partition,
                     message_type=MessageType},
     Ref = erlang:make_ref(),
-    gen_server:call(ConnPid, {info, self(), Ref, InfoRec}).
+    gen_server:call(ConnPid, {info, self(), Ref, InfoRec}, ?TIMEOUT).
 
 info_range(ConnPid, IndexName, FieldName, StartTerm,
            EndTerm, Partition) ->
@@ -61,7 +62,7 @@ info_range(ConnPid, IndexName, FieldName, StartTerm,
                               partition=Partition,
                               message_type=MessageType},
     Ref = erlang:make_ref(),
-    gen_server:call(ConnPid, {info_range, self(), Ref, InfoRangeRec}).
+    gen_server:call(ConnPid, {info_range, self(), Ref, InfoRangeRec}, ?TIMEOUT).
 
 start_link() ->
     gen_server:start_link(?MODULE, [], []).
