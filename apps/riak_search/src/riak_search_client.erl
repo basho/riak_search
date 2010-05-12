@@ -68,7 +68,7 @@ index_doc(#riak_idx_doc{id=DocId, index=Index, fields=Fields}=Doc) ->
     AnalyzedFields = analyze_fields(Fields, []),
     WordMd = build_word_md(AnalyzedFields),
     [index_term(Index, Name, Value,
-                DocId, build_props(Value, WordMd)) || {Name, [Value]} <- AnalyzedFields],
+                DocId, build_props(Value, WordMd)) || {Name, Value} <- AnalyzedFields],
     DocBucket = Index ++ "_docs",
     DocObj = riak_object:new(riak_search_utils:to_binary(DocBucket),
                              riak_search_utils:to_binary(DocId),
@@ -99,7 +99,8 @@ analyze_fields([], Accum) ->
     Accum;
 analyze_fields([{Name, Value}|T], Accum) when is_list(Value) ->
     {ok, Tokens} = qilr_analyzer:analyze(Value),
-    analyze_fields(T, [{Name, Tokens}|Accum]);
+    Fields = [{Name, Token} || Token <- Tokens],
+    analyze_fields(T, Fields ++ Accum);
 analyze_fields([{Name, Value}|T], Accum) ->
     analyze_fields(T, [{Name, Value}|Accum]).
 
