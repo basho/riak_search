@@ -7,6 +7,7 @@ message Index {
     required string value = 6;
     required string partition = 7;
     required string message_type = 8;
+    required bytes  props = 9;
 }
 
 message Stream {
@@ -37,9 +38,15 @@ message InfoRange {
     required string message_type = 8;
 }
 
+message CatalogQuery {
+    required string search_query = 1;
+    required int64 max_results = 2;
+    required string message_type = 3;
+}
+
 message StreamResponse {
     required string value = 1;
-    required string props = 2;
+    required bytes  props = 2;
 }
 
 message InfoResponse {
@@ -47,3 +54,10 @@ message InfoResponse {
     required int64 count = 2;
 }
 
+message CatalogQueryResponse {
+    required string partition = 1;
+    required string index = 2;
+    required string field = 3;
+    required string term = 4;
+    required string json_props = 5;
+}

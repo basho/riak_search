@@ -1,6 +1,7 @@
 -module(search).
 -export([
     search/1,
+    doc_search/1,
     explain/1,
     index_dir/1 %index_dir/3,
 %%     index_file/1, %index_file/3,
@@ -15,6 +16,10 @@
 search(Q) ->
     {ok, Client} = riak_search:local_client(),
     Client:search("search", "payload", Q).
+
+doc_search(Q) ->
+    {ok, Client} = riak_search:local_client(),
+    Client:doc_search("search", "payload", Q).
 
 explain(Q) ->
     {ok, Client} = riak_search:local_client(),
@@ -55,9 +60,9 @@ index_dir(SearchClient, Directory, Index, Field) ->
     end,
     Files = filelib:wildcard(Directory1),
     io:format(" :: Found ~p files...~n", [length(Files)]),
-%%     [index_file(SearchClient, File, Index, Field) || File <- Files],
-    plists:map(fun(File) -> index_file(SearchClient, File, Index, Field) end,
-        Files, {processes, 4}),
+%%    [index_file(SearchClient, File, Index, Field) || File <- Files],
+     plists:map(fun(File) -> index_file(SearchClient, File, Index, Field) end,
+         Files, {processes, 32}),
     ok.
 
 %% %% Full-text index the specified file.

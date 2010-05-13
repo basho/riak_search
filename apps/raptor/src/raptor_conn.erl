@@ -7,10 +7,12 @@
 %% API
 -export([start_link/0,
          close/1,
-         index/8,
+         index/9,
          stream/8,
          info/5,
-         info_range/6]).
+         info_range/6,
+         catalog_query/2,
+         catalog_query/3]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -25,13 +27,14 @@ close(ConnPid) ->
     gen_server:call(ConnPid, close_conn).
 
 index(ConnPid, IndexName, FieldName, Term, SubType,
-      SubTerm, Value, Partition) ->
+      SubTerm, Value, Partition, Props) ->
     MessageType = <<"Index">>,
     IndexRec = #index{index=IndexName, field=FieldName,
                       term=Term, subtype=SubType,
                       subterm=SubTerm, value=Value,
                       partition=Partition,
-                      message_type=MessageType},
+                      message_type=MessageType,
+                      props=Props},
     gen_server:call(ConnPid, {index, IndexRec}, ?TIMEOUT).
 
 stream(ConnPid, IndexName, FieldName, Term, SubType, StartSubTerm,
@@ -63,6 +66,17 @@ info_range(ConnPid, IndexName, FieldName, StartTerm,
                               message_type=MessageType},
     Ref = erlang:make_ref(),
     gen_server:call(ConnPid, {info_range, self(), Ref, InfoRangeRec}, ?TIMEOUT).
+
+catalog_query(ConnPid, SearchQuery) ->
+    catalog_query(ConnPid, SearchQuery, 0).
+
+catalog_query(ConnPid, SearchQuery, MaxResults) ->
+    MessageType = <<"CatalogQuery">>,
+    CatalogQueryRec = #catalogquery{search_query=SearchQuery, 
+                                    max_results=MaxResults,
+                                    message_type=MessageType},
+    Ref = erlang:make_ref(),
+    gen_server:call(ConnPid, {catalog_query, self(), Ref, CatalogQueryRec}, ?TIMEOUT).
 
 start_link() ->
     gen_server:start_link(?MODULE, [], []).
@@ -108,6 +122,10 @@ handle_call({info_range, Caller, ReqId, InfoRec}, _From, #state{sock=Sock}=State
     gen_tcp:send(Sock, Data),
     {reply, {ok, ReqId}, State#state{req_type=info, reqid=ReqId, dest=Caller}};
 
+handle_call({catalog_query, Caller, ReqId, CatalogQueryRec}, _From, #state{sock=Sock}=State) ->
+    Data = raptor_pb:encode_catalogquery(CatalogQueryRec),
+    gen_tcp:send(Sock, Data),
+    {reply, {ok, ReqId}, State#state{req_type=catalogquery, reqid=ReqId, dest=Caller}};
 
 handle_call(_Request, _From, State) ->
     {reply, ignore, State}.
@@ -134,6 +152,24 @@ handle_info({tcp, Sock, Data}, #state{req_type=info, reqid=ReqId, dest=Dest}=Sta
     Dest ! {info, ReqId, InfoResponse#inforesponse.term, InfoResponse#inforesponse.count},
     NewState = if
                    InfoResponse#inforesponse.term =:= "$end_of_info" ->
+                       State#state{req_type=undefined,
+                                   reqid=undefined,
+                                   dest=undefined};
+                   true ->
+                       inet:setopts(Sock, [{active, once}]),
+                       State
+               end,
+    {noreply, NewState};
+
+handle_info({tcp, Sock, Data}, #state{req_type=catalogquery, reqid=ReqId, dest=Dest}=State) ->
+    CatalogQueryResponse = raptor_pb:decode_catalogqueryresponse(Data),
+    Dest ! {catalog_query, ReqId, CatalogQueryResponse#catalogqueryresponse.partition, 
+                                  CatalogQueryResponse#catalogqueryresponse.index, 
+                                  CatalogQueryResponse#catalogqueryresponse.field, 
+                                  CatalogQueryResponse#catalogqueryresponse.term, 
+                                  CatalogQueryResponse#catalogqueryresponse.json_props},
+    NewState = if
+                   CatalogQueryResponse#catalogqueryresponse.partition =:= "$end_of_results" ->
                        State#state{req_type=undefined,
                                    reqid=undefined,
                                    dest=undefined};

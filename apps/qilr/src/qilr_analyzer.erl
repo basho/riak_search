@@ -4,6 +4,8 @@
 
 -include("analysis_pb.hrl").
 
+-include_lib("eunit/include/eunit.hrl").
+
 %% API
 -export([start_link/0, analyze/1]).
 
@@ -14,8 +16,7 @@
 -define(SERVER, ?MODULE).
 
 -record(state, {socket,
-                caller,
-                results=[]}).
+                caller}).
 
 analyze(Text) when is_list(Text) ->
     case analyze(list_to_binary(Text)) of
@@ -46,7 +47,7 @@ handle_call({analyze, Text}, From, State) ->
         {ok, Sock} ->
             gen_tcp:send(Sock, analysis_pb:encode_analysisrequest(Req)),
             inet:setopts(Sock, [{active, once}]),
-            {noreply, State#state{caller=From, results=[]}};
+            {noreply, State#state{caller=From}};
         Error ->
             error_logger:error_msg("Error connecting to analysis server: ~p", [Error]),
             {reply, error, State}
@@ -58,17 +59,12 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({tcp, Sock, Data}, #state{caller=Caller, results=R}=State) ->
+handle_info({tcp, Sock, Data}, #state{caller=Caller}=State) ->
     Res = analysis_pb:decode_analysisresult(Data),
-    case Res#analysisresult.done of
-        0 ->
-            inet:setopts(Sock, [{active, once}]),
-            {noreply, State#state{results=[list_to_binary(Res#analysisresult.token)|R]}};
-        1 ->
-            Acc1 = lists:reverse([list_to_binary(Res#analysisresult.token)|R]),
-            gen_server:reply(Caller, {ok, Acc1}),
-            {stop, normal, State}
-    end;
+    gen_tcp:close(Sock),
+    gen_server:reply(Caller, {ok, parse_results(Res#analysisresult.token)}),
+    {stop, normal, State};
+
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -79,8 +75,35 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% Internal functions
-
 service_connect(Port) ->
     gen_tcp:connect("127.0.0.1", Port, [binary, {active, once},
                                         {packet, 4},
                                         {nodelay, true}], 250).
+
+parse_results([0]) ->
+    [];
+parse_results(Results) ->
+    F = fun(C, {Curr, Acc}) ->
+                if
+                    C == 0 ->
+                        case Curr of
+                            [] ->
+                                {Curr, Acc};
+                            _ ->
+                                {[], [Curr|Acc]}
+                        end;
+                    true ->
+                        {[C|Curr], Acc}
+                end end,
+    {First, Rest} = lists:foldr(F, {[], []}, Results),
+    case Rest of
+        [] ->
+            case First of
+                [] ->
+                    [];
+                _ ->
+                    [First]
+            end;
+        _ ->
+            [First|Rest]
+    end.

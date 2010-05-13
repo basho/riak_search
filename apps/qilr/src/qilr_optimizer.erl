@@ -121,13 +121,13 @@ analyze_term_text(Text0) ->
                    Text0
            end,
     case qilr_analyzer:analyze(list_to_binary(Text)) of
-        {ok, <<"">>} ->
+        {ok, []} ->
             none;
-        {ok, Token} when is_binary(Token) ->
-            {single, binary_to_list(Token)};
-        {ok, Tokens} when is_list(Tokens) ->
-            case [binary_to_list(Tok) || Tok <- Tokens,
-                         not(Tok =:= <<"">>)] of
+        {ok, [Token]} ->
+            {single, Token};
+        {ok, Tokens} ->
+            case [Tok || Tok <- Tokens,
+                         not(Tok =:= "")] of
                 [] ->
                     none;
                 Toks ->
