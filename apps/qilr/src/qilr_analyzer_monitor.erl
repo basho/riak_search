@@ -36,8 +36,7 @@ init([]) ->
                 {'EXIT', Error} ->
                     {stop, Error};
                 Port when is_port(Port) ->
-                    case connect({127,0,0,1}, PortNum, [{active, false},
-                                                        binary, {packet, 4}], 10) of
+                    case connect({127,0,0,1}, PortNum + 1, [], 10) of
                         {ok, Sock} ->
                             erlang:link(Port),
                             erlang:link(Sock),
@@ -67,10 +66,7 @@ handle_info({_Port, _Message}, State) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(_Reason, #state{sock=Sock}) ->
-    StopCmd = #analysisrequest{text= <<"__basho_analyzer_monitor_stop__">>},
-    gen_tcp:send(Sock, analysis_pb:encode_analysisrequest(StopCmd)),
-    io:format("Sent terminate~n"),
+terminate(_Reason, _State) ->
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
