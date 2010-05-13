@@ -30,20 +30,26 @@ search(Index, DefaultField, Query, Arg, Timeout) when is_integer(Timeout) ->
 
 
 stream_search(Index, DefaultField, Query) ->
-    case qilr_parse:string(Query) of
+    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
+    case qilr_parse:string(AnalyzerPid, Query) of
         {ok, AST} ->
-            execute(AST, Index, DefaultField, []);
-        Error ->
-            throw(Error)
-    end.
+            R = execute(AST, Index, DefaultField, []);
+        R ->
+            throw(R)
+    end,
+    qilr_analyzer:close(AnalyzerPid),
+    R.
 
 stream_search(Index, DefaultField, Query, DefaultBool) ->
-    case qilr_parse:string(Query, DefaultBool) of
+    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
+    case qilr_parse:string(AnalyzerPid, Query, DefaultBool) of
         {ok, AST} ->
-            execute(AST, Index, DefaultField, []);
-        Error ->
-            throw(Error)
-    end.
+            R = execute(AST, Index, DefaultField, []);
+        R ->
+            throw(R)
+    end,
+    qilr_analyzer:close(AnalyzerPid),
+    R.
 
 doc_search(Index, DefaultField, Query) ->
     doc_search(Index, DefaultField, Query, ?DEFAULT_RESULT_SIZE, 60000).
@@ -61,8 +67,11 @@ explain(Index, DefaultField, Query) ->
     explain(Index, DefaultField, [], Query).
 
 explain(Index, DefaultField, Facets, Query) ->
-    {ok, Ops} = qilr_parse:string(Query),
-    riak_search_preplan:preplan(Ops, Index, DefaultField, Facets).
+    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
+    {ok, Ops} = qilr_parse:string(AnalyzerPid, Query),
+    R = riak_search_preplan:preplan(Ops, Index, DefaultField, Facets),
+    qilr_analyzer:close(AnalyzerPid),
+    R.
 
 index_doc(Doc) ->
     {ok, Pid} = qilr_analyzer_sup:new_analyzer(),
