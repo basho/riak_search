@@ -22,6 +22,7 @@
 -author("John Muellerleile <johnm@basho.com>").
 -export([start/2,stop/1,get/2,put/3,list/1,list_bucket/2,delete/2]).
 -export([fold/3, drop/1, is_empty/1]).
+-export([test_stream/4, test_catalog_query/1]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("riak_search.hrl").
@@ -29,15 +30,17 @@
 % @type state() = term().
 -record(state, {partition, conn}).
 
+-define(CATALOG_TABLE, "__sys._catalog_").
+
 %% @spec start(Partition :: integer(), Config :: proplist()) ->
 %%          {ok, state()} | {{error, Reason :: term()}, state()}
 %% @doc Start this backend.
-start(Partition, Config) ->
+start(Partition, _Config) ->
     {ok, Conn} = raptor_conn_sup:new_conn(),
     {ok, #state { partition=Partition, conn=Conn }}.
 
 %% @spec stop(state()) -> ok | {error, Reason :: term()}
-stop(State) ->
+stop(_State) ->
     ok.
 
 %% @spec put(state(), BKey :: riak_object:bkey(), Val :: binary()) ->
@@ -52,7 +55,7 @@ handle_command(State, {index, Index, Field, Term, Value, Props}) ->
     TS = mi_utils:now_to_timestamp(erlang:now()),
     handle_command(State, {index, Index, Field, Term, 0, 0, Value, Props, TS});
 
-handle_command(State, {index, Index, Field, Term, SubType, SubTerm, Value, Props, Timestamp}) ->
+handle_command(State, {index, Index, Field, Term, SubType, SubTerm, Value, Props, _Timestamp}) ->
     %% Put with properties.
     Partition = list_to_binary("" ++ integer_to_list(State#state.partition)),
     Conn = State#state.conn,
@@ -150,7 +153,7 @@ handle_command(State, {info, Index, Field, Term, OutputPid, OutputRef}) ->
     end),
     ok;
 
-handle_command(State, {info_range, Index, Field, StartTerm, EndTerm, Size, OutputPid, OutputRef}) ->
+handle_command(State, {info_range, Index, Field, StartTerm, EndTerm, _Size, OutputPid, OutputRef}) ->
     Partition = list_to_binary(integer_to_list(State#state.partition)),
     {ok, Conn} = raptor_conn_sup:new_conn(),
     spawn(fun() ->
@@ -171,9 +174,9 @@ handle_command(_State, Other) ->
 
 receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun) ->
     receive
-        {stream, Ref, "$end_of_table", _} ->
+        {stream, StreamRef, "$end_of_table", _} ->
             OutputPid ! {result, '$end_of_table', OutputRef};
-        {stream, Ref, Value, Props} ->
+        {stream, StreamRef, Value, Props} ->
             Props2 = binary_to_term(Props),
             case FilterFun(Value, Props2) of
                 true -> OutputPid ! {result, {Value, Props2}, OutputRef};
@@ -221,18 +224,15 @@ ok.
 get(_State, _BKey) ->
     {error, notfound}.
 
-is_empty(State) ->
-    Partition = list_to_binary(integer_to_list(State#state.partition)),
-    Conn = State#state.conn,
+is_empty(_State) ->
     true.
     % xxx TODO
-    %merge_index:is_empty(Pid).
 
 fold(State, Fun, Acc) ->
     io:format("fold(~p, ~p, ~p)~n",
         [State, Fun, Acc]),
     [].
-
+    
 fold2(State, Fun, Acc) ->
     ?PRINT({fold, State, Fun, Acc}),
     %% The supplied function expects a BKey and an Object. Wrap this
@@ -252,10 +252,9 @@ fold2(State, Fun, Acc) ->
     ok.
 
 drop(State) ->
-    Partition = list_to_binary(integer_to_list(State#state.partition)),
-    Conn = State#state.conn,
     ok.
     %merge_index:drop(Pid).
+    %%%% xxx TODO
 
 %% @spec delete(state(), BKey :: riak_object:bkey()) ->
 %%          ok | {error, Reason :: term()}
@@ -275,4 +274,50 @@ list(_State) ->
 %% @doc Get a list of the keys in a bucket
 list_bucket(_State, _Bucket) ->
     throw({error, not_supported}).
+
+%%
+%% temporary debug functions
+%%
+
+test_catalog_query(CatalogQuery) ->
+    {ok, Conn} = raptor_conn_sup:new_conn(),
+    {ok, StreamRef} = raptor_conn:catalog_query(Conn, CatalogQuery),
+    dump_catalog_results(StreamRef),
+    raptor_conn:close(Conn),
+ok.
+
+dump_catalog_results(StreamRef) ->
+    receive
+        {catalog_query, StreamRef, "$end_of_results", _, _, _, _} ->
+            io:format("$end_of_results~n", []);
+        Msg ->
+            io:format("~p~n", [Msg]),
+            dump_catalog_results(StreamRef)
+    end,
+ok.
+
+test_stream(P,I,F,T) ->
+    {ok, Conn} = raptor_conn_sup:new_conn(),
+    {ok, StreamRef} = raptor_conn:stream(
+        Conn, 
+        list_to_binary(I), 
+        list_to_binary(F), 
+        list_to_binary(T), 
+        list_to_binary(integer_to_list(0)), 
+        list_to_binary(integer_to_list(0)), 
+        list_to_binary(integer_to_list(0)), 
+        P),
+    dump_stream(StreamRef),
+    raptor_conn:close(Conn),
+ok.
+
+dump_stream(StreamRef) ->
+    receive
+        {stream, StreamRef, "$end_of_table", _} ->
+            io:format("$end_of_table~n", []);
+        Msg ->
+            io:format("~p~n", [Msg]),
+            dump_stream(StreamRef)
+    end,
+ok.
 
