@@ -14,7 +14,7 @@ import org.apache.lucene.analysis.WhitespaceTokenizer;
 import org.apache.lucene.analysis.tokenattributes.TermAttribute;
 
 public class TextAnalyzer {
-
+   
    public static List<String> analyze(String text) throws IOException {
       // Setup token stream and filters
       TokenStream stream = new WhitespaceTokenizer(new StringReader(text));
