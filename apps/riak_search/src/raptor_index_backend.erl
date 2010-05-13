@@ -59,10 +59,12 @@ handle_command(State, {index, Index, Field, Term, SubType, SubTerm, Value, Props
     raptor_conn:index(Conn, 
         list_to_binary(Index), 
         list_to_binary(Field), 
-        list_to_binary(Term), 
+        Term, 
         list_to_binary(integer_to_list(SubType)), 
         list_to_binary(integer_to_list(SubTerm)), 
-        list_to_binary(Value), Partition),
+        list_to_binary(Value), 
+        Partition,
+        term_to_binary(Props)),
     ok;
 
 handle_command(State, {index, Index, Field, Term, SubType, SubTerm, Value, Props}) ->
@@ -71,10 +73,12 @@ handle_command(State, {index, Index, Field, Term, SubType, SubTerm, Value, Props
     raptor_conn:index(Conn, 
         list_to_binary(Index), 
         list_to_binary(Field), 
-        list_to_binary(Term), 
+        Term, 
         list_to_binary(integer_to_list(SubType)), 
         list_to_binary(integer_to_list(SubTerm)), 
-        list_to_binary(Value), Partition),
+        list_to_binary(Value), 
+        Partition,
+        term_to_binary(Props)),
     %%TS = mi_utils:now_to_timestamp(erlang:now()),
     ok;
 
@@ -170,8 +174,11 @@ receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun) ->
         {stream, Ref, "$end_of_table", _} ->
             OutputPid ! {result, '$end_of_table', OutputRef};
         {stream, Ref, Value, Props} ->
-            %% todo: integrate props
-            OutputPid ! {result, {Value, []}, OutputRef},
+            Props2 = binary_to_term(Props),
+            case FilterFun(Value, Props2) of
+                true -> OutputPid ! {result, {Value, Props2}, OutputRef};
+                _ -> skip
+            end,
             receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun);
         Msg ->
             io:format("receive_stream_results(~p, ~p, ~p, ~p) -> ~p~n",
@@ -222,11 +229,9 @@ is_empty(State) ->
     %merge_index:is_empty(Pid).
 
 fold(State, Fun, Acc) ->
+    io:format("fold(~p, ~p, ~p)~n",
+        [State, Fun, Acc]),
     [].
-
-
-%%%%% xxx TODO
-%%%%% xxx TODO
 
 fold2(State, Fun, Acc) ->
     ?PRINT({fold, State, Fun, Acc}),

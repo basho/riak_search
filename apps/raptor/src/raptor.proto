@@ -7,6 +7,7 @@ message Index {
     required string value = 6;
     required string partition = 7;
     required string message_type = 8;
+    required bytes  props = 9;
 }
 
 message Stream {
@@ -39,7 +40,7 @@ message InfoRange {
 
 message StreamResponse {
     required string value = 1;
-    required string props = 2;
+    required bytes  props = 2;
 }
 
 message InfoResponse {
