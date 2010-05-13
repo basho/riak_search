@@ -5,7 +5,7 @@
 -define(DEFAULT_RESULT_SIZE, 10).
 
 %% Indexing
--export([index_doc/1, index_store/2, index_store/3]).
+-export([index_doc/1, index_doc/2]).
 
 %% Querying
 -export([explain/3, explain/4, stream_search/4, search/3, search/4, search/5, doc_search/3,
@@ -64,8 +64,14 @@ explain(Index, DefaultField, Facets, Query) ->
     {ok, Ops} = qilr_parse:string(Query),
     riak_search_preplan:preplan(Ops, Index, DefaultField, Facets).
 
-index_doc(#riak_idx_doc{id=DocId, index=Index, fields=Fields}=Doc) ->
-    AnalyzedFields = analyze_fields(Fields, []),
+index_doc(Doc) ->
+    {ok, Pid} = qilr_analyzer_sup:new_analyzer(),
+    Result = (catch index_doc(Pid, Doc)),
+    qilr_analyzer:close(Pid),
+    Result.
+
+index_doc(AnalyzerPid, #riak_idx_doc{id=DocId, index=Index, fields=Fields}=Doc) ->
+    AnalyzedFields = analyze_fields(AnalyzerPid, Fields, []),
     WordMd = build_word_md(AnalyzedFields),
     [index_term(Index, Name, Value,
                 DocId, build_props(Value, WordMd)) || {Name, Value} <- AnalyzedFields],
@@ -75,14 +81,14 @@ index_doc(#riak_idx_doc{id=DocId, index=Index, fields=Fields}=Doc) ->
                              Doc),
     RiakClient:put(DocObj, 1).
 
-index_store(Doc, Obj) ->
-    index_store(Doc, Obj, 1).
+%% index_store(Doc, Obj) ->
+%%     index_store(Doc, Obj, 1).
 
-index_store(#riak_idx_doc{id=DocId}=Doc, Obj0, W) ->
-    Md = dict:store("X-Riak-Search-Id", DocId, dict:new()),
-    Obj = riak_object:update_metadata(Obj0, Md),
-    ok = index_doc(Doc),
-    RiakClient:put(Obj, W).
+%% index_store(#riak_idx_doc{id=DocId}=Doc, Obj0, W) ->
+%%     Md = dict:store("X-Riak-Search-Id", DocId, dict:new()),
+%%     Obj = riak_object:update_metadata(Obj0, Md),
+%%     ok = index_doc(Doc),
+%%     RiakClient:put(Obj, W).
 
 %% Internal functions
 index_term(Index, Field, Term, Value, Props) ->
@@ -95,14 +101,14 @@ index_internal(Index, Field, Term, Payload) ->
     Obj = riak_object:new(IndexBin, FieldTermBin, Payload),
     RiakClient:put(Obj, 0).
 
-analyze_fields([], Accum) ->
+analyze_fields(_AnalyzerPid, [], Accum) ->
     Accum;
-analyze_fields([{Name, Value}|T], Accum) when is_list(Value) ->
-    {ok, Tokens} = qilr_analyzer:analyze(Value),
+analyze_fields(AnalyzerPid, [{Name, Value}|T], Accum) when is_list(Value) ->
+    {ok, Tokens} = qilr_analyzer:analyze(AnalyzerPid, Value),
     Fields = [{Name, Token} || Token <- Tokens],
-    analyze_fields(T, Fields ++ Accum);
-analyze_fields([{Name, Value}|T], Accum) ->
-    analyze_fields(T, [{Name, Value}|Accum]).
+    analyze_fields(AnalyzerPid, T, Fields ++ Accum);
+analyze_fields(AnalyzerPid, [{Name, Value}|T], Accum) ->
+    analyze_fields(AnalyzerPid, T, [{Name, Value}|Accum]).
 
 truncate_list(Size, List) when Size >= length(List) ->
     List;

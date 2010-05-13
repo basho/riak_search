@@ -1,13 +1,13 @@
 -module(qilr_optimizer).
 
--export([optimize/2]).
+-export([optimize/3]).
 
 -include_lib("eunit/include/eunit.hrl").
 
-optimize({ok, Query}, Opts) when not is_list(Query) ->
-    optimize({ok, [Query]}, Opts);
-optimize({ok, Query0}, Opts) when is_list(Query0) ->
-    case process_terms(Query0, Opts) of
+optimize(AnalyzerPid, {ok, Query}, Opts) when not is_list(Query) ->
+    optimize(AnalyzerPid, {ok, [Query]}, Opts);
+optimize(AnalyzerPid, {ok, Query0}, Opts) when is_list(Query0) ->
+    case process_terms(AnalyzerPid, Query0, Opts) of
         [] ->
             {error, no_terms};
         Query1 ->
@@ -34,22 +34,22 @@ consolidate_exprs([H|T], Acc) ->
     consolidate_exprs(T, [H|Acc]);
 consolidate_exprs(Term, Acc) ->
     lists:reverse([Term|Acc]).
-process_terms(Query, _Opts) ->
-  analyze_terms(Query, []).
+process_terms(AnalyzerPid, Query, _Opts) ->
+  analyze_terms(AnalyzerPid, Query, []).
 
-analyze_terms([], Acc) ->
+analyze_terms(_AnalyzerPid, [], Acc) ->
   lists:reverse(Acc);
-analyze_terms([{Op, Terms}|T], Acc) when Op =:= land;
-                                         Op =:= lor;
-                                         Op =:= group ->
-    case analyze_terms(Terms, []) of
+analyze_terms(AnalyzerPid, [{Op, Terms}|T], Acc) when Op =:= land;
+                                                      Op =:= lor;
+                                                      Op =:= group ->
+    case analyze_terms(AnalyzerPid, Terms, []) of
         [] ->
-            analyze_terms(T, Acc);
+            analyze_terms(AnalyzerPid, T, Acc);
         NewTerms ->
-            analyze_terms(T, [{Op, NewTerms}|Acc])
+            analyze_terms(AnalyzerPid, T, [{Op, NewTerms}|Acc])
     end;
-analyze_terms([{field, FieldName, TermText, TProps}|T], Acc) ->
-    NewTerm = case analyze_term_text(TermText) of
+analyze_terms(AnalyzerPid, [{field, FieldName, TermText, TProps}|T], Acc) ->
+    NewTerm = case analyze_term_text(AnalyzerPid, TermText) of
                   {single, NewText} ->
                       {field, FieldName, NewText, TProps};
                   {multi, NewTexts} ->
@@ -61,12 +61,12 @@ analyze_terms([{field, FieldName, TermText, TProps}|T], Acc) ->
               end,
     case NewTerm of
         none ->
-            analyze_terms(T, Acc);
+            analyze_terms(AnalyzerPid, T, Acc);
         _ ->
-            analyze_terms(T, [NewTerm|Acc])
+            analyze_terms(AnalyzerPid, T, [NewTerm|Acc])
     end;
-analyze_terms([{term, TermText, TProps}|T], Acc) ->
-    NewTerm = case analyze_term_text(TermText) of
+analyze_terms(AnalyzerPid, [{term, TermText, TProps}|T], Acc) ->
+    NewTerm = case analyze_term_text(AnalyzerPid, TermText) of
                   {single, NewText} ->
                       {term, NewText, TProps};
                   {multi, NewTexts} ->
@@ -77,12 +77,12 @@ analyze_terms([{term, TermText, TProps}|T], Acc) ->
               end,
     case NewTerm of
         none ->
-            analyze_terms(T, Acc);
+            analyze_terms(AnalyzerPid, T, Acc);
         _ ->
-            analyze_terms(T, [NewTerm|Acc])
+            analyze_terms(AnalyzerPid, T, [NewTerm|Acc])
     end;
-analyze_terms([H|T], Acc) ->
-    analyze_terms(T, [H|Acc]).
+analyze_terms(AnalyzerPid, [H|T], Acc) ->
+    analyze_terms(AnalyzerPid, T, [H|Acc]).
 
 default_bool([H|T], Opts) when not(is_list(T)) ->
     DefaultBool = proplists:get_value(default_bool, Opts, lor),
@@ -111,7 +111,7 @@ needs_implicit_bool(land, T) when length(T) > 0 ->
 needs_implicit_bool(_, _) ->
     false.
 
-analyze_term_text(Text0) ->
+analyze_term_text(AnalyzerPid, Text0) ->
     Start = hd(Text0),
     End = hd(lists:reverse(Text0)),
     Text = case Start == $" andalso End == $" of
@@ -120,7 +120,7 @@ analyze_term_text(Text0) ->
                false ->
                    Text0
            end,
-    case qilr_analyzer:analyze(list_to_binary(Text)) of
+    case qilr_analyzer:analyze(AnalyzerPid, list_to_binary(Text)) of
         {ok, []} ->
             none;
         {ok, [Token]} ->

@@ -47,10 +47,13 @@ explain(Q) ->
 
 %% Full-text index the files within the specified directory.
 index_dir(Directory) ->
+    {ok, Pid} = qilr_analyzer_sup:new_analyzer(),
     {ok, SearchClient} = riak_search:local_client(),
-    index_dir(SearchClient, Directory, ?DEFAULT_INDEX, ?DEFAULT_FIELD).
+    Result = index_dir(SearchClient, Pid, Directory, ?DEFAULT_INDEX, ?DEFAULT_FIELD),
+    qilr_analyzer:close(Pid),
+    Result.
 
-index_dir(SearchClient, Directory, Index, Field) ->
+index_dir(SearchClient, AnalyzerPid, Directory, Index, Field) ->
     io:format(" :: Indexing directory: ~s~n", [Directory]),
 
     %% Get a list of files in the directory, and index them.
@@ -61,19 +64,18 @@ index_dir(SearchClient, Directory, Index, Field) ->
     Files = filelib:wildcard(Directory1),
     io:format(" :: Found ~p files...~n", [length(Files)]),
 %%    [index_file(SearchClient, File, Index, Field) || File <- Files],
-     plists:map(fun(File) -> index_file(SearchClient, File, Index, Field) end,
+     plists:map(fun(File) -> index_file(SearchClient, AnalyzerPid, File, Index, Field) end,
          Files, {processes, 32}),
     ok.
 
 %% %% Full-text index the specified file.
 %% index_file(SearchClient, File) ->
 %%     index_file(SearchClient, File, ?DEFAULT_INDEX, ?DEFAULT_FIELD).
-
-index_file(SearchClient, File, Index, Field) ->
+index_file(SearchClient, AnalyzerPid, File, Index, Field) ->
 %%     Props = random_properties(),
     Basename = filename:basename(File),
     io:format(" :: Indexing file: ~s~n", [Basename]),
-    
+
     case file:read_file(File) of
         {ok, Bytes} ->
             %% build doc
@@ -81,10 +83,10 @@ index_file(SearchClient, File, Index, Field) ->
             IdxDoc2 = riak_indexed_doc:set_fields([
                 {"payload", binary_to_list(Bytes)}], IdxDoc),
             %% index
-            ok = SearchClient:index_doc(IdxDoc2);
+            ok = SearchClient:index_doc(AnalyzerPid, IdxDoc2);
         {error, eisdir} ->
             io:format("following directory: ~p~n", [File]),
-            index_dir(SearchClient, File, Index, Field);
+            index_dir(SearchClient, AnalyzerPid, File, Index, Field);
         Err ->
             io:format("index_file(~p, ~p, ~p): error: ~p~n",
                 [File, Index, Field, Err])
@@ -120,7 +122,7 @@ index_file(SearchClient, File, Index, Field) ->
 %%     Basename = filename:basename(File),
 
 %%     io:format(" :: Indexing file: ~s~n", [Basename]),
-    
+
 %%     %% Get the bytes...
 %%     {ok, Bytes} = file:read_file(File),
 %%     Words = bytes_to_words(Bytes),
@@ -148,7 +150,7 @@ index_file(SearchClient, File, Index, Field) ->
 %%     case re:run(Bytes, "Date:\s*(.*)", [{capture, all, list}]) of
 %%         {match, [_, Date|_]} ->
 %%             case riak_search_utils:parse_datetime(Date) of
-%%                 {YMD, HMS} -> 
+%%                 {YMD, HMS} ->
 %%                     SubType = 1,
 %%                     SubTerm = riak_search_utils:date_to_subterm({YMD, HMS}),
 %%                     [F2(Word, SubType, SubTerm) || Word <- Words],
@@ -161,7 +163,7 @@ index_file(SearchClient, File, Index, Field) ->
 %%     end,
 %%     ok.
 
-%% %% Index         
+%% %% Index
 %% index_term(Term, Value, Props) ->
 %%     index_term(?DEFAULT_INDEX, ?DEFAULT_FIELD, Term, Value, Props).
 
@@ -187,7 +189,7 @@ random_properties() ->
 
 bytes_to_words(B) ->
     bytes_to_words(B, []).
-bytes_to_words(<<>>, []) -> 
+bytes_to_words(<<>>, []) ->
     [];
 bytes_to_words(<<>>, Acc) ->
     Word = string:to_lower(lists:reverse(Acc)),
@@ -270,5 +272,3 @@ bytes_to_words(<<_, Rest/binary>>, Acc) ->
 %% test(Q) ->
 %%     {ok, Qilr} = qilr_parse:string(Q),
 %%     riak_search_preplan:preplan(Qilr, "defIndex", "defField", ["price", "color"]).
-
-

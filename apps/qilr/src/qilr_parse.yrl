@@ -124,11 +124,11 @@ boost_suffix -> caret term:
     make_boost('$2').
 
 Erlang code.
--export([string/1, string/2]).
-string(Query) ->
-    string(Query, 'or').
-string(Query, Bool0) when Bool0 =:= 'and' orelse
-                          Bool0 =:= 'or' ->
+-export([string/2, string/3]).
+string(AnalyzerPid, Query) ->
+    string(AnalyzerPid, Query, 'or').
+string(AnalyzerPid, Query, Bool0) when Bool0 =:= 'and' orelse
+                                       Bool0 =:= 'or' ->
     Bool = if
                Bool0 =:= 'and' ->
                    land;
@@ -136,7 +136,7 @@ string(Query, Bool0) when Bool0 =:= 'and' orelse
                    lor
            end,
     {ok, Tokens, _} = qilr_scan:string(Query),
-    qilr_optimizer:optimize(parse(Tokens), [{default_bool, Bool}]).
+    qilr_optimizer:optimize(AnalyzerPid, parse(Tokens), [{default_bool, Bool}]).
 
 %% Internal functions
 add_node(Parent, Child) when is_list(Parent) ->

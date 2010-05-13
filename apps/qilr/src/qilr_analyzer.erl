@@ -7,7 +7,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 %% API
--export([start_link/0, analyze/1]).
+-export([start_link/0, analyze/2, close/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -18,16 +18,28 @@
 -record(state, {socket,
                 caller}).
 
-analyze(Text) when is_list(Text) ->
-    case analyze(list_to_binary(Text)) of
+analyze(Pid, Text) when is_list(Text) ->
+    case analyze(Pid, list_to_binary(Text)) of
         {ok, Tokens} ->
             {ok, [binary_to_list(Token) || Token <- Tokens]};
         Error ->
             Error
     end;
-analyze(Text) when is_binary(Text) ->
-    {ok, Pid} = qilr_analyzer_sup:new_analyzer(),
-    gen_server:call(Pid, {analyze, Text}).
+analyze(Pid, Text) when is_binary(Text) ->
+    case gen_server:call(Pid, {analyze, Text}) of
+        ignore ->
+            analyze(Pid, Text);
+        R ->
+            R
+    end.
+
+close(Pid) ->
+    case gen_server:call(Pid, close) of
+        ignored ->
+            close(Pid);
+        R ->
+            R
+    end.
 
 start_link() ->
     gen_server:start_link(?MODULE, [], []).
@@ -35,23 +47,26 @@ start_link() ->
 init([]) ->
     case application:get_env(analysis_port) of
         {ok, Port} when is_integer(Port) ->
-            {ok, #state{}};
+            case service_connect(Port) of
+                {ok, Sock} ->
+                    {ok, #state{socket=Sock}};
+                Error ->
+                    error_logger:error_msg("Error connecting to analysis server: ~p", [Error]),
+                    {stop, Error}
+            end;
         _ ->
             {stop, {error, bad_analysis_port}}
     end.
 
-handle_call({analyze, Text}, From, State) ->
+handle_call(close, _From, #state{socket=Sock}=State) ->
+    gen_tcp:close(Sock),
+    {stop, normal, ok, State};
+
+handle_call({analyze, Text}, From, #state{socket=Sock, caller=undefined}=State) ->
     Req = #analysisrequest{text=Text},
-    {ok, Port} = application:get_env(analysis_port),
-    case service_connect(Port) of
-        {ok, Sock} ->
-            gen_tcp:send(Sock, analysis_pb:encode_analysisrequest(Req)),
-            inet:setopts(Sock, [{active, once}]),
-            {noreply, State#state{caller=From}};
-        Error ->
-            error_logger:error_msg("Error connecting to analysis server: ~p", [Error]),
-            {reply, error, State}
-    end;
+    gen_tcp:send(Sock, analysis_pb:encode_analysisrequest(Req)),
+    inet:setopts(Sock, [{active, once}]),
+    {noreply, State#state{caller=From}};
 
 handle_call(_Request, _From, State) ->
     {reply, ignore, State}.
@@ -59,11 +74,10 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({tcp, Sock, Data}, #state{caller=Caller}=State) ->
+handle_info({tcp, _Sock, Data}, #state{caller=Caller}=State) ->
     Res = analysis_pb:decode_analysisresult(Data),
-    gen_tcp:close(Sock),
     gen_server:reply(Caller, {ok, parse_results(Res#analysisresult.token)}),
-    {stop, normal, State};
+    {noreply, State#state{caller=undefined}};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -78,7 +92,7 @@ code_change(_OldVsn, State, _Extra) ->
 service_connect(Port) ->
     gen_tcp:connect("127.0.0.1", Port, [binary, {active, once},
                                         {packet, 4},
-                                        {nodelay, true}], 250).
+                                        {nodelay, true}], 1000).
 
 parse_results([0]) ->
     [];
@@ -90,7 +104,7 @@ parse_results(Results) ->
                             [] ->
                                 {Curr, Acc};
                             _ ->
-                                {[], [Curr|Acc]}
+                                {[], [list_to_binary(Curr)|Acc]}
                         end;
                     true ->
                         {[C|Curr], Acc}
@@ -102,8 +116,8 @@ parse_results(Results) ->
                 [] ->
                     [];
                 _ ->
-                    [First]
+                    [list_to_binary(First)]
             end;
         _ ->
-            [First|Rest]
+            [list_to_binary(First)|Rest]
     end.
