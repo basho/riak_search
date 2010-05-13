@@ -18,6 +18,9 @@
 
 -behaviour(application).
 
+-define(SEARCH_BUCKET_PROPS, [{n_val, 1},
+                              {backend, search_backend}]).
+
 %% Application callbacks
 -export([start/2, stop/1]).
 
@@ -28,26 +31,25 @@
 start(_StartType, _StartArgs) ->
     case riak_search_sup:start_link() of
         {ok, Pid} ->
-            %% Set up a riak_search bucket.
-            riak_core_bucket:set_bucket(<<"search">>, [
-                {n_val, 1},
-                {backend, search_backend}
-            ]),
-            riak_core_bucket:set_bucket(<<"books">>, [
-                {n_val, 1},
-                {backend, search_backend}
-            ]),
+            case application:get_env(riak_search, search_buckets) of
+                undefined ->
+            error_logger:info_msg("No search buckets defined");
+                {ok, Buckets} ->
+                    F = fun(Bucket) ->
+                                error_logger:info_msg("Configuring search bucket ~p~n", [Bucket]),
+                                ok = riak_core_bucket:set_bucket(list_to_binary(Bucket), ?SEARCH_BUCKET_PROPS)
+                        end,
+                    [F(Bucket) || Bucket <- Buckets]
+            end,
             %% Set up the search_broadcast bucket. Any operations on
             %% this bucket will broadcast to all search_backend
             %% partitions.
             RingSize = app_helper:get_env(riak_core, ring_creation_size),
-            riak_core_bucket:set_bucket(<<"search_broadcast">>, [
-                {n_val, RingSize},
-                {backend, search_backend}
-            ]),
+            riak_core_bucket:set_bucket(<<"search_broadcast">>, [{n_val, RingSize},
+                                                                 {backend, search_backend}]),
             {ok, Pid};
-        Other ->
-            Other
+        Error ->
+            Error
     end.
 
 stop(_State) ->
