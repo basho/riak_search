@@ -30,8 +30,6 @@
 % @type state() = term().
 -record(state, {partition, conn}).
 
--define(CATALOG_TABLE, "__sys._catalog_").
-
 %% @spec start(Partition :: integer(), Config :: proplist()) ->
 %%          {ok, state()} | {{error, Reason :: term()}, state()}
 %% @doc Start this backend.
@@ -53,7 +51,7 @@ put(State, _BKey, ObjBin) ->
 
 handle_command(State, {index, Index, Field, Term, Value, Props}) ->
     TS = mi_utils:now_to_timestamp(erlang:now()),
-    handle_command(State, {index, Index, Field, Term, 0, 0, Value, Props, TS});
+    handle_command(State, {index, Index, Field, Term, 0, 0, Value, Props, TS}); %% todo: sub type, startterm, endterm (tbd)
 
 handle_command(State, {index, Index, Field, Term, SubType, SubTerm, Value, Props, _Timestamp}) ->
     %% Put with properties.
@@ -97,24 +95,17 @@ handle_command(State, {stream, Index, Field, Term, SubType, StartSubTerm, EndSub
     case DestPartition == State#state.partition andalso Node == node() of
         true ->
             case SubType of
-                all ->
-                    SubType2 = 0;
-                _ ->
-                    SubType2 = SubType
+                all -> SubType2 = 0;
+                _ -> SubType2 = SubType
             end,
             case StartSubTerm of
-                all ->
-                    StartSubTerm2 = 0;
-                _ ->
-                    StartSubTerm2 = StartSubTerm
+                all -> StartSubTerm2 = 0;
+                _ -> StartSubTerm2 = StartSubTerm
             end,
             case EndSubTerm of
-                all ->
-                    EndSubTerm2 = 0;
-                _ ->
-                    EndSubTerm2 = EndSubTerm
+                all -> EndSubTerm2 = 0;
+                _ -> EndSubTerm2 = EndSubTerm
             end,
-            
             spawn(fun() ->
                 {ok, StreamRef} = raptor_conn:stream(
                     Conn, 
@@ -260,7 +251,7 @@ is_empty(_State) ->
 drop(_State) ->
     ok.
     %merge_index:drop(Pid).
-    %%%% xxx TODO
+    % xxx TODO
 
 %% @spec delete(state(), BKey :: riak_object:bkey()) ->
 %%          ok | {error, Reason :: term()}
@@ -320,7 +311,7 @@ fold_catalog_process(FoldResultPid,
                     fold_catalog_process(FoldResultPid, Fun0, Acc, true,
                         StreamProcessCount, FinishedStreamProcessCount)
             end;
-                                 
+
         {catalog_query_response, {Partition, Index, Field, Term, _JSONProps}, _OutputRef} ->
             %% kick off stream for this PIFT
             spawn(fun() ->
@@ -330,7 +321,7 @@ fold_catalog_process(FoldResultPid,
                     list_to_binary(Index), 
                     list_to_binary(Field), 
                     list_to_binary(Term), 
-                    <<"0">>, <<"0">>, <<"0">>, 
+                    <<"0">>, <<"0">>, <<"0">>, %% todo: sub type, startterm, endterm (tbd)
                     list_to_binary(Partition)),
                 fold_stream_process(Me, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term),
                 raptor_conn:close(Conn) end),
@@ -338,23 +329,16 @@ fold_catalog_process(FoldResultPid,
                                  StreamProcessCount+1, FinishedStreamProcessCount);
 
         {fold_stream, done, _StreamRef1} ->
-            case FinishedStreamProcessCount >= (StreamProcessCount-1) of
-                true ->
-                    case CatalogDone of
-                        true ->
-                            FoldResultPid ! {fold_result, done},
-                            fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
-                                StreamProcessCount, FinishedStreamProcessCount+1);
-                        false ->
-                            fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
-                                StreamProcessCount, FinishedStreamProcessCount+1)
-                    end;
-                _ -> 
-                    fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
-                        StreamProcessCount, FinishedStreamProcessCount+1)
-            end,
-            fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
-                StreamProcessCount, FinishedStreamProcessCount+1);
+            case FinishedStreamProcessCount >= (StreamProcessCount-1) andalso 
+                 CatalogDone == true of 
+                    true ->
+                        FoldResultPid ! {fold_result, done},
+                        fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
+                            StreamProcessCount, FinishedStreamProcessCount+1);
+                    false ->
+                        fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
+                            StreamProcessCount, FinishedStreamProcessCount+1)
+                end;
         Msg ->
             io:format("fold_catalog_process: unknown message: ~p~n", [Msg]),
             fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
@@ -372,7 +356,7 @@ fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Inde
             Props2 = binary_to_term(Props),
             IndexBin = riak_search_utils:to_binary(Index),
             FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-            Payload = {index, Index, Field, Term, 0, 0, Value, Props2, erlang:now()},
+            Payload = {index, Index, Field, Term, 0, 0, Value, Props2, erlang:now()}, %% todo: sub type, startterm, endterm (tbd)
             BObj = term_to_binary(riak_object:new(IndexBin, FieldTermBin, Payload)),
             FoldResultPid ! {fold_result, Fun0({IndexBin, FieldTermBin}, BObj, Acc)},
             fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term);
@@ -398,6 +382,5 @@ test_fold() ->
         io:format("test_fold: Fun0: ~p, ~p~n", [BKey, length(Acc)]),
         Obj
     end,
-    Partition = 0, %% 182687704666362864775460604089535377456991567872,
-    State = #state { partition=Partition, conn=undefined },
+    State = #state { partition=0, conn=undefined },
     fold(State, Fun0, []).
