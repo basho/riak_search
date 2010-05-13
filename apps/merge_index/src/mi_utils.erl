@@ -67,7 +67,7 @@ write_value(FH, Term) when not is_binary(Term) ->
     write_value(FH, B);
 write_value(FH, B) ->
     Size = size(B),
-    ok = file:write(FH, <<Size:16/integer, B/binary>>),
+%%     ok = file:write(FH, <<Size:16/integer, B/binary>>),
     Size + 2.
 
 file_exists(Filename) ->

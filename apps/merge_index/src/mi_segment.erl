@@ -86,7 +86,7 @@ from_buffer(Buffer, Segment) ->
 from_iterator(Iterator, Segment) ->
     %% Write to segment file in order...
     Table = Segment#segment.table,
-    {ok, FH} = file:open(data_file(Segment), [write, {delayed_write, 1 * 1024 * 1024, 10 * 1000}, raw, binary]),
+    {ok, FH} = file:open(data_file(Segment), [write, raw, binary]),
     from_iterator_inner(FH, 0, 0, 0, undefined, undefined, Iterator(), Table),
     file:close(FH),
 
@@ -165,7 +165,7 @@ iterator(StartIFT, EndIFT, Segment) ->
     case mi_utils:ets_next(Table, StartIFT) of
         IFT when IFT /= '$end_of_table' ->
             [{IFT, {Offset, _}}] = ets:lookup(Table, IFT),
-            {ok, FH} = file:open(data_file(Segment), [read, raw, read_ahead, binary]),
+            {ok, FH} = file:open(data_file(Segment), [read, raw, binary]),
             file:position(FH, Offset),
             fun() -> iterator_fun(FH, undefined, EndIFT, []) end;
         '$end_of_table' ->
@@ -221,7 +221,7 @@ read_offsets(Root) ->
 repair_offsets(Root) ->
     case filelib:is_file(data_file(Root)) of
         true -> 
-            {ok, FH} = file:open(data_file(Root), [read, read_ahead, raw, binary]),
+            {ok, FH} = file:open(data_file(Root), [read, raw, binary]),
             Table = ets:new(segment, [ordered_set, public]),
             repair_offsets_inner(FH, 0, 0, undefined, Table),
             file:close(FH),
