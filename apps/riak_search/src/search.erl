@@ -1,9 +1,8 @@
 -module(search).
--export([
-    search/1,
-    doc_search/1,
-    explain/1,
-    index_dir/1 %index_dir/3,
+-export([search/1,
+         doc_search/1,
+         explain/1,
+         index_dir/1
 %%     index_file/1, %index_file/3,
 %%     index_term/3 %index_term/5
 ]).
@@ -47,15 +46,13 @@ explain(Q) ->
 
 %% Full-text index the files within the specified directory.
 index_dir(Directory) ->
-    {ok, Pid} = qilr_analyzer_sup:new_analyzer(),
-    {ok, SearchClient} = riak_search:local_client(),
-    Result = index_dir(SearchClient, Pid, Directory, ?DEFAULT_INDEX, ?DEFAULT_FIELD),
-    qilr_analyzer:close(Pid),
-    Result.
+    index_dir(Directory, ?DEFAULT_INDEX, ?DEFAULT_FIELD).
 
-index_dir(SearchClient, AnalyzerPid, Directory, Index, Field) ->
+index_dir(Directory, Index, Field) ->
     io:format(" :: Indexing directory: ~s~n", [Directory]),
-
+    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
+    {T1, T2, T3} = erlang:now(),
+    random:seed(T1, T2, T3),
     %% Get a list of files in the directory, and index them.
     Directory1 = case string:str(Directory, "*") of
         0 -> filename:join([Directory, "*"]);
@@ -64,18 +61,19 @@ index_dir(SearchClient, AnalyzerPid, Directory, Index, Field) ->
     Files = filelib:wildcard(Directory1),
     io:format(" :: Found ~p files...~n", [length(Files)]),
 %%    [index_file(SearchClient, File, Index, Field) || File <- Files],
-     plists:map(fun(File) -> index_file(SearchClient, AnalyzerPid, File, Index, Field) end,
+     plists:map(fun(File) -> index_file(AnalyzerPid, File, Index, Field) end,
          Files, {processes, 32}),
+    qilr_analyzer:close(AnalyzerPid),
     ok.
 
 %% %% Full-text index the specified file.
 %% index_file(SearchClient, File) ->
 %%     index_file(SearchClient, File, ?DEFAULT_INDEX, ?DEFAULT_FIELD).
-index_file(SearchClient, AnalyzerPid, File, Index, Field) ->
+index_file(AnalyzerPid, File, Index, Field) ->
 %%     Props = random_properties(),
     Basename = filename:basename(File),
     io:format(" :: Indexing file: ~s~n", [Basename]),
-
+    {ok, SearchClient} = riak_search:local_client(),
     case file:read_file(File) of
         {ok, Bytes} ->
             %% build doc
@@ -83,10 +81,10 @@ index_file(SearchClient, AnalyzerPid, File, Index, Field) ->
             IdxDoc2 = riak_indexed_doc:set_fields([
                 {"payload", binary_to_list(Bytes)}], IdxDoc),
             %% index
-            ok = SearchClient:index_doc(AnalyzerPid, IdxDoc2);
+            SearchClient:index_doc(AnalyzerPid, IdxDoc2);
         {error, eisdir} ->
             io:format("following directory: ~p~n", [File]),
-            index_dir(SearchClient, AnalyzerPid, File, Index, Field);
+            index_dir(File, Index, Field);
         Err ->
             io:format("index_file(~p, ~p, ~p): error: ~p~n",
                 [File, Index, Field, Err])
@@ -175,33 +173,50 @@ index_file(SearchClient, AnalyzerPid, File, Index, Field) ->
 
 %% This method returns fake properties. It is called by index_file and
 %% is here so that you can play around with facet search.
-random_properties() ->
-    Colors = ["red", "orange", "yellow", "green", "blue"],
-    ColorNum = random:uniform(length(Colors)),
-    Color = lists:nth(ColorNum, Colors),
+%% random_properties() ->
+%%     Colors = ["red", "orange", "yellow", "green", "blue"],
+%%     ColorNum = random:uniform(length(Colors)),
+%%     Color = lists:nth(ColorNum, Colors),
 
-    Directions = ["north", "south", "east", "west"],
-    DirectionNum = random:uniform(length(Directions)),
-    Direction = lists:nth(DirectionNum, Directions),
+%%     Directions = ["north", "south", "east", "west"],
+%%     DirectionNum = random:uniform(length(Directions)),
+%%     Direction = lists:nth(DirectionNum, Directions),
 
-    [{"color", Color}, {"direction", Direction}].
+%%     [{"color", Color}, {"direction", Direction}].
 
 
-bytes_to_words(B) ->
-    bytes_to_words(B, []).
-bytes_to_words(<<>>, []) ->
-    [];
-bytes_to_words(<<>>, Acc) ->
-    Word = string:to_lower(lists:reverse(Acc)),
-    [Word];
-bytes_to_words(<<C, Rest/binary>>, Acc) when ?IS_CHAR(C) ->
-    bytes_to_words(Rest, [C|Acc]);
-bytes_to_words(<<_, Rest/binary>>, []) ->
-    bytes_to_words(Rest, []);
-bytes_to_words(<<_, Rest/binary>>, Acc) ->
-    Word = string:to_lower(lists:reverse(Acc)),
-    [Word|bytes_to_words(Rest, [])].
+%% bytes_to_words(B) ->
+%%     bytes_to_words(B, []).
+%% bytes_to_words(<<>>, []) ->
+%%     [];
+%% bytes_to_words(<<>>, Acc) ->
+%%     Word = string:to_lower(lists:reverse(Acc)),
+%%     [Word];
+%% bytes_to_words(<<C, Rest/binary>>, Acc) when ?IS_CHAR(C) ->
+%%     bytes_to_words(Rest, [C|Acc]);
+%% bytes_to_words(<<_, Rest/binary>>, []) ->
+%%     bytes_to_words(Rest, []);
+%% bytes_to_words(<<_, Rest/binary>>, Acc) ->
+%%     Word = string:to_lower(lists:reverse(Acc)),
+%%     [Word|bytes_to_words(Rest, [])].
 
+random_indexer(Pool) ->
+    lists:nth(random:uniform(length(Pool)), Pool).
+
+indexer() ->
+    {ok, Pid} = qilr_analyzer_sup:new_analyzer(),
+    {ok, Client} = riak_search:local_client(),
+    do_index(Pid, Client).
+
+do_index(AnalyzerPid, SearchClient) ->
+    receive
+        {index, Doc} ->
+            SearchClient:index_doc(AnalyzerPid, Doc),
+            do_index(AnalyzerPid, SearchClient);
+        stop ->
+            io:format("(~p) indexer complete~n", [self()]),
+            ok
+    end.
 
 %% NOTE: This was used during early testing against a demo
 %% backend. Keeping it around for a little while longer.
