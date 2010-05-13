@@ -229,11 +229,9 @@ is_empty(State) ->
     %merge_index:is_empty(Pid).
 
 fold(State, Fun, Acc) ->
+    io:format("fold(~p, ~p, ~p)~n",
+        [State, Fun, Acc]),
     [].
-
-
-%%%%% xxx TODO
-%%%%% xxx TODO
 
 fold2(State, Fun, Acc) ->
     ?PRINT({fold, State, Fun, Acc}),
