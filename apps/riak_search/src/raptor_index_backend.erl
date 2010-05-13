@@ -373,7 +373,7 @@ receive_fold_results(Acc, Count) ->
             Acc;
         {fold_result, Obj} ->
             %%io:format("receive_fold_results: Count = ~p~n", [Count]),
-            receive_fold_results(Acc ++ [Obj], Count+1)
+            receive_fold_results(Acc, Count+1)
     end.
 
 %% test fold
