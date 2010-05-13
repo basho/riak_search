@@ -26,13 +26,16 @@
              riak_search_phase,
              riak_search_test,
              riak_search_utils,
-             merge_index_backend
+             merge_index_backend,
+             raptor_index_backend,
+             plists
             ]},
   {registered, []},
   {applications, [
                   kernel,
                   stdlib,
-                  riak_core
+                  riak_core,
+		  raptor
                  ]},
   {mod, { riak_search_app, []}},
   {env, []}

@@ -12,12 +12,16 @@ import org.apache.lucene.analysis.StopFilter;
 import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.WhitespaceTokenizer;
 import org.apache.lucene.analysis.tokenattributes.TermAttribute;
+import org.apache.lucene.analysis.standard.StandardTokenizer;
+import org.apache.lucene.util.Version;
 
 public class TextAnalyzer {
    
    public static List<String> analyze(String text) throws IOException {
       // Setup token stream and filters
-      TokenStream stream = new WhitespaceTokenizer(new StringReader(text));
+      //TokenStream stream = new WhitespaceTokenizer(new StringReader(text));
+      TokenStream stream = new StandardTokenizer(Version.LUCENE_CURRENT,
+         new StringReader(text));
       stream = new LengthFilter(stream, 3, Integer.MAX_VALUE);
       stream = new LowerCaseFilter(stream);
       stream = new StopFilter(false, stream, StopAnalyzer.ENGLISH_STOP_WORDS_SET);
