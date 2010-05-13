@@ -4,6 +4,7 @@
   {vsn, "0.9"},
   {modules, [
              search,
+             plists,
              raptor_index_backend,
              riak_indexed_doc,
              riak_search,

@@ -55,10 +55,9 @@ index_dir(SearchClient, Directory, Index, Field) ->
     end,
     Files = filelib:wildcard(Directory1),
     io:format(" :: Found ~p files...~n", [length(Files)]),
-    ?PRINT({Index, Field}),
-    [index_file(SearchClient, File, Index, Field) || File <- Files],
-%%     plists:map(fun(File) -> index_file(SearchClient, File, Index, Field) end,
-%%         Files, {processes, 4}),
+%%     [index_file(SearchClient, File, Index, Field) || File <- Files],
+    plists:map(fun(File) -> index_file(SearchClient, File, Index, Field) end,
+        Files, {processes, 4}),
     ok.
 
 %% %% Full-text index the specified file.
