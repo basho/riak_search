@@ -45,7 +45,7 @@ open(Filename, Options) ->
     ReadBuffer = 1024 * 1024,
     WriteInterval = proplists:get_value(write_interval, Options, 2 * 1000),
     WriteBuffer = proplists:get_value(write_buffer, Options, 1024 * 1024),
-    {ok, FH} = file:open(Filename, [read, write, {read_ahead, ReadBuffer}, {delayed_write, WriteBuffer, WriteInterval}, raw, binary]),
+    {ok, FH} = file:open(Filename, [read, write, raw, binary]),
 
     %% Read into an ets table...
     Table = ets:new(buffer, [ordered_set, public]),
