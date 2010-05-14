@@ -16,29 +16,18 @@
 
 ** Running the Sample Tests
 
-   1. Copy the file ./config.json to =riakdb/config.json=.
-
-   2. Insert the sample data into the datastore. You should only need to do
+   1. Insert the sample data into the datastore. You should only need to do
       this once:
 
-      : ./bin/update.sh http://localhost:8098/riakdb sample_data/sample100.add
+      : ./bin/update.sh http://localhost:8098/solr/querytest sample_data/sample100.add
 
-   3. Wait about 30 seconds, and then commit your changes. When you
-      run this command, you should see some messages in RiakDB saying
-      "StorageWorker - commit: NNN docs". You will know that all
-      documents are committed when those number stop increasing. (Note
-      that the order of the messages will flip. Focus on the numbers
-      themselves.)
+   2. Run the unit tests:
 
-      : ./bin/commit.sh http://localhost:8098/riakdb
-
-   4. Run the unit tests:
-
-      : ./run_sample100.sh http://localhost:8098/riakdb
+      : ./run_sample100.sh http://localhost:8098/solr/querytest
    
-   5. Alternatively, run some queries:
+   3. Alternatively, run some queries:
       
-      : ./bin/select.sh http://localhost:8098/riakdb "color_t:red"
+      : ./bin/select.sh http://localhost:8098/riakdb "color:red"
 
 ** Adding New Tests
 

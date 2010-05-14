@@ -104,7 +104,6 @@ index_doc(AnalyzerPid, #riak_idx_doc{id=DocId, index=Index, fields=Fields}=Doc) 
 
 %% Internal functions
 index_term(Index, Field, Term, Value, Props) ->
-    ?PRINT({Index, Field, Term, Value, Props}),
     index_internal(Index, Field, Term, {index, Index, Field, Term, Value, Props}).
 
 index_internal(Index, Field, Term, Payload) ->
