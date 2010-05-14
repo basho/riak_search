@@ -33,6 +33,7 @@
 -record(state, {partition, conn}).
 
 -define(FOLD_TIMEOUT, 30000).
+-define(MAX_HANDOFF_STREAMS, 100).
 
 %% @spec start(Partition :: integer(), Config :: proplist()) ->
 %%          {ok, state()} | {{error, Reason :: term()}, state()}
@@ -310,7 +311,7 @@ fold(State, Fun0, Acc) ->
     {ok, Conn} = raptor_conn_sup:new_conn(),
     Me = self(), 
     CatalogResultsPid = spawn_link(fun() ->
-        fold_catalog_process(Me, Fun0, Acc, false, 0, 0) end),
+        fold_catalog_process(Me, Fun0, Acc, false, 0, 0, false) end),
     spawn_link(fun() ->
         {ok, StreamRef} = raptor_conn:catalog_query(
             Conn,
@@ -325,7 +326,8 @@ fold_catalog_process(FoldResultPid,
                      Fun0, Acc, 
                      CatalogDone,
                      StreamProcessCount,
-                     FinishedStreamProcessCount) ->
+                     FinishedStreamProcessCount,
+                     DeferredTables) ->
     %% kick off one fold_stream_process per catalog entry that comes back
     %%   increment StreamProcessCount
     %% when receive done from fold_stream_process processes, increment
@@ -341,46 +343,58 @@ fold_catalog_process(FoldResultPid,
                     true;
                 _SPC -> 
                     fold_catalog_process(FoldResultPid, Fun0, Acc, true,
-                        StreamProcessCount, FinishedStreamProcessCount)
+                        StreamProcessCount, FinishedStreamProcessCount, DeferredTables)
             end;
 
         {catalog_query_response, {Partition, Index, Field, Term, JSONProps}, _OutputRef} ->
             %% kick off stream for this PIFT
-            io:format("fold_catalog_process: catalog_query_response: ~p: ~p.~p.~p (~p)~n",
-                [Partition, Index, Field, Term, JSONProps]),
-            spawn_link(fun() ->
-                {ok, Conn} = raptor_conn_sup:new_conn(),
-                {ok, StreamRef} = raptor_conn:stream(
-                    Conn, 
-                    list_to_binary(Index), 
-                    list_to_binary(Field), 
-                    list_to_binary(Term), 
-                    <<"0">>, <<"0">>, <<"0">>, %% todo: sub type, startterm, endterm (tbd)
-                    list_to_binary(Partition)),
-                fold_stream_process(Me, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term),
-                raptor_conn:close(Conn) end),
-            fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
-                                 StreamProcessCount+1, FinishedStreamProcessCount);
+            case (StreamProcessCount - FinishedStreamProcessCount) >
+                  ?MAX_HANDOFF_STREAMS of
+                true ->
+                    %io:format("fold_catalog_process: deferring ~p.~p.~p~n",
+                    %    [Index, Field, Term]),
+                    self() ! {catalog_query_response,
+                              {Partition, Index, Field, Term, JSONProps}, _OutputRef},
+                    fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
+                                         StreamProcessCount, FinishedStreamProcessCount, true);
+                false ->
+                    spawn_link(fun() ->
+                        io:format("fold_catalog_process: catalog_query_response: ~p: ~p.~p.~p (~p)~n",
+                            [Partition, Index, Field, Term, JSONProps]),
+                        {ok, Conn} = raptor_conn_sup:new_conn(),
+                        {ok, StreamRef} = raptor_conn:stream(
+                            Conn, 
+                            list_to_binary(Index), 
+                            list_to_binary(Field), 
+                            list_to_binary(Term), 
+                            <<"0">>, <<"0">>, <<"0">>, %% todo: sub type, startterm, endterm (tbd)
+                            list_to_binary(Partition)),
+                        fold_stream_process(Me, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term),
+                        raptor_conn:close(Conn) end),
+                    fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
+                                         StreamProcessCount+1, FinishedStreamProcessCount, false)
+                end;
 
         {fold_stream, done, _StreamRef1} ->
             %%io:format("fold_stream: done: ~p of ~p~n", 
             %%    [FinishedStreamProcessCount, StreamProcessCount]),
             case FinishedStreamProcessCount >= (StreamProcessCount-1) andalso 
-                 CatalogDone == true of 
+                 CatalogDone == true andalso 
+                 DeferredTables == false of 
                     true ->
-                        FoldResultPid ! {fold_result, done},
-                        fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
-                            StreamProcessCount, FinishedStreamProcessCount+1);
+                        io:format("fold_catalog_process: streaming complete (~p of ~p)~n",
+                            [(FinishedStreamProcessCount+1), StreamProcessCount]),
+                        FoldResultPid ! {fold_result, done};
                     false ->
                         fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
-                            StreamProcessCount, FinishedStreamProcessCount+1)
+                            StreamProcessCount, FinishedStreamProcessCount+1, false)
                 end;
         Msg ->
             io:format("fold_catalog_process: unknown message: ~p~n", [Msg]),
             fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
-                StreamProcessCount, FinishedStreamProcessCount)
+                StreamProcessCount, FinishedStreamProcessCount, DeferredTables)
         after ?FOLD_TIMEOUT ->
-            case FinishedStreamProcessCount >= (StreamProcessCount-1) of
+            case FinishedStreamProcessCount >= (StreamProcessCount) of
                 true -> ok;
                 false ->
                     io:format("fold_catalog_process: timed out (~p of ~p), proceeding to {fold_result, done}~n",

@@ -62,7 +62,7 @@ index_dir(Directory, Index, Field) ->
     io:format(" :: Found ~p files...~n", [length(Files)]),
 %%    [index_file(SearchClient, File, Index, Field) || File <- Files],
      plists:map(fun(File) -> index_file(AnalyzerPid, File, Index, Field) end,
-         Files, {processes, 32}),
+         Files, {processes, 8}),
     qilr_analyzer:close(AnalyzerPid),
     ok.
 
