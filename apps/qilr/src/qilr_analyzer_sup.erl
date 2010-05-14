@@ -4,7 +4,9 @@
 -export([new_analyzer/0]).
 
 new_analyzer() ->
-    supervisor:start_child(?MODULE, []).
+    {ok, Pid} = supervisor:start_child(?MODULE, []),
+    erlang:link(Pid),
+    {ok, Pid}.
 
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).

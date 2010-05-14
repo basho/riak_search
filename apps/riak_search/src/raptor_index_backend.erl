@@ -21,8 +21,10 @@
 -module(raptor_index_backend).
 -author("John Muellerleile <johnm@basho.com>").
 -export([start/2,stop/1,get/2,put/3,list/1,list_bucket/2,delete/2]).
--export([fold/3, drop/1, is_empty/1]).
--export([test_fold/0]).
+-export([fold/3, drop/1, is_empty/1, toggle_raptor_debug/0, shutdown_raptor/0]).
+-export([sync/0, poke/1, raptor_status/0]).
+
+-export([test_fold/0, test_is_empty/0, test_drop/0]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("riak_search.hrl").
@@ -174,7 +176,7 @@ handle_command(_State, {catalog_query, CatalogQuery, OutputPid, OutputRef}) ->
     ok;
     
 handle_command(_State, {command, Command, Arg1, Arg2, Arg3}) ->
-    {ok, Conn} = raptor_conn:new_conn(),
+    {ok, Conn} = raptor_conn_sup:new_conn(),
     {ok, _StreamRef} = raptor_conn:command(Conn, Command, Arg1, Arg2, Arg3),
     receive
         {command, _ReqId, Response} ->
@@ -265,8 +267,8 @@ is_empty(State) ->
                               <<"partition_count">>, 
                               Partition, 
                               <<"">>, 
-                              <<"">>}) == 0.
-    
+                              <<"">>}) == "0".
+
 drop(State) ->
     io:format("drop(~p)~n", [State]),
     Partition = list_to_binary(integer_to_list(State#state.partition)),
@@ -287,12 +289,14 @@ delete(_State, _BKey) ->
 %%                          Key :: riak_object:key()}]
 %% @doc Get a list of all bucket/key pairs stored by this backend
 list(_State) ->
+    io:format("list(~p)~n", [_State]),
     throw({error, not_supported}).
 
 %% @spec list_bucket(state(), riak_object:bucket()) ->
 %%           [riak_object:key()]
 %% @doc Get a list of the keys in a bucket
 list_bucket(_State, _Bucket) ->
+    io:format("list_bucket(~p, ~p)~n", [_State, _Bucket]),
     throw({error, not_supported}).    
 
 %% spawn a process to kick off the catalog listing
@@ -376,7 +380,12 @@ fold_catalog_process(FoldResultPid,
             fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
                 StreamProcessCount, FinishedStreamProcessCount)
         after ?FOLD_TIMEOUT ->
-            io:format("fold_catalog_process: timed out, proceeding to {fold_result, done}~n"),
+            case FinishedStreamProcessCount >= (StreamProcessCount-1) of
+                true -> ok;
+                false ->
+                    io:format("fold_catalog_process: timed out (~p of ~p), proceeding to {fold_result, done}~n",
+                        [FinishedStreamProcessCount, StreamProcessCount])
+            end,
             FoldResultPid ! {fold_result, done}
     end.
 
@@ -420,8 +429,23 @@ receive_fold_results(Acc, Count) ->
 
 %%%
 
+poke(Command) ->
+    handle_command(no_state, {command, Command, <<"">>, <<"">>, <<"">>}).
+
 sync() ->
-    handle_command(no_state, {command, <<"sync">>, <<"">>, <<"">>, <<"">>}).
+    poke("sync").
+
+toggle_raptor_debug() ->
+    poke("toggle_debug").
+
+shutdown_raptor() ->
+    io:format("issuing raptor engine shutdown~n"),
+    poke("shutdown").
+
+raptor_status() ->
+    Status = string:tokens(poke("status"), "`"),
+    io:format("~p~n", [Status]),
+    Status.
 
 %% test fold
 test_fold() ->
@@ -429,4 +453,14 @@ test_fold() ->
         Acc
     end,
     State = #state { partition=0, conn=undefined },
-    fold(State, Fun0, []).
+    spawn(fun() -> 
+        fold(State, Fun0, []) end).
+
+test_is_empty() ->
+    State = #state { partition=0, conn=undefined },
+    is_empty(State).
+
+test_drop() ->
+    State = #state { partition=0, conn=undefined },
+    drop(State).
+

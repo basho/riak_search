@@ -51,8 +51,8 @@ loop(ScoringVars, Ref, OutputPid, OutputRef) ->
 calculate_score(ScoringVars, Props) ->
     %% Pull from ScoringVars...
     TermBoost = ScoringVars#scoring_vars.term_boost,
-    DocFrequency = ScoringVars#scoring_vars.doc_frequency,
-    NumDocs = ScoringVars#scoring_vars.num_docs,
+    DocFrequency = ScoringVars#scoring_vars.doc_frequency + 1,
+    NumDocs = ScoringVars#scoring_vars.num_docs + 1,
 
     %% Pull freq from Props. (If no exist, use 1).
     Frequency = proplists:get_value(freq, Props, 1),
@@ -61,7 +61,7 @@ calculate_score(ScoringVars, Props) ->
     %% Calculate the score for this term, based roughly on Lucene
     %% scoring. http://lucene.apache.org/java/2_4_0/api/org/apache/lucene/search/Similarity.html
     TF = math:pow(Frequency, 0.5),
-    IDF = (1 + math:log(NumDocs/(DocFrequency + 1))),
+    IDF = (1 + math:log(NumDocs/DocFrequency)),
     Norm = DocFieldBoost,
     
     Score = TF * math:pow(IDF, 2) * TermBoost * Norm,

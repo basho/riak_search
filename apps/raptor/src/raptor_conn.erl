@@ -10,6 +10,7 @@
          index/9,
          stream/8,
          info/5,
+         command/5,
          info_range/6,
          catalog_query/2,
          catalog_query/3]).
@@ -72,7 +73,7 @@ catalog_query(ConnPid, SearchQuery) ->
 
 catalog_query(ConnPid, SearchQuery, MaxResults) ->
     MessageType = <<"CatalogQuery">>,
-    CatalogQueryRec = #catalogquery{search_query=SearchQuery, 
+    CatalogQueryRec = #catalogquery{search_query=SearchQuery,
                                     max_results=MaxResults,
                                     message_type=MessageType},
     Ref = erlang:make_ref(),
@@ -178,10 +179,10 @@ handle_info({tcp, Sock, Data}, #state{req_type=info, reqid=ReqId, dest=Dest}=Sta
 
 handle_info({tcp, Sock, Data}, #state{req_type=catalogquery, reqid=ReqId, dest=Dest}=State) ->
     CatalogQueryResponse = raptor_pb:decode_catalogqueryresponse(Data),
-    Dest ! {catalog_query, ReqId, CatalogQueryResponse#catalogqueryresponse.partition, 
-                                  CatalogQueryResponse#catalogqueryresponse.index, 
-                                  CatalogQueryResponse#catalogqueryresponse.field, 
-                                  CatalogQueryResponse#catalogqueryresponse.term, 
+    Dest ! {catalog_query, ReqId, CatalogQueryResponse#catalogqueryresponse.partition,
+                                  CatalogQueryResponse#catalogqueryresponse.index,
+                                  CatalogQueryResponse#catalogqueryresponse.field,
+                                  CatalogQueryResponse#catalogqueryresponse.term,
                                   CatalogQueryResponse#catalogqueryresponse.json_props},
     NewState = if
                    CatalogQueryResponse#catalogqueryresponse.partition =:= "$end_of_results" ->
@@ -194,7 +195,7 @@ handle_info({tcp, Sock, Data}, #state{req_type=catalogquery, reqid=ReqId, dest=D
                end,
     {noreply, NewState};
 
-handle_info({tcp, Sock, Data}, #state{req_type=command, reqid=ReqId, dest=Dest}=State) ->
+handle_info({tcp, _Sock, Data}, #state{req_type=command, reqid=ReqId, dest=Dest}=State) ->
     CommandResponse = raptor_pb:decode_commandresponse(Data),
     Dest ! {command, ReqId, CommandResponse#commandresponse.response},
     {noreply, State#state{req_type=undefined, reqid=undefined, dest=undefined}};

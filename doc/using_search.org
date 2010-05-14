@@ -1,0 +1,127 @@
+* riak_search
+** Configuring Search Buckets
+   Riak Search indices are exposed as Riak buckets. To configure additional search
+   indices, edit the search_bucket entry in the riak_search section of app.config:
+
+       {riak_search, [{search_buckets, ["search"]}]}
+
+   Additional indices should be added to the list of bucket names. All nodes should
+   have the same set of search buckets.
+
+** Configuring Textual Analyzers
+   Riak Search uses Lucene's excellent text analysis capabilities for indexing and
+   querying. The communication between Riak Search and the Lucene text analysis
+   code is performed over a TCP socket on localhost. The port number for this
+   connection is controlled by the analysis_port entry in the qilr section of
+   app.config:
+
+       {qilr, [{analysis_port, 6095}]}
+
+   The analysis interface actually uses two ports for communication. The configured
+   port, in this case 6095, is used for textual analysis processing. An additional
+   port, one above analysis_port, is used to insure Java and Erlang processes are
+   started and stopped in lockstep. In short, make sure you have analysis_port and
+   analysis_port + 1 available when you pick a value for analysis_port.
+
+* riak_solr
+** Configuring riak_solr
+   riak_solr's configuration consists of two parts: schema definition and the
+   matching search bucket.
+
+*** Schema Definitions
+    riak_solr's schema definition language is similar in spirit to Solr's but
+    differs substantially in syntax. Schema defintions are written in Erlang using
+    lists, strings, and tuples. Several sample schemas are included in riak_solr/priv
+    for use as reference.
+
+**** Schema headers
+     Schema defintions consist of two sections: header and fields. The schema header
+     section contains information about the schema name, Solr API version, default
+     boolean operator for queries, and the default query field. An example header
+     looks like this: [{name, "books"},
+                       {version, "1.1"},
+                       {default_field, "title"},
+                       {default_op, "and"}]
+
+     All fields must be present and all values must be strings. Also, the only supported
+     Solr API version is 1.1 so the version field must be "1.1".
+
+**** Schema fields
+     Schema field definitions describe the field's name, data type, and whether or not
+     a field is required. A field definition for a rating field of type integer might look
+     like this: {field, [{name, "rating"},
+                         {type, integer},
+                         {required, true}]}
+
+     Field names must be strings. Supported field types are integer, boolean, and string.
+     Field types must appear without quotes in the field definition. The required attribute
+     is a boolean on/off flag which must appear without quotes.
+
+     NOTE: Each schema definition MUST contain a field named "id".
+
+*** Example schema
+    A complete schema for a Solr index storing book information could look like
+    this: {schema, [{name, "books"},
+                    {version, "1.1"},
+  	            {default_field, "title"},
+                    {default_op, "and"}],
+                    {fields,
+                        [{field, [{name, "id"},
+                                  {type, string},
+                                  {required, true}]},
+                         {field, [{name, "title"},
+                                  {type, string},
+                                  {required, true}]},
+                         {field, [{name, "author_last_name"},
+                                  {type, string},
+                                  {required, true}]},
+                         {field, [{name, "author_first_name"},
+                                  {type, string},
+                                  {required, true}]},
+                         {field, [{name, "rating"},
+                                  {type, integer},
+                                  {required, true}]},
+                         {field, [{name, "summary"},
+                                  {type, string},
+                                  {required, false}]}]}}.
+*** Schemas & Buckets
+    Each schema should be backed by a corresponding search bucket. In other words,
+    each Solr schema should correspond to a search bucket with the same name as
+    the schema.
+
+** Using riak_solr
+   Clients will interact with riak_solr over HTTP. The next several sections will
+   describe how to connect to riak_solr, write to a configured schema, and query
+   a configured schema.
+
+*** Connecting
+    riak_solr shares a webmachine instance with the Riak Key/Value HTTP API. Clients
+    should use the same port number to connect to both APIs. riak_solr uses the base
+    URL '/solr' for all requests.
+
+*** Updating an Index
+    Writing to a schema is handled via POST requests to riak_solr. The URL for a
+    given schema follows this pattern: /solr/<index_name>/update where <index_name>
+    is the name of the schema you wish to update.
+
+    The request's Content-Type header must be 'text/xml'. The body of the request must be
+    valid XML which follows Solr's add syntax.
+
+*** Deleting Documents
+    Document deletion is not supported at this time.
+
+*** Querying
+    Clients can submit index queries to riak_solr via GET requests. riak_solr
+    understands two URL formats for queries. The first allows the requestor to
+    specify the index name in the URL similar to the update URL. The format
+    looks like this: /solr/<index_name>/select.
+
+    Requestors can also specify the index name via the query string parameter
+    'index'. URLs using this format will look like this: /solr/select?index=<index_name>.
+
+    In all other respects querying riak_solr behaves like Solr with the following list
+    of restrictions.
+    - All query output will be served in JSON. This is analogous to specifying
+      wt=json on a regular Solr query.
+    - riak_solr understands the following Solr query parameters only: q, q_op,
+      start, and rows.

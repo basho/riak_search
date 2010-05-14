@@ -29,7 +29,8 @@ public class AnalysisServer {
       ServerBootstrap bootstrap = new ServerBootstrap(
             new NioServerSocketChannelFactory(
                   Executors.newCachedThreadPool(),
-                  Executors.newCachedThreadPool()));
+                  Executors.newCachedThreadPool(), 
+                  Runtime.getRuntime().availableProcessors() * 2));
       bootstrap.setOption("reuseAddress", true);
       bootstrap.setOption("child.tcpNoDelay", true);
       bootstrap.setPipelineFactory(new AnalysisPipelineFactory());
