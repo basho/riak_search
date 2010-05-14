@@ -33,7 +33,7 @@
 -record(state, {partition, conn}).
 
 -define(FOLD_TIMEOUT, 30000).
--define(MAX_HANDOFF_STREAMS, 100).
+-define(MAX_HANDOFF_STREAMS, 50).
 
 %% @spec start(Partition :: integer(), Config :: proplist()) ->
 %%          {ok, state()} | {{error, Reason :: term()}, state()}
@@ -437,8 +437,8 @@ receive_fold_results(Acc, Count) ->
             io:format("receive_fold_results: fold complete [~p objects].~n",
                 [Count]),
             Acc;
-        {fold_result, Obj} ->
-            receive_fold_results(Acc ++ [Obj], Count+1)
+        {fold_result, _Obj} ->
+            receive_fold_results(Acc, Count+1)
     end.
 
 %%%
