@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<response>
+
+<lst name="responseHeader">
+ <int name="status">0</int>
+ <int name="QTime">5</int>
+ <lst name="params">
+  <str name="fl">id</str>
+  <str name="indent">on</str>
+  <str name="start">0</str>
+  <str name="q">acc_t:(AFA NOT AGA) AND -color_t:oran*</str>
+  <str name="qt">standard</str>
+  <str name="wt">standard</str>
+  <str name="version">2.2</str>
+  <str name="rows">10000</str>
+ </lst>
+</lst>
+<result name="response" numFound="8" start="0">
+ <doc>
+  <str name="id">sample1000_AFB</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_AFC</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_AFD</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_AFE</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_AFF</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_AFG</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_AFI</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_AFJ</str>
+ </doc>
+</result>
+</response>

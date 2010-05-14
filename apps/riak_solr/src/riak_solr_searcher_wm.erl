@@ -32,7 +32,10 @@ malformed_request(Req, State) ->
                             {false, Req, State#state{schema=Schema, sq=SQuery}};
                         _Error ->
                             {true, Req, State}
-                    end
+                    end;
+                Error ->
+                    error_logger:error_msg("Could not parse schema '~s'.~n~p~n", [SchemaName, Error]),
+                    throw(Error)
             end
     end.
 
@@ -40,11 +43,11 @@ content_types_provided(Req, State) ->
     {[{"application/json", to_json}], Req, State}.
 
 to_json(Req, #state{schema=Schema, sq=SQuery}=State) ->
-    #squery{q=QText}=SQuery,
+    #squery{q=QText, start=QStart, rows=QRows}=SQuery,
     DefaultField = get_default_field(SQuery, Schema),
     {ok, Client} = riak_search:local_client(),
     StartTime = erlang:now(),
-    Docs = Client:doc_search(Schema:name(), DefaultField, QText),
+    Docs = Client:doc_search(Schema:name(), DefaultField, QText, QStart, QRows),
     ElapsedTime = erlang:trunc(timer:now_diff(erlang:now(), StartTime) / 1000),
     {build_json_response(Schema, ElapsedTime, SQuery, Docs), Req, State}.
 
@@ -60,8 +63,16 @@ build_json_response(_Schema, ElapsedTime, SQuery, []) ->
                   {struct, [{<<"numFound">>, 0}]}}],
     mochijson2:encode({struct, Response});
 build_json_response(Schema, ElapsedTime, SQuery, Docs0) ->
-    F = fun({Name, Value}) -> Field = Schema:find_field(Name),
-                              convert_type(Value, Field#riak_solr_field.type) end,
+    F = fun({Name, Value}) -> 
+        case Schema:find_field(Name) of
+            Field when is_record(Field, riak_solr_field) ->
+                Type = Field#riak_solr_field.type;
+            undefined ->
+                error_logger:info_msg("Field '~s' is not defined, defaulting to type 'string'.~n", [Name]),
+                Type = string
+        end,
+        convert_type(Value, Type) 
+    end,
     Docs = truncate_results(SQuery#squery.start + 1, SQuery#squery.rows, Docs0),
     Response = [{<<"responseHeader">>,
                  {struct, [{<<"status">>, 0},

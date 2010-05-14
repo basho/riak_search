@@ -1,0 +1,45 @@
+{
+    "system": {
+        "dataDir": "data/"
+    },
+
+    "defaultIndex": "search",
+    "defaultQueryField": "color_t",
+    "defaultQueryOperator": "OR",
+    "dynamicField": {
+        "indexType": "facet"
+    },
+    "fields": {
+        "id": {
+	      "indexType":"facet"
+        },
+       "key_t" : {
+          "indexType" : "fulltext",
+          "stored" : true,
+          "keyFields": [
+            "id"
+          ]
+        },
+       "color_t" : {
+          "indexType" : "fulltext",
+          "stored" : true,
+          "keyFields": [
+            "id"
+          ]
+        },
+        "acc_t" : {
+          "indexType" : "fulltext",
+          "stored" : true,
+          "keyFields": [
+            "id"
+          ]
+        },    
+        "parity_t" : {
+          "indexType" : "fulltext",
+          "stored" : true,
+          "keyFields": [
+            "id"
+          ]
+        }
+    }	
+}

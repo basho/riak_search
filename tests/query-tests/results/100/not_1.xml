@@ -1,0 +1,17 @@
+{
+ "responseHeader":{
+  "status":0,
+  "QTime":51,
+  "params":{
+	"fl":"id",
+	"indent":"on",
+	"start":"0",
+	"q":"acc_t:(AAB NOT AAC)",
+	"qt":"standard",
+	"wt":"json",
+	"version":"2.2",
+	"rows":"10000"}},
+ "response":{"numFound":1,"start":0,"docs":[
+	{
+	 "id":"sample100_AAB"}]
+ }}

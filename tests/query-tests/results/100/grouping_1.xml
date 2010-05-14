@@ -1,0 +1,21 @@
+{
+ "responseHeader":{
+  "status":0,
+  "QTime":13,
+  "params":{
+	"fl":"id",
+	"indent":"on",
+	"start":"0",
+	"q":"(color_t:red OR color_t:blue) AND (acc_t:AJA)",
+	"qt":"standard",
+	"wt":"json",
+	"version":"2.2",
+	"rows":"10000"}},
+ "response":{"numFound":3,"start":0,"docs":[
+	{
+	 "id":"sample100_AJF"},
+	{
+	 "id":"sample100_AJB"},
+	{
+	 "id":"sample100_AJI"}]
+ }}

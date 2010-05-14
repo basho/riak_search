@@ -52,14 +52,17 @@ stream_search(Index, DefaultField, Query, DefaultBool) ->
     R.
 
 doc_search(Index, DefaultField, Query) ->
-    doc_search(Index, DefaultField, Query, ?DEFAULT_RESULT_SIZE, 60000).
+    doc_search(Index, DefaultField, Query, 0, ?DEFAULT_RESULT_SIZE, 60000).
 
-doc_search(Index, DefaultField, Query, ResultSize, Timeout) ->
+doc_search(Index, DefaultField, Query, QueryStart, QueryRows) ->
+    doc_search(Index, DefaultField, Query, QueryStart, QueryRows, 60000).
+
+doc_search(Index, DefaultField, Query, QueryStart, QueryRows, Timeout) ->
     case search(Index, DefaultField, Query, Timeout) of
         [] ->
             [];
         Results0 ->
-            Results = dedup(truncate_list(ResultSize, Results0), []),
+            Results = dedup(truncate_list(QueryStart, QueryRows, Results0), []),
             [get_document(Index, DocId) || DocId <- Results]
     end.
 
@@ -101,6 +104,7 @@ index_doc(AnalyzerPid, #riak_idx_doc{id=DocId, index=Index, fields=Fields}=Doc) 
 
 %% Internal functions
 index_term(Index, Field, Term, Value, Props) ->
+    ?PRINT({Index, Field, Term, Value, Props}),
     index_internal(Index, Field, Term, {index, Index, Field, Term, Value, Props}).
 
 index_internal(Index, Field, Term, Payload) ->
@@ -119,11 +123,21 @@ analyze_fields(AnalyzerPid, [{Name, Value}|T], Accum) when is_list(Value) ->
 analyze_fields(AnalyzerPid, [{Name, Value}|T], Accum) ->
     analyze_fields(AnalyzerPid, T, [{Name, Value}|Accum]).
 
-truncate_list(Size, List) when Size >= length(List) ->
-    List;
-truncate_list(Size, List) ->
-    [L1, _] = lists:split(Size, List),
-    L1.
+truncate_list(QueryStart, QueryRows, List) ->
+    %% Remove the first QueryStart results...
+    case QueryStart =< length(List) of
+        true  -> {_, List1} = lists:split(QueryStart, List);
+        false -> List1 = []
+    end,
+
+    %% Only keep QueryRows results...
+    case QueryRows =< length(List) of
+        true  -> {List2, _} = lists:split(QueryRows, List1);
+        false -> List2 = List1
+    end,
+
+    %% Return.
+    List2.
 
 get_document(Index, DocId) ->
     DocBucket = riak_search_utils:from_binary(Index) ++ "_docs",
@@ -184,23 +198,27 @@ collect_results(SearchRef, Timeout, Acc) ->
 %% Return {NumTerms, NumDocs, QueryNorm}...
 %% http://lucene.apache.org/java/2_4_0/api/org/apache/lucene/search/Similarity.html
 get_scoring_info(Op) ->
-%% Get a list of scoring info...
+    %% Get a list of scoring info...
     List = lists:flatten(get_scoring_info_1(Op)),
-
-%% Calculate NumTerms and NumDocs...
-    NumTerms = length(List),
-    NumDocs = lists:sum([NodeWeight || {NodeWeight, _} <- List]),
-
-%% Calculate the QueryNorm...
-    F = fun({DocFrequency, Boost}, Acc) ->
+    case List /= [] of
+        true ->
+            %% Calculate NumTerms and NumDocs...
+            NumTerms = length(List),
+            NumDocs = lists:sum([NodeWeight || {NodeWeight, _} <- List]),
+    
+            %% Calculate the QueryNorm...
+            F = fun({DocFrequency, Boost}, Acc) ->
                 IDF = 1 + math:log((NumDocs + 1) / (DocFrequency + 1)),
                 Acc + math:pow(IDF * Boost, 2)
-        end,
-    SumOfSquaredWeights = lists:foldl(F, 0, List),
-    QueryNorm = 1 / math:pow(SumOfSquaredWeights, 0.5),
-
-%% Return.
-    {NumTerms, NumDocs, QueryNorm}.
+            end,
+            SumOfSquaredWeights = lists:foldl(F, 0, List),
+            QueryNorm = 1 / math:pow(SumOfSquaredWeights, 0.5),
+            
+            %% Return.
+            {NumTerms, NumDocs, QueryNorm};
+        false ->
+            {0, 0, 0}
+    end.
 get_scoring_info_1(Op) when is_record(Op, term) ->
     DocFrequency = hd([X || {node_weight, _, X} <- Op#term.options]),
     Boost = proplists:get_value(boost, Op#term.options, 1),

@@ -1,0 +1,47 @@
+<add>
+  <doc>
+    <field name="id">range1</field>
+    <field name="pay_load">range1</field>
+    <field name="timesaved">20100122</field>
+  </doc>
+  <doc>
+    <field name="id">range2</field>
+    <field name="pay_load">range2</field>
+    <field name="timesaved">20100122</field>
+  </doc>
+  <doc>
+    <field name="id">range3</field>
+    <field name="pay_load">range3</field>
+    <field name="timesaved">20100122</field>
+  </doc>
+  <doc>
+    <field name="id">range4</field>
+    <field name="pay_load">range4</field>
+    <field name="timesaved">20100122</field>
+  </doc>
+  <doc>
+    <field name="id">range5</field>
+    <field name="pay_load">range5</field>
+    <field name="timesaved">20100122</field>
+  </doc>
+  <doc>
+    <field name="id">range6</field>
+    <field name="pay_load">range6</field>
+    <field name="timesaved">20100122</field>
+  </doc>
+  <doc>
+    <field name="id">range7</field>
+    <field name="pay_load">range7</field>
+    <field name="timesaved">20100122</field>
+  </doc>
+  <doc>
+    <field name="id">range8</field>
+    <field name="pay_load">range8</field>
+    <field name="timesaved">20100122</field>
+  </doc>
+  <doc>
+    <field name="id">range9</field>
+    <field name="pay_load">range9</field>
+    <field name="timesaved">20100122</field>
+  </doc>
+</add>

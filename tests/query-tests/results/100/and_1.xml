@@ -1,0 +1,29 @@
+{
+ "responseHeader":{
+  "status":0,
+  "QTime":72,
+  "params":{
+	"fl":"id",
+	"indent":"on",
+	"start":"0",
+	"q":"acc_t:AFA AND color_t:red",
+	"qt":"standard",
+	"wt":"json",
+	"version":"2.2",
+	"rows":"10000"}},
+ "response":{"numFound":7,"start":0,"docs":[
+	{
+	 "id":"sample100_AFG"},
+	{
+	 "id":"sample100_AGD"},
+	{
+	 "id":"sample100_AHA"},
+	{
+	 "id":"sample100_AHH"},
+	{
+	 "id":"sample100_AIE"},
+	{
+	 "id":"sample100_AJB"},
+	{
+	 "id":"sample100_AJI"}]
+ }}

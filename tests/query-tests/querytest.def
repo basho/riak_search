@@ -1,0 +1,15 @@
+{schema, 
+ [
+  {name, "querytest"},  
+  {version, "1.1"},
+  {default_field, "color_t"},
+  {default_op, "and"}
+ ],
+ {fields, 
+  [
+   {field, [{name, "id"}, {type, string}, {required, true}]},
+   {field, [{name, "key"}, {type, string}, {required, false}]},
+   {field, [{name, "color"}, {type, string}, {required, false}]},
+   {field, [{name, "parity"}, {type, string}, {required, false}]},
+   {field, [{name, "acc"}, {type, string}, {required, false}]}
+  ]}}.

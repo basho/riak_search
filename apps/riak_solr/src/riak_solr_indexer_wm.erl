@@ -37,7 +37,8 @@ malformed_request(Req, State) ->
                                                              schema=Schema}}
                             end
                     end;
-                _Error ->
+                Error ->
+                    error_logger:error_msg("Could not parse schema '~s'.~n~p~n", [SchemaName, Error]),
                     {false, Req, State}
             end
     end.

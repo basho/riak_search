@@ -1,0 +1,76 @@
+-*- mode:org -*-
+
+* Riak Search Unit Tests
+
+** Requirements
+
+   Make sure you have sed version 4.2.1 or later installed!!!
+
+   : $ sed --version
+   : GNU sed version 4.2.1
+   : Copyright (C) 2009 Free Software Foundation, Inc.
+   : This is free software; see the source for copying conditions.  There is NO
+   : warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE,
+   : to the extent permitted by law.
+
+
+** Running the Sample Tests
+
+   1. Copy the file ./config.json to =riakdb/config.json=.
+
+   2. Insert the sample data into the datastore. You should only need to do
+      this once:
+
+      : ./bin/update.sh http://localhost:8098/riakdb sample_data/sample100.add
+
+   3. Wait about 30 seconds, and then commit your changes. When you
+      run this command, you should see some messages in RiakDB saying
+      "StorageWorker - commit: NNN docs". You will know that all
+      documents are committed when those number stop increasing. (Note
+      that the order of the messages will flip. Focus on the numbers
+      themselves.)
+
+      : ./bin/commit.sh http://localhost:8098/riakdb
+
+   4. Run the unit tests:
+
+      : ./run_sample100.sh http://localhost:8098/riakdb
+   
+   5. Alternatively, run some queries:
+      
+      : ./bin/select.sh http://localhost:8098/riakdb "color_t:red"
+
+** Adding New Tests
+
+   At a high level, the run_sample100.sh test script runs queries
+   against Riak Search, and compares the output against the same
+   queries that were previously run against a Solr database containing
+   the same set of documents.
+
+   To add new tests, you will need to:
+
+   1. Add a line for the test =./prepare_sample100.sh=
+
+   2. Add a line for the test to =./run_sample100.sh=
+
+   3. Set up an instance of Solr. This is easier than it sounds, just
+      install and unzip solr, then:
+
+      : cd ./apache-solr-1.4.0/example
+      : java -jar start.jar
+
+   4. Run the following command to initialize the Solr results:
+
+      : ./prepare_sample100.sh http://localhost:8983/solr
+
+** Other Directories
+
+   - ./bin :: Holds utility scripts used to query against a Solr
+	      interface, compare result sets, generate sample data, etc.
+
+   - ./results :: Saved results from queries against a Solr
+                  database. Used as baseline results for running tests
+                  against Riak Search.
+
+   - ./sample_data :: Sample data generated using
+                      bin/generate_data.escript.

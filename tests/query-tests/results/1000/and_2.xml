@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<response>
+
+<lst name="responseHeader">
+ <int name="status">0</int>
+ <int name="QTime">65</int>
+ <lst name="params">
+  <str name="fl">id</str>
+  <str name="indent">on</str>
+  <str name="start">0</str>
+  <str name="q">acc_t:AFA AND color_t:red AND parity_t:even</str>
+  <str name="qt">standard</str>
+  <str name="wt">standard</str>
+  <str name="version">2.2</str>
+  <str name="rows">10000</str>
+ </lst>
+</lst>
+<result name="response" numFound="67" start="0">
+ <doc>
+  <str name="id">sample1000_AGD</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_AHH</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_AJB</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_BAF</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_BBJ</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_BDD</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_BEH</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_BGB</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_BHF</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_BIJ</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_CAD</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_CBH</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_CDB</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_CEF</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_CFJ</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_CHD</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_CIH</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_DAB</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_DBF</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_DCJ</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_DED</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_DFH</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_DHB</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_DIF</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_DJJ</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_EBD</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_ECH</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_EEB</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_EFF</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_EGJ</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_EID</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_EJH</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_FBB</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_FCF</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_FDJ</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_FFD</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_FGH</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_FIB</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_FJF</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_GAJ</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_GCD</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_GDH</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_GFB</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_GGF</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_GHJ</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_GJD</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_HAH</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_HCB</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_HDF</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_HEJ</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_HGD</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_HHH</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_HJB</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_IAF</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_IBJ</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_IDD</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_IEH</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_IGB</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_IHF</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_IIJ</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_JAD</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_JBH</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_JDB</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_JEF</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_JFJ</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_JHD</str>
+ </doc>
+ <doc>
+  <str name="id">sample1000_JIH</str>
+ </doc>
+</result>
+</response>
