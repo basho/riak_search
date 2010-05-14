@@ -453,7 +453,8 @@ test_fold() ->
         Acc
     end,
     State = #state { partition=0, conn=undefined },
-    fold(State, Fun0, []).
+    spawn(fun() -> 
+        fold(State, Fun0, []) end).
 
 test_is_empty() ->
     State = #state { partition=0, conn=undefined },
