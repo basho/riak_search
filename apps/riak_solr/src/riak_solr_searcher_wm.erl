@@ -53,17 +53,18 @@ to_json(Req, #state{schema=Schema, sq=SQuery}=State) ->
 
 %% Internal functions
 build_json_response(_Schema, ElapsedTime, SQuery, []) ->
-    Response = [{<<"responseHeader">>,
+    Response =  [{<<"responseHeader">>,
                  {struct, [{<<"status">>, 0},
                            {<<"QTime">>, ElapsedTime},
-                           {<<"q">>, list_to_binary(SQuery#squery.q)},
-                           {<<"q.op">>, atom_to_binary(SQuery#squery.q_op, utf8)},
-                           {<<"wt">>, <<"json">>}]}},
+                           {<<"params">>,
+                             {struct, [{<<"q">>, list_to_binary(SQuery#squery.q)},
+                                       {<<"q.op">>, atom_to_binary(SQuery#squery.q_op, utf8)},
+                                       {<<"wt">>, <<"json">>}]}}]}},
                  {<<"response">>,
                   {struct, [{<<"numFound">>, 0}]}}],
     mochijson2:encode({struct, Response});
 build_json_response(Schema, ElapsedTime, SQuery, Docs0) ->
-    F = fun({Name, Value}) -> 
+    F = fun({Name, Value}) ->
         case Schema:find_field(Name) of
             Field when is_record(Field, riak_solr_field) ->
                 Type = Field#riak_solr_field.type;
@@ -71,15 +72,16 @@ build_json_response(Schema, ElapsedTime, SQuery, Docs0) ->
                 error_logger:info_msg("Field '~s' is not defined, defaulting to type 'string'.~n", [Name]),
                 Type = string
         end,
-        convert_type(Value, Type) 
+        convert_type(Value, Type)
     end,
     Docs = truncate_results(SQuery#squery.start + 1, SQuery#squery.rows, Docs0),
     Response = [{<<"responseHeader">>,
                  {struct, [{<<"status">>, 0},
                            {<<"QTime">>, ElapsedTime},
-                           {<<"q">>, list_to_binary(SQuery#squery.q)},
-                           {<<"q.op">>, atom_to_binary(SQuery#squery.q_op, utf8)},
-                           {<<"wt">>, <<"json">>}]}},
+                           {<<"params">>,
+                             {struct, [{<<"q">>, list_to_binary(SQuery#squery.q)},
+                                       {<<"q.op">>, atom_to_binary(SQuery#squery.q_op, utf8)},
+                                       {<<"wt">>, <<"json">>}]}}]}},
                  {<<"response">>,
                   {struct, [{<<"numFound">>, length(Docs0)},
                             {<<"start">>, SQuery#squery.start},
