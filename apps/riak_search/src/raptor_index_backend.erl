@@ -21,9 +21,10 @@
 -module(raptor_index_backend).
 -author("John Muellerleile <johnm@basho.com>").
 -export([start/2,stop/1,get/2,put/3,list/1,list_bucket/2,delete/2]).
--export([fold/3, drop/1, is_empty/1]).
+-export([fold/3, drop/1, is_empty/1, toggle_raptor_debug/0, shutdown_raptor/0]).
+-export([sync/0, poke/1, raptor_status/0]).
 
--export([test_fold/0, test_is_empty/0, test_drop/0, sync/0]).
+-export([test_fold/0, test_is_empty/0, test_drop/0]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("riak_search.hrl").
@@ -379,7 +380,12 @@ fold_catalog_process(FoldResultPid,
             fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
                 StreamProcessCount, FinishedStreamProcessCount)
         after ?FOLD_TIMEOUT ->
-            io:format("fold_catalog_process: timed out, proceeding to {fold_result, done}~n"),
+            case FinishedStreamProcessCount >= (StreamProcessCount-1) of
+                true -> ok;
+                false ->
+                    io:format("fold_catalog_process: timed out (~p of ~p), proceeding to {fold_result, done}~n",
+                        [FinishedStreamProcessCount, StreamProcessCount])
+            end,
             FoldResultPid ! {fold_result, done}
     end.
 
@@ -423,8 +429,23 @@ receive_fold_results(Acc, Count) ->
 
 %%%
 
+poke(Command) ->
+    handle_command(no_state, {command, Command, <<"">>, <<"">>, <<"">>}).
+
 sync() ->
-    handle_command(no_state, {command, <<"sync">>, <<"">>, <<"">>, <<"">>}).
+    poke("sync").
+
+toggle_raptor_debug() ->
+    poke("toggle_debug").
+
+shutdown_raptor() ->
+    io:format("issuing raptor engine shutdown~n"),
+    poke("shutdown").
+
+raptor_status() ->
+    Status = string:tokens(poke("status"), "`"),
+    io:format("~p~n", [Status]),
+    Status.
 
 %% test fold
 test_fold() ->

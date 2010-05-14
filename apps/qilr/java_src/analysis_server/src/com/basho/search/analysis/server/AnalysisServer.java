@@ -30,7 +30,7 @@ public class AnalysisServer {
             new NioServerSocketChannelFactory(
                   Executors.newCachedThreadPool(),
                   Executors.newCachedThreadPool(), 
-                  Runtime.getRuntime().availableProcessors() * 4));
+                  Runtime.getRuntime().availableProcessors() * 2));
       bootstrap.setOption("reuseAddress", true);
       bootstrap.setOption("child.tcpNoDelay", true);
       bootstrap.setPipelineFactory(new AnalysisPipelineFactory());
