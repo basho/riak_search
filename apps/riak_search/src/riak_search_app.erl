@@ -18,7 +18,7 @@
 
 -behaviour(application).
 
--define(SEARCH_BUCKET_PROPS, [{n_val, 1},
+-define(SEARCH_BUCKET_PROPS, [{n_val, 2},
                               {backend, search_backend}]).
 
 %% Application callbacks
