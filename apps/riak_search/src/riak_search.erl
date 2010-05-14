@@ -6,6 +6,8 @@
          info_range/5]).
 -include("riak_search.hrl").
 
+-define(TIMEOUT, 30000).
+
 client_connect(Node) when is_atom(Node) ->
     {ok, Client} = riak:client_connect(Node),
     {ok, riak_search_client:new(Client)}.

@@ -4,12 +4,15 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.net.InetAddress;
 
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.channel.ChannelPipelineCoverage;
 import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
+import org.jboss.netty.channel.ChannelState;
+import org.jboss.netty.channel.ChannelStateEvent;
 
 import com.basho.search.analysis.TextAnalyzer;
 import com.basho.search.proto.Analysis.AnalysisError;
@@ -21,6 +24,16 @@ public class AnalysisHandler extends SimpleChannelUpstreamHandler {
 
    private static final Logger logger = Logger.getLogger(AnalysisHandler.class.getName());
 
+   @Override
+   public void channelConnected(ChannelHandlerContext ctx, 
+                                ChannelStateEvent e) throws Exception {
+      // this would be nice, but it makes qilr_analyzer_monitor crash. :/
+      /*
+      logger.info(e.toString() + ": channelConnected: " + 
+         InetAddress.getLocalHost().getHostName());
+      */
+   }
+   
    public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) {
       AnalysisRequest request = (AnalysisRequest) e.getMessage();
       if (request.getText().equals("__basho_analyzer_monitor_stop__")) {
