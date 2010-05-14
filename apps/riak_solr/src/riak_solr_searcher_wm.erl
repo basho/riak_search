@@ -56,9 +56,10 @@ build_json_response(_Schema, ElapsedTime, SQuery, NumFound, []) ->
     Response = [{<<"responseHeader">>,
                  {struct, [{<<"status">>, 0},
                            {<<"QTime">>, ElapsedTime},
-                           {<<"q">>, list_to_binary(SQuery#squery.q)},
-                           {<<"q.op">>, atom_to_binary(SQuery#squery.q_op, utf8)},
-                           {<<"wt">>, <<"json">>}]}},
+                           {<<"params">>,
+                             {struct, [{<<"q">>, list_to_binary(SQuery#squery.q)},
+                                       {<<"q.op">>, atom_to_binary(SQuery#squery.q_op, utf8)},
+                                       {<<"wt">>, <<"json">>}]}}]}},
                  {<<"response">>,
                   {struct, [
                             {<<"numFound">>, NumFound},
@@ -73,14 +74,15 @@ build_json_response(Schema, ElapsedTime, SQuery, NumFound, Docs) ->
                 error_logger:info_msg("Field '~s' is not defined, defaulting to type 'string'.~n", [Name]),
                 Type = string
         end,
-        convert_type(Value, Type) 
+        convert_type(Value, Type)
     end,
     Response = [{<<"responseHeader">>,
                  {struct, [{<<"status">>, 0},
                            {<<"QTime">>, ElapsedTime},
-                           {<<"q">>, list_to_binary(SQuery#squery.q)},
-                           {<<"q.op">>, atom_to_binary(SQuery#squery.q_op, utf8)},
-                           {<<"wt">>, <<"json">>}]}},
+                           {<<"params">>,
+                             {struct, [{<<"q">>, list_to_binary(SQuery#squery.q)},
+                                       {<<"q.op">>, atom_to_binary(SQuery#squery.q_op, utf8)},
+                                       {<<"wt">>, <<"json">>}]}}]}},
                  {<<"response">>,
                   {struct, [{<<"numFound">>, NumFound},
                             {<<"start">>, SQuery#squery.start},
