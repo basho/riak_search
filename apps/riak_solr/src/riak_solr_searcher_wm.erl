@@ -1,6 +1,7 @@
 -module(riak_solr_searcher_wm).
 
 -include_lib("riak_search/include/riak_search.hrl").
+-include("riak_solr.hrl").
 
 -export([init/1, allowed_methods/2, malformed_request/2]).
 -export([content_types_provided/2, to_json/2]).
@@ -45,10 +46,10 @@ to_json(Req, #state{schema=Schema, sq=SQuery}=State) ->
     StartTime = erlang:now(),
     Docs = Client:doc_search(Schema:name(), DefaultField, QText),
     ElapsedTime = erlang:trunc(timer:now_diff(erlang:now(), StartTime) / 1000),
-    {build_json_response(ElapsedTime, SQuery, Docs), Req, State}.
+    {build_json_response(Schema, ElapsedTime, SQuery, Docs), Req, State}.
 
 %% Internal functions
-build_json_response(ElapsedTime, SQuery, []) ->
+build_json_response(_Schema, ElapsedTime, SQuery, []) ->
     Response = [{<<"responseHeader">>,
                  {struct, [{<<"status">>, 0},
                            {<<"QTime">>, ElapsedTime},
@@ -58,18 +59,20 @@ build_json_response(ElapsedTime, SQuery, []) ->
                  {<<"response">>,
                   {struct, [{<<"numFound">>, 0}]}}],
     mochijson2:encode({struct, Response});
-build_json_response(ElapsedTime, SQuery, Docs0) ->
+build_json_response(Schema, ElapsedTime, SQuery, Docs0) ->
+    F = fun({Name, Value}) -> Field = Schema:find_field(Name),
+                              convert_type(Value, Field#riak_solr_field.type) end,
     Docs = truncate_results(SQuery#squery.start + 1, SQuery#squery.rows, Docs0),
     Response = [{<<"responseHeader">>,
                  {struct, [{<<"status">>, 0},
                            {<<"QTime">>, ElapsedTime},
-                           {<<"q">>, SQuery#squery.q},
+                           {<<"q">>, list_to_binary(SQuery#squery.q)},
                            {<<"q.op">>, atom_to_binary(SQuery#squery.q_op, utf8)},
                            {<<"wt">>, <<"json">>}]}},
                  {<<"response">>,
                   {struct, [{<<"numFound">>, length(Docs0)},
                             {<<"start">>, SQuery#squery.start},
-                            {<<"docs">>, [riak_indexed_doc:to_mochijson2(Doc) || Doc <- Docs]}]}}],
+                            {<<"docs">>, [riak_indexed_doc:to_mochijson2(F, Doc) || Doc <- Docs]}]}}],
     mochijson2:encode({struct, Response}).
 
 truncate_results(Start, _Rows, Docs) when Start > length(Docs) ->
@@ -110,3 +113,18 @@ parse_query(Schema, Req) ->
         false ->
             {ok, Query}
     end.
+
+convert_type(FieldValue, string) ->
+    riak_search_utils:to_binary(FieldValue);
+convert_type("true", boolean) ->
+    true;
+convert_type("false", boolean) ->
+    false;
+convert_type("yes", boolean) ->
+    true;
+convert_type("no", boolean) ->
+    false;
+convert_type(FieldValue, integer) ->
+    list_to_integer(FieldValue);
+convert_type(FieldValue, float) ->
+    list_to_float(FieldValue).

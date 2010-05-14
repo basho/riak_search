@@ -63,8 +63,7 @@ verify_required(Doc, []) ->
 verify_required(Doc, [H|T]) ->
     case dict:find(H#riak_solr_field.name, Doc) of
         {ok, FieldValue} ->
-            Doc1 = dict:store(H#riak_solr_field.name, convert_types(FieldValue,
-                                                                    H#riak_solr_field.type), Doc),
+            Doc1 = dict:store(H#riak_solr_field.name, FieldValue, Doc),
             verify_required(Doc1, T);
         _ ->
             {error, {reqd_field_missing, H#riak_solr_field.name}}
@@ -75,24 +74,8 @@ verify_optional(Doc, []) ->
 verify_optional(Doc, [H|T]) ->
     case dict:find(H#riak_solr_field.name, Doc) of
         {ok, FieldValue} ->
-            Doc1 = dict:store(H#riak_solr_field.name, convert_types(FieldValue,
-                                                                    H#riak_solr_field.type), Doc),
+            Doc1 = dict:store(H#riak_solr_field.name, FieldValue, Doc),
             verify_optional(Doc1, T);
         _ ->
             verify_optional(Doc, T)
     end.
-
-convert_types(FieldValue, string) ->
-    FieldValue;
-convert_types("true", boolean) ->
-    true;
-convert_types("false", boolean) ->
-    false;
-convert_types("yes", boolean) ->
-    true;
-convert_types("no", boolean) ->
-    false;
-convert_types(FieldValue, integer) ->
-    list_to_integer(FieldValue);
-convert_types(FieldValue, float) ->
-    list_to_float(FieldValue).

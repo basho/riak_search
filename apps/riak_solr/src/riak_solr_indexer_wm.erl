@@ -29,8 +29,13 @@ malformed_request(Req, State) ->
                         undefined ->
                             {true, Req, State};
                         Body ->
-                            {false, Req, State#state{body=Body,
-                                                     schema=Schema}}
+                            case size(Body) of
+                                0 ->
+                                    {true, Req, State};
+                                _ ->
+                                    {false, Req, State#state{body=Body,
+                                                             schema=Schema}}
+                            end
                     end;
                 _Error ->
                     {false, Req, State}
@@ -54,7 +59,9 @@ process_post(Req, #state{schema=Schema, body=Body}=State) ->
 %% Internal functions
 handle_command(add, Schema, Commands, Req, State) ->
     {ok, Client} = riak_search:local_client(),
-    [Client:index_doc(build_idx_doc(Schema:name(), Doc)) || Doc <- Commands],
+    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
+    [Client:index_doc(AnalyzerPid, build_idx_doc(Schema:name(), Doc)) || Doc <- Commands],
+    qilr_analyzer:close(AnalyzerPid),
     {true, Req, State}.
 
 build_idx_doc(Index, Doc0) ->

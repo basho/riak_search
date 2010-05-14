@@ -77,7 +77,7 @@ collect_info(RepliesRemaining, Ref, Acc) ->
 %%         Other ->
 %%             error_logger:info_msg("Unexpected response: ~p~n", [Other]),
 %%             collect_info(RepliesRemaining, Ref, Acc)
-    after 1000 ->
+    after 5000 ->
         error_logger:error_msg("range_loop timed out!"),
         throw({timeout, range_loop})
     end.

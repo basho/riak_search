@@ -4,7 +4,7 @@
 
 -export([new/2, fields/1, add_field/3, set_fields/2, clear_fields/1,
          props/1, add_prop/3, set_props/2, clear_props/1, to_json/1,
-         from_json/1, to_mochijson2/1]).
+         from_json/1, to_mochijson2/1, to_mochijson2/2]).
 
 new(Id, Index) ->
     #riak_idx_doc{id=Id, index=Index}.
@@ -36,11 +36,15 @@ clear_props(Doc) ->
 to_json(Doc) ->
     mochijson2:encode(to_mochijson2(Doc)).
 
-to_mochijson2(#riak_idx_doc{id=Id, index=Index, fields=Fields, props=Props}) ->
+to_mochijson2(Doc) ->
+    F = fun({_Name, Value}) -> Value end,
+    to_mochijson2(F, Doc).
+
+to_mochijson2(XForm, #riak_idx_doc{id=Id, index=Index, fields=Fields, props=Props}) ->
     {struct, [{id, riak_search_utils:to_binary(Id)},
               {index, riak_search_utils:to_binary(Index)},
               {fields, {struct, [{riak_search_utils:to_binary(Name),
-                                  riak_search_utils:to_binary(Value)} || {Name, Value} <- Fields]}},
+                                  XForm({Name, Value})} || {Name, Value} <- lists:keysort(1, Fields)]}},
               {props, {struct, [{riak_search_utils:to_binary(Name),
                                  riak_search_utils:to_binary(Value)} || {Name, Value} <- Props]}}]}.
 
