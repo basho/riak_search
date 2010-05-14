@@ -14,5 +14,5 @@
                   analysis_pb]},
   {registered,   [qilr_analyzer_sup, qilr_analyzer_monitor]},
   {applications, [kernel, stdlib, sasl]},
-  {env, [{analysis_port, 6098}]},
+  {env, [{analysis_port, 6095}]},
   {mod, {qilr_app, []}}]}.
