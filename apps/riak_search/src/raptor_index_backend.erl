@@ -23,7 +23,7 @@
 -export([start/2,stop/1,get/2,put/3,list/1,list_bucket/2,delete/2]).
 -export([fold/3, drop/1, is_empty/1]).
 
--export([test_fold/0, test_is_empty/0, test_drop/0]).
+-export([test_fold/0, test_is_empty/0, test_drop/0, sync/0]).
 
 -include_lib("eunit/include/eunit.hrl").
 -include("riak_search.hrl").
@@ -266,7 +266,7 @@ is_empty(State) ->
                               <<"partition_count">>, 
                               Partition, 
                               <<"">>, 
-                              <<"">>}) == 0.
+                              <<"">>}) == "0".
 
 drop(State) ->
     io:format("drop(~p)~n", [State]),
