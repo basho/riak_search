@@ -86,7 +86,7 @@ end_tests
 start_tests "Fuzzy Matching"
 run_test "color:rad~" results/100/fuzzy_1.xml
 run_test "color:blum~" results/100/fuzzy_2.xml
-# end_tests
+end_tests
 
 ### RUN COMPLEX TESTS
 start_tests "Complex Queries"
