@@ -30,6 +30,8 @@
 % @type state() = term().
 -record(state, {partition, conn}).
 
+-define(FOLD_TIMEOUT, 30000).
+
 %% @spec start(Partition :: integer(), Config :: proplist()) ->
 %%          {ok, state()} | {{error, Reason :: term()}, state()}
 %% @doc Start this backend.
@@ -106,7 +108,7 @@ handle_command(State, {stream, Index, Field, Term, SubType, StartSubTerm, EndSub
                 all -> EndSubTerm2 = 0;
                 _ -> EndSubTerm2 = EndSubTerm
             end,
-            spawn(fun() ->
+            spawn_link(fun() ->
                 {ok, StreamRef} = raptor_conn:stream(
                     Conn, 
                     list_to_binary(Index), 
@@ -132,7 +134,7 @@ handle_command(State, {stream, Index, Field, Term, SubType, StartSubTerm, EndSub
 handle_command(State, {info, Index, Field, Term, OutputPid, OutputRef}) ->
     Partition = list_to_binary(integer_to_list(State#state.partition)),
     {ok, Conn} = raptor_conn_sup:new_conn(),
-    spawn(fun() ->
+    spawn_link(fun() ->
         {ok, StreamRef} = raptor_conn:info(
             Conn, 
             list_to_binary(Index), 
@@ -147,7 +149,7 @@ handle_command(State, {info, Index, Field, Term, OutputPid, OutputRef}) ->
 handle_command(State, {info_range, Index, Field, StartTerm, EndTerm, _Size, OutputPid, OutputRef}) ->
     Partition = list_to_binary(integer_to_list(State#state.partition)),
     {ok, Conn} = raptor_conn_sup:new_conn(),
-    spawn(fun() ->
+    spawn_link(fun() ->
         {ok, StreamRef} = raptor_conn:info_range(
             Conn, 
             list_to_binary(Index), 
@@ -162,7 +164,7 @@ handle_command(State, {info_range, Index, Field, StartTerm, EndTerm, _Size, Outp
     
 handle_command(_State, {catalog_query, CatalogQuery, OutputPid, OutputRef}) ->
     {ok, Conn} = raptor_conn_sup:new_conn(),
-    spawn(fun() ->
+    spawn_link(fun() ->
         {ok, StreamRef} = raptor_conn:catalog_query(
             Conn,
             CatalogQuery),
@@ -170,6 +172,18 @@ handle_command(_State, {catalog_query, CatalogQuery, OutputPid, OutputRef}) ->
         raptor_conn:close(Conn)
     end),
     ok;
+    
+handle_command(_State, {command, Command, Arg1, Arg2, Arg3}) ->
+    {ok, Conn} = raptor_conn:new_conn(),
+    {ok, _StreamRef} = raptor_conn:command(Conn, Command, Arg1, Arg2, Arg3),
+    receive
+        {command, _ReqId, Response} ->
+            io:format("command: Response = ~p~n", [Response]),
+            Response;
+        Msg ->
+            io:format("handle_command/command, unexpected response: Msg = ~p~n", [Msg]),
+            Msg
+    end;
 
 handle_command(_State, Other) ->
     throw({unexpected_operation, Other}).
@@ -244,14 +258,24 @@ receive_catalog_query_results(StreamRef, OutputPid, OutputRef) ->
 get(_State, _BKey) ->
     {error, notfound}.
 
-is_empty(_State) ->
-    true.
-    % xxx TODO
+is_empty(State) ->
+    io:format("is_empty(~p)~n", [State]),
+    Partition = list_to_binary(integer_to_list(State#state.partition)),
+    handle_command(no_state, {command, 
+                              <<"partition_count">>, 
+                              Partition, 
+                              <<"">>, 
+                              <<"">>}) == 0.
     
-drop(_State) ->
+drop(State) ->
+    io:format("drop(~p)~n", [State]),
+    Partition = list_to_binary(integer_to_list(State#state.partition)),
+    handle_command(no_state, {command,
+                              <<"drop_partition">>, 
+                              Partition, 
+                              <<"">>, 
+                              <<"">>}),
     ok.
-    %merge_index:drop(Pid).
-    % xxx TODO
 
 %% @spec delete(state(), BKey :: riak_object:bkey()) ->
 %%          ok | {error, Reason :: term()}
@@ -274,12 +298,16 @@ list_bucket(_State, _Bucket) ->
 %% spawn a process to kick off the catalog listing
 %%   for the this partition, e.g.,
 fold(State, Fun0, Acc) ->
+    io:format("fold(~p, ~p, ~p)~n", [State, Fun0, Acc]),
+    io:format("fold/sync...~n"),
+    sync(),
+    io:format("fold/sync complete.~n"),
     Partition = integer_to_list(State#state.partition),
     {ok, Conn} = raptor_conn_sup:new_conn(),
     Me = self(), 
-    CatalogResultsPid = spawn(fun() ->
+    CatalogResultsPid = spawn_link(fun() ->
         fold_catalog_process(Me, Fun0, Acc, false, 0, 0) end),
-    spawn(fun() ->
+    spawn_link(fun() ->
         {ok, StreamRef} = raptor_conn:catalog_query(
             Conn,
             ["partition_id:\"", Partition , "\""]),
@@ -312,9 +340,11 @@ fold_catalog_process(FoldResultPid,
                         StreamProcessCount, FinishedStreamProcessCount)
             end;
 
-        {catalog_query_response, {Partition, Index, Field, Term, _JSONProps}, _OutputRef} ->
+        {catalog_query_response, {Partition, Index, Field, Term, JSONProps}, _OutputRef} ->
             %% kick off stream for this PIFT
-            spawn(fun() ->
+            io:format("fold_catalog_process: catalog_query_response: ~p: ~p.~p.~p (~p)~n",
+                [Partition, Index, Field, Term, JSONProps]),
+            spawn_link(fun() ->
                 {ok, Conn} = raptor_conn_sup:new_conn(),
                 {ok, StreamRef} = raptor_conn:stream(
                     Conn, 
@@ -329,6 +359,8 @@ fold_catalog_process(FoldResultPid,
                                  StreamProcessCount+1, FinishedStreamProcessCount);
 
         {fold_stream, done, _StreamRef1} ->
+            %%io:format("fold_stream: done: ~p of ~p~n", 
+            %%    [FinishedStreamProcessCount, StreamProcessCount]),
             case FinishedStreamProcessCount >= (StreamProcessCount-1) andalso 
                  CatalogDone == true of 
                     true ->
@@ -343,6 +375,9 @@ fold_catalog_process(FoldResultPid,
             io:format("fold_catalog_process: unknown message: ~p~n", [Msg]),
             fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
                 StreamProcessCount, FinishedStreamProcessCount)
+        after ?FOLD_TIMEOUT ->
+            io:format("fold_catalog_process: timed out, proceeding to {fold_result, done}~n"),
+            FoldResultPid ! {fold_result, done}
     end.
 
 %% for each result of a stream process, package the entry in the
@@ -351,7 +386,9 @@ fold_catalog_process(FoldResultPid,
 fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term) ->
     receive
         {stream, StreamRef, "$end_of_table", _} ->
-            CatalogProcessPid ! {fold_stream, done, StreamRef};
+            CatalogProcessPid ! {fold_stream, done, StreamRef},
+            io:format("fold_stream_process: table complete: ~p.~p.~p~n", 
+                [Index, Field, Term]);
         {stream, StreamRef, Value, Props} ->
             Props2 = binary_to_term(Props),
             IndexBin = riak_search_utils:to_binary(Index),
@@ -363,6 +400,10 @@ fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Inde
         Msg ->
             io:format("fold_stream_process: unknown message: ~p~n", [Msg]),
             fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term)
+        after ?FOLD_TIMEOUT ->
+            CatalogProcessPid ! {fold_stream, done, StreamRef},
+            io:format("fold_stream_process: table timed out: ~p.~p.~p~n", 
+                [Index, Field, Term])
     end.
 
 %% receive the Fun0(processed) objects from all the "buckets" on this partition, accumulate them
@@ -370,17 +411,22 @@ fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Inde
 receive_fold_results(Acc, Count) ->
     receive 
         {fold_result, done} ->
+            io:format("receive_fold_results: fold complete [~p objects].~n",
+                [Count]),
             Acc;
         {fold_result, Obj} ->
-            %%io:format("receive_fold_results: Count = ~p~n", [Count]),
-            receive_fold_results(Acc, Count+1)
+            receive_fold_results(Acc ++ [Obj], Count+1)
     end.
+
+%%%
+
+sync() ->
+    handle_command(no_state, {command, <<"sync">>, <<"">>, <<"">>, <<"">>}).
 
 %% test fold
 test_fold() ->
-    Fun0 = fun(BKey, Obj, Acc) ->
-        io:format("test_fold: Fun0: ~p, ~p~n", [BKey, length(Acc)]),
-        Obj
+    Fun0 = fun(_BKey, _Obj, Acc) ->
+        Acc
     end,
     State = #state { partition=0, conn=undefined },
     fold(State, Fun0, []).

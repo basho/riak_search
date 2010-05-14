@@ -78,6 +78,16 @@ catalog_query(ConnPid, SearchQuery, MaxResults) ->
     Ref = erlang:make_ref(),
     gen_server:call(ConnPid, {catalog_query, self(), Ref, CatalogQueryRec}, ?TIMEOUT).
 
+command(ConnPid, Command, Arg1, Arg2, Arg3) ->
+    MessageType = <<"Command">>,
+    CommandRec = #command{command=Command,
+                          arg1=Arg1,
+                          arg2=Arg2,
+                          arg3=Arg3,
+                          message_type=MessageType},
+    Ref = erlang:make_ref(),
+    gen_server:call(ConnPid, {command, self(), Ref, CommandRec}, ?TIMEOUT).
+
 start_link() ->
     gen_server:start_link(?MODULE, [], []).
 
@@ -126,6 +136,11 @@ handle_call({catalog_query, Caller, ReqId, CatalogQueryRec}, _From, #state{sock=
     Data = raptor_pb:encode_catalogquery(CatalogQueryRec),
     gen_tcp:send(Sock, Data),
     {reply, {ok, ReqId}, State#state{req_type=catalogquery, reqid=ReqId, dest=Caller}};
+
+handle_call({command, Caller, ReqId, CommandRec}, _From, #state{sock=Sock}=State) ->
+    Data = raptor_pb:encode_command(CommandRec),
+    gen_tcp:send(Sock, Data),
+    {reply, {ok, ReqId}, State#state{req_type=command, reqid=ReqId, dest=Caller}};
 
 handle_call(_Request, _From, State) ->
     {reply, ignore, State}.
@@ -178,6 +193,11 @@ handle_info({tcp, Sock, Data}, #state{req_type=catalogquery, reqid=ReqId, dest=D
                        State
                end,
     {noreply, NewState};
+
+handle_info({tcp, Sock, Data}, #state{req_type=command, reqid=ReqId, dest=Dest}=State) ->
+    CommandResponse = raptor_pb:decode_commandresponse(Data),
+    Dest ! {command, ReqId, CommandResponse#commandresponse.response},
+    {noreply, State#state{req_type=undefined, reqid=undefined, dest=undefined}};
 
 handle_info({tcp_error, _Sock, Reason}, State) ->
     {stop, Reason, State};
