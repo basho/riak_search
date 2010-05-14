@@ -60,10 +60,10 @@ doc_search(Index, DefaultField, Query, QueryStart, QueryRows) ->
 doc_search(Index, DefaultField, Query, QueryStart, QueryRows, Timeout) ->
     case search(Index, DefaultField, Query, Timeout) of
         [] ->
-            [];
+            {0, []};
         Results0 ->
             Results = dedup(truncate_list(QueryStart, QueryRows, Results0), []),
-            [get_document(Index, DocId) || DocId <- Results]
+            {length(Results0), [get_document(Index, DocId) || DocId <- Results]}
     end.
 
 explain(Index, DefaultField, Query) ->
@@ -130,7 +130,7 @@ truncate_list(QueryStart, QueryRows, List) ->
     end,
 
     %% Only keep QueryRows results...
-    case QueryRows =< length(List) of
+    case QueryRows =< length(List1) of
         true  -> {List2, _} = lists:split(QueryRows, List1);
         false -> List2 = List1
     end,

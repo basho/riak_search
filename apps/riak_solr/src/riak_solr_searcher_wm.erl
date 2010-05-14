@@ -47,12 +47,12 @@ to_json(Req, #state{schema=Schema, sq=SQuery}=State) ->
     DefaultField = get_default_field(SQuery, Schema),
     {ok, Client} = riak_search:local_client(),
     StartTime = erlang:now(),
-    Docs = Client:doc_search(Schema:name(), DefaultField, QText, QStart, QRows),
+    {NumFound, Docs} = Client:doc_search(Schema:name(), DefaultField, QText, QStart, QRows),
     ElapsedTime = erlang:trunc(timer:now_diff(erlang:now(), StartTime) / 1000),
-    {build_json_response(Schema, ElapsedTime, SQuery, Docs), Req, State}.
+    {build_json_response(Schema, ElapsedTime, SQuery, NumFound, Docs), Req, State}.
 
 %% Internal functions
-build_json_response(_Schema, ElapsedTime, SQuery, []) ->
+build_json_response(_Schema, ElapsedTime, SQuery, NumFound, []) ->
     Response = [{<<"responseHeader">>,
                  {struct, [{<<"status">>, 0},
                            {<<"QTime">>, ElapsedTime},
@@ -60,9 +60,11 @@ build_json_response(_Schema, ElapsedTime, SQuery, []) ->
                            {<<"q.op">>, atom_to_binary(SQuery#squery.q_op, utf8)},
                            {<<"wt">>, <<"json">>}]}},
                  {<<"response">>,
-                  {struct, [{<<"numFound">>, 0}]}}],
+                  {struct, [
+                            {<<"numFound">>, NumFound},
+                            {<<"start">>, SQuery#squery.start}]}}],
     mochijson2:encode({struct, Response});
-build_json_response(Schema, ElapsedTime, SQuery, Docs0) ->
+build_json_response(Schema, ElapsedTime, SQuery, NumFound, Docs) ->
     F = fun({Name, Value}) -> 
         case Schema:find_field(Name) of
             Field when is_record(Field, riak_solr_field) ->
@@ -73,7 +75,6 @@ build_json_response(Schema, ElapsedTime, SQuery, Docs0) ->
         end,
         convert_type(Value, Type) 
     end,
-    Docs = truncate_results(SQuery#squery.start + 1, SQuery#squery.rows, Docs0),
     Response = [{<<"responseHeader">>,
                  {struct, [{<<"status">>, 0},
                            {<<"QTime">>, ElapsedTime},
@@ -81,15 +82,10 @@ build_json_response(Schema, ElapsedTime, SQuery, Docs0) ->
                            {<<"q.op">>, atom_to_binary(SQuery#squery.q_op, utf8)},
                            {<<"wt">>, <<"json">>}]}},
                  {<<"response">>,
-                  {struct, [{<<"numFound">>, length(Docs0)},
+                  {struct, [{<<"numFound">>, NumFound},
                             {<<"start">>, SQuery#squery.start},
                             {<<"docs">>, [riak_indexed_doc:to_mochijson2(F, Doc) || Doc <- Docs]}]}}],
     mochijson2:encode({struct, Response}).
-
-truncate_results(Start, _Rows, Docs) when Start > length(Docs) ->
-    [];
-truncate_results(Start, Rows, Docs) ->
-    lists:sublist(Docs, Start, Rows).
 
 get_default_field(#squery{df=""}, Schema) ->
     R = Schema:default_field(),
