@@ -1,0 +1,57 @@
+--------------------------------
+Riak Search Beta 1 Release Notes
+--------------------------------
+
+This is a beta-quality release of Riak Search. This release almost certainly contains
+bugs and is being provided for evaluation purposes only.
+
+This release of Riak includes several completely new components unique to Riak Search.
+These components are:
+
+* riak_search -- riak_search manages the distributed
+  search index and contains the query planning and execution engine.
+
+* qilr -- It supports the complete Lucene query syntax and builds the query
+  representation used by riak_search.
+
+* raptor -- a high performance Riak storage back end specifically tailored to the
+  unique access patterns of a full text search engine.
+
+* riak_solr --  allows external applications to query and update Riak Search
+  indices using a subset of Solr's API.
+
+New features:
+
+* Distributed search index -- The index exhibits the same behavior as a standard
+  Riak Key/Value cluster. This means storage and compute capacity can be expanded
+  by adding more nodes to an existing cluster. Riak Search nodes use hinted
+  handoff to transparently cope with crashed or unavailable nodes.
+
+* Full text indexing -- This release provides two ways to write data to the
+  the search index. An Erlang API is provided via the riak_search_client module.
+  External applications can also update the search index over HTTP by using the
+  Solr interface.
+
+* Lucene syntax support -- A subset of the full Lucene syntax is supported in
+  this release. The support constructs are: single term queries, field queries,
+  word proximity queries, single wildcards at the end of query terms, and
+  boolean and grouping operators.
+
+* Full text querying -- Two query APIs, Erlang and Solr are provided in this release.
+
+Known Issues:
+
+* riak_solr needs to understand facets (bugs 154, 155, 156)
+
+* Fuzzy queries aren't implemented (bug 90)
+
+* Phrase queries aren't implemented (bug 98)
+
+* Ranking and scoring aren't implemented (bug 99)
+
+* Queries with forms "-field:X" or "+field:X" do not parse correctly (bug 159)
+
+* riak_solr throws an error when writing to an index if the index name is
+  specified in the query string (bug 160)
+
+* riak_solr doesn't support dynamic or computed document fields (bug 161)
