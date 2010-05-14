@@ -90,8 +90,12 @@ try_cast(Cmd, Msg, UpNodes, [{Index,Node}|Targets], Sent, Pangs) ->
 %%      Used in riak_kv_put_fsm and riak_kv_get_fsm
 fallback(Cmd, Msg, Pangs, Fallbacks) ->
     fallback(Cmd, Msg, Pangs, Fallbacks, []).
-fallback(_Cmd, _Msg, [], _Fallbacks, Sent) -> Sent;
-fallback(_Cmd, _Msg, _Pangs, [], Sent) -> Sent;
+fallback(_Cmd, _Msg, [], _Fallbacks, Sent) -> 
+    Sent;
+fallback(Cmd, Msg, [{Index, Node}|Pangs], [], Sent) -> 
+    FN = node(),
+    gen_server:cast({riak_kv_vnode_master, FN}, {Cmd, {Index, Node}, Msg}),
+    fallback(Cmd, Msg, Pangs, [], [{Index,Node,FN}|Sent]);
 fallback(Cmd, Msg, [{Index,Node}|Pangs], [{_,FN}|Fallbacks], Sent) ->
     case lists:member(FN, [node()|nodes()]) of
         false -> fallback(Cmd, Msg, [{Index,Node}|Pangs], Fallbacks, Sent);
