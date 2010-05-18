@@ -96,7 +96,6 @@ handle_command(State, {init_stream, OutputPid, OutputRef}) ->
 
 handle_command(State, {stream, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, OutputPid, OutputRef, DestPartition, Node, FilterFun}) ->
     Partition = list_to_binary(integer_to_list(State#state.partition)),
-    {ok, Conn} = raptor_conn_sup:new_conn(),
     case DestPartition == State#state.partition andalso Node == node() of
         true ->
             case SubType of
@@ -112,6 +111,7 @@ handle_command(State, {stream, Index, Field, Term, SubType, StartSubTerm, EndSub
                 _ -> EndSubTerm2 = EndSubTerm
             end,
             spawn_link(fun() ->
+                {ok, Conn} = raptor_conn_sup:new_conn(),
                 {ok, StreamRef} = raptor_conn:stream(
                     Conn, 
                     list_to_binary(Index), 
@@ -136,8 +136,8 @@ handle_command(State, {stream, Index, Field, Term, SubType, StartSubTerm, EndSub
 
 handle_command(State, {info, Index, Field, Term, OutputPid, OutputRef}) ->
     Partition = list_to_binary(integer_to_list(State#state.partition)),
-    {ok, Conn} = raptor_conn_sup:new_conn(),
     spawn_link(fun() ->
+        {ok, Conn} = raptor_conn_sup:new_conn(),
         {ok, StreamRef} = raptor_conn:info(
             Conn, 
             list_to_binary(Index), 
@@ -151,8 +151,8 @@ handle_command(State, {info, Index, Field, Term, OutputPid, OutputRef}) ->
 
 handle_command(State, {info_range, Index, Field, StartTerm, EndTerm, _Size, OutputPid, OutputRef}) ->
     Partition = list_to_binary(integer_to_list(State#state.partition)),
-    {ok, Conn} = raptor_conn_sup:new_conn(),
     spawn_link(fun() ->
+        {ok, Conn} = raptor_conn_sup:new_conn(),
         {ok, StreamRef} = raptor_conn:info_range(
             Conn, 
             list_to_binary(Index), 
@@ -166,8 +166,8 @@ handle_command(State, {info_range, Index, Field, StartTerm, EndTerm, _Size, Outp
     ok;
     
 handle_command(_State, {catalog_query, CatalogQuery, OutputPid, OutputRef}) ->
-    {ok, Conn} = raptor_conn_sup:new_conn(),
     spawn_link(fun() ->
+        {ok, Conn} = raptor_conn_sup:new_conn(),
         {ok, StreamRef} = raptor_conn:catalog_query(
             Conn,
             CatalogQuery),
