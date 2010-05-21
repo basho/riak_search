@@ -36,14 +36,15 @@ parse_fields({fields, Fields}, Accum) ->
 parse_fields([{field, FieldProps}=Field0|T], Accum) ->
     Name = proplists:get_value(name, FieldProps),
     Type = proplists:get_value(type, FieldProps, string),
-    Reqd = proplists:get_value(required, FieldProps, false),
+    Reqd = proplists:get_value(required, FieldProps, false) /= false,
+    Facet = proplists:get_value(facet, FieldProps, true) /= false,
     case valid_type(Type) of
         ok ->
             if
                 Name =:= undefined ->
                     {error, {missing_field_name, Field0}};
                 true ->
-                    F = #riak_solr_field{name=Name, type=Type, required=not(Reqd =:= false)},
+                    F = #riak_solr_field{name=Name, type=Type, required=Reqd, facet=Facet },
                     parse_fields(T, [F|Accum])
             end;
         Error ->
