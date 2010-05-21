@@ -1,0 +1,44 @@
+<project name="raptor" default="compile" basedir=".">
+
+    <property name="build.output.dir" value="${basedir}/bin"/>
+    <property name="base.src.dir" value="${basedir}/src"/>
+    <property name="lib.dir" value="${basedir}/lib"/>
+
+    <path id="build.classpath">
+        <fileset refid="jar.fileset"/>
+    </path>
+	
+    <path id="run.classpath">
+       <path refid="build.classpath"/>
+       <pathelement location="${build.output.dir}"/>
+    </path>
+
+    <fileset id="jar.fileset" dir="${lib.dir}">
+        <include name="**/*"/>
+    </fileset>
+
+	<target name="_init">
+		<mkdir dir="${build.output.dir}"/>
+	</target>
+
+	<target name="clean">
+		<delete dir="${build.output.dir}" failonerror="false"/>
+  	</target>
+
+	<target name="compile" depends="_init">
+		<javac srcdir="${base.src.dir}"
+               destdir="${build.output.dir}"
+               deprecation="on"  debug="on">
+			<include name="**/*.java"/>
+			<classpath>
+				<path refid="build.classpath"/>
+			</classpath>
+		</javac>
+	</target>
+
+	<target name="archive" depends="compile">
+		<jar destfile="raptor.jar"
+			basedir="${build.output.dir}" />
+	</target>
+	
+</project>
