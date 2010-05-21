@@ -32,6 +32,7 @@ start_loop(Op, OutputPid, OutputRef, QueryProps) ->
     {SubType, StartSubTerm, EndSubTerm} = detect_subterms(lists:flatten(Facets)),
 
     %% Start streaming the results...
+    %% io:format("~p: streaming ~p ~p ~p~n", [self(), Index, Field, Term]),
     {ok, Ref} = riak_search:stream(Index, Field, Term, SubType, StartSubTerm, EndSubTerm, Fun),
 
     %% Gather the results...
@@ -40,7 +41,17 @@ start_loop(Op, OutputPid, OutputRef, QueryProps) ->
 loop(ScoringVars, Ref, OutputPid, OutputRef) ->
     receive 
         {result, '$end_of_table', Ref} ->
+            %io:format("riak_search_op_term: disconnect ($end_of_table)~n"),
             OutputPid!{disconnect, OutputRef};
+            
+        {result_vec, ResultVec, Ref} ->
+            % todo: scoring
+            ResultVec2 = lists:map(fun({Key, Props}) ->
+                NewProps = calculate_score(ScoringVars, Props),
+                {Key, NewProps} end, ResultVec),
+            %io:format("ResultVec2 = ~p~n", [ResultVec2]),
+            OutputPid!{results, ResultVec2, OutputRef},
+            loop(ScoringVars, Ref, OutputPid, OutputRef);
 
         {result, {Key, Props}, Ref} ->
             NewProps = calculate_score(ScoringVars, Props),

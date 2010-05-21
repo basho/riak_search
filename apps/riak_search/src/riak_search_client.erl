@@ -9,7 +9,7 @@
 
 %% Querying
 -export([explain/3, explain/4, stream_search/4, search/3, search/4, search/5, doc_search/3,
-         doc_search/5, collect_result/2, get_document/2]).
+         doc_search/5, collect_result/2, get_document/2, query_as_graph/1]).
 
 search(Index, DefaultField, Query) ->
     search(Index, DefaultField, Query, 60000).
@@ -165,6 +165,7 @@ execute(OpList, DefaultIndex, DefaultField, Facets) ->
 %% Set up the operators. They automatically start when created...
     Ref = make_ref(),
     QueryProps = [{num_docs, NumDocs}],
+%% Start the query process ... 
     {ok, NumInputs} = riak_search_op:chain_op(OpList1, self(), Ref, QueryProps),
     #riak_search_ref{id=Ref, termcount=NumTerms, inputcount=NumInputs,
                      querynorm=QueryNorm}.
@@ -174,9 +175,14 @@ collect_result(#riak_search_ref{inputcount=0}=SearchRef, _Timeout) ->
 collect_result(#riak_search_ref{id=Id, inputcount=InputCount}=SearchRef, Timeout) ->
     receive
         {results, Results, Id} ->
+            %io:format("collect_result: Results = ~p~n", [Results]),
             {Results, SearchRef};
         {disconnect, Id} ->
-            {[], SearchRef#riak_search_ref{inputcount=InputCount - 1}}
+            %io:format("collect_result: disconnect ~p~n", [Id]),
+            {[], SearchRef#riak_search_ref{inputcount=InputCount - 1}};
+        X ->
+            io:format("collect_result(InputCount = ~p): X = ~p~n",
+                [InputCount, X])
         after Timeout ->
              {error, timeout}
     end.
@@ -191,6 +197,7 @@ collect_results(SearchRef, Timeout, Acc) ->
         {Results, Ref} ->
             collect_results(Ref, Timeout, Acc ++ Results);
         Error ->
+            io:format("riak_search_client: collect_results/3: Error = ~p~n", [Error]),
             Error
     end.
 
@@ -260,3 +267,102 @@ build_word_md(Tokens) ->
                                      end end,
                              {1, gb_trees:empty()}, Tokens),
     Words.
+
+%%%%%%%
+
+query_as_graph(OpList) ->
+    G = digraph:new(),
+    digraph:add_vertex(G, root, "root"),
+    digraph:add_vertex(G, nodes, "nodes"),
+    digraph:add_vertex(G, or_ops, "or_ops"),
+    digraph:add_vertex(G, and_ops, "and_ops"),
+    digraph:add_vertex(G, not_ops, "not_ops"),
+    digraph:add_edge(G, root, nodes, "has-property"),
+    digraph:add_edge(G, root, or_ops, "has-property"),
+    digraph:add_edge(G, root, and_ops, "has-property"),
+    digraph:add_edge(G, root, not_ops, "has-property"),
+    query_as_graph(OpList, root, 0, G),
+    dump_graph(G),
+    OpList.
+
+query_as_graph(OpList, Parent, C0, G) ->
+    case is_list(OpList) of
+        true ->
+            lists:foldl(fun(Op, C) ->
+                case Op of
+                    [L] ->
+                        %%io:format("[L] / ~p~n", [L]),
+                        query_as_graph(L, Parent, C, G),
+                        C+1;
+                    {node, {lor, N}, _Node} ->
+                        %%io:format("[~p] lor: ~p~n", [Node, N]),
+                        V = {lor, C},
+                        digraph:add_vertex(G, V, "or"),
+                        digraph:add_edge(G, Parent, V, "has-or"),
+                        digraph:add_edge(G, or_ops, V, "has-member"),
+                        query_as_graph(N, V, C+1, G)+1;
+                    {node, {land, N}, _Node} ->
+                        %%io:format("[~p] land: ~p~n", [Node, N]),
+                        V = {land, C},
+                        digraph:add_vertex(G, V, "and"),
+                        digraph:add_edge(G, Parent, V, "has-and"),
+                        digraph:add_edge(G, and_ops, V, "has-member"),
+                        query_as_graph(N, V, C+1, G)+1;
+                    {lnot, N} ->
+                        %%io:format("lnot: ~p~n", [N]),
+                        V = {lnot, C},
+                        digraph:add_vertex(G, V, "not"),
+                        digraph:add_edge(G, Parent, V, "has-not"),
+                        digraph:add_edge(G, not_ops, V, "has-member"),
+                        query_as_graph(N, V, C+1, G)+1;
+                    {term, IFT, Props} ->
+                        %%io:format("term, IFT = ~p, Props = ~p~n",
+                        %%    [IFT, Props]),
+                        V = {term, IFT},
+                        digraph:add_vertex(G, V, "term"),
+                        digraph:add_edge(G, Parent, V, "has-term"),
+                        query_as_graph(Props, V, C+1, G)+1;
+                    {facets, _} -> %% ignore facets for now
+                        C;
+                    {node_weight, N, _NodeCount} ->
+                        %%io:format("~p: ~p (~p)~n", [Parent, N, NodeCount]),
+                        V = {node, N},
+                        case lists:keysearch(N, 2, digraph:vertices(G)) of
+                            false ->
+                                digraph:add_vertex(G, V, "node"),
+                                digraph:add_edge(G, nodes, V, "has-member");
+                            _ -> skip
+                        end,
+                        digraph:add_edge(G, Parent, V, "has-location"),
+                        C+1;
+                    X ->
+                        io:format("query_as_graph: Unknown node type: ~p~n", [X])
+                end end, C0, OpList);
+        false ->
+            query_as_graph([OpList], Parent, C0, G)
+    end.
+
+dump_graph(G) ->
+    dump_graph(G, root).
+
+dump_graph(G, StartNode) ->
+    dump_graph(G, StartNode, 1).
+    
+dump_graph(G, Parent, Tabs) ->
+    lists:map(fun(Node) ->
+        tab_n(Tabs),
+        case length(digraph:out_neighbours(G, Node)) > 0 of
+            true ->
+                io:format("(~p) ~p~n", [Parent, Node]);
+            false ->
+                io:format("~p~n", [Node])
+        end, 
+        case is_atom(Parent) andalso Parent /= root of
+            true -> skip;
+            _ -> dump_graph(G, Node, Tabs+2)
+        end
+    end, digraph:out_neighbours(G, Parent)),
+    ok.
+
+tab_n(Tabs) ->
+    lists:map(fun(_) -> io:format("  ") end, lists:seq(0,Tabs)).
