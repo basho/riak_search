@@ -89,7 +89,7 @@ connect(Addr, PortNum, Options, Tries) ->
     end.
 
 priv_dir() ->
-    case code:priv_dir(qilr) of
+    case code:priv_dir(raptor) of
         {error, bad_name} ->
             Path0 = filename:dirname(code:which(?MODULE)),
             Path1 = filename:absname_join(Path0, ".."),
