@@ -49,7 +49,11 @@ iterator_chain_inner(Pid, Ref, Op) ->
             {eof, Op};
 
         {result, Result, Ref} ->
-            {Result, Op, fun() -> iterator_chain_inner(Pid, Ref, Op) end}
+            {Result, Op, fun() -> iterator_chain_inner(Pid, Ref, Op) end};
+        
+        X ->
+            io:format("iterator_chain_inner(~p, ~p, ~p)~n>> fuck: ~p~n", [Pid, Ref, Op, X])
+            
     end.
 
 

@@ -95,49 +95,54 @@ handle_command(State, {init_stream, OutputPid, OutputRef}) ->
     ok;
 
 handle_command(State, {stream, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, OutputPid, OutputRef, DestPartition, Node, FilterFun}) ->
-    Partition = list_to_binary(integer_to_list(State#state.partition)),
-    {ok, Conn} = raptor_conn_sup:new_conn(),
-    case DestPartition == State#state.partition andalso Node == node() of
-        true ->
-            case SubType of
-                all -> SubType2 = 0;
-                _ -> SubType2 = SubType
-            end,
-            case StartSubTerm of
-                all -> StartSubTerm2 = 0;
-                _ -> StartSubTerm2 = StartSubTerm
-            end,
-            case EndSubTerm of
-                all -> EndSubTerm2 = 0;
-                _ -> EndSubTerm2 = EndSubTerm
-            end,
-            spawn_link(fun() ->
-                {ok, StreamRef} = raptor_conn:stream(
-                    Conn, 
-                    list_to_binary(Index), 
-                    list_to_binary(Field), 
-                    list_to_binary(Term), 
-                    list_to_binary(integer_to_list(SubType2)), 
-                    list_to_binary(integer_to_list(StartSubTerm2)), 
-                    list_to_binary(integer_to_list(EndSubTerm2)), 
-                    Partition),
-                receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun),
-                raptor_conn:close(Conn)
-            end),
-            ok;
-        false ->
-            %% The requester doesn't want results from this node, so
-            %% ignore. This is a hack, to get around the fact that
-            %% there is no way to send a put or other command to a
-            %% specific v-node.
-            ignore
-    end,
+    spawn(fun() ->
+        Partition = list_to_binary(integer_to_list(State#state.partition)),
+        case DestPartition == State#state.partition andalso Node == node() of
+            true ->
+                case SubType of
+                    all -> SubType2 = 0;
+                    _ -> SubType2 = SubType
+                end,
+                case StartSubTerm of
+                    all -> StartSubTerm2 = 0;
+                    _ -> StartSubTerm2 = StartSubTerm
+                end,
+                case EndSubTerm of
+                    all -> EndSubTerm2 = 0;
+                    _ -> EndSubTerm2 = EndSubTerm
+                end,
+                spawn_link(fun() ->
+                    {ok, Conn} = raptor_conn_sup:new_conn(),
+                    {ok, StreamRef} = raptor_conn:stream(
+                        Conn, 
+                        list_to_binary(Index), 
+                        list_to_binary(Field), 
+                        list_to_binary(Term), 
+                        list_to_binary(integer_to_list(SubType2)), 
+                        list_to_binary(integer_to_list(StartSubTerm2)), 
+                        list_to_binary(integer_to_list(EndSubTerm2)), 
+                        Partition),
+                    receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun),
+                    raptor_conn:close(Conn)
+                end),
+                ok;
+            false ->
+                %% The requester doesn't want results from this node, so
+                %% ignore. This is a hack, to get around the fact that
+                %% there is no way to send a put or other command to a
+                %% specific v-node.
+                ignore
+        end end),
     ok;
 
-handle_command(State, {info, Index, Field, Term, OutputPid, OutputRef}) ->
+handle_command(State, {info_test__, Index, Field, Term, OutputPid, OutputRef}) ->
+    OutputPid ! {info_response, [{Term, node(), 1}], OutputRef},
+    ok;
+    
+handle_command(State, {info, Index, Field, Term, OutputPid, OutputRef}) ->    
     Partition = list_to_binary(integer_to_list(State#state.partition)),
-    {ok, Conn} = raptor_conn_sup:new_conn(),
     spawn_link(fun() ->
+        {ok, Conn} = raptor_conn_sup:new_conn(),
         {ok, StreamRef} = raptor_conn:info(
             Conn, 
             list_to_binary(Index), 
@@ -151,8 +156,8 @@ handle_command(State, {info, Index, Field, Term, OutputPid, OutputRef}) ->
 
 handle_command(State, {info_range, Index, Field, StartTerm, EndTerm, _Size, OutputPid, OutputRef}) ->
     Partition = list_to_binary(integer_to_list(State#state.partition)),
-    {ok, Conn} = raptor_conn_sup:new_conn(),
     spawn_link(fun() ->
+        {ok, Conn} = raptor_conn_sup:new_conn(),
         {ok, StreamRef} = raptor_conn:info_range(
             Conn, 
             list_to_binary(Index), 
@@ -166,8 +171,8 @@ handle_command(State, {info_range, Index, Field, StartTerm, EndTerm, _Size, Outp
     ok;
     
 handle_command(_State, {catalog_query, CatalogQuery, OutputPid, OutputRef}) ->
-    {ok, Conn} = raptor_conn_sup:new_conn(),
     spawn_link(fun() ->
+        {ok, Conn} = raptor_conn_sup:new_conn(),
         {ok, StreamRef} = raptor_conn:catalog_query(
             Conn,
             CatalogQuery),
@@ -192,6 +197,49 @@ handle_command(_State, Other) ->
     throw({unexpected_operation, Other}).
 
 receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun) ->
+    receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, []).
+    
+receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, Acc0) ->
+    case length(Acc0) > 500 of
+        true ->
+            io:format("chunk (~p) ~p~n", [length(Acc0), StreamRef]),
+            OutputPid ! {result_vec, Acc0, OutputRef},
+            Acc = [];
+        false ->
+            Acc = Acc0
+    end,
+    receive
+        {stream, StreamRef, "$end_of_table", _} ->
+            case length(Acc) > 0 of
+                true ->
+                    OutputPid ! {result_vec, Acc, OutputRef};
+                false -> skip
+            end,
+            OutputPid ! {result, '$end_of_table', OutputRef};
+        {stream, StreamRef, Value, Props} ->
+            case Props of
+                <<"">> ->
+                    Props2 = [];
+                _ ->
+                    Props2 = binary_to_term(Props)
+            end,
+            case FilterFun(Value, Props2) of
+                true -> 
+                    Acc2 = Acc ++ [{Value, Props2}];
+                    %OutputPid ! {result, {Value, Props2}, OutputRef};
+                _ -> 
+                    Acc2 = Acc,
+                    skip
+            end,
+            receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, Acc2);
+        Msg ->
+            io:format("receive_stream_results(~p, ~p, ~p, ~p) -> ~p~n",
+                [StreamRef, OutputPid, OutputRef, FilterFun, Msg]),
+            OutputPid ! {result, '$end_of_table', OutputRef}
+    end,
+    ok.
+
+receive_stream_results2(StreamRef, OutputPid, OutputRef, FilterFun) ->
     receive
         {stream, StreamRef, "$end_of_table", _} ->
             OutputPid ! {result, '$end_of_table', OutputRef};

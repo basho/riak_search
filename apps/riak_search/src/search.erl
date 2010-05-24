@@ -2,6 +2,7 @@
 -export([search/1,
          doc_search/1,
          explain/1,
+         graph/1,
          index_dir/1
 %%     index_file/1, %index_file/3,
 %%     index_term/3 %index_term/5
@@ -24,6 +25,10 @@ explain(Q) ->
     {ok, Client} = riak_search:local_client(),
     Client:explain("search", "payload", Q).
 
+graph(Q) ->
+    {ok, Client} = riak_search:local_client(),
+    Client:query_as_graph(Client:explain("search", "payload", Q)),
+    ok.
 
 %% Run the specified search query.
 %% search(Q) ->
@@ -62,7 +67,7 @@ index_dir(Directory, Index, Field) ->
     io:format(" :: Found ~p files...~n", [length(Files)]),
 %%    [index_file(SearchClient, File, Index, Field) || File <- Files],
      plists:map(fun(File) -> index_file(AnalyzerPid, File, Index, Field) end,
-         Files, {processes, 8}),
+         Files, {processes, 4}),
     qilr_analyzer:close(AnalyzerPid),
     ok.
 
