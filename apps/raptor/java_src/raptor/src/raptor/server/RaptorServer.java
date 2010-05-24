@@ -112,17 +112,33 @@ public class RaptorServer {
     }
     
     public static void main(String[] argv) throws Exception {
-        log.info("starting");
-         
-        ServerBootstrap bootstrap = new ServerBootstrap(
-            new NioServerSocketChannelFactory(
-                  Executors.newCachedThreadPool(),
-                  Executors.newCachedThreadPool(),
-                  Runtime.getRuntime().availableProcessors() * 2));
-        bootstrap.setOption("reuseAddress", true);
-        bootstrap.setOption("child.tcpNoDelay", true);
-        bootstrap.setPipelineFactory(new RaptorPipelineFactory());
-        bootstrap.bind(new InetSocketAddress(5099));
+       log.info("starting");
+       int port = Integer.parseInt(argv[0]);
+       buildRaptorServer(port);
+       buildHeartbeatServer(port + 1);
+    }
+    
+    private static void buildRaptorServer(int port) {
+       ServerBootstrap bootstrap = new ServerBootstrap(
+             new NioServerSocketChannelFactory(
+                   Executors.newCachedThreadPool(),
+                   Executors.newCachedThreadPool(),
+                   Runtime.getRuntime().availableProcessors() * 2));
+         bootstrap.setOption("reuseAddress", true);
+         bootstrap.setOption("child.tcpNoDelay", true);
+         bootstrap.setPipelineFactory(new RaptorPipelineFactory());
+         bootstrap.bind(new InetSocketAddress("127.0.0.1", port));
+    }
+    
+    private static void buildHeartbeatServer(int port) {
+       ServerBootstrap bootstrap = new ServerBootstrap(
+             new NioServerSocketChannelFactory(
+                   Executors.newCachedThreadPool(),
+                   Executors.newCachedThreadPool()));
+       bootstrap.setOption("reuseAddress", true);
+       bootstrap.setOption("child.tcpNoDelay", true);
+       bootstrap.setPipelineFactory(new HeartbeatPipelineFactory());
+       bootstrap.bind(new InetSocketAddress("127.0.0.1", port));
     }
 }
 

@@ -14,7 +14,7 @@ start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
 init([]) ->
-    RestartStrategy = one_for_one,
+    RestartStrategy = one_for_all,
     MaxRestarts = 10,
     MaxSecondsBetweenRestarts = 10,
 
@@ -22,5 +22,7 @@ init([]) ->
 
     ConnSup = {raptor_conn_sup, {raptor_conn_sup, start_link, []},
                permanent, infinity, supervisor, [raptor_conn_sup]},
+    Monitor = {raptor_monitor, {raptor_monitor, start_link, []},
+               permanent, infinity, supervisor, [raptor_monitor]},
 
-    {ok, {SupFlags, [ConnSup]}}.
+    {ok, {SupFlags, [Monitor, ConnSup]}}.

@@ -1,1 +1,0 @@
-java -XX:+UseConcMarkSweepGC -XX:+UseParNewGC -XX:CMSInitiatingOccupancyFraction=70 -d64 -server -Djava.library.path=/usr/local/lib:java.library.path=/usr/local/lib:/usr/local/BerkeleyDB.4.8/lib -Xmx4096m -Dfile.encoding=UTF-8 -cp .:./bin:lib/* -DHTTP_PORT=8080 raptor.server.RaptorServer $*
