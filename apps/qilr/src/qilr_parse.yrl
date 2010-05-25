@@ -51,6 +51,13 @@ group_expr -> lparen group_expr rparen:
 field_group -> field_prefix group_expr:
     make_field_term('$1', '$2').
 
+bool_kw -> lnot:
+    lnot.
+bool_kw -> land:
+    land.
+bool_kw -> lor:
+    lor.
+
 bool_expr -> lnot query_term:
     {lnot, '$2'}.
 bool_expr -> land query_term:

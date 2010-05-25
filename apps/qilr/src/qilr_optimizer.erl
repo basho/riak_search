@@ -14,7 +14,9 @@ optimize(AnalyzerPid, {ok, Query0}, Opts) when is_list(Query0) ->
             Query2 = consolidate_exprs(Query1, []),
             Query3 = default_bool(Query2, Opts),
             {ok, Query3}
-    end.
+    end;
+optimize(_, Error, _) ->
+    throw(Error).
 
 %% Internal functions
 consolidate_exprs([], Acc) ->

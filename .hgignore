@@ -42,4 +42,3 @@ apps/qilr/priv/analysis_server/.*
 apps/qilr/java_src/analysis_server/.*\.jar
 apps/raptor/java_src/raptor/bin/.*
 apps/raptor/java_src/raptor/build/.*
-apps/raptor/java_src/raptor/.*\.jar
