@@ -120,7 +120,7 @@ analyze_term_text(AnalyzerPid, Text0) ->
                false ->
                    Text0
            end,
-    case qilr_analyzer:analyze(AnalyzerPid, list_to_binary(Text)) of
+    case qilr_analyzer:analyze(AnalyzerPid, Text) of
         {ok, []} ->
             none;
         {ok, [Token]} ->
