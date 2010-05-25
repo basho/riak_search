@@ -67,7 +67,7 @@ build_json_response(_Schema, ElapsedTime, SQuery, NumFound, []) ->
     mochijson2:encode({struct, Response});
 build_json_response(Schema, ElapsedTime, SQuery, NumFound, Docs) ->
     F = fun({Name, Value}) -> 
-        case Schema:find_field(Name) of
+        case Schema:find_field_or_facet(Name) of
             Field when is_record(Field, riak_solr_field) ->
                 Type = Field#riak_solr_field.type;
             undefined ->

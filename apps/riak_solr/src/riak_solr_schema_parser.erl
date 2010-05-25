@@ -37,7 +37,7 @@ parse_fields([{field, FieldProps}=Field0|T], Accum) ->
     Name = proplists:get_value(name, FieldProps),
     Type = proplists:get_value(type, FieldProps, string),
     Reqd = proplists:get_value(required, FieldProps, false) /= false,
-    Facet = proplists:get_value(facet, FieldProps, true) /= false,
+    Facet = proplists:get_value(facet, FieldProps, false) /= false,
     case valid_type(Type) of
         ok ->
             if
