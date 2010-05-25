@@ -22,6 +22,7 @@ init([]) ->
 
     ConnSup = {raptor_conn_sup, {raptor_conn_sup, start_link, []},
                permanent, infinity, supervisor, [raptor_conn_sup]},
+    %{ok, {SupFlags, [ConnSup]}}.
     Monitor = {raptor_monitor, {raptor_monitor, start_link, []},
                permanent, infinity, supervisor, [raptor_monitor]},
 

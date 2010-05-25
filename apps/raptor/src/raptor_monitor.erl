@@ -38,7 +38,6 @@ init([]) ->
             case connect({127,0,0,1}, PortNum + 1, [], 10) of
                 {ok, Sock} ->
                     erlang:link(Port),
-                    erlang:link(Sock),
                     {ok, #state{port=Port, portnum=PortNum, sock=Sock}};
                 _ ->
                     {stop, connect_error}

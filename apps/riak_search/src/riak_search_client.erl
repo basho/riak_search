@@ -8,8 +8,9 @@
 -export([index_doc/1, index_doc/2]).
 
 %% Querying
--export([explain/3, explain/4, stream_search/4, search/3, search/4, search/5, doc_search/3,
-         doc_search/5, collect_result/2, get_document/2, query_as_graph/1]).
+-export([explain/3, explain/4, stream_search/3, stream_search/4, search/3,
+         search/4, search/5, doc_search/3, doc_search/5, collect_result/2,
+         get_document/2, query_as_graph/1]).
 
 search(Index, DefaultField, Query) ->
     search(Index, DefaultField, Query, 60000).
@@ -165,7 +166,7 @@ execute(OpList, DefaultIndex, DefaultField, Facets) ->
 %% Set up the operators. They automatically start when created...
     Ref = make_ref(),
     QueryProps = [{num_docs, NumDocs}],
-%% Start the query process ... 
+%% Start the query process ...
     {ok, NumInputs} = riak_search_op:chain_op(OpList1, self(), Ref, QueryProps),
     #riak_search_ref{id=Ref, termcount=NumTerms, inputcount=NumInputs,
                      querynorm=QueryNorm}.
@@ -175,21 +176,18 @@ collect_result(#riak_search_ref{inputcount=0}=SearchRef, _Timeout) ->
 collect_result(#riak_search_ref{id=Id, inputcount=InputCount}=SearchRef, Timeout) ->
     receive
         {results, Results, Id} ->
-            %io:format("collect_result: Results = ~p~n", [Results]),
             {Results, SearchRef};
         {disconnect, Id} ->
-            %io:format("collect_result: disconnect ~p~n", [Id]),
-            {[], SearchRef#riak_search_ref{inputcount=InputCount - 1}};
-        X ->
-            io:format("collect_result(InputCount = ~p): X = ~p~n",
-                [InputCount, X])
+            {[], SearchRef#riak_search_ref{inputcount=InputCount - 1}}
         after Timeout ->
              {error, timeout}
     end.
 
 %% Gather results from all connections
 collect_results(SearchRef, Timeout, Acc) ->
-    case collect_result(SearchRef, Timeout) of
+    M = collect_result(SearchRef, Timeout),
+    io:format("collect_result: ~p~n", [M]),
+    case M of
         {done, _} ->
             sort_by_score(SearchRef, Acc);
         {[], Ref} ->
@@ -197,7 +195,6 @@ collect_results(SearchRef, Timeout, Acc) ->
         {Results, Ref} ->
             collect_results(Ref, Timeout, Acc ++ Results);
         Error ->
-            io:format("riak_search_client: collect_results/3: Error = ~p~n", [Error]),
             Error
     end.
 
@@ -211,7 +208,7 @@ get_scoring_info(Op) ->
             %% Calculate NumTerms and NumDocs...
             NumTerms = length(List),
             NumDocs = lists:sum([NodeWeight || {NodeWeight, _} <- List]),
-    
+
             %% Calculate the QueryNorm...
             F = fun({DocFrequency, Boost}, Acc) ->
                 IDF = 1 + math:log((NumDocs + 1) / (DocFrequency + 1)),
@@ -219,7 +216,7 @@ get_scoring_info(Op) ->
             end,
             SumOfSquaredWeights = lists:foldl(F, 0, List),
             QueryNorm = 1 / math:pow(SumOfSquaredWeights, 0.5),
-            
+
             %% Return.
             {NumTerms, NumDocs, QueryNorm};
         false ->
@@ -347,7 +344,7 @@ dump_graph(G) ->
 
 dump_graph(G, StartNode) ->
     dump_graph(G, StartNode, 1).
-    
+
 dump_graph(G, Parent, Tabs) ->
     lists:map(fun(Node) ->
         tab_n(Tabs),
@@ -356,7 +353,7 @@ dump_graph(G, Parent, Tabs) ->
                 io:format("(~p) ~p~n", [Parent, Node]);
             false ->
                 io:format("~p~n", [Node])
-        end, 
+        end,
         case is_atom(Parent) andalso Parent /= root of
             true -> skip;
             _ -> dump_graph(G, Node, Tabs+2)
