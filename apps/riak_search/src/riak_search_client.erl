@@ -270,14 +270,20 @@ build_word_md(Tokens) ->
 optimize_query(OpList) ->
     G = query_as_graph(OpList),
     
-    %% OR optimization
-    OrOps = digraph:out_neighbours(G, or_ops),
-    io:format("OrOps = ~p~n", [OrOps]),
+    %% optimize_junction: AND, OR optimization
+    JunctionOps = 
+        digraph:out_neighbours(G, or_ops) ++
+        digraph:out_neighbours(G, and_ops),
+    io:format("JunctionOps = ~p~n", [JunctionOps]),
+
+    lists:foreach(fun(JunctionNode) ->
+        optimize_junction(G, JunctionNode)
+    end, JunctionOps),
     
     OpList2 = graph_as_query(G, root, []),
-    io:format("~n----~n"),
+    io:format("~n----original query OpList: ~n"),
     io:format("OpList  = ~p~n", [OpList]),
-    io:format("~n----~n"),
+    io:format("~n----optimized query OpList: ~n"),
     io:format("OpList2 = ~p~n", [OpList2]),
     io:format("~n----~n"),
     [OpList2].
@@ -300,8 +306,18 @@ graph_as_query(G, Node, Acc) ->
     
     case length(Out) of
         0 ->
-            %%io:format("~p: 0/Node = ~p~n", [Node, Node]),
-            [];
+            case Node of
+                {multi_term, NTerms, TNode} ->
+                    io:format("multi_term: ~p: ~p~n", [Node, Out]),
+                    Node;
+                and_ops -> [];
+                or_ops -> [];
+                not_ops -> [];
+                nodes -> [];
+                _ ->
+                    io:format("0/Node = ~p~n", [Node]),
+                    {unknown_node_type, Node}
+            end;
         _ ->
             io:format("~p: n/Out = ~p~n", [Node, Out]),
             
@@ -321,13 +337,13 @@ graph_as_query(G, Node, Acc) ->
                 {lor, _N} ->
                     io:format("lor: ~p: ~p~n", [Node, Out]),
                     Terms = lists:reverse(lists:map(fun(OutNode) ->
+                        io:format("lor: outnode = ~p~n", [OutNode]),
                         graph_as_query(G, OutNode, Acc)
                     end, Out)),
-                    NodeCounts = compute_node_counts(G, Out),
-                    io:format("NodeCounts = ~p~n", [NodeCounts]), %% todo: move to optimize function 
                     {node, {lor, Terms}, node()}; %% todo: real node?
                 {term, {I, F, T}} ->
                     % todo: fix counts (until then, everyone has a 1 count)
+                    % todo: fix faceting
                     NodeWeights = lists:reverse(lists:usort(lists:map(fun({node, N1}) ->
                         {node_weight, N1, 1}
                     end, Out))),
@@ -342,23 +358,74 @@ graph_as_query(G, Node, Acc) ->
                             V -> RAcc ++ V
                         end
                     end, [], Out);
-                X ->
+                _ ->
                     io:format("X? ~p: ~p~n", [Node, Out]),
-                    {x, X}
+                    {unknown_node_type, Node}
             end
     end.
 
-compute_node_counts(G, Terms) ->
-    lists:foldl(fun(T, Acc) ->
-        lists:map(fun({node, N}) ->
-            case proplists:is_defined(N, Acc) of
-                true ->
-                    {N, TL} = proplists:lookup(N, Acc),
-                    proplists:delete(N, Acc) ++ {N, lists:flatten(TL ++ [T])};
-                false -> Acc ++ {N, [T]}
+optimize_junction(G, OrNode) ->
+    io:format("optimize_junction(G, ~p)~n", [OrNode]),
+    Terms0 = digraph:out_neighbours(G, OrNode),
+    Terms = lists:filter(fun(E) ->
+        case E of
+            [] -> false;
+            _ -> true
+        end
+    end, lists:map(fun(T0) ->
+            case T0 of
+                {term, _} ->
+                    T0;
+                _ -> []
+            end
+        end, Terms0)),
+    io:format("Terms = ~p~n", [Terms]),
+    L = lists:foldl(fun(T, Acc) ->
+        io:format("optimize_junction: OrNode = ~p: T = ~p~n", [OrNode, T]),
+        io:format("out_neighbours(G, T) = ~p~n", [digraph:out_neighbours(G, T)]),
+        lists:map(fun(Node_N) ->
+            case Node_N of
+                {node, N} -> 
+                    case proplists:is_defined(N, Acc) of
+                        true ->
+                            {N, TL} = proplists:lookup(N, Acc),
+                            proplists:delete(N, Acc) ++ {N, lists:flatten(TL ++ [T])};
+                        false -> Acc ++ {N, [T]}
+                    end;
+                _ -> Acc
             end
         end, digraph:out_neighbours(G, T))
-    end, [], Terms).
+    end, [], Terms),
+    TCD = lists:sort(fun(A,B) ->
+        {Na, La} = A,
+        {Nb, Lb} = B,
+        length(La) > length(Lb)
+    end, L),
+    io:format("TCD = ~p~n", [TCD]),
+    lists:foreach(fun(N_NTerms) ->
+        io:format("N_NTerms = ~p~n", [N_NTerms]),
+        {Node, NodeTerms} = N_NTerms,
+        RemTerms = lists:foldl(fun(RTerm, Acc) ->
+            io:format("get_path(~p, ~p) = ~p~n", [OrNode, RTerm, digraph:get_path(G, OrNode, RTerm)]),
+            case digraph:get_path(G, OrNode, RTerm) of
+                false -> Acc;
+                _ -> Acc ++ [RTerm]
+            end
+        end, [], NodeTerms),
+        io:format("RemTerms = ~p~n", [RemTerms]),
+        case RemTerms of
+            [] -> skip;
+            _ ->
+                lists:foreach(fun(Nt) ->
+                    digraph:del_path(G, OrNode, Nt),
+                    digraph:del_vertex(G, Nt)
+                end, RemTerms),
+                Vtx = {multi_term, RemTerms, Node},
+                digraph:add_vertex(G, Vtx),
+                digraph:add_edge(G, OrNode, Vtx)
+        end
+    end, TCD),
+    TCD.
 
 %
 % optimize_terms(Graph, RootNode)
