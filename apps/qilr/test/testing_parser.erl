@@ -18,6 +18,14 @@ multiple_terms_test_() ->
                                        {term, "automobiles", []}]}]},
                    ?PARSE(AnalyzerPid, "planes trains automobiles")) end].
 
+field_test_() ->
+    [fun() ->
+             {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
+             ?assertMatch({ok, [{field, "title", "peace", [required]}]},
+                          ?PARSE(AnalyzerPid, "+title:peace")),
+             ?assertMatch({ok, [{field, "title", "scarlet", [prohibited]}]},
+                          ?PARSE(AnalyzerPid, "-title:scarlet")) end].
+
 prefix_test_() ->
     [fun() ->
              {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
@@ -83,7 +91,10 @@ bool_test_() ->
              ?assertMatch({ok, [{land, [{term, "fettucini", []}, {term, "alfredo", []}]}]},
                           ?BOOL_PARSE(AnalyzerPid, "fettucini && alfredo", 'and')),
              ?assertMatch({ok, [{lor, [{term, "apples", []}, {term, "oranges", []}]}]},
-                          ?BOOL_PARSE(AnalyzerPid, "apples oranges", 'or')) end].
+                          ?BOOL_PARSE(AnalyzerPid, "apples oranges", 'or')),
+             ?assertMatch({ok,[{land,[{term,"french",[]},
+                                      [{lnot,{term,"fries",[]}}]]}]},
+                          ?BOOL_PARSE(AnalyzerPid, "french AND NOT fries", 'and')) end].
 
 grouping_test_() ->
     [fun() ->

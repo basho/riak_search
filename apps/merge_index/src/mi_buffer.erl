@@ -42,16 +42,16 @@
 open(Filename, Options) ->
     %% Open the existing buffer file...
     filelib:ensure_dir(Filename),
-    ReadBuffer = 1024 * 1024,
-    WriteInterval = proplists:get_value(write_interval, Options, 2 * 1000),
-    WriteBuffer = proplists:get_value(write_buffer, Options, 1024 * 1024),
+    %ReadBuffer = 1024 * 1024,
+    %WriteInterval = proplists:get_value(write_interval, Options, 2 * 1000),
+    %WriteBuffer = proplists:get_value(write_buffer, Options, 1024 * 1024),
     {ok, FH} = file:open(Filename, [read, write, raw, binary]),
 
     %% Read into an ets table...
     Table = ets:new(buffer, [ordered_set, public]),
     open_inner(FH, Table),
     {ok, Size} = file:position(FH, cur),
-    
+
     %% Return the buffer.
     #buffer { filename=Filename, handle=FH, table=Table, size=Size }.
 
@@ -114,12 +114,12 @@ write_1(IFT, Value, Props, TS, Table) ->
             NewValues = gb_trees:from_orddict([{Value, {Props, TS}}]),
             ets:insert(Table, {IFT, NewValues})
     end.
-    
+
 %% Return the number of results under this IFT.
 info(IFT, Buffer) ->
     Table = Buffer#buffer.table,
     case ets:lookup(Table, IFT) of
-        [{IFT, Values}] -> 
+        [{IFT, Values}] ->
             gb_trees:size(Values);
         [] ->
             0
@@ -140,7 +140,7 @@ info_1(Table, IFT, EndIFT, Count) ->
     [{IFT, Values}] = ets:lookup(Table, IFT),
     NextIFT = ets:next(Table, IFT),
     info_1(Table, NextIFT, EndIFT, Count + gb_trees:size(Values)).
-    
+
 %% Return an iterator function.
 %% Returns Fun/0, which then returns {Term, NewFun} or eof.
 iterator(Buffer) ->
@@ -155,7 +155,7 @@ iterator(StartIFT, EndIFT, Buffer) ->
     fun() -> iterator_1(Iterator) end.
 
 %% Iterate through IFTs...
-iterator_1({_Table, IFT, EndIFT}) 
+iterator_1({_Table, IFT, EndIFT})
 when IFT == '$end_of_table' orelse (EndIFT /= all andalso IFT > EndIFT) ->
     eof;
 iterator_1({Table, IFT, EndIFT}) ->
