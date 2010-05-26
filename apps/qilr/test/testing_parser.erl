@@ -79,8 +79,8 @@ bool_test_() ->
              {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
              ?assertMatch({ok, [{land, [{term, "fish", []}, {term, "bicycle", []}]}]},
                           ?PARSE(AnalyzerPid, "fish AND bicycle")),
-             ?assertMatch({ok, [{land,[{lnot,[{term,"budweiser",[]}]},
-                                       {term,"beer",[]}]}]},
+             ?assertMatch({ok,[{lnot,[{land,[{term,"budweiser",[]},
+                                             {term,"beer",[]}]}]}]},
                           ?PARSE(AnalyzerPid, "NOT budweiser AND beer")),
              ?assertMatch({ok, [{lor, [{term, "pizza", []}, {term, "spaghetti", []}]}]},
                           ?PARSE(AnalyzerPid, "pizza OR spaghetti")),
@@ -93,7 +93,7 @@ bool_test_() ->
              ?assertMatch({ok, [{lor, [{term, "apples", []}, {term, "oranges", []}]}]},
                           ?BOOL_PARSE(AnalyzerPid, "apples oranges", 'or')),
              ?assertMatch({ok,[{land,[{term,"french",[]},
-                                      [{lnot,{term,"fries",[]}}]]}]},
+                                      {lnot,[{term,"fries",[]}]}]}]},
                           ?BOOL_PARSE(AnalyzerPid, "french AND NOT fries", 'and')) end].
 
 grouping_test_() ->
@@ -116,7 +116,10 @@ grouping_test_() ->
              ?assertMatch({ok, [{field, "title",
                                  {group, [{term, "python", [required]},
                                           {term, "cookbook", [{proximity, 2}, required]}]}}]},
-                          ?PARSE(AnalyzerPid, "title:(+python +cookbook~2)")) end].
+                          ?PARSE(AnalyzerPid, "title:(+python +cookbook~2)")),
+             ?assertMatch({ok, [{field, "color", {group, [{term, "red", []},
+                                                          {term, "blue", []}]}}]},
+                          ?PARSE(AnalyzerPid, "color:(red blue)")) end].
 
 field_range_test_() ->
     [fun() ->
