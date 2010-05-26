@@ -9,21 +9,23 @@
     %% Searching...
     search/2, search/3,
 
+    %% Doc Searching...
+    search_doc/2,
+    search_doc/5,
+
     %% Stream Searching...
     stream_search/2, 
     collect_result/2,
-    
-    %% Doc Searching...
-    doc_search/2,
-    doc_search/5,
 
     %% Explain...
     explain/2,
     query_as_graph/1,
 
     %% Indexing...
-    index_doc/1, 
     index_doc/2,
+    index_doc/3,
+    index_idx_doc/1, 
+    index_idx_doc/2,
    
     %% Other
     optimize_query/1,
@@ -66,13 +68,13 @@ stream_search(IndexOrSchema, Query) ->
 
 
 %% Search for Index, return {Length, [Docs]}.
-doc_search(IndexOrSchema, Query) ->
-    doc_search(IndexOrSchema, Query, 0, ?DEFAULT_RESULT_SIZE, ?DEFAULT_TIMEOUT).
+search_doc(IndexOrSchema, Query) ->
+    search_doc(IndexOrSchema, Query, 0, ?DEFAULT_RESULT_SIZE, ?DEFAULT_TIMEOUT).
 
 
 %% Search for Index, return {Length, [Docs]}.
 %% Limit by QueryStart and QueryRows, Timeout is in milliseconds.
-doc_search(IndexOrSchema, Query, QueryStart, QueryRows, Timeout) ->
+search_doc(IndexOrSchema, Query, QueryStart, QueryRows, Timeout) ->
     %% Get the Schema and Index...
     Schema = to_schema(IndexOrSchema),
     Index = Schema:name(),
@@ -106,36 +108,77 @@ explain(IndexOrSchema, Query) ->
 
     {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
     ParseResult = qilr_parse:string(AnalyzerPid, Query),
+    ?PRINT(ParseResult),
     qilr_analyzer:close(AnalyzerPid),
     case ParseResult of 
         {ok, Ops} ->
+            ?PRINT(Ops),
+            ?PRINT(DefaultIndex),
+            ?PRINT(DefaultField),
             riak_search_preplan:preplan(Ops, DefaultIndex, DefaultField, Facets);
         Error ->
             throw(Error)
     end.
 
-%% Index a Document.
-index_doc(Doc) ->
-    {ok, Pid} = qilr_analyzer_sup:new_analyzer(),
-    Result = (catch index_doc(Pid, Doc)),
-    qilr_analyzer:close(Pid),
-    Result.
 
-%% Index a Document using the provided AnalyzerPid.
-index_doc(AnalyzerPid, #riak_idx_doc{id=DocID, index=Index, fields=DocFields}=Doc) ->
+%% Index a solr XML formatted file.
+index_doc(IndexOrSchema, Body) when is_binary(Body) ->
+    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
+    index_doc(AnalyzerPid, IndexOrSchema, Body),
+    qilr_analyzer:close(AnalyzerPid),
+    ok.
+
+%% Index a solr XML formatted file using the provided analyzer pid.
+index_doc(AnalyzerPid, IndexOrSchema, Body) ->
+    %% Get the schema...
+    Schema = to_schema(IndexOrSchema),
+    Index = Schema:name(),
+    
+    %% Parse the xml...
+    Commands = riak_solr_xml_xform:xform(Body),
+    ok = Schema:validate_commands(Commands),
+
+    %% Index the docs...
+    F = fun(DictDoc) ->
+        IdxDoc = to_riak_idx_doc(Index, DictDoc),
+        index_idx_doc(AnalyzerPid, IdxDoc)
+    end,
+    {docs, Docs} = lists:keyfind(docs, 1, Commands),
+    [F(X) || X <- Docs],
+    ok.
+
+%% @private
+to_riak_idx_doc(Index, Doc0) ->
+    Id = dict:fetch("id", Doc0),
+    Doc = dict:erase(Id, Doc0),
+    Fields = dict:to_list(dict:erase(Id, Doc)),
+    #riak_idx_doc{id=Id, index=Index, fields=Fields, props=[]}.
+
+%% Index a #riak_idx_doc{} record.
+index_idx_doc(IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
+    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
+    index_idx_doc(AnalyzerPid, IdxDoc),
+    qilr_analyzer:close(AnalyzerPid),
+    ok.
+
+%% Index a #riak_idx_doc{} record using the provided analyzer pid.
+index_idx_doc(AnalyzerPid, IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
+    %% Extract fields, get schema...
+    #riak_idx_doc{id=DocID, index=Index, fields=DocFields}=IdxDoc,
     Schema = to_schema(Index),
     
     %% Put together a list of Facet properties...
     F1 = fun(Facet, Acc) ->
         FName = Schema:field_name(Facet),
         case lists:keyfind(FName, 1, DocFields) of
-            Value when Value /= undefined ->
+            {FName, Value} ->
                 [{FName, Value}|Acc];
-            _ ->
+            false ->
                 Acc
         end
     end,
     FacetProps = lists:foldl(F1, [], Schema:facets()),
+    ?PRINT(FacetProps),
 
     %% For each Field = {FieldName, FieldValue}, split the FieldValue
     %% into terms. Build a list of positions for those terms, then get
@@ -157,7 +200,7 @@ index_doc(AnalyzerPid, #riak_idx_doc{id=DocID, index=Index, fields=DocFields}=Do
     DocBucket = Index ++ "_docs",
     DocObj = riak_object:new(riak_search_utils:to_binary(DocBucket),
                              riak_search_utils:to_binary(DocID),
-                             Doc),
+                             IdxDoc),
     RiakClient:put(DocObj, 1).
 
 %% @private Given a list of tokens, build a gb_tree mapping words to a
@@ -227,8 +270,6 @@ execute(OpList, IndexOrSchema) ->
     %% Normalize, Optimize, and Expand Buckets.
     OpList1 = riak_search_preplan:preplan(OpList, DefaultIndex, DefaultField, Facets),
 
-    ?PRINT(OpList1),
-
     %% Get the total number of terms and weight in query...
     {NumTerms, NumDocs, QueryNorm} = get_scoring_info(OpList1),
 
@@ -257,7 +298,6 @@ collect_result(#riak_search_ref{id=Id, inputcount=InputCount}=SearchRef, Timeout
 %% Gather results from all connections
 collect_results(SearchRef, Timeout, Acc) ->
     M = collect_result(SearchRef, Timeout),
-    io:format("collect_result: ~p~n", [M]),
     case M of
         {done, _} ->
             sort_by_score(SearchRef, Acc);

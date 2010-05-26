@@ -47,7 +47,7 @@ to_json(Req, #state{schema=Schema, sq=SQuery}=State) ->
     DefaultField = get_default_field(SQuery, Schema),
     {ok, Client} = riak_search:local_client(),
     StartTime = erlang:now(),
-    {NumFound, Docs} = Client:doc_search(Schema:name(), DefaultField, QText, QStart, QRows),
+    {NumFound, Docs} = Client:search_doc(Schema:name(), DefaultField, QText, QStart, QRows),
     ElapsedTime = erlang:trunc(timer:now_diff(erlang:now(), StartTime) / 1000),
     {build_json_response(Schema, ElapsedTime, SQuery, NumFound, Docs), Req, State}.
 

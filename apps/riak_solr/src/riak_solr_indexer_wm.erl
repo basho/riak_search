@@ -44,7 +44,7 @@ malformed_request(Req, State) ->
     end.
 
 process_post(Req, #state{schema=Schema, body=Body}=State) ->
-    case catch riak_solr_xml_xform:xform(Schema:name(), Body) of
+    case catch riak_solr_xml_xform:xform(Body) of
         {'EXIT', _Error} ->
             {false, Req, State};
         Commands0 ->

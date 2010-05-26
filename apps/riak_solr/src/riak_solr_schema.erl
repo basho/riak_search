@@ -95,6 +95,8 @@ validate_commands(Commands) ->
 %% @private
 %% Validate for required fields in the list of documents.
 %% Return 'ok', or an {error, Error} if a field is missing.
+validate_required_fields([], _) ->
+    ok;
 validate_required_fields([Doc|Rest], Required) ->
     case validate_required_fields_1(Doc, Required) of
         ok -> validate_required_fields(Rest, Required);
@@ -108,9 +110,9 @@ validate_required_fields_1(_, []) ->
     ok;
 validate_required_fields_1(Doc, [Field|Rest]) ->
     FieldName = Field#riak_solr_field.name,
-    case list:keyfind(FieldName, 1, Doc) of
-        Value when Value /= false ->
+    case dict:find(FieldName, Doc) of
+        {ok, _Value} ->
             validate_required_fields_1(Doc, Rest);
-        false ->
+        error ->
             {error, {reqd_field_missing, FieldName}}
     end.

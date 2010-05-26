@@ -62,7 +62,8 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% Internal functions
 load_schema(SchemaName, #state{schema_dir=Dir, schemas=Schemas}=State) ->
-    Result = file:consult(filename:join([Dir, SchemaName ++ ".def"])),
+    SchemaFile = io_lib:format("~s.def", [SchemaName]),
+    Result = file:consult(filename:join([Dir, SchemaFile])),
     case Result of
         {ok, [RawSchema]} ->
             case riak_solr_schema_parser:from_eterm(RawSchema) of
