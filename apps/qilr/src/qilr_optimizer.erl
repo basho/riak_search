@@ -21,6 +21,10 @@ optimize(AnalyzerPid, {ok, Query0}, Opts) when is_list(Query0) ->
             %io:format("~n~nFinal Pass: ~p~n", [Query4]),
             {ok, Query4}
     end;
+optimize(_, {error, {_, _, [_Message, [91, Error, 93]]}}, _) ->
+    Err = [list_to_integer(M) || M <- Error,
+                                  is_list(M)],
+    throw({syntax_error, Err});
 optimize(_, Error, _) ->
     throw(Error).
 

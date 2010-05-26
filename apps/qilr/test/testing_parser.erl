@@ -119,7 +119,11 @@ grouping_test_() ->
                           ?PARSE(AnalyzerPid, "title:(+python +cookbook~2)")),
              ?assertMatch({ok, [{field, "color", {group, [{term, "red", []},
                                                           {term, "blue", []}]}}]},
-                          ?PARSE(AnalyzerPid, "color:(red blue)")) end].
+                          ?PARSE(AnalyzerPid, "color:(red blue)")),
+             ?assertMatch({ok, [{lor, [{group, [{lor, [{term, "fuzzy", []},
+                                                       {term, "wuzzy", []}]}]},
+                                       {term, "bear", []}]}]},
+                          ?PARSE(AnalyzerPid, "(fuzzy wuzzy) bear")) end].
 
 field_range_test_() ->
     [fun() ->
