@@ -23,7 +23,7 @@
     lookup/2,
     lookup_nocreate/2,
     lookup/3,
-    select/3, 
+    select/3,
     select/4,
     invert/1,
     test/0
@@ -47,15 +47,15 @@
 open(Filename, Options) ->
     %% Open the existing incdex file...
     filelib:ensure_dir(Filename),
-    ReadBuffer = 1024 * 1024,
-    WriteInterval = proplists:get_value(write_interval, Options, 2 * 1000),
-    WriteBuffer = proplists:get_value(write_buffer, Options, 1024 * 1024),
+%%     ReadBuffer = 1024 * 1024,
+%%     WriteInterval = proplists:get_value(write_interval, Options, 2 * 1000),
+%%     WriteBuffer = proplists:get_value(write_buffer, Options, 1024 * 1024),
     {ok, FH} = file:open(Filename, [read, write, raw, binary]),
 
     %% Read into an ets table...
     Table = ets:new(incdex, [ordered_set, public]),
     LastID = open_inner(FH, Table, 0),
-    
+
     %% Return the incdex...
     #incdex { filename=Filename, options=Options, handle=FH, table=Table, last_id=LastID }.
 
@@ -92,7 +92,7 @@ lookup_nocreate(Key, Incdex) ->
 lookup(Key, Incdex, true) ->
     %% Look up the entry...
     Table = Incdex#incdex.table,
-    case ets:lookup(Table, Key) of 
+    case ets:lookup(Table, Key) of
         [{Key, ID}] ->
             {ID, Incdex};
         [] ->
@@ -125,12 +125,12 @@ select(StartKey, EndKey, Size, Incdex) ->
     Iterator = {Table, Key, EndKey},
     select_1(Iterator, Size, []).
 
-select_1({_Table, Key, EndKey}, _Size, Acc) 
+select_1({_Table, Key, EndKey}, _Size, Acc)
 when Key == '$end_of_table' orelse (EndKey /= all andalso Key > EndKey) ->
     lists:reverse(Acc);
 select_1({Table, Key, EndKey}, Size, Acc) ->
     case Size == all orelse typesafe_size(Key) == Size of
-        true -> 
+        true ->
             NextKey = ets:next(Table, Key),
             [{Key, ID}] = ets:lookup(Table, Key),
             select_1({Table, NextKey, EndKey}, Size, [{Key, ID}|Acc]);
@@ -155,7 +155,7 @@ typesafe_size(Term) when is_list(Term) -> length(Term).
 
 test() ->
     IncdexA = open("/tmp/test_incdex", []),
-    
+
     %% Return 0 if something is not found...
     0 = lookup_nocreate("missing", IncdexA),
 
@@ -168,7 +168,7 @@ test() ->
     {2, IncdexA4} = lookup("found2", IncdexA3),
     {2, IncdexA5} = lookup("found2", IncdexA4, true),
     {2, IncdexA6} = lookup("found2", IncdexA5, false),
-    
+
     %% Missing should still be missing...
     0 = lookup_nocreate("missing", IncdexA6),
 
@@ -177,5 +177,3 @@ test() ->
     1 = lookup_nocreate("found1", IncdexB),
     2 = lookup_nocreate("found2", IncdexB),
     all_tests_passed.
-    
-    

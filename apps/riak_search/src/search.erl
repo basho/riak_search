@@ -205,23 +205,23 @@ index_file(AnalyzerPid, File, Index, Field) ->
 %%     Word = string:to_lower(lists:reverse(Acc)),
 %%     [Word|bytes_to_words(Rest, [])].
 
-random_indexer(Pool) ->
-    lists:nth(random:uniform(length(Pool)), Pool).
+%% random_indexer(Pool) ->
+%%     lists:nth(random:uniform(length(Pool)), Pool).
 
-indexer() ->
-    {ok, Pid} = qilr_analyzer_sup:new_analyzer(),
-    {ok, Client} = riak_search:local_client(),
-    do_index(Pid, Client).
+%% indexer() ->
+%%     {ok, Pid} = qilr_analyzer_sup:new_analyzer(),
+%%     {ok, Client} = riak_search:local_client(),
+%%     do_index(Pid, Client).
 
-do_index(AnalyzerPid, SearchClient) ->
-    receive
-        {index, Doc} ->
-            SearchClient:index_doc(AnalyzerPid, Doc),
-            do_index(AnalyzerPid, SearchClient);
-        stop ->
-            io:format("(~p) indexer complete~n", [self()]),
-            ok
-    end.
+%% do_index(AnalyzerPid, SearchClient) ->
+%%     receive
+%%         {index, Doc} ->
+%%             SearchClient:index_doc(AnalyzerPid, Doc),
+%%             do_index(AnalyzerPid, SearchClient);
+%%         stop ->
+%%             io:format("(~p) indexer complete~n", [self()]),
+%%             ok
+%%     end.
 
 %% NOTE: This was used during early testing against a demo
 %% backend. Keeping it around for a little while longer.
