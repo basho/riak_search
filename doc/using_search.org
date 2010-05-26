@@ -232,23 +232,27 @@
 
 ** How do I build Raptor for Mac OSX?
 
-   To run Raptor on Mac OS X, you must first build a 64-bit version of BDB.  
-   Run the following commands before building BDB:
+   To build Raptor on Mac OS X, perform the following steps:
 
-   : export CC=gcc
-   : export CFLAGS="-arch x86_64 -m64"
-   : export CXXFLAGS="-arch x86_64 -m64"
-   : export LDFLAGS="-arch x86_64 -m64"
+   1. Update your =$JAVA_HOME= environment variable to point to Java version 1.6:
+
+      : export JAVA_HOME=/System/Library/Frameworks/JavaVM.framework/Versions/1.6/Home
+
+   2. Build a 64-bit version of BDB. Run the following commands before building BDB:
+
+      : export CC=gcc
+      : export CFLAGS="-arch x86_64 -m64"
+      : export CXXFLAGS="-arch x86_64 -m64"
+      : export LDFLAGS="-arch x86_64 -m64"
        
-   If you have already installed it as 32-bit, type "make realclean" in the 
-   build\_unix directory and start the configuration and installation process 
-   again.
+      If you have already installed it as 32-bit, type "make realclean" in the 
+      build\_unix directory and start the configuration and installation process 
+      again.
 
-   Additionally, the JNI portion of BDB expects to find Java headers
-   in a certain place, so run the following command:
+   3. Additionally, the JNI portion of BDB expects to find Java headers
+      in a certain place, so run the following command:
 
-   : sudo cp /System/Library/Frameworks/JavaVM.framework/Versions/1.6.0/Headers/*.h /usr/include/.
-
+      : sudo cp /System/Library/Frameworks/JavaVM.framework/Versions/1.6.0/Headers/*.h /usr/include/.
 
 ** How do I change Raptor Logging?
 
@@ -289,4 +293,13 @@
       : -Xmx4096m
 
    6. Raptor has only been tested on Mac OS X and Linux.
+
+   7. If you see this, upgrade to Java 1.6:
+
+      : [javac] bad class file: ...snip.../db.jar(com/sleepycat/db/Environment.class)
+      : [javac] class file has wrong version 50.0, should be 49.0
+      : [javac] Please remove or make sure it appears in the correct subdirectory of the classpath.
+      : [javac]     private Environment env;
+      : [javac]             ^
+      : [javac] 1 error
         

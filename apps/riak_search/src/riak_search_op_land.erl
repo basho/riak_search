@@ -80,7 +80,7 @@ select_fun(land, {Term1, false, Iterator1}, {Term2, true, Iterator2}) when Term1
 select_fun(land, {Term1, false, Iterator1}, {Term2, true, Iterator2}) when Term1 > Term2 ->
     select_fun(land, {Term1, false, Iterator1}, Iterator2());
 
-select_fun(land, {eof, false}, {Term2, true, Iterator2}) ->
+select_fun(land, {eof, false}, {_Term2, true, _Iterator2}) ->
     {eof, false};
 
 select_fun(land, {Term1, false, Iterator1}, {eof, true}) ->

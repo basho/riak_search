@@ -23,7 +23,11 @@
 
     %% Indexing...
     index_doc/1, 
-    index_doc/2
+    index_doc/2,
+   
+    %% Other
+    optimize_query/1,
+    optimize_terms/2
 ]).
 
 
@@ -141,7 +145,6 @@ index_doc(AnalyzerPid, #riak_idx_doc{id=DocID, index=Index, fields=DocFields}=Do
         {ok, Terms} = qilr_analyzer:analyze(AnalyzerPid, FieldValue),
         PositionTree = get_term_positions(Terms),
         Terms1 = gb_trees:keys(PositionTree),
-        ?PRINT(Terms1),
         [begin
             Props = build_props(Term, PositionTree),
             index_term(Index, FieldName, Term, DocID, Props ++ FacetProps)
@@ -366,7 +369,7 @@ graph_as_query(G, Node, Acc) ->
     case length(Out) of
         0 ->
             case Node of
-                {multi_term, NTerms, TNode} ->
+                {multi_term, _NTerms, _TNode} ->
                     io:format("multi_term: ~p: ~p~n", [Node, Out]),
                     Node;
                 and_ops -> [];
@@ -456,8 +459,8 @@ optimize_junction(G, OrNode) ->
         end, digraph:out_neighbours(G, T))
     end, [], Terms),
     TCD = lists:sort(fun(A,B) ->
-        {Na, La} = A,
-        {Nb, Lb} = B,
+        {_Na, La} = A,
+        {_Nb, Lb} = B,
         length(La) > length(Lb)
     end, L),
     io:format("TCD = ~p~n", [TCD]),

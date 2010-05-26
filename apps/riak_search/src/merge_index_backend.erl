@@ -50,7 +50,7 @@ put(State, _BKey, ObjBin) ->
     Command = riak_object:get_value(Obj),
     handle_command(State, Command).
 
-handle_command(State, M = {index, Index, Field, Term, Value, Props}) ->
+handle_command(State, {index, Index, Field, Term, Value, Props}) ->
     TS = mi_utils:now_to_timestamp(erlang:now()),
     handle_command(State, {index, Index, Field, Term, 0, 0, Value, Props, TS});
 

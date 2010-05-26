@@ -42,10 +42,10 @@
 open(Filename, Options) ->
     %% Open the existing buffer file...
     filelib:ensure_dir(Filename),
-    %ReadBuffer = 1024 * 1024,
-    %WriteInterval = proplists:get_value(write_interval, Options, 2 * 1000),
-    %WriteBuffer = proplists:get_value(write_buffer, Options, 1024 * 1024),
-    {ok, FH} = file:open(Filename, [read, write, raw, binary]),
+    ReadBuffer = 1024 * 1024,
+    WriteInterval = proplists:get_value(write_interval, Options, 2 * 1000),
+    WriteBuffer = proplists:get_value(write_buffer, Options, 1024 * 1024),
+    {ok, FH} = file:open(Filename, [read, {read_ahead, ReadBuffer}, write, {delayed_write, WriteBuffer, WriteInterval}, raw, binary]),
 
     %% Read into an ets table...
     Table = ets:new(buffer, [ordered_set, public]),

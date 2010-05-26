@@ -104,7 +104,7 @@ validate_required_fields([Doc|Rest], Required) ->
 %% @private
 %% Validate required fields in a single document. 
 %% Return 'ok' or an {error, Error} if a field is missing.
-validate_required_fields_1(Doc, []) -> 
+validate_required_fields_1(_, []) -> 
     ok;
 validate_required_fields_1(Doc, [Field|Rest]) ->
     FieldName = Field#riak_solr_field.name,
