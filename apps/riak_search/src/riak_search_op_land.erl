@@ -141,7 +141,7 @@ select_fun(lor, {Term1, false, Iterator1}, {eof, false}) ->
     {Term1, false, fun() -> select_fun(lor, Iterator1(), {eof, false}) end};
 
 
-%% Handle 'OR' cases, notflags = [false, true]. 
+%% Handle 'OR' cases, notflags = [false, true].
 %% Basically, not flags are ignored in an OR.
 
 select_fun(lor, {Term1, false, Iterator1}, {_, true, _}) ->
@@ -168,4 +168,4 @@ select_fun(lor, {eof, _}, {eof, _}) ->
 %% Error on any unhandled cases...
 select_fun(Type, Iterator1, Iterator2) ->
     ?PRINT({select_fun, unhandled_case, Type, Iterator1, Iterator2}),
-    throw({select_fun, unhandled_case, Type, Iterator1, Iterator2}).    
+    throw({select_fun, unhandled_case, Type, Iterator1, Iterator2}).
