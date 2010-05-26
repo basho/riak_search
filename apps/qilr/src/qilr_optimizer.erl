@@ -14,7 +14,9 @@ optimize(AnalyzerPid, {ok, Query0}, Opts) when is_list(Query0) ->
             Query2 = consolidate_exprs(Query1, []),
             Query3 = default_bool(Query2, Opts),
             {ok, Query3}
-    end.
+    end;
+optimize(_, Error, _) ->
+    throw(Error).
 
 %% Internal functions
 consolidate_exprs([], Acc) ->
@@ -120,7 +122,7 @@ analyze_term_text(AnalyzerPid, Text0) ->
                false ->
                    Text0
            end,
-    case qilr_analyzer:analyze(AnalyzerPid, list_to_binary(Text)) of
+    case qilr_analyzer:analyze(AnalyzerPid, Text) of
         {ok, []} ->
             none;
         {ok, [Token]} ->

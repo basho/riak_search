@@ -36,7 +36,7 @@ start(_StartType, _StartArgs) ->
             error_logger:info_msg("No search buckets defined");
                 {ok, Buckets} ->
                     F = fun(Bucket) ->
-                                error_logger:info_msg("Configuring search bucket ~p~n", [Bucket]),
+                                error_logger:info_msg("Configuring search index ~p~n", [Bucket]),
                                 ok = riak_core_bucket:set_bucket(list_to_binary(Bucket), ?SEARCH_BUCKET_PROPS)
                         end,
                     [F(Bucket) || Bucket <- Buckets]

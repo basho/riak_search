@@ -5,10 +5,10 @@
   {modules,      [raptor_pb,
                   raptor_conn,
                   raptor_conn_sup,
+                  raptor_monitor,
                   raptor_sup,
                   raptor_util,
                   raptor_app]},
   {registered,   [raptor_conn_sup]},
   {applications, [kernel, stdlib, sasl]},
-  {env, [{raptor_port, 5099}]},
   {mod, {raptor_app, []}}]}.

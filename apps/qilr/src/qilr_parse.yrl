@@ -51,6 +51,12 @@ group_expr -> lparen group_expr rparen:
 field_group -> field_prefix group_expr:
     make_field_term('$1', '$2').
 
+bool_expr -> lnot bool_expr:
+    {lnot, ['$2']}.
+bool_expr -> land bool_expr:
+    {land, ['$2']}.
+bool_expr -> lor bool_expr:
+    {lor, ['$2']}.
 bool_expr -> lnot query_term:
     {lnot, '$2'}.
 bool_expr -> land query_term:
@@ -71,7 +77,7 @@ query_term -> reqd_omit_prefix plain_term:
 query_term -> field_prefix plain_term:
     make_field_term('$1', '$2').
 query_term -> reqd_omit_prefix field_prefix plain_term:
-    add_attribute(make_field_term('$1', '$2'), '$1').
+    add_attribute(make_field_term('$2', '$3'), '$1').
 
 query_term -> plain_term tilde_suffix:
     make_term('$1', '$2').
@@ -125,7 +131,7 @@ boost_suffix -> caret term:
 
 Erlang code.
 -export([string/2, string/3]).
-string(AnalyzerPid, Query) ->
+string(AnalyzerPid, Query) when is_pid(AnalyzerPid) ->
     string(AnalyzerPid, Query, 'or').
 string(AnalyzerPid, Query, Bool0) when Bool0 =:= 'and' orelse
                                        Bool0 =:= 'or' ->
@@ -213,7 +219,9 @@ make_suffix({term, Line, Term}) ->
 add_attribute({term, Term, Attrs}, Attr) ->
     {term, Term, [Attr|Attrs]};
 add_attribute({field, Field, Term, Attrs}, Attr) ->
-    {field, Field, Term, [Attr|Attrs]}.
+    {field, Field, Term, [Attr|Attrs]};
+add_attribute({field, Field, Attrs}, Attr) ->
+    {field, Field, [Attr|Attrs]}.
 
 make_boost({term, Line, Term}) ->
     try

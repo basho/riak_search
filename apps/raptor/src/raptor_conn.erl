@@ -93,7 +93,7 @@ start_link() ->
     gen_server:start_link(?MODULE, [], []).
 
 init([]) ->
-    case raptor_util:get_env(raptor, raptor_port, undefined) of
+    case raptor_util:get_env(raptor, backend_port, undefined) of
         P when not(is_integer(P)) ->
             {stop, {error, bad_raptor_port, P}};
         Port ->
