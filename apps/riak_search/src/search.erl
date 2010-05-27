@@ -17,28 +17,49 @@ search(Q) ->
 
 search(Index, Q) ->
     {ok, Client} = riak_search:local_client(),
-    Client:search(Index, Q).
+    case Client:parse_query(Q) of
+        {ok, Ops} ->
+            Client:search(Index, Ops, 0, 10000, 60000);
+        {error, Error} ->
+            M = "Error running query '~s': ~p~n",
+            error_logger:error_msg(M, [Q, Error]),
+            {error, Error}
+    end.
 
 search_doc(Q) ->
     search_doc(?DEFAULT_INDEX, Q).
 
 search_doc(Index, Q) ->
     {ok, Client} = riak_search:local_client(),
-    Client:search_doc(Index, Q).
+    case Client:parse_query(Q) of
+        {ok, Ops} ->
+            Client:search_doc(Index, Ops, 0, 10000, 60000);
+        {error, Error} ->
+            M = "Error running query '~s': ~p~n",
+            error_logger:error_msg(M, [Q, Error]),
+            {error, Error}
+    end.
 
 explain(Q) ->
     explain(?DEFAULT_INDEX, Q).
 
 explain(Index, Q) ->
     {ok, Client} = riak_search:local_client(),
-    Client:explain(Index, Q).
+    case Client:parse_query(Q) of
+        {ok, Ops} ->
+            Client:explain(Index, Ops);
+        {error, Error} ->
+            M = "Error running query '~s': ~p~n",
+            error_logger:error_msg(M, [Q, Error]),
+            {error, Error}
+    end.
 
 graph(Q) ->
     graph(?DEFAULT_INDEX, Q).
 
 graph(Index, Q) ->
     {ok, Client} = riak_search:local_client(),
-    Client:query_as_graph(Client:explain(Index, Q)),
+    Client:query_as_graph(explain(Index, Q)),
     ok.
 
 %% Full text index the specified file or directory, which is expected
@@ -53,7 +74,12 @@ index_doc(IndexOrSchema, Directory) ->
     {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
     Schema = to_schema(IndexOrSchema),
     F = fun(_BaseName, Body) ->
-        Client:index_doc(Schema, Body)
+        try
+            {ok, Command, Docs} = Client:parse_solr_xml(Schema, Body),
+            Client:run_solr_command(Command, Docs)
+        catch _ : Error ->
+            error_logger:error_msg("Could not parse docs '~s'.~n~p~n", [Schema:name(), Error])
+        end
     end,
     index_recursive(F, Directory),
     qilr_analyzer:close(AnalyzerPid),
@@ -74,7 +100,8 @@ index_dir(IndexOrSchema, Directory) ->
         Fields = [{Field, binary_to_list(Body)}],
         IdxDoc = riak_indexed_doc:new(BaseName, Index),
         IdxDoc2 = riak_indexed_doc:set_fields(Fields, IdxDoc),
-        Client:index_idx_doc(AnalyzerPid, IdxDoc2)
+        Doc = Client:parse_idx_doc(AnalyzerPid, IdxDoc2),
+        Client:run_solr_command('add', [{IdxDoc2, Doc}])
     end,
     index_recursive(F, Directory),
     qilr_analyzer:close(AnalyzerPid),

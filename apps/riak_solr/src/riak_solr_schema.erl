@@ -3,29 +3,31 @@
 -include_lib("riak_solr/include/riak_solr.hrl").
 
 -export([
-         %% Properties...
-         name/0, 
-         version/0, 
-         fields_and_facets/0,
-         facets/0,
-         fields/0, 
-         default_field/0, 
-         default_op/0, 
-
-         %% Field properties...
-         field_name/1,
-         field_type/1,
-         is_field_required/1,
-         is_field_facet/1,
-         
-         %% Field lookup
-         find_field_or_facet/1,
-         find_field/1,
-         find_facet/1,
-         
-         %% Validation
-         validate_commands/1
-        ]).
+    %% Properties...
+    name/0, 
+    version/0, 
+    fields_and_facets/0,
+    facets/0,
+    fields/0, 
+    default_field/0, 
+    set_default_field/1,
+    default_op/0, 
+    set_default_op/1,
+    
+    %% Field properties...
+    field_name/1,
+    field_type/1,
+    is_field_required/1,
+    is_field_facet/1,
+    
+    %% Field lookup
+    find_field_or_facet/1,
+    find_field/1,
+    find_facet/1,
+    
+    %% Validation
+    validate_commands/1
+]).
 
 name() ->
     Name.
@@ -45,8 +47,14 @@ facets() ->
 default_field() ->
     DefaultField.
 
+set_default_field(NewDefaultField) ->
+    ?MODULE:new(Name, Version, NewDefaultField, FieldsAndFacets, DefaultOp).
+
 default_op() ->
     DefaultOp.
+
+set_default_op(NewDefaultOp) ->
+    ?MODULE:new(Name, Version, DefaultField, FieldsAndFacets, NewDefaultOp).
 
 field_name(Field) ->
     Field#riak_solr_field.name.

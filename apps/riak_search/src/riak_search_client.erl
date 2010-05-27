@@ -2,15 +2,10 @@
 
 -include("riak_search.hrl").
 
--define(DEFAULT_RESULT_SIZE, 10).
--define(DEFAULT_TIMEOUT, 60000).
-
 -export([
     %% Searching...
-    search/2, search/3,
-
-    %% Doc Searching...
-    search_doc/2,
+    parse_query/1,
+    search/5,
     search_doc/5,
 
     %% Stream Searching...
@@ -22,114 +17,80 @@
     query_as_graph/1,
 
     %% Indexing...
-    index_doc/2,
-    index_doc/3,
-    index_idx_doc/1, 
-    index_idx_doc/2,
-   
-    %% Other
-    optimize_query/1,
-    optimize_terms/2
+    parse_solr_xml/2, 
+    parse_solr_xml/3,
+    parse_idx_doc/2,
+    run_solr_command/2,
+    index_term/5
+]).
+
+-import(riak_search_utils, [
+    from_binary/1, 
+    to_binary/1
 ]).
 
 
-%% Run the Query, return the list of keys.
-search(IndexOrSchema, Query) ->
-    search(IndexOrSchema, Query, ?DEFAULT_TIMEOUT).
-
+%% Parse the provided query. Returns either {ok, QueryOps} or {error,
+%% Error}.
+parse_query(Query) ->
+    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
+    Result = qilr_parse:string(AnalyzerPid, Query),
+    qilr_analyzer:close(AnalyzerPid),
+    Result.
 
 %% Run the Query, return the list of keys.
 %% Timeout is in milliseconds. 
-%% Return the list of keys.
-search(IndexOrSchema, Query, Timeout) ->
-    SearchRef = stream_search(IndexOrSchema, Query),
+%% Return the {Length, Results}.
+search(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
+    %% Execute the search and collect the results.
+    SearchRef = stream_search(IndexOrSchema, QueryOps),
     Results = collect_results(SearchRef, Timeout, []),
-    [Key || {Key, _Props} <- Results].
-
-
-%% Run the Query, results are fetchable using collect_result/2.
-%% Returns SearchRef.
-stream_search(IndexOrSchema, Query) ->
-    %% Get the schema...
-    Schema = to_schema(IndexOrSchema),
-
-    %% Parse the query...
-    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
-    ParseResult = qilr_parse:string(AnalyzerPid, Query),
-    qilr_analyzer:close(AnalyzerPid),
-
-    %% Either execute or throw an error.
-    case ParseResult of
-        {ok, AST} ->
-            execute(AST, Schema);
-        Error ->
-            throw(Error)
-    end.
-
-
-%% Search for Index, return {Length, [Docs]}.
-search_doc(IndexOrSchema, Query) ->
-    search_doc(IndexOrSchema, Query, 0, ?DEFAULT_RESULT_SIZE, ?DEFAULT_TIMEOUT).
-
-
-%% Search for Index, return {Length, [Docs]}.
-%% Limit by QueryStart and QueryRows, Timeout is in milliseconds.
-search_doc(IndexOrSchema, Query, QueryStart, QueryRows, Timeout) ->
-    %% Get the Schema and Index...
-    Schema = to_schema(IndexOrSchema),
-    Index = Schema:name(),
-    
-    %% Run the search...
-    Results = search(Schema, Query, Timeout),
-    Length = length(Results),
 
     %% Dedup, and handle start and max results. Return matching
     %% documents.
-    Results1 = lists:usort(Results),
-    Results2 = truncate_list(QueryStart, QueryRows, Results1),
-    {Length, [get_document(Index, DocId) || DocId <- Results2]}.
+    Results1 = truncate_list(QueryStart, QueryRows, Results),
+    Length = length(Results),
+    {Length, Results1}.
 
+%% Search an Index. Limit by QueryStart and QueryRows, Timeout is in
+%% milliseconds. Return {Length, [Docs]}.
+search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
+    %% Run the search...
+    {Length, Results} = search(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout),
 
-get_document(Index, DocId) ->
-    DocBucket = riak_search_utils:from_binary(Index) ++ "_docs",
-    {ok, Obj} = RiakClient:get(riak_search_utils:to_binary(DocBucket),
-                               riak_search_utils:to_binary(DocId), 2),
-    riak_object:get_value(Obj).
+    %% Convert the doc IDs to actual documents.
+    Schema = to_schema(IndexOrSchema),
+    Index = Schema:name(),
+    DocBucket = to_binary(from_binary(Index) ++ "_docs"),
 
+    %% Fetch the documents in parallel.
+    F = fun({DocID, _}) ->
+        {ok, Obj} = RiakClient:get(DocBucket, to_binary(DocID), 2),
+        riak_object:get_value(Obj)
+    end,
+    Documents = plists:map(F, Results, {processes, 4}),
+    {Length, Documents}.
 
-%% Parse the Query, run it through preplanning, return the execution
-%% plan.
-explain(IndexOrSchema, Query) ->
+%% Run the query through preplanning, return the result.
+explain(IndexOrSchema, QueryOps) ->
     %% Get schema information...
     Schema = to_schema(IndexOrSchema),
     DefaultIndex = Schema:name(),
     DefaultField = Schema:default_field(),
     Facets = [{DefaultIndex, Schema:field_name(X)} || X <- Schema:facets()],
+    
+    %% Run the query through preplanning.
+    riak_search_preplan:preplan(QueryOps, DefaultIndex, DefaultField, Facets).
 
+%% Parse a solr XML formatted file.
+parse_solr_xml(IndexOrSchema, Body) when is_binary(Body) ->
     {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
-    ParseResult = qilr_parse:string(AnalyzerPid, Query),
-    ?PRINT(ParseResult),
+    Result = parse_solr_xml(AnalyzerPid, IndexOrSchema, Body),
     qilr_analyzer:close(AnalyzerPid),
-    case ParseResult of 
-        {ok, Ops} ->
-            ?PRINT(Ops),
-            ?PRINT(DefaultIndex),
-            ?PRINT(DefaultField),
-            riak_search_preplan:preplan(Ops, DefaultIndex, DefaultField, Facets);
-        Error ->
-            throw(Error)
-    end.
-
-
-%% Index a solr XML formatted file.
-index_doc(IndexOrSchema, Body) when is_binary(Body) ->
-    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
-    index_doc(AnalyzerPid, IndexOrSchema, Body),
-    qilr_analyzer:close(AnalyzerPid),
-    ok.
-
+    Result.
+    
 %% Index a solr XML formatted file using the provided analyzer pid.
-index_doc(AnalyzerPid, IndexOrSchema, Body) ->
+parse_solr_xml(AnalyzerPid, IndexOrSchema, Body) ->
     %% Get the schema...
     Schema = to_schema(IndexOrSchema),
     Index = Schema:name(),
@@ -137,15 +98,16 @@ index_doc(AnalyzerPid, IndexOrSchema, Body) ->
     %% Parse the xml...
     Commands = riak_solr_xml_xform:xform(Body),
     ok = Schema:validate_commands(Commands),
+    {cmd, SolrCmd} = lists:keyfind(cmd, 1, Commands),
 
     %% Index the docs...
-    F = fun(DictDoc) ->
-        IdxDoc = to_riak_idx_doc(Index, DictDoc),
-        index_idx_doc(AnalyzerPid, IdxDoc)
+    F = fun(SolrDoc) ->
+        IdxDoc = to_riak_idx_doc(Index, SolrDoc),
+        {IdxDoc, parse_idx_doc(AnalyzerPid, IdxDoc)}
     end,
-    {docs, Docs} = lists:keyfind(docs, 1, Commands),
-    [F(X) || X <- Docs],
-    ok.
+    {docs, SolrDocs} = lists:keyfind(docs, 1, Commands),
+    ParsedDocs = [F(X) || X <- SolrDocs],
+    {ok, SolrCmd, ParsedDocs}.
 
 %% @private
 to_riak_idx_doc(Index, Doc0) ->
@@ -154,15 +116,8 @@ to_riak_idx_doc(Index, Doc0) ->
     Fields = dict:to_list(dict:erase(Id, Doc)),
     #riak_idx_doc{id=Id, index=Index, fields=Fields, props=[]}.
 
-%% Index a #riak_idx_doc{} record.
-index_idx_doc(IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
-    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
-    index_idx_doc(AnalyzerPid, IdxDoc),
-    qilr_analyzer:close(AnalyzerPid),
-    ok.
-
-%% Index a #riak_idx_doc{} record using the provided analyzer pid.
-index_idx_doc(AnalyzerPid, IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
+%% Parse a #riak_idx_doc{} record using the provided analyzer pid.
+parse_idx_doc(AnalyzerPid, IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
     %% Extract fields, get schema...
     #riak_idx_doc{id=DocID, index=Index, fields=DocFields}=IdxDoc,
     Schema = to_schema(Index),
@@ -178,30 +133,23 @@ index_idx_doc(AnalyzerPid, IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
         end
     end,
     FacetProps = lists:foldl(F1, [], Schema:facets()),
-    ?PRINT(FacetProps),
 
     %% For each Field = {FieldName, FieldValue}, split the FieldValue
     %% into terms. Build a list of positions for those terms, then get
     %% a de-duped list of the terms. For each, index the FieldName /
     %% Term / DocID / Props.
-    F2 = fun({FieldName, FieldValue}) ->
+    F2 = fun({FieldName, FieldValue}, Acc2) ->
         {ok, Terms} = qilr_analyzer:analyze(AnalyzerPid, FieldValue),
         PositionTree = get_term_positions(Terms),
         Terms1 = gb_trees:keys(PositionTree),
-        [begin
+        F3 = fun(Term, Acc3) ->
             Props = build_props(Term, PositionTree),
-            index_term(Index, FieldName, Term, DocID, Props ++ FacetProps)
-        end || Term <- Terms1]
+            [{Index, FieldName, Term, DocID, Props ++ FacetProps}|Acc3]
+        end,
+        lists:foldl(F3, Acc2, Terms1)
     end,
     DocFields1 = DocFields -- FacetProps,
-    [F2(X) || X <- DocFields1],
-    
-    %% Now, write the document itself.
-    DocBucket = Index ++ "_docs",
-    DocObj = riak_object:new(riak_search_utils:to_binary(DocBucket),
-                             riak_search_utils:to_binary(DocID),
-                             IdxDoc),
-    RiakClient:put(DocObj, 1).
+    lists:foldl(F2, [], DocFields1).
 
 %% @private Given a list of tokens, build a gb_tree mapping words to a
 %% list of word positions.
@@ -217,6 +165,7 @@ get_term_positions(Terms) ->
     {_, Tree} = lists:foldl(F, {1, gb_trees:empty()}, Terms),
     Tree.
 
+%% @private
 %% Given a term and a list of positions, generate a list of
 %% properties.
 build_props(Term, PositionTree) ->
@@ -231,14 +180,36 @@ build_props(Term, PositionTree) ->
     end.
 
 
-%% Internal functions
-index_term(Index, Field, Term, Value, Props) ->
-    Payload = {index, Index, Field, Term, Value, Props},
-    index_internal(Index, Field, Term, Payload).
+%% Run the provided solr command on the provided docs...
+run_solr_command(Command, Docs) when Command == 'add' ->
+    %% Store the terms and the document...
+    F = fun({IdxDoc, Terms}) ->
+        %% Store the terms...
+        F1 = fun(X) ->
+            {Index, Field, Term, DocID, Props} = X,
+            index_term(Index, Field, Term, DocID, Props)
+        end,
+        plists:map(F1, Terms, {processes, 4}),
+        
+        %% Store the document...
+        #riak_idx_doc { id=DocID, index=DocIndex } = IdxDoc,
+        DocBucket = riak_search_utils:to_binary(DocIndex ++ "_docs"),
+        DocKey = riak_search_utils:to_binary(DocID),
+        DocObj = riak_object:new(DocBucket, DocKey, IdxDoc),
+        ok = RiakClient:put(DocObj, 2)
+    end,
+    [F(X) || X <- Docs];
+run_solr_command(Command, _Docs) ->
+    error_logger:error_msg("Unknown solr command: ~p~n", [Command]),
+    throw({unknown_solr_command, Command}).
 
-index_internal(Index, Field, Term, Payload) ->
+
+%% Index the specified term.
+index_term(Index, Field, Term, Value, Props) ->
     IndexBin = riak_search_utils:to_binary(Index),
     FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
+    Payload = {index, Index, Field, Term, Value, Props},
+
     %% Run the operation...
     Obj = riak_object:new(IndexBin, FieldTermBin, Payload),
     RiakClient:put(Obj, 0).
@@ -260,7 +231,7 @@ truncate_list(QueryStart, QueryRows, List) ->
     List2.
 
 
-execute(OpList, IndexOrSchema) ->
+stream_search(IndexOrSchema, OpList) ->
     %% Get schema information...
     Schema = to_schema(IndexOrSchema),
     DefaultIndex = Schema:name(),
@@ -283,19 +254,10 @@ execute(OpList, IndexOrSchema) ->
         id=Ref, termcount=NumTerms, 
         inputcount=NumInputs, querynorm=QueryNorm }.
 
-collect_result(#riak_search_ref{inputcount=0}=SearchRef, _Timeout) ->
-    {done, SearchRef};
-collect_result(#riak_search_ref{id=Id, inputcount=InputCount}=SearchRef, Timeout) ->
-    receive
-        {results, Results, Id} ->
-            {Results, SearchRef};
-        {disconnect, Id} ->
-            {[], SearchRef#riak_search_ref{inputcount=InputCount - 1}}
-        after Timeout ->
-             {error, timeout}
-    end.
-
-%% Gather results from all connections
+%% Gather all results from the provided SearchRef, return the list of
+%% results sorted in descending order by score.
+collect_results(SearchRef, Timeout) ->
+    collect_results(SearchRef, Timeout, []).
 collect_results(SearchRef, Timeout, Acc) ->
     M = collect_result(SearchRef, Timeout),
     case M of
@@ -307,6 +269,21 @@ collect_results(SearchRef, Timeout, Acc) ->
             collect_results(Ref, Timeout, Acc ++ Results);
         Error ->
             Error
+    end.
+
+%% Collect one or more individual results in as non-blocking of a
+%% fashion as possible. Returns {Results, SearchRef}, {done,
+%% SearchRef}, or {error, timeout}.
+collect_result(#riak_search_ref{inputcount=0}=SearchRef, _Timeout) ->
+    {done, SearchRef};
+collect_result(#riak_search_ref{id=Id, inputcount=InputCount}=SearchRef, Timeout) ->
+    receive
+        {results, Results, Id} ->
+            {Results, SearchRef};
+        {disconnect, Id} ->
+            {[], SearchRef#riak_search_ref{inputcount=InputCount - 1}}
+        after Timeout ->
+             {error, timeout}
     end.
 
 to_schema(IndexOrSchema) ->

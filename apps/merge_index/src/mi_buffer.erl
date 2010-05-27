@@ -39,7 +39,7 @@
 %%% sorted iterator.
 
 %% Open a new buffer. Returns a buffer structure.
-open(Filename, _Options) ->
+open(Filename, Options) ->
     %% Open the existing buffer file...
     filelib:ensure_dir(Filename),
     ReadBuffer = 1024 * 1024,

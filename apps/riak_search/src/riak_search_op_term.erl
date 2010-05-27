@@ -17,7 +17,7 @@ start_loop(Op, OutputPid, OutputRef, QueryProps) ->
     %% Get the scoring vars...
     ScoringVars = #scoring_vars {
         term_boost = proplists:get_value(boost, Op#term.options, 1),
-        doc_frequency = hd([X || {node_weight, _, X} <- Op#term.options]),
+        doc_frequency = hd([X || {node_weight, _, X} <- Op#term.options] ++ [0]),
         num_docs = proplists:get_value(num_docs, QueryProps)
     },
 
