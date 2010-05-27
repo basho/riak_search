@@ -24,6 +24,7 @@
              riak_search_op_proximity,
              riak_search_op_node,
              riak_search_phase,
+             riak_search_shell,
              riak_search_test,
              riak_search_utils,
              merge_index_backend,

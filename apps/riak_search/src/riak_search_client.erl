@@ -186,7 +186,6 @@ collect_result(#riak_search_ref{id=Id, inputcount=InputCount}=SearchRef, Timeout
 %% Gather results from all connections
 collect_results(SearchRef, Timeout, Acc) ->
     M = collect_result(SearchRef, Timeout),
-    io:format("collect_result: ~p~n", [M]),
     case M of
         {done, _} ->
             sort_by_score(SearchRef, Acc);

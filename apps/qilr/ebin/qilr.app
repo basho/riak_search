@@ -7,7 +7,7 @@
                   qilr_scan,
                   qilr_parse,
                   qilr_repl,
-                  qilr_optimizer,
+                  qilr_postprocess,
                   qilr_analyzer,
                   qilr_analyzer_sup,
                   qilr_analyzer_monitor,

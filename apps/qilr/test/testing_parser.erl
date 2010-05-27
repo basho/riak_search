@@ -113,17 +113,46 @@ grouping_test_() ->
                                                     {term,"apache",[]}]}]},
                                       {term,"website",[]}]}]},
                           ?PARSE(AnalyzerPid, "(jakarta OR apache) AND website")),
-             ?assertMatch({ok, [{field, "title",
-                                 {group, [{term, "python", [required]},
-                                          {term, "cookbook", [{proximity, 2}, required]}]}}]},
+             ?assertMatch({ok,[{field,"title",
+                                {group,[{lor,[{term,"python",[required]},
+                                              {term,"cookbook",[{proximity,2},required]}]}]}}]},
                           ?PARSE(AnalyzerPid, "title:(+python +cookbook~2)")),
-             ?assertMatch({ok, [{field, "color", {group, [{term, "red", []},
-                                                          {term, "blue", []}]}}]},
+             ?assertMatch({ok, [{field, "color", {group, [{lor, [{term, "red", []},
+                                                                 {term, "blue", []}]}]}}]},
                           ?PARSE(AnalyzerPid, "color:(red blue)")),
              ?assertMatch({ok, [{lor, [{group, [{lor, [{term, "fuzzy", []},
                                                        {term, "wuzzy", []}]}]},
                                        {term, "bear", []}]}]},
-                          ?PARSE(AnalyzerPid, "(fuzzy wuzzy) bear")) end].
+                          ?PARSE(AnalyzerPid, "(fuzzy wuzzy) bear")),
+             ?assertMatch({ok, [{land, [{term, "duck", []},
+                                        {group, [{lnot, [{term, "goose", []}]}]}]}]},
+                          ?PARSE(AnalyzerPid, "duck AND (NOT goose)")),
+             ?assertMatch({ok, [{lor, [{group, [{lnot, [{term, "goose", []}]}]},
+                                       {term, "duck", []}]}]},
+                          ?PARSE(AnalyzerPid, "(NOT goose) OR duck")),
+             ?assertMatch({ok, [{lor, [{group, [{lnot, [{term, "goose", []}]}]},
+                                       {term, "duck", []}]}]},
+                          ?PARSE(AnalyzerPid, "(NOT goose) duck")),
+             ?assertMatch({ok, [{land, [{term, "farm", []},
+                                        {group, [{lnot, [{field, "animal", "sheep", []}]}]}]}]},
+                          ?PARSE(AnalyzerPid, "farm AND (NOT animal:sheep)")),
+             ?assertMatch({ok, [{lor, [{term, "farm", []},
+                                        {group, [{lnot, [{field, "animal", "sheep", []}]}]}]}]},
+                          ?PARSE(AnalyzerPid, "farm OR (NOT animal:sheep)")) end].
+
+req_prohib_test_() ->
+    [fun() ->
+             {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
+             ?assertMatch({ok, [{field, "product", "milk", [required]}]},
+                          ?PARSE(AnalyzerPid, "+product:milk")),
+             ?assertMatch({ok, [{field, "product", "eggs", [prohibited]}]},
+                          ?PARSE(AnalyzerPid, "-product:eggs")),
+             ?assertMatch({ok, [{field, "product", {group, [{land, [{term, "milk", [required]},
+                                                                    {term, "whole", [prohibited]}]}]}}]},
+                          ?PARSE(AnalyzerPid, "product:(+milk AND -whole)")),
+             ?assertMatch({ok, [{field, "product", {group, [{lor, [{term, "milk", [required]},
+                                                                   {term, "whole", [prohibited]}]}]}}]},
+                          ?PARSE(AnalyzerPid, "product:(+milk -whole)")) end].
 
 field_range_test_() ->
     [fun() ->

@@ -46,6 +46,8 @@ group_body -> bool_expr:
     '$1'.
 group_body -> query_term:
     '$1'.
+group_body -> lnot query_term:
+    [{lnot, ['$2']}].
 group_body -> group_body bool_expr:
     [add_operand('$2', '$1')].
 group_body -> group_body query_term:
@@ -195,7 +197,7 @@ string(AnalyzerPid, Query, Bool0) when Bool0 =:= 'and' orelse
                    lor
            end,
     {ok, Tokens, _} = qilr_scan:string(Query),
-    qilr_optimizer:optimize(AnalyzerPid, parse(Tokens), [{default_bool, Bool}]).
+    qilr_postprocess:optimize(AnalyzerPid, parse(Tokens), [{default_bool, Bool}]).
 
 %% Internal functions
 add_node(Parent, Child) when is_list(Parent) ->

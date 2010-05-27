@@ -1,4 +1,4 @@
--module(qilr_optimizer).
+-module(qilr_postprocess).
 
 -export([optimize/3]).
 
@@ -109,9 +109,14 @@ default_bool([{Bool, SubTerms}|T], Opts) when Bool =:= lnot;
                                               Bool =:= lor;
                                               Bool =:= land ->
     [{Bool, default_bool_children(SubTerms, Opts)}|default_bool(T, Opts)];
+default_bool([{field, FieldName, Terms}|T], Opts) ->
+    [{field, FieldName, default_bool_children(Terms, Opts)}|
+     default_bool(T, Opts)];
 default_bool(Query, _Opts) ->
     Query.
 
+default_bool_children({group, SubTerms}, Opts) ->
+    {group, default_bool(SubTerms, Opts)};
 default_bool_children([{group, SubTerms}|T], Opts) ->
     [{group, default_bool(SubTerms, Opts)}|default_bool_children(T, Opts)];
 default_bool_children([H|T], Opts) ->
