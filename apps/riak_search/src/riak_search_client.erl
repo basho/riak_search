@@ -9,7 +9,7 @@
     search_doc/5,
 
     %% Stream Searching...
-    stream_search/2, 
+    stream_search/2,
     collect_result/2,
 
     %% Explain...
@@ -17,7 +17,7 @@
     query_as_graph/1,
 
     %% Indexing...
-    parse_solr_xml/2, 
+    parse_solr_xml/2,
     parse_solr_xml/3,
     parse_idx_doc/2,
     run_solr_command/2,
@@ -25,7 +25,7 @@
 ]).
 
 -import(riak_search_utils, [
-    from_binary/1, 
+    from_binary/1,
     to_binary/1
 ]).
 
@@ -39,7 +39,7 @@ parse_query(Query) ->
     Result.
 
 %% Run the Query, return the list of keys.
-%% Timeout is in milliseconds. 
+%% Timeout is in milliseconds.
 %% Return the {Length, Results}.
 search(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
     %% Execute the search and collect the results.
@@ -78,7 +78,7 @@ explain(IndexOrSchema, QueryOps) ->
     DefaultIndex = Schema:name(),
     DefaultField = Schema:default_field(),
     Facets = [{DefaultIndex, Schema:field_name(X)} || X <- Schema:facets()],
-    
+
     %% Run the query through preplanning.
     riak_search_preplan:preplan(QueryOps, DefaultIndex, DefaultField, Facets).
 
@@ -88,13 +88,13 @@ parse_solr_xml(IndexOrSchema, Body) when is_binary(Body) ->
     Result = parse_solr_xml(AnalyzerPid, IndexOrSchema, Body),
     qilr_analyzer:close(AnalyzerPid),
     Result.
-    
+
 %% Index a solr XML formatted file using the provided analyzer pid.
 parse_solr_xml(AnalyzerPid, IndexOrSchema, Body) ->
     %% Get the schema...
     Schema = to_schema(IndexOrSchema),
     Index = Schema:name(),
-    
+
     %% Parse the xml...
     Commands = riak_solr_xml_xform:xform(Body),
     ok = Schema:validate_commands(Commands),
@@ -121,7 +121,7 @@ parse_idx_doc(AnalyzerPid, IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
     %% Extract fields, get schema...
     #riak_idx_doc{id=DocID, index=Index, fields=DocFields}=IdxDoc,
     Schema = to_schema(Index),
-    
+
     %% Put together a list of Facet properties...
     F1 = fun(Facet, Acc) ->
         FName = Schema:field_name(Facet),
@@ -160,7 +160,7 @@ get_term_positions(Terms) ->
                 {Pos + 1, gb_trees:update(Term, [Pos|Positions], Acc)};
             none ->
                 {Pos + 1, gb_trees:insert(Term, [Pos], Acc)}
-        end 
+        end
     end,
     {_, Tree} = lists:foldl(F, {1, gb_trees:empty()}, Terms),
     Tree.
@@ -190,7 +190,7 @@ run_solr_command(Command, Docs) when Command == 'add' ->
             index_term(Index, Field, Term, DocID, Props)
         end,
         plists:map(F1, Terms, {processes, 4}),
-        
+
         %% Store the document...
         #riak_idx_doc { id=DocID, index=DocIndex } = IdxDoc,
         DocBucket = riak_search_utils:to_binary(DocIndex ++ "_docs"),
@@ -237,7 +237,7 @@ stream_search(IndexOrSchema, OpList) ->
     DefaultIndex = Schema:name(),
     DefaultField = Schema:default_field(),
     Facets = [{DefaultIndex, Schema:field_name(X)} || X <- Schema:facets()],
-    
+
     %% Normalize, Optimize, and Expand Buckets.
     OpList1 = riak_search_preplan:preplan(OpList, DefaultIndex, DefaultField, Facets),
 
@@ -248,16 +248,14 @@ stream_search(IndexOrSchema, OpList) ->
     Ref = make_ref(),
     QueryProps = [{num_docs, NumDocs}],
 
-    %% Start the query process ... 
+    %% Start the query process ...
     {ok, NumInputs} = riak_search_op:chain_op(OpList1, self(), Ref, QueryProps),
-    #riak_search_ref { 
-        id=Ref, termcount=NumTerms, 
+    #riak_search_ref {
+        id=Ref, termcount=NumTerms,
         inputcount=NumInputs, querynorm=QueryNorm }.
 
 %% Gather all results from the provided SearchRef, return the list of
 %% results sorted in descending order by score.
-collect_results(SearchRef, Timeout) ->
-    collect_results(SearchRef, Timeout, []).
 collect_results(SearchRef, Timeout, Acc) ->
     M = collect_result(SearchRef, Timeout),
     case M of
@@ -286,18 +284,13 @@ collect_result(#riak_search_ref{id=Id, inputcount=InputCount}=SearchRef, Timeout
              {error, timeout}
     end.
 
-%% Gather results from all connections
-collect_results(SearchRef, Timeout, Acc) ->
-    M = collect_result(SearchRef, Timeout),
-    case M of
-        {done, _} ->
-            sort_by_score(SearchRef, Acc);
-        {[], Ref} ->
-            collect_results(Ref, Timeout, Acc);
-        {Results, Ref} ->
-            collect_results(Ref, Timeout, Acc ++ Results);
-        Error ->
-            Error
+to_schema(IndexOrSchema) ->
+    case is_tuple(IndexOrSchema) andalso element(1, IndexOrSchema) == riak_solr_schema of
+        true  ->
+            IndexOrSchema;
+        false ->
+            {ok, Schema} = riak_solr_config:get_schema(IndexOrSchema),
+            Schema
     end.
 
 %% Return {NumTerms, NumDocs, QueryNorm}...
