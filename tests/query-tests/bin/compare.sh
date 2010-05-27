@@ -31,10 +31,10 @@ if [ $# -ne 1 ]; then
 fi
 
 # Pull the ids from standard input...
-PARSEDINPUT=`cat - | sed -e 's/{/\r\n/g' | grep -e "\"id\"\s*:" | sed -e 's/.*\"id\"\s*:\"\([^\"]*\)\".*/\1/' | sort | uniq`
+PARSEDINPUT=`tr "{" "\n" | grep -e "\"id\"\s*:" | sed -e 's/.*\"id\"\s*:\"\([^\"]*\)\".*/\1/' | sort | uniq`
 
 # Pull the ids from the provided file...
-PARSEDFILE=`cat $1 | sed -e 's/{/\r\n/g' | grep -e "\"id\"\s*:" | sed -e 's/.*\"id\"\s*:\"\([^\"]*\)\".*/\1/' | sort | uniq`
+PARSEDFILE=`cat $1 | tr "{" "\n" | grep -e "\"id\"\s*:" | sed -e 's/.*\"id\"\s*:\"\([^\"]*\)\".*/\1/' | sort | uniq`
 
 # Compare the files for differing lines...
 COUNT=`echo "$PARSEDFILE\n$PARSEDINPUT" | sort | uniq -u | wc -l`

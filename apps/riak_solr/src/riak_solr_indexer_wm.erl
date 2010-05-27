@@ -1,79 +1,56 @@
 -module(riak_solr_indexer_wm).
-
--include_lib("riak_search/include/riak_search.hrl").
-
 -export([init/1, allowed_methods/2, malformed_request/2]).
 -export([process_post/2]).
 
--record(state, {method, body, schema, sq}).
-
+-include_lib("riak_search/include/riak_search.hrl").
 -include_lib("webmachine/include/webmachine.hrl").
 
+
+-record(state, {client, method, command, docs}).
 -define(DEFAULT_INDEX, "search").
--define(DEFAULT_FIELD, "default").
 
 init(_) ->
-    {ok, #state{}}.
+    {ok, Client} = riak_search:local_client(),
+    {ok, #state{ client=Client }}.
 
 allowed_methods(Req, State) ->
     {['POST'], Req, State#state{method=wrq:method(Req)}}.
 
-malformed_request(Req, State) ->
-    case get_schema(Req) of
-        undefined ->
-            {true, Req, State};
-        SchemaName ->
-            case riak_solr_config:get_schema(SchemaName) of
-                {ok, Schema} ->
-                    case wrq:req_body(Req) of
-                        undefined ->
-                            {true, Req, State};
-                        Body ->
-                            case size(Body) of
-                                0 ->
-                                    {true, Req, State};
-                                _ ->
-                                    {false, Req, State#state{body=Body,
-                                                             schema=Schema}}
-                            end
-                    end;
-                Error ->
-                    error_logger:error_msg("Could not parse schema '~s'.~n~p~n", [SchemaName, Error]),
-                    {false, Req, State}
-            end
+malformed_request(Req, State = #state { client=Client }) ->
+    %% Try to get the schema...
+    Index = get_index_name(Req),
+    case riak_solr_config:get_schema(Index) of
+        {ok, Schema} ->
+            %% Try to parse the body...
+            Client = State#state.client,
+            Body = wrq:req_body(Req),
+            try
+                {ok, Command, Docs} = Client:parse_solr_xml(Schema, Body),
+                {false, Req, State#state { command=Command, docs=Docs }}
+            catch _ : Error ->
+                error_logger:error_msg("Could not parse docs '~s'.~n~p~n", [Index, Error]),
+                {true, Req, State}
+            end;
+        Error ->
+            error_logger:error_msg("Could not parse schema '~s'.~n~p~n", [Index, Error]),
+            {true, Req, State}
     end.
 
-process_post(Req, #state{schema=Schema, body=Body}=State) ->
-    case catch riak_solr_xml_xform:xform(Schema:name(), Body) of
-        {'EXIT', _Error} ->
-            {false, Req, State};
-        Commands0 ->
-            case Schema:validate_commands(Commands0) of
-                {ok, Commands} ->
-                    Cmd = proplists:get_value(cmd, Commands0),
-                    handle_command(Cmd, Schema, Commands, Req, State);
-                _Error ->
-                    {false, Req, State}
-            end
+process_post(Req, State = #state{ client=Client, command=Command, docs=Docs }) ->
+    try
+        Client:run_solr_command(Command, Docs),
+        {true, Req, State}
+    catch _ : Error ->
+        Msg = "Error in riak_solr_indexer_wm:process_post/2: ~p~n~p~n",
+        error_logger:error_msg(Msg, [Error, erlang:get_stacktrace()]),
+        {false, Req, State}
     end.
 
-%% Internal functions
-handle_command(add, Schema, Commands, Req, State) ->
-    {ok, Client} = riak_search:local_client(),
-    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
-    [Client:index_doc(AnalyzerPid, build_idx_doc(Schema:name(), Doc)) || Doc <- Commands],
-    qilr_analyzer:close(AnalyzerPid),
-    {true, Req, State}.
-
-build_idx_doc(Index, Doc0) ->
-    Id = dict:fetch("id", Doc0),
-    Doc = dict:erase(Id, Doc0),
-    #riak_idx_doc{id=Id, index=Index,
-                  fields=dict:to_list(Doc), props=[]}.
-get_schema(Req) ->
+get_index_name(Req) ->
     case wrq:path_info(index, Req) of
         undefined ->
-            wrq:get_qs_value(index, Req);
+            DefaultIndex = app_helper:get_env(riak_solr, default_index, ?DEFAULT_INDEX),
+            wrq:get_qs_value(index, DefaultIndex, Req);
         Index ->
             Index
     end.

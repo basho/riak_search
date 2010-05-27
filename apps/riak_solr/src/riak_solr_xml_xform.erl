@@ -1,6 +1,6 @@
 -module(riak_solr_xml_xform).
 
--export([xform/2, sax_cb/3]).
+-export([xform/1, sax_cb/3]).
 
 -record(xml_state, {docs=[],
                 cmd,
@@ -8,12 +8,11 @@
                 current_field,
                 current_doc}).
 
-xform(Index, Data) ->
+xform(Data) ->
     {ok, ParsedData, _} = xmerl_sax_parser:stream(Data, [{event_fun, fun sax_cb/3},
                                                          {event_state, #xml_state{}}]),
     [{cmd, ParsedData#xml_state.cmd},
-     {docs, ParsedData#xml_state.docs},
-     {index, Index}].
+     {docs, ParsedData#xml_state.docs}].
 
 sax_cb({startElement, _Uri, Cmd, _QualName, _Attrs}, _Location, State) when Cmd =:= "add";
                                                                             Cmd =:= "del" ->

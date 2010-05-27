@@ -2,126 +2,217 @@
 
 -include("riak_search.hrl").
 
--define(DEFAULT_RESULT_SIZE, 10).
+-export([
+    %% Searching...
+    parse_query/1,
+    search/5,
+    search_doc/5,
 
-%% Indexing
--export([index_doc/1, index_doc/2]).
+    %% Stream Searching...
+    stream_search/2, 
+    collect_result/2,
 
-%% Querying
--export([explain/3, explain/4, stream_search/3, stream_search/4, search/3,
-         search/4, search/5, doc_search/3, doc_search/5, collect_result/2,
-         get_document/2, query_as_graph/1]).
+    %% Explain...
+    explain/2,
+    query_as_graph/1,
 
-search(Index, DefaultField, Query) ->
-    search(Index, DefaultField, Query, 60000).
+    %% Indexing...
+    parse_solr_xml/2, 
+    parse_solr_xml/3,
+    parse_idx_doc/2,
+    run_solr_command/2,
+    index_term/5
+]).
 
-search(Index, DefaultField, Query, Arg) when is_integer(Arg) ->
-    SearchRef = stream_search(Index, DefaultField, Query),
-    Results = collect_results(SearchRef, Arg, []),
-    [Key || {Key, _Props} <- Results];
-search(Index, DefaultField, Query, Arg) when is_atom(Arg) ->
-    SearchRef = stream_search(Index, DefaultField, Query, Arg),
-    Results = collect_results(SearchRef, 60000, []),
-    [Key || {Key, _Props} <- Results].
-
-search(Index, DefaultField, Query, Arg, Timeout) when is_integer(Timeout) ->
-    SearchRef = stream_search(Index, DefaultField, Query, Arg),
-    Results = collect_results(SearchRef, Timeout, []),
-    [Key || {Key, _Props} <- Results].
+-import(riak_search_utils, [
+    from_binary/1, 
+    to_binary/1
+]).
 
 
-stream_search(Index, DefaultField, Query) ->
+%% Parse the provided query. Returns either {ok, QueryOps} or {error,
+%% Error}.
+parse_query(Query) ->
     {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
-    case qilr_parse:string(AnalyzerPid, Query) of
-        {ok, AST} ->
-            R = execute(AST, Index, DefaultField, []);
-        R ->
-            throw(R)
-    end,
+    Result = qilr_parse:string(AnalyzerPid, Query),
     qilr_analyzer:close(AnalyzerPid),
-    R.
-
-stream_search(Index, DefaultField, Query, DefaultBool) ->
-    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
-    case qilr_parse:string(AnalyzerPid, Query, DefaultBool) of
-        {ok, AST} ->
-            R = execute(AST, Index, DefaultField, []);
-        R ->
-            throw(R)
-    end,
-    qilr_analyzer:close(AnalyzerPid),
-    R.
-
-doc_search(Index, DefaultField, Query) ->
-    doc_search(Index, DefaultField, Query, 0, ?DEFAULT_RESULT_SIZE, 60000).
-
-doc_search(Index, DefaultField, Query, QueryStart, QueryRows) ->
-    doc_search(Index, DefaultField, Query, QueryStart, QueryRows, 60000).
-
-doc_search(Index, DefaultField, Query, QueryStart, QueryRows, Timeout) ->
-    case search(Index, DefaultField, Query, Timeout) of
-        [] ->
-            {0, []};
-        Results0 ->
-            Results = dedup(truncate_list(QueryStart, QueryRows, Results0), []),
-            {length(Results0), [get_document(Index, DocId) || DocId <- Results]}
-    end.
-
-explain(Index, DefaultField, Query) ->
-    explain(Index, DefaultField, [], Query).
-
-explain(Index, DefaultField, Facets, Query) ->
-    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
-    {ok, Ops} = qilr_parse:string(AnalyzerPid, Query),
-    R = riak_search_preplan:preplan(Ops, Index, DefaultField, Facets),
-    qilr_analyzer:close(AnalyzerPid),
-    R.
-
-index_doc(Doc) ->
-    {ok, Pid} = qilr_analyzer_sup:new_analyzer(),
-    Result = (catch index_doc(Pid, Doc)),
-    qilr_analyzer:close(Pid),
     Result.
 
-index_doc(AnalyzerPid, #riak_idx_doc{id=DocId, index=Index, fields=Fields}=Doc) ->
-    AnalyzedFields = analyze_fields(AnalyzerPid, Fields, []),
-    WordMd = build_word_md(AnalyzedFields),
-    [index_term(Index, Name, Value,
-                DocId, build_props(Value, WordMd)) || {Name, Value} <- AnalyzedFields],
-    DocBucket = Index ++ "_docs",
-    DocObj = riak_object:new(riak_search_utils:to_binary(DocBucket),
-                             riak_search_utils:to_binary(DocId),
-                             Doc),
-    RiakClient:put(DocObj, 1).
+%% Run the Query, return the list of keys.
+%% Timeout is in milliseconds. 
+%% Return the {Length, Results}.
+search(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
+    %% Execute the search and collect the results.
+    SearchRef = stream_search(IndexOrSchema, QueryOps),
+    Results = collect_results(SearchRef, Timeout, []),
 
-%% index_store(Doc, Obj) ->
-%%     index_store(Doc, Obj, 1).
+    %% Dedup, and handle start and max results. Return matching
+    %% documents.
+    Results1 = truncate_list(QueryStart, QueryRows, Results),
+    Length = length(Results),
+    {Length, Results1}.
 
-%% index_store(#riak_idx_doc{id=DocId}=Doc, Obj0, W) ->
-%%     Md = dict:store("X-Riak-Search-Id", DocId, dict:new()),
-%%     Obj = riak_object:update_metadata(Obj0, Md),
-%%     ok = index_doc(Doc),
-%%     RiakClient:put(Obj, W).
+%% Search an Index. Limit by QueryStart and QueryRows, Timeout is in
+%% milliseconds. Return {Length, [Docs]}.
+search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
+    %% Run the search...
+    {Length, Results} = search(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout),
 
-%% Internal functions
+    %% Convert the doc IDs to actual documents.
+    Schema = to_schema(IndexOrSchema),
+    Index = Schema:name(),
+    DocBucket = to_binary(from_binary(Index) ++ "_docs"),
+
+    %% Fetch the documents in parallel.
+    F = fun({DocID, _}) ->
+        {ok, Obj} = RiakClient:get(DocBucket, to_binary(DocID), 2),
+        riak_object:get_value(Obj)
+    end,
+    Documents = plists:map(F, Results, {processes, 4}),
+    {Length, Documents}.
+
+%% Run the query through preplanning, return the result.
+explain(IndexOrSchema, QueryOps) ->
+    %% Get schema information...
+    Schema = to_schema(IndexOrSchema),
+    DefaultIndex = Schema:name(),
+    DefaultField = Schema:default_field(),
+    Facets = [{DefaultIndex, Schema:field_name(X)} || X <- Schema:facets()],
+    
+    %% Run the query through preplanning.
+    riak_search_preplan:preplan(QueryOps, DefaultIndex, DefaultField, Facets).
+
+%% Parse a solr XML formatted file.
+parse_solr_xml(IndexOrSchema, Body) when is_binary(Body) ->
+    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
+    Result = parse_solr_xml(AnalyzerPid, IndexOrSchema, Body),
+    qilr_analyzer:close(AnalyzerPid),
+    Result.
+    
+%% Index a solr XML formatted file using the provided analyzer pid.
+parse_solr_xml(AnalyzerPid, IndexOrSchema, Body) ->
+    %% Get the schema...
+    Schema = to_schema(IndexOrSchema),
+    Index = Schema:name(),
+    
+    %% Parse the xml...
+    Commands = riak_solr_xml_xform:xform(Body),
+    ok = Schema:validate_commands(Commands),
+    {cmd, SolrCmd} = lists:keyfind(cmd, 1, Commands),
+
+    %% Index the docs...
+    F = fun(SolrDoc) ->
+        IdxDoc = to_riak_idx_doc(Index, SolrDoc),
+        {IdxDoc, parse_idx_doc(AnalyzerPid, IdxDoc)}
+    end,
+    {docs, SolrDocs} = lists:keyfind(docs, 1, Commands),
+    ParsedDocs = [F(X) || X <- SolrDocs],
+    {ok, SolrCmd, ParsedDocs}.
+
+%% @private
+to_riak_idx_doc(Index, Doc0) ->
+    Id = dict:fetch("id", Doc0),
+    Doc = dict:erase(Id, Doc0),
+    Fields = dict:to_list(dict:erase(Id, Doc)),
+    #riak_idx_doc{id=Id, index=Index, fields=Fields, props=[]}.
+
+%% Parse a #riak_idx_doc{} record using the provided analyzer pid.
+parse_idx_doc(AnalyzerPid, IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
+    %% Extract fields, get schema...
+    #riak_idx_doc{id=DocID, index=Index, fields=DocFields}=IdxDoc,
+    Schema = to_schema(Index),
+    
+    %% Put together a list of Facet properties...
+    F1 = fun(Facet, Acc) ->
+        FName = Schema:field_name(Facet),
+        case lists:keyfind(FName, 1, DocFields) of
+            {FName, Value} ->
+                [{FName, Value}|Acc];
+            false ->
+                Acc
+        end
+    end,
+    FacetProps = lists:foldl(F1, [], Schema:facets()),
+
+    %% For each Field = {FieldName, FieldValue}, split the FieldValue
+    %% into terms. Build a list of positions for those terms, then get
+    %% a de-duped list of the terms. For each, index the FieldName /
+    %% Term / DocID / Props.
+    F2 = fun({FieldName, FieldValue}, Acc2) ->
+        {ok, Terms} = qilr_analyzer:analyze(AnalyzerPid, FieldValue),
+        PositionTree = get_term_positions(Terms),
+        Terms1 = gb_trees:keys(PositionTree),
+        F3 = fun(Term, Acc3) ->
+            Props = build_props(Term, PositionTree),
+            [{Index, FieldName, Term, DocID, Props ++ FacetProps}|Acc3]
+        end,
+        lists:foldl(F3, Acc2, Terms1)
+    end,
+    DocFields1 = DocFields -- FacetProps,
+    lists:foldl(F2, [], DocFields1).
+
+%% @private Given a list of tokens, build a gb_tree mapping words to a
+%% list of word positions.
+get_term_positions(Terms) ->
+    F = fun(Term, {Pos, Acc}) ->
+        case gb_trees:lookup(Term, Acc) of
+            {value, Positions} ->
+                {Pos + 1, gb_trees:update(Term, [Pos|Positions], Acc)};
+            none ->
+                {Pos + 1, gb_trees:insert(Term, [Pos], Acc)}
+        end 
+    end,
+    {_, Tree} = lists:foldl(F, {1, gb_trees:empty()}, Terms),
+    Tree.
+
+%% @private
+%% Given a term and a list of positions, generate a list of
+%% properties.
+build_props(Term, PositionTree) ->
+    case gb_trees:lookup(Term, PositionTree) of
+        none ->
+            [];
+        {value, Positions} ->
+            [
+                {word_pos, Positions},
+                {freq, length(Positions)}
+            ]
+    end.
+
+
+%% Run the provided solr command on the provided docs...
+run_solr_command(Command, Docs) when Command == 'add' ->
+    %% Store the terms and the document...
+    F = fun({IdxDoc, Terms}) ->
+        %% Store the terms...
+        F1 = fun(X) ->
+            {Index, Field, Term, DocID, Props} = X,
+            index_term(Index, Field, Term, DocID, Props)
+        end,
+        plists:map(F1, Terms, {processes, 4}),
+        
+        %% Store the document...
+        #riak_idx_doc { id=DocID, index=DocIndex } = IdxDoc,
+        DocBucket = riak_search_utils:to_binary(DocIndex ++ "_docs"),
+        DocKey = riak_search_utils:to_binary(DocID),
+        DocObj = riak_object:new(DocBucket, DocKey, IdxDoc),
+        ok = RiakClient:put(DocObj, 2)
+    end,
+    [F(X) || X <- Docs];
+run_solr_command(Command, _Docs) ->
+    error_logger:error_msg("Unknown solr command: ~p~n", [Command]),
+    throw({unknown_solr_command, Command}).
+
+
+%% Index the specified term.
 index_term(Index, Field, Term, Value, Props) ->
-    index_internal(Index, Field, Term, {index, Index, Field, Term, Value, Props}).
-
-index_internal(Index, Field, Term, Payload) ->
     IndexBin = riak_search_utils:to_binary(Index),
     FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-%% Run the operation...
+    Payload = {index, Index, Field, Term, Value, Props},
+
+    %% Run the operation...
     Obj = riak_object:new(IndexBin, FieldTermBin, Payload),
     RiakClient:put(Obj, 0).
-
-analyze_fields(_AnalyzerPid, [], Accum) ->
-    Accum;
-analyze_fields(AnalyzerPid, [{Name, Value}|T], Accum) when is_list(Value) ->
-    {ok, Tokens} = qilr_analyzer:analyze(AnalyzerPid, Value),
-    Fields = [{Name, Token} || Token <- Tokens],
-    analyze_fields(AnalyzerPid, T, Fields ++ Accum);
-analyze_fields(AnalyzerPid, [{Name, Value}|T], Accum) ->
-    analyze_fields(AnalyzerPid, T, [{Name, Value}|Accum]).
 
 truncate_list(QueryStart, QueryRows, List) ->
     %% Remove the first QueryStart results...
@@ -139,38 +230,50 @@ truncate_list(QueryStart, QueryRows, List) ->
     %% Return.
     List2.
 
-get_document(Index, DocId) ->
-    DocBucket = riak_search_utils:from_binary(Index) ++ "_docs",
-    {ok, Obj} = RiakClient:get(riak_search_utils:to_binary(DocBucket),
-                               riak_search_utils:to_binary(DocId), 2),
-    riak_object:get_value(Obj).
 
-dedup([], Accum) ->
-    lists:reverse(Accum);
-dedup([H|T], Accum) ->
-    NewAccum = case lists:member(H, Accum) of
-                   false ->
-                       [H|Accum];
-                   true ->
-                       Accum
-               end,
-    dedup(T, NewAccum).
-
-execute(OpList, DefaultIndex, DefaultField, Facets) ->
-%% Normalize, Optimize, and Expand Buckets.
+stream_search(IndexOrSchema, OpList) ->
+    %% Get schema information...
+    Schema = to_schema(IndexOrSchema),
+    DefaultIndex = Schema:name(),
+    DefaultField = Schema:default_field(),
+    Facets = [{DefaultIndex, Schema:field_name(X)} || X <- Schema:facets()],
+    
+    %% Normalize, Optimize, and Expand Buckets.
     OpList1 = riak_search_preplan:preplan(OpList, DefaultIndex, DefaultField, Facets),
 
-%% Get the total number of terms and weight in query...
+    %% Get the total number of terms and weight in query...
     {NumTerms, NumDocs, QueryNorm} = get_scoring_info(OpList1),
 
-%% Set up the operators. They automatically start when created...
+    %% Set up the operators. They automatically start when created...
     Ref = make_ref(),
     QueryProps = [{num_docs, NumDocs}],
-%% Start the query process ...
-    {ok, NumInputs} = riak_search_op:chain_op(OpList1, self(), Ref, QueryProps),
-    #riak_search_ref{id=Ref, termcount=NumTerms, inputcount=NumInputs,
-                     querynorm=QueryNorm}.
 
+    %% Start the query process ... 
+    {ok, NumInputs} = riak_search_op:chain_op(OpList1, self(), Ref, QueryProps),
+    #riak_search_ref { 
+        id=Ref, termcount=NumTerms, 
+        inputcount=NumInputs, querynorm=QueryNorm }.
+
+%% Gather all results from the provided SearchRef, return the list of
+%% results sorted in descending order by score.
+collect_results(SearchRef, Timeout) ->
+    collect_results(SearchRef, Timeout, []).
+collect_results(SearchRef, Timeout, Acc) ->
+    M = collect_result(SearchRef, Timeout),
+    case M of
+        {done, _} ->
+            sort_by_score(SearchRef, Acc);
+        {[], Ref} ->
+            collect_results(Ref, Timeout, Acc);
+        {Results, Ref} ->
+            collect_results(Ref, Timeout, Acc ++ Results);
+        Error ->
+            Error
+    end.
+
+%% Collect one or more individual results in as non-blocking of a
+%% fashion as possible. Returns {Results, SearchRef}, {done,
+%% SearchRef}, or {error, timeout}.
 collect_result(#riak_search_ref{inputcount=0}=SearchRef, _Timeout) ->
     {done, SearchRef};
 collect_result(#riak_search_ref{id=Id, inputcount=InputCount}=SearchRef, Timeout) ->
@@ -222,7 +325,8 @@ get_scoring_info(Op) ->
             {0, 0, 0}
     end.
 get_scoring_info_1(Op) when is_record(Op, term) ->
-    DocFrequency = hd([X || {node_weight, _, X} <- Op#term.options]),
+    Weights = [X || {node_weight, _, X} <- Op#term.options],
+    DocFrequency = hd(Weights ++ [0]),
     Boost = proplists:get_value(boost, Op#term.options, 1),
     [{DocFrequency, Boost}];
 get_scoring_info_1(Op) when is_tuple(Op) ->
@@ -244,25 +348,6 @@ calculate_scores(QueryNorm, NumTerms, [{Value, Props}|Results]) ->
 calculate_scores(_, _, []) ->
     [].
 
-build_props(Token, WordMd) ->
-    case gb_trees:lookup(Token, WordMd) of
-        none ->
-            [];
-        {value, Positions} ->
-            [{word_pos, Positions},
-             {freq, length(Positions)}]
-    end.
-
-build_word_md(Tokens) ->
-    {_, Words} = lists:foldl(fun(Token, {Pos, Acc}) ->
-                                     case gb_trees:lookup(Token, Acc) of
-                                         {value, Positions} ->
-                                             {Pos + 1, gb_trees:update(Token, [Pos|Positions], Acc)};
-                                         none ->
-                                             {Pos + 1, gb_trees:insert(Token, [Pos], Acc)}
-                                     end end,
-                             {1, gb_trees:empty()}, Tokens),
-    Words.
 
 %%%%%%%
 
@@ -424,6 +509,7 @@ build_word_md(Tokens) ->
 %%         end
 %%     end, TCD),
 %%     TCD.
+
 
 %
 % optimize_terms(Graph, RootNode)

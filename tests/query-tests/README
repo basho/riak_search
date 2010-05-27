@@ -19,15 +19,15 @@
    1. Insert the sample data into the datastore. You should only need to do
       this once:
 
-      : ./bin/update.sh http://localhost:8098/solr/querytest sample_data/sample100.add
+      : ./bin/update.sh http://localhost:8098/solr/querytests sample_data/sample100.add
 
    2. Run the unit tests:
 
-      : ./run_sample100.sh http://localhost:8098/solr/querytest
+      : ./run_sample100.sh http://localhost:8098/solr/querytests
    
    3. Alternatively, run some queries:
       
-      : ./bin/select.sh http://localhost:8098/riakdb "color:red"
+      : ./bin/select.sh http://localhost:8098/solr/querytests "color:red"
 
 ** Adding New Tests
 

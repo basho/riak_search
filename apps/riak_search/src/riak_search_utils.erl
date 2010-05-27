@@ -1,11 +1,18 @@
 -module(riak_search_utils).
 
--export([iterator_chain/3,
-         combine_terms/2,
-         date_to_subterm/1,
-         parse_datetime/1,
-         to_binary/1,
-         from_binary/1]).
+-export([
+    iterator_chain/3,
+    combine_terms/2,
+    date_to_subterm/1,
+    parse_datetime/1,
+    to_atom/1,
+    to_binary/1,
+    to_boolean/1,
+    to_list/1,
+    to_integer/1,
+    to_float/1,
+    from_binary/1
+]).
 
 -include("riak_search.hrl").
 
@@ -89,11 +96,37 @@ combine_terms(Other1, Other2) ->
     error_logger:error_msg("Could not combine terms: [~p, ~p]~n", [Other1, Other2]),
     throw({could_not_combine, Other1, Other2}).
 
-to_binary(L) when is_list(L) -> list_to_binary(L);
-to_binary(B) -> B.
+to_list(A) when is_atom(A) -> atom_to_list(A);
+to_list(B) when is_binary(B) -> binary_to_list(B);
+to_list(I) when is_integer(I) -> integer_to_list(I);
+to_list(L) when is_list(L) -> L.
 
-from_binary(B) when is_binary(B) -> binary_to_list(B);
-from_binary(L) -> L.
+to_atom(A) when is_atom(A) -> A;
+to_atom(B) when is_binary(B) -> to_atom(binary_to_list(B));
+to_atom(I) when is_integer(I) -> to_atom(integer_to_list(I));
+to_atom(L) when is_list(L) -> list_to_atom(binary_to_list(list_to_binary(L))).
+
+to_binary(A) when is_atom(A) -> to_binary(atom_to_list(A));
+to_binary(B) when is_binary(B) -> B;
+to_binary(I) when is_integer(I) -> to_binary(integer_to_list(I));
+to_binary(L) when is_list(L) -> list_to_binary(L).
+
+to_integer(A) when is_atom(A) -> to_integer(atom_to_list(A));
+to_integer(B) when is_binary(B) -> to_integer(binary_to_list(B));
+to_integer(I) when is_integer(I) -> I;
+to_integer(L) when is_list(L) -> list_to_integer(L).
+
+to_float(F) ->
+    list_to_float(to_list(F)).
+
+to_boolean(B) -> 
+    A = to_atom(B),
+    (A == yes) orelse (A == true) orelse (A == '1').
+
+from_binary(B) when is_binary(B) -> 
+    binary_to_list(B);
+from_binary(L) -> 
+    L.
 
 %%% Convert a date to a 64-bit SubTerm integer.
 date_to_subterm(min) ->
