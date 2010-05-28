@@ -1,3 +1,5 @@
+RIAK_TAG		= $(shell hg identify -t)
+
 .PHONY: rel deps
 
 all: deps compile
@@ -14,7 +16,7 @@ clean:
 	make -C apps/qilr/java_src clean
 	make -C apps/raptor/java_src clean
 
-distclean: clean devclean relclean
+distclean: clean devclean relclean ballclean
 	./rebar delete-deps
 
 test:

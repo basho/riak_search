@@ -34,7 +34,21 @@
 start_link() -> gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
 %% @private
-init([]) -> {ok, #state{idxtab=ets:new(riak_kv_vnode_idx,[{keypos,2}])}}.
+init([]) ->
+    %% Get the current list of vnodes running in the supervisor. We use this
+    %% to rebuild our ETS table for routing messages to the appropriate
+    %% vnode.
+    VnodePids = [Pid || {_, Pid, worker, _}
+                            <- supervisor:which_children(riak_kv_vnode_sup)],
+    IdxTable = ets:new(riak_kv_vnode_idx, [{keypos, 2}]),
+
+    F = fun(Pid) ->
+                Idx = riak_kv_vnode:get_vnode_index(Pid),
+                Mref = erlang:monitor(process, Pid),
+                #idxrec { idx = Idx, pid = Pid, monref = Mref }
+        end,
+    true = ets:insert_new(IdxTable, [F(Pid) || Pid <- VnodePids]),
+    {ok, #state{idxtab = IdxTable}}.
 
 
 %% @private
@@ -47,9 +61,9 @@ handle_cast({vnode_map, {Partition,_Node},
     gen_fsm:send_event(Pid, {map, ClientPid, QTerm, BKey, KeyData}),
     {noreply, State};
 handle_cast({vnode_put, {Partition,_Node},
-             {FSM_pid,BKey,RObj,ReqID,FSMTime}}, State) ->
+             {FSM_pid,BKey,RObj,ReqID,FSMTime,Options}}, State) ->
     Pid = get_vnode(Partition, State),
-    gen_fsm:send_event(Pid, {put, FSM_pid, BKey, RObj, ReqID, FSMTime}),
+    gen_fsm:send_event(Pid, {put, FSM_pid, BKey, RObj, ReqID, FSMTime,Options}),
     {noreply, State};
 handle_cast({vnode_get, {Partition,_Node},
              {FSM_pid,BKey,ReqID}}, State) ->

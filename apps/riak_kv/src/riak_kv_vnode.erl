@@ -25,7 +25,8 @@
 -module(riak_kv_vnode).
 -behaviour(gen_fsm).
 
--export([start_link/1]).
+-export([start_link/1,
+         get_vnode_index/1]).
 -export([init/1, handle_event/3, handle_sync_event/4,
          handle_info/3, terminate/3, code_change/4]).
 -export([active/2,active/3]).
@@ -34,8 +35,12 @@
 -define(LOCK_RETRY_TIMEOUT, 10000).
 
 -record(state, {idx,mapcache,mod,modstate,handoff_q,handoff_token}).
+-record(putargs, {returnbody,lww,bkey,robj,reqid,bprops,prunetime,fsm_pid}).
 
 start_link(Idx) -> gen_fsm:start_link(?MODULE, [Idx], []).
+
+get_vnode_index(Pid) ->
+    gen_fsm:sync_send_all_state_event(Pid, get_vnode_index).
 
 init([VNodeIndex]) ->
     Mod = app_helper:get_env(riak_kv, storage_backend),
@@ -128,14 +133,14 @@ active({map, ClientPid, QTerm, BKey, KeyData}, StateData) ->
 active(handoff_complete, StateData=#state{idx=Idx,handoff_token=HT}) ->
     global:del_lock({HT, {node(), Idx}}, [node()]),
     hometest(StateData);
-active({put, FSM_pid, BKey, RObj, ReqID, FSMTime},
+active({put, FSM_pid, BKey, RObj, ReqID, FSMTime, Options},
        StateData=#state{idx=Idx,mapcache=Cache,handoff_q=HQ0}) ->
     HQ = case HQ0 of
         not_in_handoff -> not_in_handoff;
         _ -> [BKey|HQ0]
     end,
     gen_fsm:send_event(FSM_pid, {w, Idx, ReqID}),
-    do_put(FSM_pid, BKey, RObj, ReqID, FSMTime, StateData),
+    do_put(FSM_pid, BKey, RObj, ReqID, FSMTime, Options, StateData),
     {next_state,
      active,StateData#state{mapcache=orddict:erase(BKey,Cache),
                             handoff_q=HQ},?TIMEOUT};
@@ -220,38 +225,49 @@ do_diffobj_put(BKey={Bucket,_}, DiffObj,
 
 %% @private
 % upon receipt of a client-initiated put
-do_put(FSM_pid, BKey, RObj, ReqID, PruneTime,
-       _State=#state{idx=Idx,mod=Mod,modstate=ModState}) ->
+do_put(FSM_pid, {Bucket,_Key}=BKey, RObj, ReqID, PruneTime, Options, State) ->
     {ok,Ring} = riak_core_ring_manager:get_my_ring(),
-    {Bucket,_Key} = BKey,
     BProps = riak_core_bucket:get_bucket(Bucket, Ring),
-    ToStore = case proplists:get_value(last_write_wins, BProps) of
-        true ->
-          {true, RObj};
-        false ->
-            case syntactic_put_merge(Mod, ModState, BKey, RObj, ReqID) of
-                oldobj ->
-                    gen_fsm:send_event(FSM_pid, {dw, Idx, ReqID}),
-                    false;
-                {newobj, NewObj} ->
-                    VC = riak_object:vclock(NewObj),
-                    AMObj = enforce_allow_mult(NewObj, BProps),
-                    ObjToStore = riak_object:set_vclock(AMObj,
-                                           vclock:prune(VC,PruneTime,BProps)),
-                    {true, ObjToStore}
-            end
-    end,
-    case ToStore of
-        false -> nop;
-        {true, Obj} ->
-            Val = term_to_binary(Obj),
-            case Mod:put(ModState, BKey, Val) of
-                ok ->
-                    gen_fsm:send_event(FSM_pid, {dw, Idx, ReqID});
-                {error, _Reason} ->
-                    gen_fsm:send_event(FSM_pid, {fail, Idx, ReqID})
-            end,
-            riak_kv_stat:update(vnode_put)
+    PutArgs = #putargs{returnbody=proplists:get_value(returnbody, Options, false),
+                       lww=proplists:get_value(last_write_wins, BProps, false),
+                       bkey=BKey,
+                       robj=RObj,
+                       reqid=ReqID,
+                       bprops=BProps,
+                       prunetime=PruneTime},
+    gen_fsm:send_event(FSM_pid, perform_put(prepare_put(State, PutArgs), State, PutArgs)),
+    riak_kv_stat:update(vnode_put).
+
+prepare_put(#state{}, #putargs{lww=true, robj=RObj}) -> 
+    {true, RObj};
+prepare_put(#state{mod=Mod,modstate=ModState}, 
+            #putargs{bkey=BKey,robj=RObj,reqid=ReqID,bprops=BProps,prunetime=PruneTime}) ->
+    case syntactic_put_merge(Mod, ModState, BKey, RObj, ReqID) of
+        {oldobj, OldObj} ->
+            {false, OldObj};
+        {newobj, NewObj} ->
+            VC = riak_object:vclock(NewObj),
+            AMObj = enforce_allow_mult(NewObj, BProps),
+            ObjToStore = riak_object:set_vclock(AMObj,
+                                                vclock:prune(VC,PruneTime,BProps)),
+            {true, ObjToStore}
+    end.
+
+perform_put({false, Obj}, #state{idx=Idx}, #putargs{returnbody=true,reqid=ReqID}) ->
+    {dw, Idx, Obj, ReqID};
+perform_put({false, _Obj}, #state{idx=Idx}, #putargs{returnbody=false,reqid=ReqId}) ->
+    {dw, Idx, ReqId};
+perform_put({true, Obj}, #state{idx=Idx,mod=Mod,modstate=ModState},
+            #putargs{returnbody=RB, bkey=BKey, reqid=ReqID}) ->
+    Val = term_to_binary(Obj),
+    case Mod:put(ModState, BKey, Val) of
+        ok ->
+            case RB of
+                true -> {dw, Idx, Obj, ReqID};
+                false -> {dw, Idx, ReqID}
+            end;
+        {error, _Reason} ->
+            {fail, Idx, ReqID}
     end.
 
 %% @private
@@ -302,21 +318,21 @@ syntactic_put_merge(Mod, ModState, BKey, Obj1, ReqId) ->
             ResObj = riak_object:syntactic_merge(
                        Obj0,Obj1,term_to_binary(ReqId)),
             case riak_object:vclock(ResObj) =:= riak_object:vclock(Obj0) of
-                true -> oldobj;
+                true -> {oldobj, ResObj};
                 false -> {newobj, ResObj}
             end
     end.
 
 %% @private
-get_merkle(_State=#state{mod=Mod,modstate=ModState}) ->
-    KeyList = Mod:list(ModState),
-    Merk0 = merkerl:build_tree([]),
-    get_merk(Mod,ModState,KeyList,Merk0).
-%% @private
-get_merk(_Mod,_ModState,[],Merk) -> Merk;
-get_merk(Mod,ModState,[BKey|KeyList],Merk) ->
-    V = Mod:get(ModState,BKey), % normally, V = {ok,BinObj}
-    get_merk(Mod,ModState,KeyList,merkerl:insert({BKey,erlang:phash2(V)},Merk)).
+get_merkle(State=#state{}) ->
+    F = fun(K,V,Acc) -> merkerl:insert({K, erlang:phash2(V)}, Acc) end,
+    InitAcc = merkerl:build_tree([]),
+    case do_fold(F, InitAcc, State) of
+        undefined ->
+            {ok, term_to_binary(merkerl:build_tree([]))};
+        M when is_tuple(M) ->
+            {ok, term_to_binary(M, [compressed])}
+    end.
 
 %% @private
 get_vclocks(KeyList,_State=#state{mod=Mod,modstate=ModState}) ->
@@ -355,6 +371,8 @@ handle_sync_event({diffobj,{BKey,BinObj}}, _From, StateName, StateData) ->
             error_logger:error_msg("Error storing handoff obj: ~p~n", [Err]),
             {reply, {error, Err}, StateName, StateData, ?TIMEOUT}
     end;
+handle_sync_event(get_vnode_index, _From, StateName, StateData) ->
+    {reply, StateData#state.idx, StateName, StateData};
 handle_sync_event(_Even, _From, _StateName, StateData) ->
     {stop,badmsg,StateData}.
 
@@ -362,7 +380,11 @@ handle_sync_event(_Even, _From, _StateName, StateData) ->
 handle_info(vnode_shutdown, _StateName, StateData) ->
     {stop,normal,StateData};
 handle_info(ok, StateName, StateData) ->
+    {next_state, StateName, StateData};
+handle_info({Mod, Msg}, StateName, #state { mod = Mod } = StateData) ->
+    Mod:handle_info(StateData#state.modstate, Msg),
     {next_state, StateName, StateData}.
+
 %% @private
 terminate(_Reason, _StateName, _State) ->
     ok.

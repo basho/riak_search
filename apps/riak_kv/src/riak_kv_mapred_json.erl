@@ -24,7 +24,47 @@
 
 -module(riak_kv_mapred_json).
 
--export([parse_inputs/1, parse_query/1]).
+-export([parse_request/1, parse_inputs/1, parse_query/1]).
+-export([jsonify_not_found/1, dejsonify_not_found/1]).
+
+-define(QUERY_TOKEN, <<"query">>).
+-define(INPUTS_TOKEN, <<"inputs">>).
+-define(TIMEOUT_TOKEN, <<"timeout">>).
+-define(DEFAULT_TIMEOUT, 60000).
+
+parse_request(Req) ->
+    case catch mochijson2:decode(Req) of
+        {struct, MapReduceDesc} ->
+            Timeout = case proplists:get_value(?TIMEOUT_TOKEN, MapReduceDesc,
+                                               ?DEFAULT_TIMEOUT) of
+                          X when is_number(X) andalso X > 0 ->
+                              X;
+                          _ ->
+                              ?DEFAULT_TIMEOUT
+                      end,
+            Inputs = proplists:get_value(?INPUTS_TOKEN, MapReduceDesc),
+            Query = proplists:get_value(?QUERY_TOKEN, MapReduceDesc),
+            case not(Inputs =:= undefined) andalso not(Query =:= undefined) of
+                true ->
+                    case riak_kv_mapred_json:parse_inputs(Inputs) of
+                        {ok, ParsedInputs} ->
+                            case riak_kv_mapred_json:parse_query(Query) of
+                                {ok, ParsedQuery} ->
+                                    {ok, ParsedInputs, ParsedQuery, Timeout};
+                                {error, Message} ->
+                                    {error, {'query', Message}}
+                            end;
+                        {error, Message} ->
+                            {error, {inputs, Message}}
+                    end;
+                false ->
+                    {error, missing_field}
+            end;
+        {'EXIT', Message} ->
+            {error, {invalid_json, Message}};
+        _ ->
+            {error, not_json}
+    end.
 
 parse_inputs(Bucket) when is_binary(Bucket) ->
     {ok, Bucket};
@@ -117,6 +157,19 @@ parse_query([Phase|_], _Accum) ->
 parse_query(Invalid, _Accum) ->
     {error, ["The value of the \"query\" field was not a list:\n"
              "   ",mochijson2:encode(Invalid),"\n"]}.
+
+dejsonify_not_found({struct, [{<<"not_found">>,
+                     {struct, [{<<"bucket">>, Bucket},
+                               {<<"key">>, Key}]}}]}) ->
+    {not_found, {Bucket, Key}};
+dejsonify_not_found(Data) ->
+    Data.
+
+jsonify_not_found({not_found, {Bucket, Key}}) ->
+    {struct, [{not_found, {struct, [{<<"bucket">>, Bucket},
+                                    {<<"key">>, Key}]}}]};
+jsonify_not_found(Data) ->
+    Data.
 
 parse_link_step(StepDef) ->
     Bucket = proplists:get_value(<<"bucket">>, StepDef, <<"_">>),
