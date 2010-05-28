@@ -37,3 +37,8 @@
                           termcount,
                           inputcount,
                           querynorm}).
+
+-record(riak_search_field, {name,
+                            type,
+                            required,
+                            facet}).

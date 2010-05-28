@@ -14,7 +14,4 @@ start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
 init([]) ->
-    Processes = [{riak_solr_config,
-                 {riak_solr_config, start_link, []},
-                  permanent, 5000, worker, [riak_solr_config]}],
-    {ok, {{one_for_one, 9, 10}, Processes}}.
+    {ok, {{one_for_one, 5, 10}, []}}.

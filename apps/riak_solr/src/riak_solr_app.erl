@@ -3,7 +3,7 @@
 -behaviour(application).
 
 %% Application callbacks
--export([start/2, stop/1]).
+-export([start/2, stop/1, local_client/0]).
 
 start(_StartType, _StartArgs) ->
     Root = app_helper:get_env(riak_solr, solr_name, "solr"),
@@ -24,3 +24,7 @@ start(_StartType, _StartArgs) ->
 
 stop(_State) ->
     ok.
+
+local_client() ->
+    {ok, Client} = riak_search:local_client(),
+    {ok, riak_solr_search_client:new(Client)}.

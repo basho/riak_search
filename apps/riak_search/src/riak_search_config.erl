@@ -1,4 +1,4 @@
--module(riak_solr_config).
+-module(riak_search_config).
 
 -include_lib("eunit/include/eunit.hrl").
 
@@ -22,13 +22,19 @@ start_link() ->
 clear() ->
     gen_server:call(?SERVER, clear).
 
-get_schema(SchemaName) ->
-    gen_server:call(?SERVER, {get_schema, SchemaName}).
+get_schema(IndexOrSchema) ->
+    case is_tuple(IndexOrSchema) andalso element(1, IndexOrSchema) == riak_search_schema of
+        true  ->
+            {ok, IndexOrSchema};
+        false ->
+            Index = riak_search_utils:to_list(IndexOrSchema),
+            gen_server:call(?SERVER, {get_schema, Index})
+    end.
 
 init([]) ->
-    SchemaDir = case application:get_env(riak_solr, schema_dir) of
+    SchemaDir = case application:get_env(riak_search, schema_dir) of
                     undefined ->
-                        code:priv_dir(riak_solr);
+                        code:priv_dir(riak_search);
                     {ok, Dir} ->
                         Dir
                 end,
@@ -66,7 +72,7 @@ load_schema(SchemaName, #state{schema_dir=Dir, schemas=Schemas}=State) ->
     Result = file:consult(filename:join([Dir, SchemaFile])),
     case Result of
         {ok, [RawSchema]} ->
-            case riak_solr_schema_parser:from_eterm(RawSchema) of
+            case riak_search_schema_parser:from_eterm(RawSchema) of
                 {ok, Schema} ->
                     {{ok, Schema}, State#state{schemas=dict:store(SchemaName, Schema, Schemas)}};
                 Error ->

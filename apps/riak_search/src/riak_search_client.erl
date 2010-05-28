@@ -17,10 +17,9 @@
     query_as_graph/1,
 
     %% Indexing...
-    parse_solr_xml/2,
-    parse_solr_xml/3,
     parse_idx_doc/2,
-    run_solr_command/2,
+    get_idx_doc/2,
+    store_idx_doc/1,
     index_term/5
 ]).
 
@@ -52,21 +51,15 @@ search(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
     Length = length(Results),
     {Length, Results1}.
 
-%% Search an Index. Limit by QueryStart and QueryRows, Timeout is in
-%% milliseconds. Return {Length, [Docs]}.
 search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
-    %% Run the search...
+    %% Get results...
     {Length, Results} = search(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout),
 
-    %% Convert the doc IDs to actual documents.
-    Schema = to_schema(IndexOrSchema),
-    Index = Schema:name(),
-    DocBucket = to_binary(from_binary(Index) ++ "_docs"),
-
     %% Fetch the documents in parallel.
+    {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
+    Index = Schema:name(),
     F = fun({DocID, _}) ->
-        {ok, Obj} = RiakClient:get(DocBucket, to_binary(DocID), 2),
-        riak_object:get_value(Obj)
+        get_idx_doc(Index, DocID)
     end,
     Documents = plists:map(F, Results, {processes, 4}),
     {Length, Documents}.
@@ -74,7 +67,7 @@ search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
 %% Run the query through preplanning, return the result.
 explain(IndexOrSchema, QueryOps) ->
     %% Get schema information...
-    Schema = to_schema(IndexOrSchema),
+    {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
     DefaultIndex = Schema:name(),
     DefaultField = Schema:default_field(),
     Facets = [{DefaultIndex, Schema:field_name(X)} || X <- Schema:facets()],
@@ -82,45 +75,12 @@ explain(IndexOrSchema, QueryOps) ->
     %% Run the query through preplanning.
     riak_search_preplan:preplan(QueryOps, DefaultIndex, DefaultField, Facets).
 
-%% Parse a solr XML formatted file.
-parse_solr_xml(IndexOrSchema, Body) when is_binary(Body) ->
-    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
-    Result = parse_solr_xml(AnalyzerPid, IndexOrSchema, Body),
-    qilr_analyzer:close(AnalyzerPid),
-    Result.
-
-%% Index a solr XML formatted file using the provided analyzer pid.
-parse_solr_xml(AnalyzerPid, IndexOrSchema, Body) ->
-    %% Get the schema...
-    Schema = to_schema(IndexOrSchema),
-    Index = Schema:name(),
-
-    %% Parse the xml...
-    Commands = riak_solr_xml_xform:xform(Body),
-    ok = Schema:validate_commands(Commands),
-    {cmd, SolrCmd} = lists:keyfind(cmd, 1, Commands),
-
-    %% Index the docs...
-    F = fun(SolrDoc) ->
-        IdxDoc = to_riak_idx_doc(Index, SolrDoc),
-        {IdxDoc, parse_idx_doc(AnalyzerPid, IdxDoc)}
-    end,
-    {docs, SolrDocs} = lists:keyfind(docs, 1, Commands),
-    ParsedDocs = [F(X) || X <- SolrDocs],
-    {ok, SolrCmd, ParsedDocs}.
-
-%% @private
-to_riak_idx_doc(Index, Doc0) ->
-    Id = dict:fetch("id", Doc0),
-    Doc = dict:erase(Id, Doc0),
-    Fields = dict:to_list(dict:erase(Id, Doc)),
-    #riak_idx_doc{id=Id, index=Index, fields=Fields, props=[]}.
-
 %% Parse a #riak_idx_doc{} record using the provided analyzer pid.
 parse_idx_doc(AnalyzerPid, IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
     %% Extract fields, get schema...
     #riak_idx_doc{id=DocID, index=Index, fields=DocFields}=IdxDoc,
-    Schema = to_schema(Index),
+    {ok, Schema} = riak_search_config:get_schema(Index),
+
 
     %% Put together a list of Facet properties...
     F1 = fun(Facet, Acc) ->
@@ -151,6 +111,20 @@ parse_idx_doc(AnalyzerPid, IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
     DocFields1 = DocFields -- FacetProps,
     lists:foldl(F2, [], DocFields1).
 
+get_idx_doc(DocIndex, DocID) ->
+    DocBucket = to_binary(from_binary(DocIndex) ++ "_docs"),
+    {ok, Obj} = RiakClient:get(DocBucket, to_binary(DocID), 2),
+    riak_object:get_value(Obj).
+
+store_idx_doc(IdxDoc) ->
+    %% Store the document...
+    #riak_idx_doc { id=DocID, index=DocIndex } = IdxDoc,
+    DocBucket = riak_search_utils:to_binary(DocIndex ++ "_docs"),
+    DocKey = riak_search_utils:to_binary(DocID),
+    DocObj = riak_object:new(DocBucket, DocKey, IdxDoc),
+    ok = RiakClient:put(DocObj, 2).
+
+
 %% @private Given a list of tokens, build a gb_tree mapping words to a
 %% list of word positions.
 get_term_positions(Terms) ->
@@ -180,29 +154,6 @@ build_props(Term, PositionTree) ->
     end.
 
 
-%% Run the provided solr command on the provided docs...
-run_solr_command(Command, Docs) when Command == 'add' ->
-    %% Store the terms and the document...
-    F = fun({IdxDoc, Terms}) ->
-        %% Store the terms...
-        F1 = fun(X) ->
-            {Index, Field, Term, DocID, Props} = X,
-            index_term(Index, Field, Term, DocID, Props)
-        end,
-        plists:map(F1, Terms, {processes, 4}),
-
-        %% Store the document...
-        #riak_idx_doc { id=DocID, index=DocIndex } = IdxDoc,
-        DocBucket = riak_search_utils:to_binary(DocIndex ++ "_docs"),
-        DocKey = riak_search_utils:to_binary(DocID),
-        DocObj = riak_object:new(DocBucket, DocKey, IdxDoc),
-        ok = RiakClient:put(DocObj, 2)
-    end,
-    [F(X) || X <- Docs];
-run_solr_command(Command, _Docs) ->
-    error_logger:error_msg("Unknown solr command: ~p~n", [Command]),
-    throw({unknown_solr_command, Command}).
-
 
 %% Index the specified term.
 index_term(Index, Field, Term, Value, Props) ->
@@ -230,10 +181,9 @@ truncate_list(QueryStart, QueryRows, List) ->
     %% Return.
     List2.
 
-
 stream_search(IndexOrSchema, OpList) ->
     %% Get schema information...
-    Schema = to_schema(IndexOrSchema),
+    {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
     DefaultIndex = Schema:name(),
     DefaultField = Schema:default_field(),
     Facets = [{DefaultIndex, Schema:field_name(X)} || X <- Schema:facets()],
@@ -282,15 +232,6 @@ collect_result(#riak_search_ref{id=Id, inputcount=InputCount}=SearchRef, Timeout
             {[], SearchRef#riak_search_ref{inputcount=InputCount - 1}}
         after Timeout ->
              {error, timeout}
-    end.
-
-to_schema(IndexOrSchema) ->
-    case is_tuple(IndexOrSchema) andalso element(1, IndexOrSchema) == riak_solr_schema of
-        true  ->
-            IndexOrSchema;
-        false ->
-            {ok, Schema} = riak_solr_config:get_schema(IndexOrSchema),
-            Schema
     end.
 
 %% Return {NumTerms, NumDocs, QueryNorm}...

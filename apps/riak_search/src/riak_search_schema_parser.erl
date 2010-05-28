@@ -1,8 +1,7 @@
--module(riak_solr_schema_parser).
-
--include_lib("riak_solr/include/riak_solr.hrl").
-
+-module(riak_search_schema_parser).
 -export([from_eterm/1]).
+
+-include("riak_search.hrl").
 
 from_eterm({schema, SchemaProps, FieldDefs}) ->
     Name = proplists:get_value(name, SchemaProps),
@@ -24,7 +23,7 @@ from_eterm({schema, SchemaProps, FieldDefs}) ->
                     {error, {malformed_schema, {schema, SchemaProps}}};
                 false ->
                     Fields = parse_fields(FieldDefs, []),
-                    {ok, riak_solr_schema:new(Name, Version, DefaultField, Fields, DefaultOp)}
+                    {ok, riak_search_schema:new(Name, Version, DefaultField, Fields, DefaultOp)}
             end
     end.
 
@@ -44,7 +43,7 @@ parse_fields([{field, FieldProps}=Field0|T], Accum) ->
                 Name =:= undefined ->
                     {error, {missing_field_name, Field0}};
                 true ->
-                    F = #riak_solr_field{name=Name, type=Type, required=Reqd, facet=Facet },
+                    F = #riak_search_field{name=Name, type=Type, required=Reqd, facet=Facet },
                     parse_fields(T, [F|Accum])
             end;
         Error ->

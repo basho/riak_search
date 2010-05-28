@@ -7,7 +7,6 @@
 
 -include_lib("riak_search/include/riak_search.hrl").
 -include_lib("webmachine/include/webmachine.hrl").
--include("riak_solr.hrl").
 
 -record(state, {
     client,
@@ -38,7 +37,7 @@ allowed_methods(Req, State) ->
 malformed_request(Req, State) ->
     %% Try to get the schema...
     Index = get_index_name(Req),
-    case riak_solr_config:get_schema(Index) of
+    case riak_search_config:get_schema(Index) of
         {ok, Schema} ->
             case parse_squery(Req) of
                 {ok, SQuery} ->
@@ -93,8 +92,8 @@ build_json_response(Schema, ElapsedTime, SQuery, NumFound, []) ->
 build_json_response(Schema, ElapsedTime, SQuery, NumFound, Docs) ->
     F = fun({Name, Value}) -> 
         case Schema:find_field_or_facet(Name) of
-            Field when is_record(Field, riak_solr_field) ->
-                Type = Field#riak_solr_field.type;
+            Field when is_record(Field, riak_search_field) ->
+                Type = Field#riak_search_field.type;
             undefined ->
                 Type = unknown
         end,
@@ -175,7 +174,6 @@ replace_schema_defaults(SQuery, Schema) ->
     %% Update the Schema...
     Schema1 = Schema:set_default_op(DefaultOp),
     Schema2 = Schema1:set_default_field(DefaultField),
-    ?PRINT(Schema2),
     Schema2.
 
 

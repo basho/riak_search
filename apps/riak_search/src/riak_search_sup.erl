@@ -39,5 +39,8 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-    {ok, { {one_for_one, 5, 10}, []} }.
+    Processes = [{riak_search_config,
+                 {riak_search_config, start_link, []},
+                  permanent, 5000, worker, [riak_search_config]}],
+    {ok, { {one_for_one, 5, 10}, Processes} }.
 

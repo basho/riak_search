@@ -1,7 +1,4 @@
--module(riak_solr_schema, [Name, Version, DefaultField, FieldsAndFacets, DefaultOp]).
-
--include_lib("riak_solr/include/riak_solr.hrl").
-
+-module(riak_search_schema, [Name, Version, DefaultField, FieldsAndFacets, DefaultOp]).
 -export([
     %% Properties...
     name/0, 
@@ -29,6 +26,8 @@
     validate_commands/1
 ]).
 
+-include("riak_search.hrl").
+
 name() ->
     Name.
 
@@ -39,10 +38,10 @@ fields_and_facets() ->
     FieldsAndFacets.
 
 fields() ->
-    [X || X <- FieldsAndFacets, X#riak_solr_field.facet == false].
+    [X || X <- FieldsAndFacets, X#riak_search_field.facet == false].
 
 facets() ->
-    [X || X <- FieldsAndFacets, X#riak_solr_field.facet == true].
+    [X || X <- FieldsAndFacets, X#riak_search_field.facet == true].
 
 default_field() ->
     DefaultField.
@@ -57,21 +56,21 @@ set_default_op(NewDefaultOp) ->
     ?MODULE:new(Name, Version, DefaultField, FieldsAndFacets, NewDefaultOp).
 
 field_name(Field) ->
-    Field#riak_solr_field.name.
+    Field#riak_search_field.name.
 
 field_type(Field) ->
-    Field#riak_solr_field.type.
+    Field#riak_search_field.type.
 
 is_field_required(Field) ->
-    Field#riak_solr_field.required == true.
+    Field#riak_search_field.required == true.
 
 is_field_facet(Field) ->
-    Field#riak_solr_field.facet == true.
+    Field#riak_search_field.facet == true.
 
 %% Return the field or facet matching the specified name, or 'undefined'.
 find_field_or_facet(FName) ->
-    case lists:keyfind(FName, #riak_solr_field.name, FieldsAndFacets) of
-        Field when is_record(Field, riak_solr_field) -> 
+    case lists:keyfind(FName, #riak_search_field.name, FieldsAndFacets) of
+        Field when is_record(Field, riak_search_field) -> 
             Field;
         false -> 
             undefined
@@ -80,7 +79,7 @@ find_field_or_facet(FName) ->
 %% Return the field matching the specified name, or 'undefined'
 find_field(FName) ->
     Field = find_field_or_facet(FName),
-    case Field#riak_solr_field.facet /= true of
+    case Field#riak_search_field.facet /= true of
         true  -> Field;
         false -> undefiend
     end.
@@ -88,7 +87,7 @@ find_field(FName) ->
 %% Return the facet matching the specified name, or 'undefined'
 find_facet(FName) ->
     Field = find_field_or_facet(FName),
-    case Field#riak_solr_field.facet == true of
+    case Field#riak_search_field.facet == true of
         true  -> Field;
         false -> undefiend
     end.
@@ -97,7 +96,7 @@ find_facet(FName) ->
 %% and optional fields. Otherwise, return an error.
 validate_commands(Commands) ->
     Docs = proplists:get_value(docs, Commands),
-    Required = [F || F <- FieldsAndFacets, F#riak_solr_field.required =:= true],
+    Required = [F || F <- FieldsAndFacets, F#riak_search_field.required =:= true],
     validate_required_fields(Docs, Required).
 
 %% @private
@@ -117,7 +116,7 @@ validate_required_fields([Doc|Rest], Required) ->
 validate_required_fields_1(_, []) -> 
     ok;
 validate_required_fields_1(Doc, [Field|Rest]) ->
-    FieldName = Field#riak_solr_field.name,
+    FieldName = Field#riak_search_field.name,
     case dict:find(FieldName, Doc) of
         {ok, _Value} ->
             validate_required_fields_1(Doc, Rest);
