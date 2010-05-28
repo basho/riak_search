@@ -24,7 +24,7 @@ stop() ->
     gen_server:cast(?SERVER, stop_analyzer).
 
 init([]) ->
-    process_flag(trap_exit, true),
+    error_logger:info_msg("analysis server monitor starting (~p)~n", [self()]),
     {ok, PortNum} = application:get_env(analysis_port),
     case application:get_env(analysis_port) of
         {ok, PortNum} when is_integer(PortNum) ->
@@ -55,14 +55,12 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({Sock, _}, #state{portnum=PortNum, sock=Sock}=State) ->
-    error_logger:info_msg("Re-establishing connection"),
-    gen_tcp:close(Sock),
-    {ok, NewSock} = gen_tcp:connect({127,0,0,1}, PortNum, [{active, false}, binary, {packet, 4}]),
-    {noreply, State#state{sock=NewSock}};
-
-handle_info({_Port, _Message}, State) ->
-    {stop, java_error, State};
+handle_info({tcp_closed, _}, State) ->
+    error_logger:warn_msg("Restarting analysis server monitor (~p)~n", [self()]),
+    {stop, normal, State};
+handle_info({tcp_error, _, _}, State) ->
+    error_logger:warn_msg("Restarting analysis server monitor(~p)~n", [self()]),
+    {stop, normal, State};
 handle_info(_Info, State) ->
     {noreply, State}.
 

@@ -22,7 +22,7 @@ stop() ->
     gen_server:cast(?SERVER, stop_analyzer).
 
 init([]) ->
-    process_flag(trap_exit, true),
+    error_logger:info_msg("Raptor monitor starting (~p)~n", [self()]),
     {MinRam, MaxRam, PortNum} = read_config(),
     CmdDir = filename:join([priv_dir(), "raptor_server"]),
     Cmd = filename:join([CmdDir, "raptor_server.sh"]),
@@ -51,9 +51,11 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info({tcp_closed, _}, State) ->
-    {stop, heartbeat, State};
+    error_logger:warn_msg("Restarting Raptor monitor (~p)~n", [self()]),
+    {stop, normal, State};
 handle_info({tcp_error, _, _}, State) ->
-    {stop, heartbeat, State};
+    error_logger:warn_msg("Restarting Raptor monitor (~p)~n", [self()]),
+    {stop, normal, State};
 handle_info({_Port, {eol, Msg}}, State) ->
     error_logger:info_msg("~p~n", [Msg]),
     {noreply, State};
