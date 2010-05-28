@@ -23,13 +23,14 @@ stop() ->
 
 init([]) ->
     error_logger:info_msg("Raptor monitor starting (~p)~n", [self()]),
-    {MinRam, MaxRam, PortNum} = read_config(),
+    {MinRam, MaxRam, DataDir, PortNum} = read_config(),
     CmdDir = filename:join([priv_dir(), "raptor_server"]),
     Cmd = filename:join([CmdDir, "raptor_server.sh"]),
     case catch erlang:open_port({spawn_executable, Cmd}, [stderr_to_stdout,
                                                           {args, [MinRam,
                                                                   MaxRam,
-                                                                  integer_to_list(PortNum)]},
+                                                                  integer_to_list(PortNum),
+                                                                  DataDir]},
                                                           {line, 2048},
                                                           {cd, CmdDir}]) of
         {'EXIT', Error} ->
@@ -76,7 +77,8 @@ read_config() ->
     MinRam = app_helper:get_env(raptor, min_backend_mem, 512),
     MaxRam = app_helper:get_env(raptor, max_backend_mem, 1024),
     BackendPort = app_helper:get_env(raptor, backend_port, 5099),
-    {integer_to_list(MinRam), integer_to_list(MaxRam), BackendPort}.
+    DataDir = app_helper:get_env(raptor, raptor_backend_root, "data/raptor"),
+    {integer_to_list(MinRam), integer_to_list(MaxRam), filename:absname(DataDir), BackendPort}.
 
 connect(_Addr, _PortNum, _Options, 0) ->
     {error, no_connection};

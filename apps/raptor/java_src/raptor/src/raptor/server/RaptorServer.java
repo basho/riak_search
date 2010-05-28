@@ -44,48 +44,12 @@ public class RaptorServer {
     public static Thread idxThread;
     
     public static Thread writeThread;
-    final public static LinkedBlockingQueue<Index> writeQueue;
+    public static LinkedBlockingQueue<Index> writeQueue;
     
     public static boolean shuttingDown = false;
     public static boolean debugging = true;
     
-    static {
-        writeQueue = new LinkedBlockingQueue<Index>();
-        writeThread = new Thread(new Runnable() {
-            public void run() {
-                try {
-                    log.info("writeThread: started");
-                    while(true) {
-                        try {
-                            Index msg = writeQueue.take();
-                            idx.index(msg.getIndex(),
-                                      msg.getField(),
-                                      msg.getTerm(),
-                                      msg.getSubtype(),
-                                      msg.getSubterm(),
-                                      msg.getValue(),
-                                      msg.getPartition(),
-                                      msg.getProps().toByteArray());
-                        } catch (Exception iex) {
-                            iex.printStackTrace();
-                        }
-                    }
-                } catch (Exception ex) {
-                    ex.printStackTrace();
-                }
-            }
-        });
-        
-        try {
-            idx = new RSXIndex();
-            idxThread = new Thread(idx);
-            idxThread.start();
-        } catch (Exception ex) {
-            idx = null;
-            ex.printStackTrace();
-            System.exit(-1);
-        }
-        
+    static {        
         Runtime.getRuntime().addShutdownHook(
             new Thread() {
                 public void run() {
@@ -114,8 +78,48 @@ public class RaptorServer {
     public static void main(String[] argv) throws Exception {
         log.info("starting");
         int raptorPort = Integer.parseInt(argv[0]);
+        String dataDir = argv[1];
+        configureStorage(dataDir);
         buildRaptorServer(raptorPort);
         buildHeartbeatServer(raptorPort + 1);
+    }
+    
+    private static void configureStorage(String dataDir) {
+       writeQueue = new LinkedBlockingQueue<Index>();
+       writeThread = new Thread(new Runnable() {
+           public void run() {
+               try {
+                   log.info("writeThread: started");
+                   while(true) {
+                       try {
+                           Index msg = writeQueue.take();
+                           idx.index(msg.getIndex(),
+                                     msg.getField(),
+                                     msg.getTerm(),
+                                     msg.getSubtype(),
+                                     msg.getSubterm(),
+                                     msg.getValue(),
+                                     msg.getPartition(),
+                                     msg.getProps().toByteArray());
+                       } catch (Exception iex) {
+                           iex.printStackTrace();
+                       }
+                   }
+               } catch (Exception ex) {
+                   ex.printStackTrace();
+               }
+           }
+       });
+       
+       try {
+           idx = new RSXIndex(dataDir);
+           idxThread = new Thread(idx);
+           idxThread.start();
+       } catch (Exception ex) {
+           idx = null;
+           log.error("Error configuring Raptor storage", ex);
+           System.exit(-1);
+       }
     }
     
     private static void buildRaptorServer(int port) {

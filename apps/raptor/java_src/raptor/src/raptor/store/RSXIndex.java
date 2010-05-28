@@ -25,29 +25,16 @@
 
 package raptor.store;
 
-import java.io.*;
-import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.util.List;
+import java.util.Map;
 
-import com.sleepycat.db.*;
-import com.sleepycat.bind.tuple.*;
+import org.apache.log4j.Logger;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
-import org.apache.lucene.document.Fieldable;
-import org.apache.lucene.index.*;
-import org.apache.log4j.Logger;
-import org.apache.log4j.BasicConfigurator;
-import org.apache.log4j.LogManager;
-import org.apache.log4j.Logger;
-import org.json.*;
+import org.json.JSONObject;
 
 import raptor.server.RaptorServer;
-import raptor.util.*;
-import raptor.store.bdb.*;
-import raptor.store.column.*;
-import raptor.store.handlers.*;
+import raptor.store.handlers.ResultHandler;
 
 public class RSXIndex implements Runnable {
     final private static Logger log = 
@@ -63,9 +50,9 @@ public class RSXIndex implements Runnable {
     
     public static long stat_index_c = 0;
     
-    public RSXIndex() throws Exception {
-        store = new ColumnStore("raptor-db", "log", 1);
-        lucene = new LuceneStore("raptor-catalog");
+    public RSXIndex(String dataDir) throws Exception {
+        store = new ColumnStore(dataDir + "/raptor-db", "log", 1);
+        lucene = new LuceneStore(dataDir + "/raptor-catalog");
         RaptorServer.writeThread.start();
     }
 
@@ -282,7 +269,7 @@ public class RSXIndex implements Runnable {
     }
     
     public static void main(String args[]) throws Exception {
-        RSXIndex idx = new RSXIndex();
+        RSXIndex idx = new RSXIndex("");
         
         ResultHandler handler = 
             new ResultHandler() {

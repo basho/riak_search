@@ -68,8 +68,12 @@ read_input(#state{handler=Handler}=State, Accum0) ->
                     read_input(State, []);
                 _ ->
                     case catch Handler(Accum, State) of
-                        Error ->
-                            io:format("~p~n", [Error])
+                        {'EXIT', Error} ->
+                            io:format("~p~n", [Error]);
+                        {error, _} = Error ->
+                            io:format("~p~n", [Error]);
+                        _ ->
+                            ok
                     end,
                     read_input(State, [])
             end;
