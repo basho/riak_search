@@ -14,7 +14,7 @@ start(Index) ->
                       index=Index,
                       analyzer=P,
                       handler=fun riak_search_shell:search/2}, []),
-    exit(P, shutdown).
+    qilr_analyzer:close(P).
 
 start() ->
     start("search").
@@ -67,7 +67,10 @@ read_input(#state{handler=Handler}=State, Accum0) ->
                     print_info(State),
                     read_input(State, []);
                 _ ->
-                    Handler(Accum, State),
+                    case catch Handler(Accum, State) of
+                        Error ->
+                            io:format("~p~n", [Error])
+                    end,
                     read_input(State, [])
             end;
         Cont ->
