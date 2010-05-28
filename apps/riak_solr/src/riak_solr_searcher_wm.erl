@@ -46,7 +46,7 @@ malformed_request(Req, State) ->
 
                     %% Try to parse the query
                     Client = State#state.client,
-                    try 
+                    try
                         {ok, QueryOps} = Client:parse_query(SQuery#squery.q),
                         {false, Req, State#state{schema=Schema1, squery=SQuery, query_ops=QueryOps}}
                     catch _ : Error ->
@@ -90,7 +90,7 @@ build_json_response(Schema, ElapsedTime, SQuery, NumFound, []) ->
                             {<<"start">>, SQuery#squery.query_start}]}}],
     mochijson2:encode({struct, Response});
 build_json_response(Schema, ElapsedTime, SQuery, NumFound, Docs) ->
-    F = fun({Name, Value}) -> 
+    F = fun({Name, Value}) ->
         case Schema:find_field_or_facet(Name) of
             Field when is_record(Field, riak_search_field) ->
                 Type = Field#riak_search_field.type;
@@ -120,7 +120,7 @@ get_index_name(Req) ->
     case wrq:path_info(index, Req) of
         undefined ->
             DefaultIndex = app_helper:get_env(riak_solr, default_index, ?DEFAULT_INDEX),
-            wrq:get_qs_value(index, DefaultIndex, Req);
+            wrq:get_qs_value("index", DefaultIndex, Req);
         Index ->
             Index
     end.
@@ -157,20 +157,20 @@ parse_squery(Req) ->
 replace_schema_defaults(SQuery, Schema) ->
     %% Get the Default Op...
     case SQuery#squery.default_op of
-        undefined -> 
+        undefined ->
             DefaultOp = Schema:default_op();
-        Other1 -> 
+        Other1 ->
             DefaultOp = Other1
     end,
 
     %% Get the default field...
     case SQuery#squery.default_field of
-        undefined -> 
+        undefined ->
             DefaultField = Schema:default_field();
-        Other2 -> 
+        Other2 ->
             DefaultField = Other2
     end,
-    
+
     %% Update the Schema...
     Schema1 = Schema:set_default_op(DefaultOp),
     Schema2 = Schema1:set_default_field(DefaultField),
@@ -190,5 +190,3 @@ convert_type(FieldValue, boolean) ->
     to_boolean(FieldValue);
 convert_type(_FieldValue, Other) ->
     throw({unhandled_type, Other}).
-
-

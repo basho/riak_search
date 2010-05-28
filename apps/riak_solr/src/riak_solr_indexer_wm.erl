@@ -50,7 +50,7 @@ get_index_name(Req) ->
     case wrq:path_info(index, Req) of
         undefined ->
             DefaultIndex = app_helper:get_env(riak_solr, default_index, ?DEFAULT_INDEX),
-            wrq:get_qs_value(index, DefaultIndex, Req);
+            wrq:get_qs_value("index", DefaultIndex, Req);
         Index ->
             Index
     end.
