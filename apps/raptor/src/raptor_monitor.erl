@@ -52,11 +52,9 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info({tcp_closed, _}, State) ->
-    error_logger:warn_msg("Restarting Raptor monitor (~p)~n", [self()]),
-    {stop, normal, State};
+    restart(State);
 handle_info({tcp_error, _, _}, State) ->
-    error_logger:warn_msg("Restarting Raptor monitor (~p)~n", [self()]),
-    {stop, normal, State};
+    restart(State);
 handle_info({_Port, {eol, Msg}}, State) ->
     error_logger:info_msg("~p~n", [Msg]),
     {noreply, State};
@@ -100,3 +98,7 @@ priv_dir() ->
         Path ->
             filename:absname(Path)
     end.
+
+restart(State) ->
+    error_logger:warning_msg("Restarting Raptor monitor (~p)~n", [self()]),
+    {stop, normal, State}.
