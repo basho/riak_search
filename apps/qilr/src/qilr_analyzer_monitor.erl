@@ -56,11 +56,9 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info({tcp_closed, _}, State) ->
-    error_logger:warn_msg("Restarting analysis server monitor (~p)~n", [self()]),
-    {stop, normal, State};
+    restart(State);
 handle_info({tcp_error, _, _}, State) ->
-    error_logger:warn_msg("Restarting analysis server monitor(~p)~n", [self()]),
-    {stop, normal, State};
+    restart(State);
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -91,3 +89,7 @@ priv_dir() ->
         Path ->
             filename:absname(Path)
     end.
+
+restart(State) ->
+    error_logger:warning_msg("Restarting analysis server monitor (~p)~n", [self()]),
+    {stop, normal, State}.
