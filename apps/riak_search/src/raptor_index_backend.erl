@@ -63,29 +63,39 @@ handle_command(State, {index, Index, Field, Term, SubType, SubTerm, Value, Props
     Partition = list_to_binary("" ++ integer_to_list(State#state.partition)),
     Conn = State#state.conn,
     raptor_conn:index(Conn,
-        list_to_binary(Index),
-        list_to_binary(Field),
-        Term,
-        list_to_binary(integer_to_list(SubType)),
-        list_to_binary(integer_to_list(SubTerm)),
-        list_to_binary(Value),
-        Partition,
-        term_to_binary(Props)),
+                      list_to_binary(Index),
+                      list_to_binary(Field),
+                      Term,
+                      list_to_binary(integer_to_list(SubType)),
+                      list_to_binary(integer_to_list(SubTerm)),
+                      list_to_binary(Value),
+                      Partition,
+                      term_to_binary(Props)),
     ok;
 
 handle_command(State, {index, Index, Field, Term, SubType, SubTerm, Value, Props}) ->
     Partition = list_to_binary(integer_to_list(State#state.partition)),
     Conn = State#state.conn,
     raptor_conn:index(Conn,
-        list_to_binary(Index),
-        list_to_binary(Field),
-        Term,
-        list_to_binary(integer_to_list(SubType)),
-        list_to_binary(integer_to_list(SubTerm)),
-        list_to_binary(Value),
-        Partition,
-        term_to_binary(Props)),
-    %%TS = mi_utils:now_to_timestamp(erlang:now()),
+                      list_to_binary(Index),
+                      list_to_binary(Field),
+                      Term,
+                      list_to_binary(integer_to_list(SubType)),
+                      list_to_binary(integer_to_list(SubTerm)),
+                      list_to_binary(Value),
+                      Partition,
+                      term_to_binary(Props)),
+    ok;
+
+handle_command(State, {delete_entry, Index, Field, Term, DocId}) ->
+    Partition = list_to_binary(integer_to_list(State#state.partition)),
+    Conn = State#state.conn,
+    raptor_conn:delete_entry(Conn,
+                             list_to_binary(Index),
+                             list_to_binary(Field),
+                             Term,
+                             list_to_binary(DocId),
+                             Partition),
     ok;
 
 handle_command(State, {init_stream, OutputPid, OutputRef}) ->
@@ -490,6 +500,8 @@ receive_fold_results(Acc, Count) ->
     end.
 
 %%%
+
+
 
 poke(Command) ->
     handle_command(no_state, {command, Command, <<"">>, <<"">>, <<"">>}).

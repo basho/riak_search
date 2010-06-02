@@ -8,6 +8,7 @@
 -export([start_link/0,
          close/1,
          index/9,
+         delete_entry/6,
          stream/8,
          info/5,
          command/5,
@@ -37,6 +38,14 @@ index(ConnPid, IndexName, FieldName, Term, SubType,
                       message_type=MessageType,
                       props=Props},
     gen_server:call(ConnPid, {index, IndexRec}, ?TIMEOUT).
+
+delete_entry(ConnPid, IndexName, FieldName, Term, DocId, Partition) ->
+    MessageType = <<"DeleteEntry">>,
+    DeleteEntryRec = #deleteentry{index=IndexName, field=FieldName,
+                                  term=Term, doc_id=DocId,
+                                  partition=Partition,
+                                  message_type=MessageType},
+    gen_server:call(ConnPid, {deleteentry, DeleteEntryRec}, ?TIMEOUT).
 
 stream(ConnPid, IndexName, FieldName, Term, SubType, StartSubTerm,
        EndSubTerm, Partition) ->
@@ -115,6 +124,11 @@ handle_call(close_conn, _From, State) ->
 
 handle_call({index, IndexRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_index(IndexRec),
+    gen_tcp:send(Sock, Data),
+    {reply, ok, State};
+
+handle_call({deleteentry, DeleteEntryRec}, _From, #state{sock=Sock}=State) ->
+    Data = raptor_pb:encode_deleteentry(DeleteEntryRec),
     gen_tcp:send(Sock, Data),
     {reply, ok, State};
 

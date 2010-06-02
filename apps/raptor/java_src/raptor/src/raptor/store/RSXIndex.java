@@ -109,6 +109,17 @@ public class RSXIndex implements Runnable {
         stat_index_c++;
     }
     
+    public void deleteEntry(String index,
+                            String field,
+                            String term,
+                            String docId,
+                            String partition) throws Exception {
+        String table = makeTableKey(index, field, term, partition);
+        boolean res = store.delete(table, docId);
+        log.info("delete(" + index+ ", " + field + ", " + term + ", " + docId + ", " +
+                 partition + "), res = " + res);
+    }
+
     public void stream(String index,
                        String field,
                        String term,

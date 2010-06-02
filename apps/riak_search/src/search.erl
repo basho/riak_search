@@ -80,7 +80,8 @@ index_dir(IndexOrSchema, Directory) ->
         [begin
             {Index, Field, Term, Value, Props} = X,
             Client:index_term(Index, Field, Term, Value, Props)
-        end || X <- Terms]
+        end || X <- Terms],
+        Client:store_idx_doc(IdxDoc2)
     end,
     riak_search_utils:index_recursive(F, Directory),
     qilr_analyzer:close(AnalyzerPid),
