@@ -44,13 +44,23 @@ init([]) ->
 handle_call(clear, _From, State) ->
     {reply, ok, State#state{schemas=dict:new()}};
 handle_call({get_schema, SchemaName}, _From, #state{schemas=Schemas}=State) ->
-    {Reply, State1} = case dict:find(SchemaName, Schemas) of
-                          {ok, Schema} ->
-                              {{ok, Schema}, State};
-                          _ ->
-                              load_schema(SchemaName, State)
-                      end,
-    {reply, Reply, State1};
+    %% Look up the schema in cache...
+    case dict:find(SchemaName, Schemas) of
+        {ok, Schema} ->
+            %% Return the schema...
+            {reply, {ok, Schema}, State};
+        _ ->
+            %% Load schema from file...
+            case load_schema(SchemaName, State#state.schema_dir) of
+                {ok, Schema} ->
+                    NewSchemas = dict:store(SchemaName, Schema, Schemas),
+                    NewState = State#state { schemas=NewSchemas },
+                    {reply, {ok, Schema}, NewState};
+                Error ->
+                    error_logger:error_msg("Error loading schema '~s': ~n~p~n", [SchemaName, Error]),
+                    {reply, undefined, State}
+            end
+    end;
 handle_call(_Request, _From, State) ->
     {reply, ignore, State}.
 
@@ -67,17 +77,19 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% Internal functions
-load_schema(SchemaName, #state{schema_dir=Dir, schemas=Schemas}=State) ->
+load_schema(SchemaName, SchemaDir) ->
     SchemaFile = io_lib:format("~s.def", [SchemaName]),
-    Result = file:consult(filename:join([Dir, SchemaFile])),
+    Result = file:consult(filename:join([SchemaDir, SchemaFile])),
     case Result of
         {ok, [RawSchema]} ->
-            case riak_search_schema_parser:from_eterm(RawSchema) of
-                {ok, Schema} ->
-                    {{ok, Schema}, State#state{schemas=dict:store(SchemaName, Schema, Schemas)}};
-                Error ->
-                    {Error, State}
-            end;
+            %% Parse from file...
+            riak_search_schema_parser:from_eterm(RawSchema);
+        {error, enoent} ->
+            %% Not found, use default...
+            error_logger:warning_msg("Could not find schema '~s', using defaults.~n", [SchemaName]),
+            Schema = riak_search_schema:new(SchemaName, 0, "value", [], 'or'),
+            {ok, Schema};
         Error ->
-            {Error, State}
+            %% Some other error, so return...
+            Error
     end.
