@@ -21,7 +21,7 @@ index_dir(IndexOrSchema, Directory) ->
     F = fun(_BaseName, Body) ->
         try
             {ok, Command, Docs} = SolrClient:parse_solr_xml(Schema, Body),
-            SolrClient:run_solr_command(Command, Docs)
+            SolrClient:run_solr_command(Schema, Command, Docs)
         catch _ : Error ->
             M = "Could not parse docs '~s'.~n~p~n~p~n",
             error_logger:error_msg(M, [Schema:name(), Error, erlang:get_stacktrace()])

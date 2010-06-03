@@ -6,7 +6,7 @@
 -include_lib("webmachine/include/webmachine.hrl").
 
 
--record(state, {solr_client, method, command, docs}).
+-record(state, {solr_client, method, schema, command, entries}).
 -define(DEFAULT_INDEX, "search").
 
 init(_) ->
@@ -25,8 +25,8 @@ malformed_request(Req, State) ->
             SolrClient = State#state.solr_client,
             Body = wrq:req_body(Req),
             try
-                {ok, Command, Docs} = SolrClient:parse_solr_xml(Schema, Body),
-                {false, Req, State#state { command=Command, docs=Docs }}
+                {ok, Command, Entries} = SolrClient:parse_solr_xml(Schema, Body),
+                {false, Req, State#state { schema=Schema, command=Command, entries=Entries }}
             catch _ : Error ->
                 error_logger:error_msg("Could not parse docs '~s'.~n~p~n", [Index, Error]),
                 {true, Req, State}
@@ -36,9 +36,9 @@ malformed_request(Req, State) ->
             {true, Req, State}
     end.
 
-process_post(Req, State = #state{ solr_client=SolrClient, command=Command, docs=Docs }) ->
+process_post(Req, State = #state{ solr_client=SolrClient, schema=Schema, command=Command, entries=Entries }) ->
     try
-        SolrClient:run_solr_command(Command, Docs),
+        SolrClient:run_solr_command(Schema, Command, Entries),
         {true, Req, State}
     catch _ : Error ->
         Msg = "Error in riak_solr_indexer_wm:process_post/2: ~p~n~p~n",

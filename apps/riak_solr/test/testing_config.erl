@@ -10,10 +10,13 @@ parse_test_() ->
                {ok, Schema} = riak_solr_config:get_schema("schema1"),
                validate_schema(schema1, Schema) end,
        fun() ->
+               %% Parse...
                {ok, Xml} = file:read_file("./../test/test_data/add.xml"),
-               Cmds = riak_solr_xml_xform:xform("schema1", Xml),
+               {ok, Command, Entries} = riak_solr_xml_xform:xform(Xml),
+
+               %% Validate...
                {ok, Schema} = riak_solr_config:get_schema("schema1"),
-               {ok, Cmds1} = Schema:validate_commands(Cmds),
+               ok = Schema:validate_commands(Command, Entries),
                sanity_check_cmds(Cmds1) end]}].
 
 %% Helper functions

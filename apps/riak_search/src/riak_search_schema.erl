@@ -23,7 +23,7 @@
     find_facet/1,
     
     %% Validation
-    validate_commands/1
+    validate_commands/2
 ]).
 
 -include("riak_search.hrl").
@@ -94,10 +94,11 @@ find_facet(FName) ->
 
 %% Verify that the schema names match. If so, then validate required
 %% and optional fields. Otherwise, return an error.
-validate_commands(Commands) ->
-    Docs = proplists:get_value(docs, Commands),
+validate_commands(add, Docs) ->
     Required = [F || F <- FieldsAndFacets, F#riak_search_field.required =:= true],
-    validate_required_fields(Docs, Required).
+    validate_required_fields(Docs, Required);
+validate_commands(_, _) ->
+    ok.
 
 %% @private
 %% Validate for required fields in the list of documents.

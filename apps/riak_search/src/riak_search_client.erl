@@ -183,7 +183,7 @@ truncate_list(QueryStart, QueryRows, List) ->
     end,
 
     %% Only keep QueryRows results...
-    case QueryRows =< length(List1) of
+    case QueryRows /= infinity andalso QueryRows =< length(List1) of
         true  -> {List2, _} = lists:split(QueryRows, List1);
         false -> List2 = List1
     end,

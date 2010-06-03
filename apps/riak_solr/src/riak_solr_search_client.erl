@@ -2,10 +2,11 @@
 -export([
     parse_solr_xml/2,
     parse_solr_xml/3,
-    run_solr_command/2
+    run_solr_command/3
 ]).
 
 -define(DEFAULT_INDEX, "search").
+-define(DEFAULT_TIMEOUT, 60000).
 -include_lib("riak_search/include/riak_search.hrl").
 
 %% Parse a solr XML formatted file.
@@ -22,42 +23,79 @@ parse_solr_xml(AnalyzerPid, IndexOrSchema, Body) ->
     Index = Schema:name(),
 
     %% Parse the xml...
-    Commands = riak_solr_xml_xform:xform(Body),
-    ok = Schema:validate_commands(Commands),
-    {cmd, SolrCmd} = lists:keyfind(cmd, 1, Commands),
+    {ok, Command, Entries} = riak_solr_xml_xform:xform(Body),
 
-    %% Index the docs...
-    F = fun(SolrDoc) ->
-        IdxDoc = to_riak_idx_doc(Index, SolrDoc),
-        {IdxDoc, Client:parse_idx_doc(AnalyzerPid, IdxDoc)}
-    end,
-    {docs, SolrDocs} = lists:keyfind(docs, 1, Commands),
-    ParsedDocs = [F(X) || X <- SolrDocs],
-    {ok, SolrCmd, ParsedDocs}.
+    ParsedDocs = [parse_solr_entry(AnalyzerPid, Index, Command, X) || X <- Entries],
+    {ok, Command, ParsedDocs}.
 
 %% @private
-to_riak_idx_doc(Index, Doc0) ->
-    Id = dict:fetch("id", Doc0),
-    Doc = dict:erase(Id, Doc0),
-    Fields = dict:to_list(dict:erase(Id, Doc)),
+%% Parse a document to add...
+parse_solr_entry(AnalyzerPid, Index, add, {"doc", Entry}) ->
+    IdxDoc = to_riak_idx_doc(Index, Entry),
+    {IdxDoc, Client:parse_idx_doc(AnalyzerPid, IdxDoc)};
+
+%% Deletion by ID or Query. If query, then parse...
+parse_solr_entry(_AnalyzerPid, _Index, delete, {"id", ID}) ->
+    {'id', ID};
+parse_solr_entry(_AnalyzerPid, _Index, delete, {"query", Query}) ->
+    case Client:parse_query(Query) of
+        {ok, QueryOps} -> 
+            {'query', QueryOps};
+        {error, Error} ->
+            M = "Error parsing query '~s': ~p~n",
+            error_logger:error_msg(M, [Query, Error]),
+            throw({?MODULE, could_not_parse_query, Query})
+    end;
+
+%% Some unknown command...
+parse_solr_entry(_, _, Command, Entry) ->
+    throw({?MODULE, unknown_command, Command, Entry}).
+        
+
+%% @private
+to_riak_idx_doc(Index, Doc) ->
+    case lists:keyfind("id", 1, Doc) of
+        {"id", Id} -> 
+            Id;
+        false ->
+            Id = undefined, % Prevent compiler warnings.
+            throw({?MODULE, required_field_not_found, "id", Doc})
+    end,
+    Fields = lists:keydelete("id", 1, Doc), 
     #riak_idx_doc{id=Id, index=Index, fields=Fields, props=[]}.
 
 
 %% Run the provided solr command on the provided docs...
-run_solr_command(Command, Docs) when Command == 'add' ->
-    %% Store the terms and the document...
-    F = fun({IdxDoc, Terms}) ->
-        %% Store the terms...
-        F1 = fun(X) ->
-            {Index, Field, Term, DocID, Props} = X,
-            Client:index_term(Index, Field, Term, DocID, Props)
-        end,
-        plists:map(F1, Terms, {processes, 4}),
-        
-        %% Store the document.
-        Client:store_idx_doc(IdxDoc)
+run_solr_command(_, _, []) ->
+    ok;
+
+%% Add a list of documents to the index...
+run_solr_command(Schema, add, [{IdxDoc, Terms}|Docs]) ->
+    %% Store the terms...
+    F = fun(X) ->
+        {Index, Field, Term, DocID, Props} = X,
+        Client:index_term(Index, Field, Term, DocID, Props)
     end,
-    [F(X) || X <- Docs];
-run_solr_command(Command, _Docs) ->
+    plists:map(F, Terms, {processes, 4}),
+    
+    %% Store the document.
+    Client:store_idx_doc(IdxDoc),
+    run_solr_command(Schema, add, Docs);
+
+%% Delete a document by ID...
+run_solr_command(Schema, delete, [{'id', ID}|IDs]) ->
+    Index = Schema:name(),
+    Client:delete_document(Index, ID),
+    run_solr_command(Schema, delete, IDs);
+
+%% Delete documents by query...
+run_solr_command(Schema, delete, [{'query', QueryOps}|Queries]) ->
+    Index = Schema:name(),
+    {_NumFound, Docs} = Client:search_doc(Schema, QueryOps, 0, infinity, ?DEFAULT_TIMEOUT),
+    [Client:delete_document(Index, X#riak_idx_doc.id) || X <- Docs],
+    run_solr_command(Schema, delete, Queries);
+
+%% Unknown command, so error...
+run_solr_command(_Schema, Command, _Docs) ->
     error_logger:error_msg("Unknown solr command: ~p~n", [Command]),
     throw({unknown_solr_command, Command}).
