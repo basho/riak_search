@@ -52,6 +52,15 @@ message Command {
     optional string arg3 = 5;
 }
 
+message DeleteEntry {
+    required string index = 1;
+    required string field = 2;
+    required string term = 3;
+    required string doc_id = 6;
+    required string partition = 7;
+    required string message_type = 8;
+}
+
 message StreamResponse {
     required string value = 1;
     required bytes  props = 2;

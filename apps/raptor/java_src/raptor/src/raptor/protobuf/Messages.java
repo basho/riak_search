@@ -41,7 +41,6 @@ public final class Messages {
     private java.lang.String index_ = "";
     public boolean hasIndex() { return hasIndex; }
     public java.lang.String getIndex() { return index_; }
-    private volatile com.google.protobuf.ByteString indexEncodedCache_;
     
     // required string field = 2;
     public static final int FIELD_FIELD_NUMBER = 2;
@@ -49,7 +48,6 @@ public final class Messages {
     private java.lang.String field_ = "";
     public boolean hasField() { return hasField; }
     public java.lang.String getField() { return field_; }
-    private volatile com.google.protobuf.ByteString fieldEncodedCache_;
     
     // required string term = 3;
     public static final int TERM_FIELD_NUMBER = 3;
@@ -57,7 +55,6 @@ public final class Messages {
     private java.lang.String term_ = "";
     public boolean hasTerm() { return hasTerm; }
     public java.lang.String getTerm() { return term_; }
-    private volatile com.google.protobuf.ByteString termEncodedCache_;
     
     // required string subtype = 4;
     public static final int SUBTYPE_FIELD_NUMBER = 4;
@@ -65,7 +62,6 @@ public final class Messages {
     private java.lang.String subtype_ = "";
     public boolean hasSubtype() { return hasSubtype; }
     public java.lang.String getSubtype() { return subtype_; }
-    private volatile com.google.protobuf.ByteString subtypeEncodedCache_;
     
     // required string subterm = 5;
     public static final int SUBTERM_FIELD_NUMBER = 5;
@@ -73,7 +69,6 @@ public final class Messages {
     private java.lang.String subterm_ = "";
     public boolean hasSubterm() { return hasSubterm; }
     public java.lang.String getSubterm() { return subterm_; }
-    private volatile com.google.protobuf.ByteString subtermEncodedCache_;
     
     // required string value = 6;
     public static final int VALUE_FIELD_NUMBER = 6;
@@ -81,7 +76,6 @@ public final class Messages {
     private java.lang.String value_ = "";
     public boolean hasValue() { return hasValue; }
     public java.lang.String getValue() { return value_; }
-    private volatile com.google.protobuf.ByteString valueEncodedCache_;
     
     // required string partition = 7;
     public static final int PARTITION_FIELD_NUMBER = 7;
@@ -89,7 +83,6 @@ public final class Messages {
     private java.lang.String partition_ = "";
     public boolean hasPartition() { return hasPartition; }
     public java.lang.String getPartition() { return partition_; }
-    private volatile com.google.protobuf.ByteString partitionEncodedCache_;
     
     // required string message_type = 8;
     public static final int MESSAGE_TYPE_FIELD_NUMBER = 8;
@@ -97,7 +90,6 @@ public final class Messages {
     private java.lang.String messageType_ = "";
     public boolean hasMessageType() { return hasMessageType; }
     public java.lang.String getMessageType() { return messageType_; }
-    private volatile com.google.protobuf.ByteString messageTypeEncodedCache_;
     
     // required bytes props = 9;
     public static final int PROPS_FIELD_NUMBER = 9;
@@ -125,52 +117,28 @@ public final class Messages {
                         throws java.io.IOException {
       getSerializedSize();
       if (hasIndex()) {
-        output.writeStringCached(1,
-                                             getIndex(),
-                                             indexEncodedCache_);
-        indexEncodedCache_ = null;
+        output.writeString(1, getIndex());
       }
       if (hasField()) {
-        output.writeStringCached(2,
-                                             getField(),
-                                             fieldEncodedCache_);
-        fieldEncodedCache_ = null;
+        output.writeString(2, getField());
       }
       if (hasTerm()) {
-        output.writeStringCached(3,
-                                             getTerm(),
-                                             termEncodedCache_);
-        termEncodedCache_ = null;
+        output.writeString(3, getTerm());
       }
       if (hasSubtype()) {
-        output.writeStringCached(4,
-                                             getSubtype(),
-                                             subtypeEncodedCache_);
-        subtypeEncodedCache_ = null;
+        output.writeString(4, getSubtype());
       }
       if (hasSubterm()) {
-        output.writeStringCached(5,
-                                             getSubterm(),
-                                             subtermEncodedCache_);
-        subtermEncodedCache_ = null;
+        output.writeString(5, getSubterm());
       }
       if (hasValue()) {
-        output.writeStringCached(6,
-                                             getValue(),
-                                             valueEncodedCache_);
-        valueEncodedCache_ = null;
+        output.writeString(6, getValue());
       }
       if (hasPartition()) {
-        output.writeStringCached(7,
-                                             getPartition(),
-                                             partitionEncodedCache_);
-        partitionEncodedCache_ = null;
+        output.writeString(7, getPartition());
       }
       if (hasMessageType()) {
-        output.writeStringCached(8,
-                                             getMessageType(),
-                                             messageTypeEncodedCache_);
-        messageTypeEncodedCache_ = null;
+        output.writeString(8, getMessageType());
       }
       if (hasProps()) {
         output.writeBytes(9, getProps());
@@ -185,68 +153,36 @@ public final class Messages {
     
       size = 0;
       if (hasIndex()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getIndex());
-        indexEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(1, serialized);
+          .computeStringSize(1, getIndex());
       }
       if (hasField()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getField());
-        fieldEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(2, serialized);
+          .computeStringSize(2, getField());
       }
       if (hasTerm()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getTerm());
-        termEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(3, serialized);
+          .computeStringSize(3, getTerm());
       }
       if (hasSubtype()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getSubtype());
-        subtypeEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(4, serialized);
+          .computeStringSize(4, getSubtype());
       }
       if (hasSubterm()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getSubterm());
-        subtermEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(5, serialized);
+          .computeStringSize(5, getSubterm());
       }
       if (hasValue()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getValue());
-        valueEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(6, serialized);
+          .computeStringSize(6, getValue());
       }
       if (hasPartition()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getPartition());
-        partitionEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(7, serialized);
+          .computeStringSize(7, getPartition());
       }
       if (hasMessageType()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getMessageType());
-        messageTypeEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(8, serialized);
+          .computeStringSize(8, getMessageType());
       }
       if (hasProps()) {
         size += com.google.protobuf.CodedOutputStream
@@ -737,7 +673,6 @@ public final class Messages {
     private java.lang.String index_ = "";
     public boolean hasIndex() { return hasIndex; }
     public java.lang.String getIndex() { return index_; }
-    private volatile com.google.protobuf.ByteString indexEncodedCache_;
     
     // required string field = 2;
     public static final int FIELD_FIELD_NUMBER = 2;
@@ -745,7 +680,6 @@ public final class Messages {
     private java.lang.String field_ = "";
     public boolean hasField() { return hasField; }
     public java.lang.String getField() { return field_; }
-    private volatile com.google.protobuf.ByteString fieldEncodedCache_;
     
     // required string term = 3;
     public static final int TERM_FIELD_NUMBER = 3;
@@ -753,7 +687,6 @@ public final class Messages {
     private java.lang.String term_ = "";
     public boolean hasTerm() { return hasTerm; }
     public java.lang.String getTerm() { return term_; }
-    private volatile com.google.protobuf.ByteString termEncodedCache_;
     
     // required string subtype = 4;
     public static final int SUBTYPE_FIELD_NUMBER = 4;
@@ -761,7 +694,6 @@ public final class Messages {
     private java.lang.String subtype_ = "";
     public boolean hasSubtype() { return hasSubtype; }
     public java.lang.String getSubtype() { return subtype_; }
-    private volatile com.google.protobuf.ByteString subtypeEncodedCache_;
     
     // required string start_subterm = 5;
     public static final int START_SUBTERM_FIELD_NUMBER = 5;
@@ -769,7 +701,6 @@ public final class Messages {
     private java.lang.String startSubterm_ = "";
     public boolean hasStartSubterm() { return hasStartSubterm; }
     public java.lang.String getStartSubterm() { return startSubterm_; }
-    private volatile com.google.protobuf.ByteString startSubtermEncodedCache_;
     
     // required string end_subterm = 6;
     public static final int END_SUBTERM_FIELD_NUMBER = 6;
@@ -777,7 +708,6 @@ public final class Messages {
     private java.lang.String endSubterm_ = "";
     public boolean hasEndSubterm() { return hasEndSubterm; }
     public java.lang.String getEndSubterm() { return endSubterm_; }
-    private volatile com.google.protobuf.ByteString endSubtermEncodedCache_;
     
     // required string partition = 7;
     public static final int PARTITION_FIELD_NUMBER = 7;
@@ -785,7 +715,6 @@ public final class Messages {
     private java.lang.String partition_ = "";
     public boolean hasPartition() { return hasPartition; }
     public java.lang.String getPartition() { return partition_; }
-    private volatile com.google.protobuf.ByteString partitionEncodedCache_;
     
     // required string message_type = 8;
     public static final int MESSAGE_TYPE_FIELD_NUMBER = 8;
@@ -793,7 +722,6 @@ public final class Messages {
     private java.lang.String messageType_ = "";
     public boolean hasMessageType() { return hasMessageType; }
     public java.lang.String getMessageType() { return messageType_; }
-    private volatile com.google.protobuf.ByteString messageTypeEncodedCache_;
     
     private void initFields() {
     }
@@ -813,52 +741,28 @@ public final class Messages {
                         throws java.io.IOException {
       getSerializedSize();
       if (hasIndex()) {
-        output.writeStringCached(1,
-                                             getIndex(),
-                                             indexEncodedCache_);
-        indexEncodedCache_ = null;
+        output.writeString(1, getIndex());
       }
       if (hasField()) {
-        output.writeStringCached(2,
-                                             getField(),
-                                             fieldEncodedCache_);
-        fieldEncodedCache_ = null;
+        output.writeString(2, getField());
       }
       if (hasTerm()) {
-        output.writeStringCached(3,
-                                             getTerm(),
-                                             termEncodedCache_);
-        termEncodedCache_ = null;
+        output.writeString(3, getTerm());
       }
       if (hasSubtype()) {
-        output.writeStringCached(4,
-                                             getSubtype(),
-                                             subtypeEncodedCache_);
-        subtypeEncodedCache_ = null;
+        output.writeString(4, getSubtype());
       }
       if (hasStartSubterm()) {
-        output.writeStringCached(5,
-                                             getStartSubterm(),
-                                             startSubtermEncodedCache_);
-        startSubtermEncodedCache_ = null;
+        output.writeString(5, getStartSubterm());
       }
       if (hasEndSubterm()) {
-        output.writeStringCached(6,
-                                             getEndSubterm(),
-                                             endSubtermEncodedCache_);
-        endSubtermEncodedCache_ = null;
+        output.writeString(6, getEndSubterm());
       }
       if (hasPartition()) {
-        output.writeStringCached(7,
-                                             getPartition(),
-                                             partitionEncodedCache_);
-        partitionEncodedCache_ = null;
+        output.writeString(7, getPartition());
       }
       if (hasMessageType()) {
-        output.writeStringCached(8,
-                                             getMessageType(),
-                                             messageTypeEncodedCache_);
-        messageTypeEncodedCache_ = null;
+        output.writeString(8, getMessageType());
       }
       getUnknownFields().writeTo(output);
     }
@@ -870,68 +774,36 @@ public final class Messages {
     
       size = 0;
       if (hasIndex()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getIndex());
-        indexEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(1, serialized);
+          .computeStringSize(1, getIndex());
       }
       if (hasField()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getField());
-        fieldEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(2, serialized);
+          .computeStringSize(2, getField());
       }
       if (hasTerm()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getTerm());
-        termEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(3, serialized);
+          .computeStringSize(3, getTerm());
       }
       if (hasSubtype()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getSubtype());
-        subtypeEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(4, serialized);
+          .computeStringSize(4, getSubtype());
       }
       if (hasStartSubterm()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getStartSubterm());
-        startSubtermEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(5, serialized);
+          .computeStringSize(5, getStartSubterm());
       }
       if (hasEndSubterm()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getEndSubterm());
-        endSubtermEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(6, serialized);
+          .computeStringSize(6, getEndSubterm());
       }
       if (hasPartition()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getPartition());
-        partitionEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(7, serialized);
+          .computeStringSize(7, getPartition());
       }
       if (hasMessageType()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getMessageType());
-        messageTypeEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(8, serialized);
+          .computeStringSize(8, getMessageType());
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -1390,7 +1262,6 @@ public final class Messages {
     private java.lang.String index_ = "";
     public boolean hasIndex() { return hasIndex; }
     public java.lang.String getIndex() { return index_; }
-    private volatile com.google.protobuf.ByteString indexEncodedCache_;
     
     // required string field = 2;
     public static final int FIELD_FIELD_NUMBER = 2;
@@ -1398,7 +1269,6 @@ public final class Messages {
     private java.lang.String field_ = "";
     public boolean hasField() { return hasField; }
     public java.lang.String getField() { return field_; }
-    private volatile com.google.protobuf.ByteString fieldEncodedCache_;
     
     // required string term = 3;
     public static final int TERM_FIELD_NUMBER = 3;
@@ -1406,7 +1276,6 @@ public final class Messages {
     private java.lang.String term_ = "";
     public boolean hasTerm() { return hasTerm; }
     public java.lang.String getTerm() { return term_; }
-    private volatile com.google.protobuf.ByteString termEncodedCache_;
     
     // required string partition = 4;
     public static final int PARTITION_FIELD_NUMBER = 4;
@@ -1414,7 +1283,6 @@ public final class Messages {
     private java.lang.String partition_ = "";
     public boolean hasPartition() { return hasPartition; }
     public java.lang.String getPartition() { return partition_; }
-    private volatile com.google.protobuf.ByteString partitionEncodedCache_;
     
     // required string message_type = 8;
     public static final int MESSAGE_TYPE_FIELD_NUMBER = 8;
@@ -1422,7 +1290,6 @@ public final class Messages {
     private java.lang.String messageType_ = "";
     public boolean hasMessageType() { return hasMessageType; }
     public java.lang.String getMessageType() { return messageType_; }
-    private volatile com.google.protobuf.ByteString messageTypeEncodedCache_;
     
     private void initFields() {
     }
@@ -1439,34 +1306,19 @@ public final class Messages {
                         throws java.io.IOException {
       getSerializedSize();
       if (hasIndex()) {
-        output.writeStringCached(1,
-                                             getIndex(),
-                                             indexEncodedCache_);
-        indexEncodedCache_ = null;
+        output.writeString(1, getIndex());
       }
       if (hasField()) {
-        output.writeStringCached(2,
-                                             getField(),
-                                             fieldEncodedCache_);
-        fieldEncodedCache_ = null;
+        output.writeString(2, getField());
       }
       if (hasTerm()) {
-        output.writeStringCached(3,
-                                             getTerm(),
-                                             termEncodedCache_);
-        termEncodedCache_ = null;
+        output.writeString(3, getTerm());
       }
       if (hasPartition()) {
-        output.writeStringCached(4,
-                                             getPartition(),
-                                             partitionEncodedCache_);
-        partitionEncodedCache_ = null;
+        output.writeString(4, getPartition());
       }
       if (hasMessageType()) {
-        output.writeStringCached(8,
-                                             getMessageType(),
-                                             messageTypeEncodedCache_);
-        messageTypeEncodedCache_ = null;
+        output.writeString(8, getMessageType());
       }
       getUnknownFields().writeTo(output);
     }
@@ -1478,44 +1330,24 @@ public final class Messages {
     
       size = 0;
       if (hasIndex()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getIndex());
-        indexEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(1, serialized);
+          .computeStringSize(1, getIndex());
       }
       if (hasField()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getField());
-        fieldEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(2, serialized);
+          .computeStringSize(2, getField());
       }
       if (hasTerm()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getTerm());
-        termEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(3, serialized);
+          .computeStringSize(3, getTerm());
       }
       if (hasPartition()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getPartition());
-        partitionEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(4, serialized);
+          .computeStringSize(4, getPartition());
       }
       if (hasMessageType()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getMessageType());
-        messageTypeEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(8, serialized);
+          .computeStringSize(8, getMessageType());
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -1890,7 +1722,6 @@ public final class Messages {
     private java.lang.String index_ = "";
     public boolean hasIndex() { return hasIndex; }
     public java.lang.String getIndex() { return index_; }
-    private volatile com.google.protobuf.ByteString indexEncodedCache_;
     
     // required string field = 2;
     public static final int FIELD_FIELD_NUMBER = 2;
@@ -1898,7 +1729,6 @@ public final class Messages {
     private java.lang.String field_ = "";
     public boolean hasField() { return hasField; }
     public java.lang.String getField() { return field_; }
-    private volatile com.google.protobuf.ByteString fieldEncodedCache_;
     
     // required string start_term = 3;
     public static final int START_TERM_FIELD_NUMBER = 3;
@@ -1906,7 +1736,6 @@ public final class Messages {
     private java.lang.String startTerm_ = "";
     public boolean hasStartTerm() { return hasStartTerm; }
     public java.lang.String getStartTerm() { return startTerm_; }
-    private volatile com.google.protobuf.ByteString startTermEncodedCache_;
     
     // required string end_term = 4;
     public static final int END_TERM_FIELD_NUMBER = 4;
@@ -1914,7 +1743,6 @@ public final class Messages {
     private java.lang.String endTerm_ = "";
     public boolean hasEndTerm() { return hasEndTerm; }
     public java.lang.String getEndTerm() { return endTerm_; }
-    private volatile com.google.protobuf.ByteString endTermEncodedCache_;
     
     // required string partition = 5;
     public static final int PARTITION_FIELD_NUMBER = 5;
@@ -1922,7 +1750,6 @@ public final class Messages {
     private java.lang.String partition_ = "";
     public boolean hasPartition() { return hasPartition; }
     public java.lang.String getPartition() { return partition_; }
-    private volatile com.google.protobuf.ByteString partitionEncodedCache_;
     
     // required string message_type = 8;
     public static final int MESSAGE_TYPE_FIELD_NUMBER = 8;
@@ -1930,7 +1757,6 @@ public final class Messages {
     private java.lang.String messageType_ = "";
     public boolean hasMessageType() { return hasMessageType; }
     public java.lang.String getMessageType() { return messageType_; }
-    private volatile com.google.protobuf.ByteString messageTypeEncodedCache_;
     
     private void initFields() {
     }
@@ -1948,40 +1774,22 @@ public final class Messages {
                         throws java.io.IOException {
       getSerializedSize();
       if (hasIndex()) {
-        output.writeStringCached(1,
-                                             getIndex(),
-                                             indexEncodedCache_);
-        indexEncodedCache_ = null;
+        output.writeString(1, getIndex());
       }
       if (hasField()) {
-        output.writeStringCached(2,
-                                             getField(),
-                                             fieldEncodedCache_);
-        fieldEncodedCache_ = null;
+        output.writeString(2, getField());
       }
       if (hasStartTerm()) {
-        output.writeStringCached(3,
-                                             getStartTerm(),
-                                             startTermEncodedCache_);
-        startTermEncodedCache_ = null;
+        output.writeString(3, getStartTerm());
       }
       if (hasEndTerm()) {
-        output.writeStringCached(4,
-                                             getEndTerm(),
-                                             endTermEncodedCache_);
-        endTermEncodedCache_ = null;
+        output.writeString(4, getEndTerm());
       }
       if (hasPartition()) {
-        output.writeStringCached(5,
-                                             getPartition(),
-                                             partitionEncodedCache_);
-        partitionEncodedCache_ = null;
+        output.writeString(5, getPartition());
       }
       if (hasMessageType()) {
-        output.writeStringCached(8,
-                                             getMessageType(),
-                                             messageTypeEncodedCache_);
-        messageTypeEncodedCache_ = null;
+        output.writeString(8, getMessageType());
       }
       getUnknownFields().writeTo(output);
     }
@@ -1993,52 +1801,28 @@ public final class Messages {
     
       size = 0;
       if (hasIndex()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getIndex());
-        indexEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(1, serialized);
+          .computeStringSize(1, getIndex());
       }
       if (hasField()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getField());
-        fieldEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(2, serialized);
+          .computeStringSize(2, getField());
       }
       if (hasStartTerm()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getStartTerm());
-        startTermEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(3, serialized);
+          .computeStringSize(3, getStartTerm());
       }
       if (hasEndTerm()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getEndTerm());
-        endTermEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(4, serialized);
+          .computeStringSize(4, getEndTerm());
       }
       if (hasPartition()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getPartition());
-        partitionEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(5, serialized);
+          .computeStringSize(5, getPartition());
       }
       if (hasMessageType()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getMessageType());
-        messageTypeEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(8, serialized);
+          .computeStringSize(8, getMessageType());
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -2441,7 +2225,6 @@ public final class Messages {
     private java.lang.String searchQuery_ = "";
     public boolean hasSearchQuery() { return hasSearchQuery; }
     public java.lang.String getSearchQuery() { return searchQuery_; }
-    private volatile com.google.protobuf.ByteString searchQueryEncodedCache_;
     
     // required int64 max_results = 2;
     public static final int MAX_RESULTS_FIELD_NUMBER = 2;
@@ -2456,7 +2239,6 @@ public final class Messages {
     private java.lang.String messageType_ = "";
     public boolean hasMessageType() { return hasMessageType; }
     public java.lang.String getMessageType() { return messageType_; }
-    private volatile com.google.protobuf.ByteString messageTypeEncodedCache_;
     
     private void initFields() {
     }
@@ -2471,19 +2253,13 @@ public final class Messages {
                         throws java.io.IOException {
       getSerializedSize();
       if (hasSearchQuery()) {
-        output.writeStringCached(1,
-                                             getSearchQuery(),
-                                             searchQueryEncodedCache_);
-        searchQueryEncodedCache_ = null;
+        output.writeString(1, getSearchQuery());
       }
       if (hasMaxResults()) {
         output.writeInt64(2, getMaxResults());
       }
       if (hasMessageType()) {
-        output.writeStringCached(3,
-                                             getMessageType(),
-                                             messageTypeEncodedCache_);
-        messageTypeEncodedCache_ = null;
+        output.writeString(3, getMessageType());
       }
       getUnknownFields().writeTo(output);
     }
@@ -2495,24 +2271,16 @@ public final class Messages {
     
       size = 0;
       if (hasSearchQuery()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getSearchQuery());
-        searchQueryEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(1, serialized);
+          .computeStringSize(1, getSearchQuery());
       }
       if (hasMaxResults()) {
         size += com.google.protobuf.CodedOutputStream
           .computeInt64Size(2, getMaxResults());
       }
       if (hasMessageType()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getMessageType());
-        messageTypeEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(3, serialized);
+          .computeStringSize(3, getMessageType());
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -2828,7 +2596,6 @@ public final class Messages {
     private java.lang.String messageType_ = "";
     public boolean hasMessageType() { return hasMessageType; }
     public java.lang.String getMessageType() { return messageType_; }
-    private volatile com.google.protobuf.ByteString messageTypeEncodedCache_;
     
     // required string command = 2;
     public static final int COMMAND_FIELD_NUMBER = 2;
@@ -2836,7 +2603,6 @@ public final class Messages {
     private java.lang.String command_ = "";
     public boolean hasCommand() { return hasCommand; }
     public java.lang.String getCommand() { return command_; }
-    private volatile com.google.protobuf.ByteString commandEncodedCache_;
     
     // optional string arg1 = 3;
     public static final int ARG1_FIELD_NUMBER = 3;
@@ -2844,7 +2610,6 @@ public final class Messages {
     private java.lang.String arg1_ = "";
     public boolean hasArg1() { return hasArg1; }
     public java.lang.String getArg1() { return arg1_; }
-    private volatile com.google.protobuf.ByteString arg1EncodedCache_;
     
     // optional string arg2 = 4;
     public static final int ARG2_FIELD_NUMBER = 4;
@@ -2852,7 +2617,6 @@ public final class Messages {
     private java.lang.String arg2_ = "";
     public boolean hasArg2() { return hasArg2; }
     public java.lang.String getArg2() { return arg2_; }
-    private volatile com.google.protobuf.ByteString arg2EncodedCache_;
     
     // optional string arg3 = 5;
     public static final int ARG3_FIELD_NUMBER = 5;
@@ -2860,7 +2624,6 @@ public final class Messages {
     private java.lang.String arg3_ = "";
     public boolean hasArg3() { return hasArg3; }
     public java.lang.String getArg3() { return arg3_; }
-    private volatile com.google.protobuf.ByteString arg3EncodedCache_;
     
     private void initFields() {
     }
@@ -2874,34 +2637,19 @@ public final class Messages {
                         throws java.io.IOException {
       getSerializedSize();
       if (hasMessageType()) {
-        output.writeStringCached(1,
-                                             getMessageType(),
-                                             messageTypeEncodedCache_);
-        messageTypeEncodedCache_ = null;
+        output.writeString(1, getMessageType());
       }
       if (hasCommand()) {
-        output.writeStringCached(2,
-                                             getCommand(),
-                                             commandEncodedCache_);
-        commandEncodedCache_ = null;
+        output.writeString(2, getCommand());
       }
       if (hasArg1()) {
-        output.writeStringCached(3,
-                                             getArg1(),
-                                             arg1EncodedCache_);
-        arg1EncodedCache_ = null;
+        output.writeString(3, getArg1());
       }
       if (hasArg2()) {
-        output.writeStringCached(4,
-                                             getArg2(),
-                                             arg2EncodedCache_);
-        arg2EncodedCache_ = null;
+        output.writeString(4, getArg2());
       }
       if (hasArg3()) {
-        output.writeStringCached(5,
-                                             getArg3(),
-                                             arg3EncodedCache_);
-        arg3EncodedCache_ = null;
+        output.writeString(5, getArg3());
       }
       getUnknownFields().writeTo(output);
     }
@@ -2913,44 +2661,24 @@ public final class Messages {
     
       size = 0;
       if (hasMessageType()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getMessageType());
-        messageTypeEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(1, serialized);
+          .computeStringSize(1, getMessageType());
       }
       if (hasCommand()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getCommand());
-        commandEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(2, serialized);
+          .computeStringSize(2, getCommand());
       }
       if (hasArg1()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getArg1());
-        arg1EncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(3, serialized);
+          .computeStringSize(3, getArg1());
       }
       if (hasArg2()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getArg2());
-        arg2EncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(4, serialized);
+          .computeStringSize(4, getArg2());
       }
       if (hasArg3()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getArg3());
-        arg3EncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(5, serialized);
+          .computeStringSize(5, getArg3());
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -3292,6 +3020,509 @@ public final class Messages {
     // @@protoc_insertion_point(class_scope:Command)
   }
   
+  public static final class DeleteEntry extends
+      com.google.protobuf.GeneratedMessage {
+    // Use DeleteEntry.newBuilder() to construct.
+    private DeleteEntry() {
+      initFields();
+    }
+    private DeleteEntry(boolean noInit) {}
+    
+    private static final DeleteEntry defaultInstance;
+    public static DeleteEntry getDefaultInstance() {
+      return defaultInstance;
+    }
+    
+    public DeleteEntry getDefaultInstanceForType() {
+      return defaultInstance;
+    }
+    
+    public static final com.google.protobuf.Descriptors.Descriptor
+        getDescriptor() {
+      return raptor.protobuf.Messages.internal_static_DeleteEntry_descriptor;
+    }
+    
+    protected com.google.protobuf.GeneratedMessage.FieldAccessorTable
+        internalGetFieldAccessorTable() {
+      return raptor.protobuf.Messages.internal_static_DeleteEntry_fieldAccessorTable;
+    }
+    
+    // required string index = 1;
+    public static final int INDEX_FIELD_NUMBER = 1;
+    private boolean hasIndex;
+    private java.lang.String index_ = "";
+    public boolean hasIndex() { return hasIndex; }
+    public java.lang.String getIndex() { return index_; }
+    
+    // required string field = 2;
+    public static final int FIELD_FIELD_NUMBER = 2;
+    private boolean hasField;
+    private java.lang.String field_ = "";
+    public boolean hasField() { return hasField; }
+    public java.lang.String getField() { return field_; }
+    
+    // required string term = 3;
+    public static final int TERM_FIELD_NUMBER = 3;
+    private boolean hasTerm;
+    private java.lang.String term_ = "";
+    public boolean hasTerm() { return hasTerm; }
+    public java.lang.String getTerm() { return term_; }
+    
+    // required string doc_id = 6;
+    public static final int DOC_ID_FIELD_NUMBER = 6;
+    private boolean hasDocId;
+    private java.lang.String docId_ = "";
+    public boolean hasDocId() { return hasDocId; }
+    public java.lang.String getDocId() { return docId_; }
+    
+    // required string partition = 7;
+    public static final int PARTITION_FIELD_NUMBER = 7;
+    private boolean hasPartition;
+    private java.lang.String partition_ = "";
+    public boolean hasPartition() { return hasPartition; }
+    public java.lang.String getPartition() { return partition_; }
+    
+    // required string message_type = 8;
+    public static final int MESSAGE_TYPE_FIELD_NUMBER = 8;
+    private boolean hasMessageType;
+    private java.lang.String messageType_ = "";
+    public boolean hasMessageType() { return hasMessageType; }
+    public java.lang.String getMessageType() { return messageType_; }
+    
+    private void initFields() {
+    }
+    public final boolean isInitialized() {
+      if (!hasIndex) return false;
+      if (!hasField) return false;
+      if (!hasTerm) return false;
+      if (!hasDocId) return false;
+      if (!hasPartition) return false;
+      if (!hasMessageType) return false;
+      return true;
+    }
+    
+    public void writeTo(com.google.protobuf.CodedOutputStream output)
+                        throws java.io.IOException {
+      getSerializedSize();
+      if (hasIndex()) {
+        output.writeString(1, getIndex());
+      }
+      if (hasField()) {
+        output.writeString(2, getField());
+      }
+      if (hasTerm()) {
+        output.writeString(3, getTerm());
+      }
+      if (hasDocId()) {
+        output.writeString(6, getDocId());
+      }
+      if (hasPartition()) {
+        output.writeString(7, getPartition());
+      }
+      if (hasMessageType()) {
+        output.writeString(8, getMessageType());
+      }
+      getUnknownFields().writeTo(output);
+    }
+    
+    private int memoizedSerializedSize = -1;
+    public int getSerializedSize() {
+      int size = memoizedSerializedSize;
+      if (size != -1) return size;
+    
+      size = 0;
+      if (hasIndex()) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeStringSize(1, getIndex());
+      }
+      if (hasField()) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeStringSize(2, getField());
+      }
+      if (hasTerm()) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeStringSize(3, getTerm());
+      }
+      if (hasDocId()) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeStringSize(6, getDocId());
+      }
+      if (hasPartition()) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeStringSize(7, getPartition());
+      }
+      if (hasMessageType()) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeStringSize(8, getMessageType());
+      }
+      size += getUnknownFields().getSerializedSize();
+      memoizedSerializedSize = size;
+      return size;
+    }
+    
+    public static raptor.protobuf.Messages.DeleteEntry parseFrom(
+        com.google.protobuf.ByteString data)
+        throws com.google.protobuf.InvalidProtocolBufferException {
+      return newBuilder().mergeFrom(data).buildParsed();
+    }
+    public static raptor.protobuf.Messages.DeleteEntry parseFrom(
+        com.google.protobuf.ByteString data,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws com.google.protobuf.InvalidProtocolBufferException {
+      return newBuilder().mergeFrom(data, extensionRegistry)
+               .buildParsed();
+    }
+    public static raptor.protobuf.Messages.DeleteEntry parseFrom(byte[] data)
+        throws com.google.protobuf.InvalidProtocolBufferException {
+      return newBuilder().mergeFrom(data).buildParsed();
+    }
+    public static raptor.protobuf.Messages.DeleteEntry parseFrom(
+        byte[] data,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws com.google.protobuf.InvalidProtocolBufferException {
+      return newBuilder().mergeFrom(data, extensionRegistry)
+               .buildParsed();
+    }
+    public static raptor.protobuf.Messages.DeleteEntry parseFrom(java.io.InputStream input)
+        throws java.io.IOException {
+      return newBuilder().mergeFrom(input).buildParsed();
+    }
+    public static raptor.protobuf.Messages.DeleteEntry parseFrom(
+        java.io.InputStream input,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws java.io.IOException {
+      return newBuilder().mergeFrom(input, extensionRegistry)
+               .buildParsed();
+    }
+    public static raptor.protobuf.Messages.DeleteEntry parseDelimitedFrom(java.io.InputStream input)
+        throws java.io.IOException {
+      Builder builder = newBuilder();
+      if (builder.mergeDelimitedFrom(input)) {
+        return builder.buildParsed();
+      } else {
+        return null;
+      }
+    }
+    public static raptor.protobuf.Messages.DeleteEntry parseDelimitedFrom(
+        java.io.InputStream input,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws java.io.IOException {
+      Builder builder = newBuilder();
+      if (builder.mergeDelimitedFrom(input, extensionRegistry)) {
+        return builder.buildParsed();
+      } else {
+        return null;
+      }
+    }
+    public static raptor.protobuf.Messages.DeleteEntry parseFrom(
+        com.google.protobuf.CodedInputStream input)
+        throws java.io.IOException {
+      return newBuilder().mergeFrom(input).buildParsed();
+    }
+    public static raptor.protobuf.Messages.DeleteEntry parseFrom(
+        com.google.protobuf.CodedInputStream input,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws java.io.IOException {
+      return newBuilder().mergeFrom(input, extensionRegistry)
+               .buildParsed();
+    }
+    
+    public static Builder newBuilder() { return Builder.create(); }
+    public Builder newBuilderForType() { return newBuilder(); }
+    public static Builder newBuilder(raptor.protobuf.Messages.DeleteEntry prototype) {
+      return newBuilder().mergeFrom(prototype);
+    }
+    public Builder toBuilder() { return newBuilder(this); }
+    
+    public static final class Builder extends
+        com.google.protobuf.GeneratedMessage.Builder<Builder> {
+      private raptor.protobuf.Messages.DeleteEntry result;
+      
+      // Construct using raptor.protobuf.Messages.DeleteEntry.newBuilder()
+      private Builder() {}
+      
+      private static Builder create() {
+        Builder builder = new Builder();
+        builder.result = new raptor.protobuf.Messages.DeleteEntry();
+        return builder;
+      }
+      
+      protected raptor.protobuf.Messages.DeleteEntry internalGetResult() {
+        return result;
+      }
+      
+      public Builder clear() {
+        if (result == null) {
+          throw new IllegalStateException(
+            "Cannot call clear() after build().");
+        }
+        result = new raptor.protobuf.Messages.DeleteEntry();
+        return this;
+      }
+      
+      public Builder clone() {
+        return create().mergeFrom(result);
+      }
+      
+      public com.google.protobuf.Descriptors.Descriptor
+          getDescriptorForType() {
+        return raptor.protobuf.Messages.DeleteEntry.getDescriptor();
+      }
+      
+      public raptor.protobuf.Messages.DeleteEntry getDefaultInstanceForType() {
+        return raptor.protobuf.Messages.DeleteEntry.getDefaultInstance();
+      }
+      
+      public boolean isInitialized() {
+        return result.isInitialized();
+      }
+      public raptor.protobuf.Messages.DeleteEntry build() {
+        if (result != null && !isInitialized()) {
+          throw newUninitializedMessageException(result);
+        }
+        return buildPartial();
+      }
+      
+      private raptor.protobuf.Messages.DeleteEntry buildParsed()
+          throws com.google.protobuf.InvalidProtocolBufferException {
+        if (!isInitialized()) {
+          throw newUninitializedMessageException(
+            result).asInvalidProtocolBufferException();
+        }
+        return buildPartial();
+      }
+      
+      public raptor.protobuf.Messages.DeleteEntry buildPartial() {
+        if (result == null) {
+          throw new IllegalStateException(
+            "build() has already been called on this Builder.");
+        }
+        raptor.protobuf.Messages.DeleteEntry returnMe = result;
+        result = null;
+        return returnMe;
+      }
+      
+      public Builder mergeFrom(com.google.protobuf.Message other) {
+        if (other instanceof raptor.protobuf.Messages.DeleteEntry) {
+          return mergeFrom((raptor.protobuf.Messages.DeleteEntry)other);
+        } else {
+          super.mergeFrom(other);
+          return this;
+        }
+      }
+      
+      public Builder mergeFrom(raptor.protobuf.Messages.DeleteEntry other) {
+        if (other == raptor.protobuf.Messages.DeleteEntry.getDefaultInstance()) return this;
+        if (other.hasIndex()) {
+          setIndex(other.getIndex());
+        }
+        if (other.hasField()) {
+          setField(other.getField());
+        }
+        if (other.hasTerm()) {
+          setTerm(other.getTerm());
+        }
+        if (other.hasDocId()) {
+          setDocId(other.getDocId());
+        }
+        if (other.hasPartition()) {
+          setPartition(other.getPartition());
+        }
+        if (other.hasMessageType()) {
+          setMessageType(other.getMessageType());
+        }
+        this.mergeUnknownFields(other.getUnknownFields());
+        return this;
+      }
+      
+      public Builder mergeFrom(
+          com.google.protobuf.CodedInputStream input,
+          com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+          throws java.io.IOException {
+        com.google.protobuf.UnknownFieldSet.Builder unknownFields =
+          com.google.protobuf.UnknownFieldSet.newBuilder(
+            this.getUnknownFields());
+        while (true) {
+          int tag = input.readTag();
+          switch (tag) {
+            case 0:
+              this.setUnknownFields(unknownFields.build());
+              return this;
+            default: {
+              if (!parseUnknownField(input, unknownFields,
+                                     extensionRegistry, tag)) {
+                this.setUnknownFields(unknownFields.build());
+                return this;
+              }
+              break;
+            }
+            case 10: {
+              setIndex(input.readString());
+              break;
+            }
+            case 18: {
+              setField(input.readString());
+              break;
+            }
+            case 26: {
+              setTerm(input.readString());
+              break;
+            }
+            case 50: {
+              setDocId(input.readString());
+              break;
+            }
+            case 58: {
+              setPartition(input.readString());
+              break;
+            }
+            case 66: {
+              setMessageType(input.readString());
+              break;
+            }
+          }
+        }
+      }
+      
+      
+      // required string index = 1;
+      public boolean hasIndex() {
+        return result.hasIndex();
+      }
+      public java.lang.String getIndex() {
+        return result.getIndex();
+      }
+      public Builder setIndex(java.lang.String value) {
+        if (value == null) {
+    throw new NullPointerException();
+  }
+  result.hasIndex = true;
+        result.index_ = value;
+        return this;
+      }
+      public Builder clearIndex() {
+        result.hasIndex = false;
+        result.index_ = getDefaultInstance().getIndex();
+        return this;
+      }
+      
+      // required string field = 2;
+      public boolean hasField() {
+        return result.hasField();
+      }
+      public java.lang.String getField() {
+        return result.getField();
+      }
+      public Builder setField(java.lang.String value) {
+        if (value == null) {
+    throw new NullPointerException();
+  }
+  result.hasField = true;
+        result.field_ = value;
+        return this;
+      }
+      public Builder clearField() {
+        result.hasField = false;
+        result.field_ = getDefaultInstance().getField();
+        return this;
+      }
+      
+      // required string term = 3;
+      public boolean hasTerm() {
+        return result.hasTerm();
+      }
+      public java.lang.String getTerm() {
+        return result.getTerm();
+      }
+      public Builder setTerm(java.lang.String value) {
+        if (value == null) {
+    throw new NullPointerException();
+  }
+  result.hasTerm = true;
+        result.term_ = value;
+        return this;
+      }
+      public Builder clearTerm() {
+        result.hasTerm = false;
+        result.term_ = getDefaultInstance().getTerm();
+        return this;
+      }
+      
+      // required string doc_id = 6;
+      public boolean hasDocId() {
+        return result.hasDocId();
+      }
+      public java.lang.String getDocId() {
+        return result.getDocId();
+      }
+      public Builder setDocId(java.lang.String value) {
+        if (value == null) {
+    throw new NullPointerException();
+  }
+  result.hasDocId = true;
+        result.docId_ = value;
+        return this;
+      }
+      public Builder clearDocId() {
+        result.hasDocId = false;
+        result.docId_ = getDefaultInstance().getDocId();
+        return this;
+      }
+      
+      // required string partition = 7;
+      public boolean hasPartition() {
+        return result.hasPartition();
+      }
+      public java.lang.String getPartition() {
+        return result.getPartition();
+      }
+      public Builder setPartition(java.lang.String value) {
+        if (value == null) {
+    throw new NullPointerException();
+  }
+  result.hasPartition = true;
+        result.partition_ = value;
+        return this;
+      }
+      public Builder clearPartition() {
+        result.hasPartition = false;
+        result.partition_ = getDefaultInstance().getPartition();
+        return this;
+      }
+      
+      // required string message_type = 8;
+      public boolean hasMessageType() {
+        return result.hasMessageType();
+      }
+      public java.lang.String getMessageType() {
+        return result.getMessageType();
+      }
+      public Builder setMessageType(java.lang.String value) {
+        if (value == null) {
+    throw new NullPointerException();
+  }
+  result.hasMessageType = true;
+        result.messageType_ = value;
+        return this;
+      }
+      public Builder clearMessageType() {
+        result.hasMessageType = false;
+        result.messageType_ = getDefaultInstance().getMessageType();
+        return this;
+      }
+      
+      // @@protoc_insertion_point(builder_scope:DeleteEntry)
+    }
+    
+    static {
+      defaultInstance = new DeleteEntry(true);
+      raptor.protobuf.Messages.internalForceInit();
+      defaultInstance.initFields();
+    }
+    
+    // @@protoc_insertion_point(class_scope:DeleteEntry)
+  }
+  
   public static final class StreamResponse extends
       com.google.protobuf.GeneratedMessage {
     // Use StreamResponse.newBuilder() to construct.
@@ -3325,7 +3556,6 @@ public final class Messages {
     private java.lang.String value_ = "";
     public boolean hasValue() { return hasValue; }
     public java.lang.String getValue() { return value_; }
-    private volatile com.google.protobuf.ByteString valueEncodedCache_;
     
     // required bytes props = 2;
     public static final int PROPS_FIELD_NUMBER = 2;
@@ -3346,10 +3576,7 @@ public final class Messages {
                         throws java.io.IOException {
       getSerializedSize();
       if (hasValue()) {
-        output.writeStringCached(1,
-                                             getValue(),
-                                             valueEncodedCache_);
-        valueEncodedCache_ = null;
+        output.writeString(1, getValue());
       }
       if (hasProps()) {
         output.writeBytes(2, getProps());
@@ -3364,12 +3591,8 @@ public final class Messages {
     
       size = 0;
       if (hasValue()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getValue());
-        valueEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(1, serialized);
+          .computeStringSize(1, getValue());
       }
       if (hasProps()) {
         size += com.google.protobuf.CodedOutputStream
@@ -3664,7 +3887,6 @@ public final class Messages {
     private java.lang.String term_ = "";
     public boolean hasTerm() { return hasTerm; }
     public java.lang.String getTerm() { return term_; }
-    private volatile com.google.protobuf.ByteString termEncodedCache_;
     
     // required int64 count = 2;
     public static final int COUNT_FIELD_NUMBER = 2;
@@ -3685,10 +3907,7 @@ public final class Messages {
                         throws java.io.IOException {
       getSerializedSize();
       if (hasTerm()) {
-        output.writeStringCached(1,
-                                             getTerm(),
-                                             termEncodedCache_);
-        termEncodedCache_ = null;
+        output.writeString(1, getTerm());
       }
       if (hasCount()) {
         output.writeInt64(2, getCount());
@@ -3703,12 +3922,8 @@ public final class Messages {
     
       size = 0;
       if (hasTerm()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getTerm());
-        termEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(1, serialized);
+          .computeStringSize(1, getTerm());
       }
       if (hasCount()) {
         size += com.google.protobuf.CodedOutputStream
@@ -4000,7 +4215,6 @@ public final class Messages {
     private java.lang.String partition_ = "";
     public boolean hasPartition() { return hasPartition; }
     public java.lang.String getPartition() { return partition_; }
-    private volatile com.google.protobuf.ByteString partitionEncodedCache_;
     
     // required string index = 2;
     public static final int INDEX_FIELD_NUMBER = 2;
@@ -4008,7 +4222,6 @@ public final class Messages {
     private java.lang.String index_ = "";
     public boolean hasIndex() { return hasIndex; }
     public java.lang.String getIndex() { return index_; }
-    private volatile com.google.protobuf.ByteString indexEncodedCache_;
     
     // required string field = 3;
     public static final int FIELD_FIELD_NUMBER = 3;
@@ -4016,7 +4229,6 @@ public final class Messages {
     private java.lang.String field_ = "";
     public boolean hasField() { return hasField; }
     public java.lang.String getField() { return field_; }
-    private volatile com.google.protobuf.ByteString fieldEncodedCache_;
     
     // required string term = 4;
     public static final int TERM_FIELD_NUMBER = 4;
@@ -4024,7 +4236,6 @@ public final class Messages {
     private java.lang.String term_ = "";
     public boolean hasTerm() { return hasTerm; }
     public java.lang.String getTerm() { return term_; }
-    private volatile com.google.protobuf.ByteString termEncodedCache_;
     
     // required string json_props = 5;
     public static final int JSON_PROPS_FIELD_NUMBER = 5;
@@ -4032,7 +4243,6 @@ public final class Messages {
     private java.lang.String jsonProps_ = "";
     public boolean hasJsonProps() { return hasJsonProps; }
     public java.lang.String getJsonProps() { return jsonProps_; }
-    private volatile com.google.protobuf.ByteString jsonPropsEncodedCache_;
     
     private void initFields() {
     }
@@ -4049,34 +4259,19 @@ public final class Messages {
                         throws java.io.IOException {
       getSerializedSize();
       if (hasPartition()) {
-        output.writeStringCached(1,
-                                             getPartition(),
-                                             partitionEncodedCache_);
-        partitionEncodedCache_ = null;
+        output.writeString(1, getPartition());
       }
       if (hasIndex()) {
-        output.writeStringCached(2,
-                                             getIndex(),
-                                             indexEncodedCache_);
-        indexEncodedCache_ = null;
+        output.writeString(2, getIndex());
       }
       if (hasField()) {
-        output.writeStringCached(3,
-                                             getField(),
-                                             fieldEncodedCache_);
-        fieldEncodedCache_ = null;
+        output.writeString(3, getField());
       }
       if (hasTerm()) {
-        output.writeStringCached(4,
-                                             getTerm(),
-                                             termEncodedCache_);
-        termEncodedCache_ = null;
+        output.writeString(4, getTerm());
       }
       if (hasJsonProps()) {
-        output.writeStringCached(5,
-                                             getJsonProps(),
-                                             jsonPropsEncodedCache_);
-        jsonPropsEncodedCache_ = null;
+        output.writeString(5, getJsonProps());
       }
       getUnknownFields().writeTo(output);
     }
@@ -4088,44 +4283,24 @@ public final class Messages {
     
       size = 0;
       if (hasPartition()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getPartition());
-        partitionEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(1, serialized);
+          .computeStringSize(1, getPartition());
       }
       if (hasIndex()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getIndex());
-        indexEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(2, serialized);
+          .computeStringSize(2, getIndex());
       }
       if (hasField()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getField());
-        fieldEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(3, serialized);
+          .computeStringSize(3, getField());
       }
       if (hasTerm()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getTerm());
-        termEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(4, serialized);
+          .computeStringSize(4, getTerm());
       }
       if (hasJsonProps()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getJsonProps());
-        jsonPropsEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(5, serialized);
+          .computeStringSize(5, getJsonProps());
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -4500,7 +4675,6 @@ public final class Messages {
     private java.lang.String response_ = "";
     public boolean hasResponse() { return hasResponse; }
     public java.lang.String getResponse() { return response_; }
-    private volatile com.google.protobuf.ByteString responseEncodedCache_;
     
     private void initFields() {
     }
@@ -4513,10 +4687,7 @@ public final class Messages {
                         throws java.io.IOException {
       getSerializedSize();
       if (hasResponse()) {
-        output.writeStringCached(1,
-                                             getResponse(),
-                                             responseEncodedCache_);
-        responseEncodedCache_ = null;
+        output.writeString(1, getResponse());
       }
       getUnknownFields().writeTo(output);
     }
@@ -4528,12 +4699,8 @@ public final class Messages {
     
       size = 0;
       if (hasResponse()) {
-        com.google.protobuf.ByteString serialized = 
-          com.google.protobuf.ByteString.copyFromUtf8(
-            getResponse());
-        responseEncodedCache_ = serialized;
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(1, serialized);
+          .computeStringSize(1, getResponse());
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -4794,6 +4961,11 @@ public final class Messages {
     com.google.protobuf.GeneratedMessage.FieldAccessorTable
       internal_static_Command_fieldAccessorTable;
   private static com.google.protobuf.Descriptors.Descriptor
+    internal_static_DeleteEntry_descriptor;
+  private static
+    com.google.protobuf.GeneratedMessage.FieldAccessorTable
+      internal_static_DeleteEntry_fieldAccessorTable;
+  private static com.google.protobuf.Descriptors.Descriptor
     internal_static_StreamResponse_descriptor;
   private static
     com.google.protobuf.GeneratedMessage.FieldAccessorTable
@@ -4839,14 +5011,17 @@ public final class Messages {
       "y\022\024\n\014search_query\030\001 \002(\t\022\023\n\013max_results\030\002" +
       " \002(\003\022\024\n\014message_type\030\003 \002(\t\"Z\n\007Command\022\024\n" +
       "\014message_type\030\001 \002(\t\022\017\n\007command\030\002 \002(\t\022\014\n\004" +
-      "arg1\030\003 \001(\t\022\014\n\004arg2\030\004 \001(\t\022\014\n\004arg3\030\005 \001(\t\"." +
-      "\n\016StreamResponse\022\r\n\005value\030\001 \002(\t\022\r\n\005props" +
-      "\030\002 \002(\014\"+\n\014InfoResponse\022\014\n\004term\030\001 \002(\t\022\r\n\005",
-      "count\030\002 \002(\003\"i\n\024CatalogQueryResponse\022\021\n\tp" +
-      "artition\030\001 \002(\t\022\r\n\005index\030\002 \002(\t\022\r\n\005field\030\003" +
-      " \002(\t\022\014\n\004term\030\004 \002(\t\022\022\n\njson_props\030\005 \002(\t\"#" +
-      "\n\017CommandResponse\022\020\n\010response\030\001 \002(\tB\033\n\017r" +
-      "aptor.protobufB\010Messages"
+      "arg1\030\003 \001(\t\022\014\n\004arg2\030\004 \001(\t\022\014\n\004arg3\030\005 \001(\t\"r" +
+      "\n\013DeleteEntry\022\r\n\005index\030\001 \002(\t\022\r\n\005field\030\002 " +
+      "\002(\t\022\014\n\004term\030\003 \002(\t\022\016\n\006doc_id\030\006 \002(\t\022\021\n\tpar",
+      "tition\030\007 \002(\t\022\024\n\014message_type\030\010 \002(\t\".\n\016St" +
+      "reamResponse\022\r\n\005value\030\001 \002(\t\022\r\n\005props\030\002 \002" +
+      "(\014\"+\n\014InfoResponse\022\014\n\004term\030\001 \002(\t\022\r\n\005coun" +
+      "t\030\002 \002(\003\"i\n\024CatalogQueryResponse\022\021\n\tparti" +
+      "tion\030\001 \002(\t\022\r\n\005index\030\002 \002(\t\022\r\n\005field\030\003 \002(\t" +
+      "\022\014\n\004term\030\004 \002(\t\022\022\n\njson_props\030\005 \002(\t\"#\n\017Co" +
+      "mmandResponse\022\020\n\010response\030\001 \002(\tB\033\n\017rapto" +
+      "r.protobufB\010Messages"
     };
     com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner assigner =
       new com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner() {
@@ -4901,8 +5076,16 @@ public final class Messages {
               new java.lang.String[] { "MessageType", "Command", "Arg1", "Arg2", "Arg3", },
               raptor.protobuf.Messages.Command.class,
               raptor.protobuf.Messages.Command.Builder.class);
-          internal_static_StreamResponse_descriptor =
+          internal_static_DeleteEntry_descriptor =
             getDescriptor().getMessageTypes().get(6);
+          internal_static_DeleteEntry_fieldAccessorTable = new
+            com.google.protobuf.GeneratedMessage.FieldAccessorTable(
+              internal_static_DeleteEntry_descriptor,
+              new java.lang.String[] { "Index", "Field", "Term", "DocId", "Partition", "MessageType", },
+              raptor.protobuf.Messages.DeleteEntry.class,
+              raptor.protobuf.Messages.DeleteEntry.Builder.class);
+          internal_static_StreamResponse_descriptor =
+            getDescriptor().getMessageTypes().get(7);
           internal_static_StreamResponse_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_StreamResponse_descriptor,
@@ -4910,7 +5093,7 @@ public final class Messages {
               raptor.protobuf.Messages.StreamResponse.class,
               raptor.protobuf.Messages.StreamResponse.Builder.class);
           internal_static_InfoResponse_descriptor =
-            getDescriptor().getMessageTypes().get(7);
+            getDescriptor().getMessageTypes().get(8);
           internal_static_InfoResponse_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_InfoResponse_descriptor,
@@ -4918,7 +5101,7 @@ public final class Messages {
               raptor.protobuf.Messages.InfoResponse.class,
               raptor.protobuf.Messages.InfoResponse.Builder.class);
           internal_static_CatalogQueryResponse_descriptor =
-            getDescriptor().getMessageTypes().get(8);
+            getDescriptor().getMessageTypes().get(9);
           internal_static_CatalogQueryResponse_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_CatalogQueryResponse_descriptor,
@@ -4926,7 +5109,7 @@ public final class Messages {
               raptor.protobuf.Messages.CatalogQueryResponse.class,
               raptor.protobuf.Messages.CatalogQueryResponse.Builder.class);
           internal_static_CommandResponse_descriptor =
-            getDescriptor().getMessageTypes().get(9);
+            getDescriptor().getMessageTypes().get(10);
           internal_static_CommandResponse_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_CommandResponse_descriptor,

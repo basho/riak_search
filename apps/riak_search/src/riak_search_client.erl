@@ -20,7 +20,10 @@
     parse_idx_doc/2,
     get_idx_doc/2,
     store_idx_doc/1,
-    index_term/5
+    index_term/5,
+    
+    %% Delete
+    delete_document/2
 ]).
 
 -import(riak_search_utils, [
@@ -165,6 +168,13 @@ index_term(Index, Field, Term, Value, Props) ->
     Obj = riak_object:new(IndexBin, FieldTermBin, Payload),
     RiakClient:put(Obj, 0).
 
+delete_term(Index, Field, Term, DocId) ->
+    IndexBin = riak_search_utils:to_binary(Index),
+    FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
+    Payload = {delete_entry, Index, Field, Term, DocId},
+    Obj = riak_object:new(IndexBin, FieldTermBin, Payload),
+    RiakClient:put(Obj, 0).
+
 truncate_list(QueryStart, QueryRows, List) ->
     %% Remove the first QueryStart results...
     case QueryStart =< length(List) of
@@ -286,180 +296,33 @@ calculate_scores(QueryNorm, NumTerms, [{Value, Props}|Results]) ->
 calculate_scores(_, _, []) ->
     [].
 
-
-%%%%%%%
-
-%% optimize_query(OpList) ->
-%%     G = query_as_graph(OpList),
-%%     %% optimize_junction: AND, OR optimization
-%%     JunctionOps =
-%%         digraph:out_neighbours(G, or_ops) ++
-%%         digraph:out_neighbours(G, and_ops),
-%%     io:format("JunctionOps = ~p~n", [JunctionOps]),
-
-%%     lists:foreach(fun(JunctionNode) ->
-%%         optimize_junction(G, JunctionNode)
-%%     end, JunctionOps),
-
-%%     OpList2 = graph_as_query(G, root, []),
-%%     io:format("~n----original query OpList: ~n"),
-%%     io:format("OpList  = ~p~n", [OpList]),
-%%     io:format("~n----optimized query OpList: ~n"),
-%%     io:format("OpList2 = ~p~n", [OpList2]),
-%%     io:format("~n----~n"),
-%%     [OpList2].
-
-%% graph_as_query(G, Node, Acc) ->
-%%     Out0 = digraph:out_neighbours(G, Node),
-%%     case Node of
-%%         and_ops -> Out = [];
-%%         or_ops -> Out = [];
-%%         not_ops -> Out = [];
-%%         nodes -> Out = [];
-%%         root -> Out = Out0;
-%%         _ ->
-%%             case is_atom(Node) of
-%%                 true -> io:format("graph_as_query: unknown atom: ~p~n", [Node]),
-%%                         Out = [];
-%%                 _ -> Out = Out0
-%%             end
-%%     end,
-
-%%     case length(Out) of
-%%         0 ->
-%%             case Node of
-%%                 {multi_term, NTerms, TNode} ->
-%%                     io:format("multi_term: ~p: ~p~n", [Node, Out]),
-%%                     Node;
-%%                 and_ops -> [];
-%%                 or_ops -> [];
-%%                 not_ops -> [];
-%%                 nodes -> [];
-%%                 _ ->
-%%                     io:format("0/Node = ~p~n", [Node]),
-%%                     {unknown_node_type, Node}
-%%             end;
-%%         _ ->
-%%             io:format("~p: n/Out = ~p~n", [Node, Out]),
-
-%%             case Node of
-%%                 {lnot, _N} ->
-%%                     io:format("lor: ~p: ~p~n", [Node, Out]),
-%%                     Terms = lists:reverse(lists:map(fun(OutNode) ->
-%%                         graph_as_query(G, OutNode, Acc)
-%%                     end, Out)),
-%%                     {lnot, Terms};
-%%                 {land, _N} ->
-%%                     io:format("lor: ~p: ~p~n", [Node, Out]),
-%%                     Terms = lists:reverse(lists:map(fun(OutNode) ->
-%%                         graph_as_query(G, OutNode, Acc)
-%%                     end, Out)),
-%%                     {node, {land, Terms}, node()}; %% todo: real node?
-%%                 {lor, _N} ->
-%%                     io:format("lor: ~p: ~p~n", [Node, Out]),
-%%                     Terms = lists:reverse(lists:map(fun(OutNode) ->
-%%                         io:format("lor: outnode = ~p~n", [OutNode]),
-%%                         graph_as_query(G, OutNode, Acc)
-%%                     end, Out)),
-%%                     {node, {lor, Terms}, node()}; %% todo: real node?
-%%                 {term, {I, F, T}} ->
-%%                     % todo: fix counts (until then, everyone has a 1 count)
-%%                     % todo: fix faceting
-%%                     NodeWeights = lists:reverse(lists:usort(lists:map(fun({node, N1}) ->
-%%                         {node_weight, N1, 1}
-%%                     end, Out))),
-%%                     R = {term, {I, F, T}, [{facets, []}] ++ NodeWeights},
-%%                     io:format("term: R = ~p~n", [R]),
-%%                     R;
-%%                 root ->
-%%                     io:format("root: ~p: ~p~n", [Node, Out]),
-%%                     lists:foldl(fun(N, RAcc) ->
-%%                         case graph_as_query(G, N, Acc) of
-%%                             [] -> RAcc;
-%%                             V -> RAcc ++ V
-%%                         end
-%%                     end, [], Out);
-%%                 _ ->
-%%                     io:format("X? ~p: ~p~n", [Node, Out]),
-%%                     {unknown_node_type, Node}
-%%             end
-%%     end.
-
-%% optimize_junction(G, OrNode) ->
-%%     io:format("optimize_junction(G, ~p)~n", [OrNode]),
-%%     Terms0 = digraph:out_neighbours(G, OrNode),
-%%     Terms = lists:filter(fun(E) ->
-%%         case E of
-%%             [] -> false;
-%%             _ -> true
-%%         end
-%%     end, lists:map(fun(T0) ->
-%%             case T0 of
-%%                 {term, _} ->
-%%                     T0;
-%%                 _ -> []
-%%             end
-%%         end, Terms0)),
-%%     io:format("Terms = ~p~n", [Terms]),
-%%     L = lists:foldl(fun(T, Acc) ->
-%%         io:format("optimize_junction: OrNode = ~p: T = ~p~n", [OrNode, T]),
-%%         io:format("out_neighbours(G, T) = ~p~n", [digraph:out_neighbours(G, T)]),
-%%         lists:map(fun(Node_N) ->
-%%             case Node_N of
-%%                 {node, N} ->
-%%                     case proplists:is_defined(N, Acc) of
-%%                         true ->
-%%                             {N, TL} = proplists:lookup(N, Acc),
-%%                             proplists:delete(N, Acc) ++ {N, lists:flatten(TL ++ [T])};
-%%                         false -> Acc ++ {N, [T]}
-%%                     end;
-%%                 _ -> Acc
-%%             end
-%%         end, digraph:out_neighbours(G, T))
-%%     end, [], Terms),
-%%     TCD = lists:sort(fun(A,B) ->
-%%         {Na, La} = A,
-%%         {Nb, Lb} = B,
-%%         length(La) > length(Lb)
-%%     end, L),
-%%     io:format("TCD = ~p~n", [TCD]),
-%%     lists:foreach(fun(N_NTerms) ->
-%%         io:format("N_NTerms = ~p~n", [N_NTerms]),
-%%         {Node, NodeTerms} = N_NTerms,
-%%         RemTerms = lists:foldl(fun(RTerm, Acc) ->
-%%             io:format("get_path(~p, ~p) = ~p~n", [OrNode, RTerm, digraph:get_path(G, OrNode, RTerm)]),
-%%             case digraph:get_path(G, OrNode, RTerm) of
-%%                 false -> Acc;
-%%                 _ -> Acc ++ [RTerm]
-%%             end
-%%         end, [], NodeTerms),
-%%         io:format("RemTerms = ~p~n", [RemTerms]),
-%%         case RemTerms of
-%%             [] -> skip;
-%%             _ ->
-%%                 lists:foreach(fun(Nt) ->
-%%                     digraph:del_path(G, OrNode, Nt),
-%%                     digraph:del_vertex(G, Nt)
-%%                 end, RemTerms),
-%%                 Vtx = {multi_term, RemTerms, Node},
-%%                 digraph:add_vertex(G, Vtx),
-%%                 digraph:add_edge(G, OrNode, Vtx)
-%%         end
-%%     end, TCD),
-%%     TCD.
-
-
-%
-% optimize_terms(Graph, RootNode)
-%
-% {lor, N} -> [ (T->N), ... ]
-% to:
-% {lor, N} -> [ MG({T0, T1, ...}, N), ... ]
-%
-%% optimize_terms(G, RootNode) ->
-%%     Terms = digraph:out_neighbours(G, RootNode),
-%%     io:format("terms: ~p~n", [Terms]),
-%%     G.
+delete_document(Index, DocId) ->
+    case get_idx_doc(Index, DocId) of
+        {error, notfound} -> 
+            {error, notfound};
+        IdxDoc ->
+            #riak_idx_doc{id=DocID, index=Index, fields=DocFields}=IdxDoc,
+            {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
+            F2 = fun({FieldName, FieldValue}, Acc2) ->
+                {ok, Terms} = qilr_analyzer:analyze(AnalyzerPid, FieldValue),
+                PositionTree = get_term_positions(Terms),
+                Terms1 = gb_trees:keys(PositionTree),
+                F3 = fun(Term, Acc3) ->
+                    Props = build_props(Term, PositionTree),
+                    [{Index, FieldName, Term, DocID, Props}|Acc3]
+                end,
+                lists:foldl(F3, Acc2, Terms1)
+            end,
+            DocFields1 = DocFields,
+            FieldTerms = lists:foldl(F2, [], DocFields1),
+            io:format("FieldTerms = ~p~n", [FieldTerms]),
+            lists:foreach(fun({_Index, Field, Term, _DocId, _Props}) ->
+                delete_term(Index, Field, Term, DocId)
+            end, FieldTerms),
+            DocBucket = riak_search_utils:to_binary(Index ++ "_docs"),
+            DocKey = riak_search_utils:to_binary(DocId),
+            RiakClient:delete(DocBucket, DocKey, 1)
+    end.
 
 query_as_graph(OpList) ->
     G = digraph:new(),

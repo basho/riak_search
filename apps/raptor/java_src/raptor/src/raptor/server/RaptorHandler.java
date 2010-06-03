@@ -52,6 +52,7 @@ import com.google.protobuf.ByteString;
 import org.json.*;
 
 import raptor.protobuf.Messages.Index;
+import raptor.protobuf.Messages.DeleteEntry;
 import raptor.protobuf.Messages.Stream;
 import raptor.protobuf.Messages.Info;
 import raptor.protobuf.Messages.InfoRange;
@@ -71,6 +72,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
       Logger.getLogger(RaptorHandler.class);
    final private static String MSG_INFO = "Info";
    final private static String MSG_INDEX = "Index";
+   final private static String MSG_DELETE_ENTRY = "DeleteEntry";
    final private static String MSG_STREAM = "Stream";
    final private static String MSG_INFORANGE = "InfoRange";
    final private static String MSG_CATALOG_QUERY = "CatalogQuery";
@@ -123,6 +125,16 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
          } catch (com.google.protobuf.UninitializedMessageException ex) { }
            catch (com.google.protobuf.InvalidProtocolBufferException ex) { }
          
+         // delete
+         try {
+            DeleteEntry deleteEntry = DeleteEntry.newBuilder().mergeFrom(b_ar).build();
+            if (deleteEntry.getMessageType().equals(MSG_DELETE_ENTRY)) {
+                processDeleteEntryMessage(deleteEntry);
+                return;
+            }
+         } catch (com.google.protobuf.UninitializedMessageException ex) { }
+           catch (com.google.protobuf.InvalidProtocolBufferException ex) { }
+
          // stream
          try {
             Stream stream = Stream.newBuilder().mergeFrom(b_ar).build();
@@ -192,6 +204,18 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
    private void processIndexMessage(Index msg) {
       try {
          RaptorServer.writeQueue.offer(msg);
+      } catch (Exception ex) {
+         ex.printStackTrace();
+      }
+   }
+   
+   private void processDeleteEntryMessage(DeleteEntry msg) {
+      try {
+         RaptorServer.idx.deleteEntry(msg.getIndex(),
+                                      msg.getField(),
+                                      msg.getTerm(),
+                                      msg.getDocId(),
+                                      msg.getPartition());
       } catch (Exception ex) {
          ex.printStackTrace();
       }
