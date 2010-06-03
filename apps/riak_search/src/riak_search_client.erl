@@ -196,7 +196,9 @@ stream_search(IndexOrSchema, OpList) ->
 
     %% Set up the operators. They automatically start when created...
     Ref = make_ref(),
-    QueryProps = [{num_docs, NumDocs}],
+    QueryProps = [{num_docs, NumDocs},
+                  {default_field, DefaultField},
+                  {index_name, IndexOrSchema}],
 
     %% Start the query process ...
     {ok, NumInputs} = riak_search_op:chain_op(OpList1, self(), Ref, QueryProps),
@@ -263,6 +265,8 @@ get_scoring_info_1(Op) when is_record(Op, term) ->
     DocFrequency = hd(Weights ++ [0]),
     Boost = proplists:get_value(boost, Op#term.options, 1),
     [{DocFrequency, Boost}];
+get_scoring_info_1(#phrase{base_query=BaseQuery}) ->
+    get_scoring_info_1(BaseQuery);
 get_scoring_info_1(Op) when is_tuple(Op) ->
     get_scoring_info_1(element(2, Op));
 get_scoring_info_1(Ops) ->

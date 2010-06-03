@@ -6,7 +6,7 @@
 -record(config, { default_index, default_field, facets }).
 
 preplan(OpList, DefaultIndex, DefaultField, Facets) ->
-    preplan(OpList, #config { 
+    preplan(OpList, #config {
               default_index=DefaultIndex,
               default_field=DefaultField,
               facets=Facets }).
@@ -19,8 +19,8 @@ preplan(OpList, Config) ->
     OpList4 = pass4(OpList3, Config),
     OpList5 = pass5(OpList4, Config),
     pass6(OpList5, Config).
-    
-%% FIRST PASS - Normalize incoming qil. 
+
+%% FIRST PASS - Normalize incoming qil.
 %% - We should move this to the qilr project.
 %% - Turn field/4 into field/3
 %% - Turn group statements into ANDs and ORs.
@@ -36,16 +36,16 @@ pass1(Op = #group {}, Config) ->
     %% Qilr parser returns nested lists in a group.
     OpList = lists:flatten([Op#group.ops]),
     case length(OpList) == 1 of
-        true -> 
+        true ->
             %% Single op, so get rid of the group.
             pass1(OpList, Config);
-        false -> 
+        false ->
             %% Multiple ops. Pull out any terms where required flag is
             %% set, make those on AND. The rest are an OR. AND the
             %% results together.
             F = fun(X) -> is_record(X, term) andalso (?IS_TERM_REQUIRED(X) orelse ?IS_TERM_PROHIBITED(X)) end,
             {RequiredOps, NonRequiredOps} = lists:splitwith(F, OpList),
-            if 
+            if
                 RequiredOps /= [] andalso NonRequiredOps == [] ->
                     pass1(#land { ops=RequiredOps }, Config);
                 RequiredOps == [] andalso NonRequiredOps /= [] ->
@@ -60,7 +60,7 @@ pass1(Op = #group {}, Config) ->
 pass1(Op = #term {}, Config) ->
     IsProhibited = ?IS_TERM_PROHIBITED(Op),
     IsProximity = ?IS_TERM_PROXIMITY(Op),
-    if 
+    if
         IsProhibited ->
             %% Rewrite a prohibited term to be a not.
             NewOp = #lnot { ops=[Op#term { options=[] }] },
@@ -75,7 +75,7 @@ pass1(Op = #term {}, Config) ->
             Op
     end;
 
-pass1(Op, Config) -> 
+pass1(Op, Config) ->
     F = fun(X) -> lists:flatten([pass1(Y, Config) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
 
@@ -113,7 +113,7 @@ pass2(Op = #land {}, Config) ->
     case Continue of
         stop ->
             Op#land { ops=pass2(NewOps, Config) };
-        loop -> 
+        loop ->
             pass2(Op#land { ops=NewOps }, Config)
     end;
 
@@ -129,11 +129,11 @@ pass2(Op = #lor {}, Config) ->
     case Continue of
         stop ->
             Op#lor { ops=pass2(NewOps, Config) };
-        loop -> 
+        loop ->
             pass2(Op#lor { ops=NewOps }, Config)
     end;
 
-pass2(Op, Config) -> 
+pass2(Op, Config) ->
     F = fun(X) -> lists:flatten([pass2(Y, Config) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
 
@@ -145,7 +145,7 @@ is_facet({Index, Field, _}, Config) ->
         Index == FacetIndex andalso Field == FacetField
     end,
     lists:any(F, FacetList1).
-    
+
 normalize_field(OriginalField, Config) when is_list(OriginalField) ->
     DefIndex = Config#config.default_index,
     case string:tokens(OriginalField, ".") of
@@ -156,7 +156,7 @@ normalize_field(OriginalField, Config) when is_list(OriginalField) ->
 normalize_field(Field, _) when is_tuple(Field) -> Field.
 
 
-%% Possibly rewrite a term. The term may be a "special" term, so 
+%% Possibly rewrite a term. The term may be a "special" term, so
 %% we rewrite it to a subterm_type. Or, it may be a facet.
 rewrite_term({Index, "date", Term}, Options, _Config) ->
     case riak_search_utils:parse_datetime(Term) of
@@ -166,12 +166,12 @@ rewrite_term({Index, "date", Term}, Options, _Config) ->
         error ->
             throw({could_not_parse_date, Term})
     end;
-    
+
 rewrite_term(Q, Options, Config) ->
     case is_facet(Q, Config) of
-        true -> 
+        true ->
             [#term { q=Q, options=[facet|Options] }];
-        false -> 
+        false ->
             {Index, Field, Term} = Q,
             {ok, {Term, Node, Count}} = riak_search:info(Index, Field, Term),
             Weights = [{node_weight, Node, Count}],
@@ -184,7 +184,7 @@ normalize_term(OriginalField, Config) when is_binary(OriginalField) ->
     normalize_term(binary_to_list(OriginalField), Config);
 normalize_term(OriginalTerm, Config) when is_list(OriginalTerm) ->
     DefIndex = Config#config.default_index,
-    DefField = Config#config.default_field,    
+    DefField = Config#config.default_field,
     OriginalTerm1 = string:strip(OriginalTerm, right, $*),
     OriginalTerm2 = string:strip(OriginalTerm1, right, $?),
     case string:tokens(OriginalTerm2, ".") of
@@ -209,7 +209,7 @@ pass3(Op = #lor {}, Config) ->
     OpList = facetize(Op#lor.ops),
     Op#lor { ops=pass3(OpList, Config) };
 
-pass3(Op, Config) -> 
+pass3(Op, Config) ->
     F = fun(X) -> lists:flatten([pass3(Y, Config) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
 
@@ -218,13 +218,15 @@ facetize(Ops) ->
     %% Get all of the facets...
     Ops1 = lists:flatten(Ops),
     F1 = fun(Op) -> is_all_facets(Op) end,
-    {Facets, NonFacets} = lists:partition(F1, Ops1), 
+    {Facets, NonFacets} = lists:partition(F1, Ops1),
     [inject_facets(X, Facets) || X <- NonFacets].
 
 %% Return true if a structure consists only of facet terms, possibly
 %% joined with lands and lors.
 is_all_facets(Op) when is_record(Op, term) ->
     ?IS_TERM_FACET(Op);
+is_all_facets(Op) when is_record(Op, phrase) ->
+    false;
 is_all_facets(Op) when is_tuple(Op) ->
     is_all_facets(element(2, Op));
 is_all_facets(Ops) when is_list(Ops) ->
@@ -234,6 +236,8 @@ is_all_facets(Ops) when is_list(Ops) ->
 inject_facets(Op, Facets) when is_record(Op, term) ->
     NewOptions = [{facets, Facets}|Op#term.options],
     Op#term { options=NewOptions };
+inject_facets(Op, _Facets) when is_record(Op, phrase) ->
+    Op;
 inject_facets(Op, Facets) when is_tuple(Op) ->
     Ops = element(2, Op),
     NewOps = inject_facets(Ops, Facets),
@@ -263,7 +267,7 @@ pass4(Op = #term {}, Config) ->
     IsWildcardAll = ?IS_TERM_WILDCARD_ALL(Op),
     IsWildcardOne = ?IS_TERM_WILDCARD_ONE(Op),
     Facets = proplists:get_all_values(facets, Op#term.options),
-    if 
+    if
         IsWildcardAll ->
             Start = Op#term.q,
             End = wildcard_all,
@@ -276,7 +280,7 @@ pass4(Op = #term {}, Config) ->
             Op
     end;
 
-pass4(Op, Config) -> 
+pass4(Op, Config) ->
     F = fun(X) -> lists:flatten([pass4(Y, Config) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
 
@@ -285,7 +289,7 @@ range_to_lor(Start, End, Inclusive, Facets, _Config) ->
 
     %% Results are of form {node, Index.Field.Term, Count}
     {ok, Results} = riak_search:info_range(Index, Field, StartTerm, EndTerm, Size),
-    
+
     %% Collapse results into a gb_tree to combine...
     F1 = fun({Term, Node, Count}, Acc) ->
         NewOption = {node_weight, Node, Count},
@@ -363,7 +367,7 @@ pass5(Op = #lnot {}, Config) ->
         end,
     [F(X) || X <- to_list(Op#lnot.ops)];
 
-pass5(Op, Config) -> 
+pass5(Op, Config) ->
     F = fun(X) -> lists:flatten([pass5(Y, Config) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
 
@@ -389,7 +393,7 @@ pass6(Op = #lor {}, Config) ->
     NewOp = Op#lor { ops=pass6(Ops, Config) },
     #node { ops=NewOp, node=Node };
 
-pass6(Op, Config) -> 
+pass6(Op, Config) ->
     F = fun(X) -> lists:flatten([pass6(Y, Config) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
 
@@ -419,13 +423,14 @@ get_largest([{NewNode, NewWeight}|T], Node, Weight) ->
     end.
 
 %% Given a nested list of operations, return a list of [{Node, Weight}].
-get_preferred_node_inner(Op) when is_record(Op, term) -> 
+get_preferred_node_inner(Op) when is_record(Op, term) ->
     [{Node, Weight} || {node_weight, Node, Weight} <- Op#term.options];
+get_preferred_node_inner(#phrase{base_query={land, [Op|_]}}) ->
+    get_preferred_node_inner(Op);
 get_preferred_node_inner(Op) ->
     Ops = element(2, Op),
     [get_preferred_node_inner(X) || X <- Ops].
 
-    
+
 to_list(L) when is_list(L) -> L;
 to_list(T) when is_tuple(T) -> [T].
-

@@ -7,18 +7,13 @@
 optimize(AnalyzerPid, {ok, Query}, Opts) when not is_list(Query) ->
     optimize(AnalyzerPid, {ok, [Query]}, Opts);
 optimize(AnalyzerPid, {ok, Query0}, Opts) when is_list(Query0) ->
-    %io:format("~n~nPass 0: ~p~n", [Query0]),
     case process_terms(AnalyzerPid, Query0, Opts) of
         [] ->
             {error, no_terms};
         Query1 ->
-            %io:format("~n~nPass 1: ~p~n", [Query1]),
             Query2 = consolidate_exprs(Query1, []),
-            %io:format("~n~nPass 2: ~p~n", [Query2]),
             Query3 = default_bool(Query2, Opts),
-            %io:format("~n~nPass 3: ~p~n", [Query3]),
             Query4 = consolidate_exprs(Query3, []),
-            %io:format("~n~nFinal Pass: ~p~n", [Query4]),
             {ok, Query4}
     end;
 optimize(_, {error, {_, _, [_Message, [91, Error, 93]]}}, _) ->
@@ -64,15 +59,31 @@ analyze_terms(AnalyzerPid, [{Op, Terms}|T], Acc) when Op =:= land;
             analyze_terms(AnalyzerPid, T, [{Op, NewTerms}|Acc])
     end;
 analyze_terms(AnalyzerPid, [{field, FieldName, TermText, TProps}|T], Acc) ->
-    NewTerm = case analyze_term_text(AnalyzerPid, TermText) of
-                  {single, NewText} ->
-                      {field, FieldName, NewText, TProps};
-                  {multi, NewTexts} ->
-                      {group, [{land,
-                                [{field, FieldName, NT, TProps} ||
-                                    NT <- NewTexts]}]};
-                  none ->
-                      none
+    NewTerm = case string:chr(TermText, $\ ) of
+                  0 ->
+                      case analyze_term_text(AnalyzerPid, TermText) of
+                          {single, NewText} ->
+                              {field, FieldName, NewText, TProps};
+                          {multi, NewTexts} ->
+                              {group, [{land,
+                                        [{field, FieldName, NT, TProps} ||
+                                            NT <- NewTexts]}]};
+                          none ->
+                              none
+                      end;
+                  _ ->
+                      case analyze_term_text(AnalyzerPid, TermText) of
+                          {single, NewText} ->
+                              BaseQuery = {field, FieldName, NewText, TProps},
+                              {phrase, TermText, BaseQuery};
+                          {multi, NewTexts} ->
+                              BaseQuery = {land,
+                                           [{field, FieldName, NT, TProps} ||
+                                               NT <- NewTexts]},
+                              {phrase, TermText, BaseQuery};
+                          none ->
+                              none
+                      end
               end,
     case NewTerm of
         none ->
@@ -80,15 +91,33 @@ analyze_terms(AnalyzerPid, [{field, FieldName, TermText, TProps}|T], Acc) ->
         _ ->
             analyze_terms(AnalyzerPid, T, [NewTerm|Acc])
     end;
+
 analyze_terms(AnalyzerPid, [{term, TermText, TProps}|T], Acc) ->
-    NewTerm = case analyze_term_text(AnalyzerPid, TermText) of
-                  {single, NewText} ->
-                      {term, NewText, TProps};
-                  {multi, NewTexts} ->
-                      {group, [{land,
-                                [{term, NT, TProps} || NT <- NewTexts]}]};
-                  none ->
-                      none
+    NewTerm = case string:chr(TermText, $\ ) of
+                  0 ->
+                      case analyze_term_text(AnalyzerPid, TermText) of
+                          {single, NewText} ->
+                              {term, NewText, TProps};
+                          {multi, NewTexts} ->
+                              {group, [{land,
+                                        [{term, NT, TProps} ||
+                                            NT <- NewTexts]}]};
+                          none ->
+                              none
+                      end;
+                  _ ->
+                      case analyze_term_text(AnalyzerPid, TermText) of
+                          {single, NewText} ->
+                              BaseQuery = {term, NewText, TProps},
+                              {phrase, TermText, [{base_query, BaseQuery}|TProps]};
+                          {multi, NewTexts} ->
+                              BaseQuery = {land,
+                                           [{term, NT, TProps} ||
+                                               NT <- NewTexts]},
+                              {phrase, TermText, BaseQuery};
+                          none ->
+                              none
+                      end
               end,
     case NewTerm of
         none ->

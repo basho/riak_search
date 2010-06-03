@@ -7,32 +7,30 @@
 
 preplan_op(Op, F) ->
     case op_to_module(Op) of
-	undefined ->
-	    ?PRINT({unknown_op, Op}),
-	    throw({unknown_op, Op});
-	Module ->
-	    Module:preplan_op(Op, F)
+        undefined ->
+            ?PRINT({unknown_op, Op}),
+            throw({unknown_op, Op});
+        Module ->
+            Module:preplan_op(Op, F)
     end.
 
 
 chain_op(OpList, OutputPid, Ref, QueryProps) when is_list(OpList)->
-    %[chain_op(Op, OutputPid, Ref, QueryProps) || Op <- OpList],
     plists:map(fun(Op) ->
-        chain_op(Op, OutputPid, Ref, QueryProps)
-    end, OpList),
+                       chain_op(Op, OutputPid, Ref, QueryProps) end,
+               OpList),
     {ok, length(OpList)};
 
 chain_op(Op, OutputPid, Ref, QueryProps) ->
     spawn(fun() ->
         case op_to_module(Op) of
-    	undefined ->
-    	    ?PRINT({unknown_op, Op}),
-    	    throw({unknown_op, Op});
-    	Module ->
-    	    Module:chain_op(Op, OutputPid, Ref, QueryProps),
+            undefined ->
+                ?PRINT({unknown_op, Op}),
+                throw({unknown_op, Op});
+            Module ->
+                Module:chain_op(Op, OutputPid, Ref, QueryProps),
                 {ok, 1}
-        end
-    end),
+        end end),
     {ok, 1}.
 
 op_to_module(Op) ->

@@ -19,19 +19,31 @@ chain_op(Op, OutputPid, OutputRef, QueryProps, Type) ->
     Iterator = riak_search_utils:iterator_chain(SelectFun, OpList, QueryProps),
 
     %% Spawn up pid to gather and send results...
-    F = fun() -> gather_results(OutputPid, OutputRef, Iterator()) end,
+    TermFilter = proplists:get_value(term_filter, QueryProps),
+    F = fun() -> gather_results(OutputPid, OutputRef, TermFilter, Iterator()) end,
     spawn_link(F),
 
     %% Return.
     {ok, 1}.
 
-gather_results(OutputPid, OutputRef, {Term, Op, Iterator}) ->
+gather_results(OutputPid, OutputRef, TermFilter, {Term, Op, Iterator}) ->
     case is_record(Op, lnot) of
         true  -> skip;
-        false -> OutputPid!{results, [Term], OutputRef}
+        false ->
+            case TermFilter of
+                undefined ->
+                    OutputPid ! {results, [Term], OutputRef};
+                _ ->
+                    case TermFilter(Term) of
+                        true ->
+                            OutputPid ! {results, [Term], OutputRef};
+                        false ->
+                            skip
+                    end
+            end
     end,
-    gather_results(OutputPid, OutputRef, Iterator());
-gather_results(OutputPid, OutputRef, {eof, _}) ->
+    gather_results(OutputPid, OutputRef, TermFilter, Iterator());
+gather_results(OutputPid, OutputRef, _FilterFun, {eof, _}) ->
     OutputPid!{disconnect, OutputRef}.
 
 
