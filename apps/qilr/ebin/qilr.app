@@ -5,6 +5,7 @@
   {modules,      [qilr_sup,
                   qilr_app,
                   qilr_scan,
+                  qilr_optimizer,
                   qilr_parse,
                   qilr_repl,
                   qilr_postprocess,
