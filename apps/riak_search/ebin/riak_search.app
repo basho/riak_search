@@ -40,7 +40,8 @@
                   kernel,
                   stdlib,
                   riak_core,
-		  raptor
+                  riak_kv,
+                  raptor
                  ]},
   {mod, { riak_search_app, []}},
   {env, []}
