@@ -71,7 +71,7 @@ to_json(Req, State) ->
 
     %% Run the query...
     StartTime = erlang:now(),
-    {NumFound, Docs} = Client:search_doc(Schema, QueryOps, QStart, QRows, ?DEFAULT_TIMEOUT),
+    {NumFound, Docs} = Client:search_doc(Schema:name(), QueryOps, QStart, QRows, ?DEFAULT_TIMEOUT),
     ElapsedTime = erlang:trunc(timer:now_diff(erlang:now(), StartTime) / 1000),
     {build_json_response(Schema, ElapsedTime, SQuery, NumFound, Docs), Req, State}.
 
@@ -135,7 +135,6 @@ parse_squery(Req) ->
     DefaultOp = to_atom(wrq:get_qs_value("q.op", undefined, Req)),
     QueryStart = to_integer(wrq:get_qs_value("start", 0, Req)),
     QueryRows = to_integer(wrq:get_qs_value("rows", ?DEFAULT_RESULT_SIZE, Req)),
-
     SQuery = #squery{
         q=Query,
         default_op=DefaultOp,

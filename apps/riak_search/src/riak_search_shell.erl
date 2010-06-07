@@ -1,6 +1,6 @@
 -module(riak_search_shell).
 
--export([start/0, search/2, parse/2, graph/2]).
+-export([start/0, start/1, search/2, parse/2, graph/2]).
 
 -record(state, {client,
                 index,
