@@ -21,7 +21,7 @@
     get_idx_doc/2,
     store_idx_doc/1,
     index_term/5,
-    
+
     %% Delete
     delete_document/2
 ]).
@@ -116,8 +116,12 @@ parse_idx_doc(AnalyzerPid, IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
 
 get_idx_doc(DocIndex, DocID) ->
     DocBucket = to_binary(from_binary(DocIndex) ++ "_docs"),
-    {ok, Obj} = RiakClient:get(DocBucket, to_binary(DocID), 2),
-    riak_object:get_value(Obj).
+    case RiakClient:get(DocBucket, to_binary(DocID), 2) of
+        {error, notfound} ->
+            {error, notfound};
+        {ok, Obj} ->
+            riak_object:get_value(Obj)
+    end.
 
 store_idx_doc(IdxDoc) ->
     %% Store the document...
@@ -298,7 +302,7 @@ calculate_scores(_, _, []) ->
 
 delete_document(Index, DocId) ->
     case get_idx_doc(Index, DocId) of
-        {error, notfound} -> 
+        {error, notfound} ->
             {error, notfound};
         IdxDoc ->
             #riak_idx_doc{id=DocID, index=Index, fields=DocFields}=IdxDoc,
