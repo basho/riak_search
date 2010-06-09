@@ -1,0 +1,44 @@
+--------------------------------
+Riak Search Beta 2 Release Notes
+--------------------------------
+
+This is a beta-quality release of Riak Search. This release almost
+certainly contains bugs and is being provided for evaluation purposes
+only.
+
+New features:
+
+* Raptor internalized -- The primary backedn for Riak Search, Raptor,
+  has been added to the Riak embedded node, such that it is no longer
+  necessary to run Raptor separately.  Raptor will now start and stop
+  with the Riak node using it. (bugs 152 & 166)
+
+* Delete implemented -- Deleting documents from an index is now
+  supported, through the standard Solr method of POSTing a document to
+  the index, with a body containging a
+  <delete><id>DOCUMENT_ID</id></delete> directive.  Query-deletion
+  (<delete><query>QUERY</query></delete>) is also supported. (bug 164)
+
+* Phrase search -- Quoted phrase searching is now supported. (bug 98)
+
+* Facets -- the Solr interface now supports searching and indexing on
+  facets. (bugs 154, 155, 156)
+
+Other bugfixes:
+
+* support for "-field:X" and "+field:X" as well as other Lucene
+  parsing improvements (bugs 158, 159)
+
+* no more errors for index names specified in query strings (bug 160)
+
+Known Issues:
+
+* The alternate delete syntax, which includes the index name
+  (<delete><id>INDEX_NAME:DOCUMENT_ID</id></delete>) is not supported
+  at this time. (bug 204)
+
+* Fuzzy queries aren't implemented (bug 90)
+
+* Ranking and scoring aren't implemented (bug 99)
+
+* riak_solr doesn't support dynamic or computed document fields (bug 161)
