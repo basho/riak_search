@@ -5,6 +5,3 @@
 
 -define(DEFAULT_SYNC_INTERVAL, (2 * 1000)).
 -define(SYNC_INTERVAL(State), proplists:get_value(merge_index_sync_interval, State#state.config, ?DEFAULT_SYNC_INTERVAL)).
-
--define(MINSUBTERM, 0).
--define(MAXSUBTERM, 18446744073709551615).

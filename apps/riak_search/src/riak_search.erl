@@ -1,7 +1,7 @@
 -module(riak_search).
 -export([client_connect/1,
          local_client/0,
-         stream/7,
+         stream/4,
          info/3,
          info_range/5]).
 -include("riak_search.hrl").
@@ -16,7 +16,7 @@ local_client() ->
     {ok, Client} = riak:local_client(),
     {ok, riak_search_client:new(Client)}.
 
-stream(Index, Field, Term, SubType, StartSubTerm, EndSubTerm, FilterFun) ->
+stream(Index, Field, Term, FilterFun) ->
     %% Construct the operation...
     IndexBin = riak_search_utils:to_binary(Index),
     FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
@@ -34,7 +34,7 @@ stream(Index, Field, Term, SubType, StartSubTerm, EndSubTerm, FilterFun) ->
     {ok, Partition, Node} = wait_for_ready(NVal, Ref, undefined, undefined),
 
     %% Run the operation...
-    Payload2 = {stream, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, self(), Ref, Partition, Node, FilterFun},
+    Payload2 = {stream, Index, Field, Term, self(), Ref, Partition, Node, FilterFun},
     Obj2 = riak_object:new(IndexBin, FieldTermBin, Payload2),
     Client:put(Obj2, 0, 0),
     {ok, Ref}.

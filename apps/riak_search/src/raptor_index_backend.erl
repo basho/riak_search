@@ -56,9 +56,9 @@ put(State, _BKey, ObjBin) ->
 
 handle_command(State, {index, Index, Field, Term, Value, Props}) ->
     TS = mi_utils:now_to_timestamp(erlang:now()),
-    handle_command(State, {index, Index, Field, Term, 0, 0, Value, Props, TS}); %% todo: sub type, startterm, endterm (tbd)
+    handle_command(State, {index, Index, Field, Term, Value, Props, TS});
 
-handle_command(State, {index, Index, Field, Term, SubType, SubTerm, Value, Props, _Timestamp}) ->
+handle_command(State, {index, Index, Field, Term, Value, Props, _Timestamp}) ->
     %% Put with properties.
     Partition = list_to_binary("" ++ integer_to_list(State#state.partition)),
     Conn = State#state.conn,
@@ -66,22 +66,6 @@ handle_command(State, {index, Index, Field, Term, SubType, SubTerm, Value, Props
                       list_to_binary(Index),
                       list_to_binary(Field),
                       Term,
-                      list_to_binary(integer_to_list(SubType)),
-                      list_to_binary(integer_to_list(SubTerm)),
-                      list_to_binary(Value),
-                      Partition,
-                      term_to_binary(Props)),
-    ok;
-
-handle_command(State, {index, Index, Field, Term, SubType, SubTerm, Value, Props}) ->
-    Partition = list_to_binary(integer_to_list(State#state.partition)),
-    Conn = State#state.conn,
-    raptor_conn:index(Conn,
-                      list_to_binary(Index),
-                      list_to_binary(Field),
-                      Term,
-                      list_to_binary(integer_to_list(SubType)),
-                      list_to_binary(integer_to_list(SubTerm)),
                       list_to_binary(Value),
                       Partition,
                       term_to_binary(Props)),
@@ -104,23 +88,11 @@ handle_command(State, {init_stream, OutputPid, OutputRef}) ->
     OutputPid!{stream_ready, Partition, node(), OutputRef},
     ok;
 
-handle_command(State, {stream, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, OutputPid, OutputRef, DestPartition, Node, FilterFun}) ->
+handle_command(State, {stream, Index, Field, Term, OutputPid, OutputRef, DestPartition, Node, FilterFun}) ->
     spawn(fun() ->
         Partition = list_to_binary(integer_to_list(State#state.partition)),
         case DestPartition == State#state.partition andalso Node == node() of
             true ->
-                case SubType of
-                    all -> SubType2 = 0;
-                    _ -> SubType2 = SubType
-                end,
-                case StartSubTerm of
-                    all -> StartSubTerm2 = 0;
-                    _ -> StartSubTerm2 = StartSubTerm
-                end,
-                case EndSubTerm of
-                    all -> EndSubTerm2 = 0;
-                    _ -> EndSubTerm2 = EndSubTerm
-                end,
                 spawn_link(fun() ->
                     {ok, Conn} = raptor_conn_sup:new_conn(),
                     {ok, StreamRef} = raptor_conn:stream(
@@ -128,9 +100,6 @@ handle_command(State, {stream, Index, Field, Term, SubType, StartSubTerm, EndSub
                         list_to_binary(Index),
                         list_to_binary(Field),
                         list_to_binary(Term),
-                        list_to_binary(integer_to_list(SubType2)),
-                        list_to_binary(integer_to_list(StartSubTerm2)),
-                        list_to_binary(integer_to_list(EndSubTerm2)),
                         Partition),
                     receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun),
                     raptor_conn:close(Conn)
@@ -474,7 +443,7 @@ fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Inde
             Props2 = binary_to_term(Props),
             IndexBin = riak_search_utils:to_binary(Index),
             FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-            Payload = {index, Index, Field, Term, 0, 0, Value, Props2, erlang:now()}, %% todo: sub type, startterm, endterm (tbd)
+            Payload = {index, Index, Field, Term, Value, Props2, erlang:now()},
             BObj = term_to_binary(riak_object:new(IndexBin, FieldTermBin, Payload)),
             FoldResultPid ! {fold_result, Fun0({IndexBin, FieldTermBin}, BObj, Acc)},
             fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term);

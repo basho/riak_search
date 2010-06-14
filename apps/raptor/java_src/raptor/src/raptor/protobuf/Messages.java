@@ -56,43 +56,29 @@ public final class Messages {
     public boolean hasTerm() { return hasTerm; }
     public java.lang.String getTerm() { return term_; }
     
-    // required string subtype = 4;
-    public static final int SUBTYPE_FIELD_NUMBER = 4;
-    private boolean hasSubtype;
-    private java.lang.String subtype_ = "";
-    public boolean hasSubtype() { return hasSubtype; }
-    public java.lang.String getSubtype() { return subtype_; }
-    
-    // required string subterm = 5;
-    public static final int SUBTERM_FIELD_NUMBER = 5;
-    private boolean hasSubterm;
-    private java.lang.String subterm_ = "";
-    public boolean hasSubterm() { return hasSubterm; }
-    public java.lang.String getSubterm() { return subterm_; }
-    
-    // required string value = 6;
-    public static final int VALUE_FIELD_NUMBER = 6;
+    // required string value = 4;
+    public static final int VALUE_FIELD_NUMBER = 4;
     private boolean hasValue;
     private java.lang.String value_ = "";
     public boolean hasValue() { return hasValue; }
     public java.lang.String getValue() { return value_; }
     
-    // required string partition = 7;
-    public static final int PARTITION_FIELD_NUMBER = 7;
+    // required string partition = 5;
+    public static final int PARTITION_FIELD_NUMBER = 5;
     private boolean hasPartition;
     private java.lang.String partition_ = "";
     public boolean hasPartition() { return hasPartition; }
     public java.lang.String getPartition() { return partition_; }
     
-    // required string message_type = 8;
-    public static final int MESSAGE_TYPE_FIELD_NUMBER = 8;
+    // required string message_type = 6;
+    public static final int MESSAGE_TYPE_FIELD_NUMBER = 6;
     private boolean hasMessageType;
     private java.lang.String messageType_ = "";
     public boolean hasMessageType() { return hasMessageType; }
     public java.lang.String getMessageType() { return messageType_; }
     
-    // required bytes props = 9;
-    public static final int PROPS_FIELD_NUMBER = 9;
+    // required bytes props = 7;
+    public static final int PROPS_FIELD_NUMBER = 7;
     private boolean hasProps;
     private com.google.protobuf.ByteString props_ = com.google.protobuf.ByteString.EMPTY;
     public boolean hasProps() { return hasProps; }
@@ -104,8 +90,6 @@ public final class Messages {
       if (!hasIndex) return false;
       if (!hasField) return false;
       if (!hasTerm) return false;
-      if (!hasSubtype) return false;
-      if (!hasSubterm) return false;
       if (!hasValue) return false;
       if (!hasPartition) return false;
       if (!hasMessageType) return false;
@@ -125,23 +109,17 @@ public final class Messages {
       if (hasTerm()) {
         output.writeString(3, getTerm());
       }
-      if (hasSubtype()) {
-        output.writeString(4, getSubtype());
-      }
-      if (hasSubterm()) {
-        output.writeString(5, getSubterm());
-      }
       if (hasValue()) {
-        output.writeString(6, getValue());
+        output.writeString(4, getValue());
       }
       if (hasPartition()) {
-        output.writeString(7, getPartition());
+        output.writeString(5, getPartition());
       }
       if (hasMessageType()) {
-        output.writeString(8, getMessageType());
+        output.writeString(6, getMessageType());
       }
       if (hasProps()) {
-        output.writeBytes(9, getProps());
+        output.writeBytes(7, getProps());
       }
       getUnknownFields().writeTo(output);
     }
@@ -164,29 +142,21 @@ public final class Messages {
         size += com.google.protobuf.CodedOutputStream
           .computeStringSize(3, getTerm());
       }
-      if (hasSubtype()) {
-        size += com.google.protobuf.CodedOutputStream
-          .computeStringSize(4, getSubtype());
-      }
-      if (hasSubterm()) {
-        size += com.google.protobuf.CodedOutputStream
-          .computeStringSize(5, getSubterm());
-      }
       if (hasValue()) {
         size += com.google.protobuf.CodedOutputStream
-          .computeStringSize(6, getValue());
+          .computeStringSize(4, getValue());
       }
       if (hasPartition()) {
         size += com.google.protobuf.CodedOutputStream
-          .computeStringSize(7, getPartition());
+          .computeStringSize(5, getPartition());
       }
       if (hasMessageType()) {
         size += com.google.protobuf.CodedOutputStream
-          .computeStringSize(8, getMessageType());
+          .computeStringSize(6, getMessageType());
       }
       if (hasProps()) {
         size += com.google.protobuf.CodedOutputStream
-          .computeBytesSize(9, getProps());
+          .computeBytesSize(7, getProps());
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -355,12 +325,6 @@ public final class Messages {
         if (other.hasTerm()) {
           setTerm(other.getTerm());
         }
-        if (other.hasSubtype()) {
-          setSubtype(other.getSubtype());
-        }
-        if (other.hasSubterm()) {
-          setSubterm(other.getSubterm());
-        }
         if (other.hasValue()) {
           setValue(other.getValue());
         }
@@ -411,26 +375,18 @@ public final class Messages {
               break;
             }
             case 34: {
-              setSubtype(input.readString());
-              break;
-            }
-            case 42: {
-              setSubterm(input.readString());
-              break;
-            }
-            case 50: {
               setValue(input.readString());
               break;
             }
-            case 58: {
+            case 42: {
               setPartition(input.readString());
               break;
             }
-            case 66: {
+            case 50: {
               setMessageType(input.readString());
               break;
             }
-            case 74: {
+            case 58: {
               setProps(input.readBytes());
               break;
             }
@@ -502,49 +458,7 @@ public final class Messages {
         return this;
       }
       
-      // required string subtype = 4;
-      public boolean hasSubtype() {
-        return result.hasSubtype();
-      }
-      public java.lang.String getSubtype() {
-        return result.getSubtype();
-      }
-      public Builder setSubtype(java.lang.String value) {
-        if (value == null) {
-    throw new NullPointerException();
-  }
-  result.hasSubtype = true;
-        result.subtype_ = value;
-        return this;
-      }
-      public Builder clearSubtype() {
-        result.hasSubtype = false;
-        result.subtype_ = getDefaultInstance().getSubtype();
-        return this;
-      }
-      
-      // required string subterm = 5;
-      public boolean hasSubterm() {
-        return result.hasSubterm();
-      }
-      public java.lang.String getSubterm() {
-        return result.getSubterm();
-      }
-      public Builder setSubterm(java.lang.String value) {
-        if (value == null) {
-    throw new NullPointerException();
-  }
-  result.hasSubterm = true;
-        result.subterm_ = value;
-        return this;
-      }
-      public Builder clearSubterm() {
-        result.hasSubterm = false;
-        result.subterm_ = getDefaultInstance().getSubterm();
-        return this;
-      }
-      
-      // required string value = 6;
+      // required string value = 4;
       public boolean hasValue() {
         return result.hasValue();
       }
@@ -565,7 +479,7 @@ public final class Messages {
         return this;
       }
       
-      // required string partition = 7;
+      // required string partition = 5;
       public boolean hasPartition() {
         return result.hasPartition();
       }
@@ -586,7 +500,7 @@ public final class Messages {
         return this;
       }
       
-      // required string message_type = 8;
+      // required string message_type = 6;
       public boolean hasMessageType() {
         return result.hasMessageType();
       }
@@ -607,7 +521,7 @@ public final class Messages {
         return this;
       }
       
-      // required bytes props = 9;
+      // required bytes props = 7;
       public boolean hasProps() {
         return result.hasProps();
       }
@@ -688,36 +602,15 @@ public final class Messages {
     public boolean hasTerm() { return hasTerm; }
     public java.lang.String getTerm() { return term_; }
     
-    // required string subtype = 4;
-    public static final int SUBTYPE_FIELD_NUMBER = 4;
-    private boolean hasSubtype;
-    private java.lang.String subtype_ = "";
-    public boolean hasSubtype() { return hasSubtype; }
-    public java.lang.String getSubtype() { return subtype_; }
-    
-    // required string start_subterm = 5;
-    public static final int START_SUBTERM_FIELD_NUMBER = 5;
-    private boolean hasStartSubterm;
-    private java.lang.String startSubterm_ = "";
-    public boolean hasStartSubterm() { return hasStartSubterm; }
-    public java.lang.String getStartSubterm() { return startSubterm_; }
-    
-    // required string end_subterm = 6;
-    public static final int END_SUBTERM_FIELD_NUMBER = 6;
-    private boolean hasEndSubterm;
-    private java.lang.String endSubterm_ = "";
-    public boolean hasEndSubterm() { return hasEndSubterm; }
-    public java.lang.String getEndSubterm() { return endSubterm_; }
-    
-    // required string partition = 7;
-    public static final int PARTITION_FIELD_NUMBER = 7;
+    // required string partition = 4;
+    public static final int PARTITION_FIELD_NUMBER = 4;
     private boolean hasPartition;
     private java.lang.String partition_ = "";
     public boolean hasPartition() { return hasPartition; }
     public java.lang.String getPartition() { return partition_; }
     
-    // required string message_type = 8;
-    public static final int MESSAGE_TYPE_FIELD_NUMBER = 8;
+    // required string message_type = 5;
+    public static final int MESSAGE_TYPE_FIELD_NUMBER = 5;
     private boolean hasMessageType;
     private java.lang.String messageType_ = "";
     public boolean hasMessageType() { return hasMessageType; }
@@ -729,9 +622,6 @@ public final class Messages {
       if (!hasIndex) return false;
       if (!hasField) return false;
       if (!hasTerm) return false;
-      if (!hasSubtype) return false;
-      if (!hasStartSubterm) return false;
-      if (!hasEndSubterm) return false;
       if (!hasPartition) return false;
       if (!hasMessageType) return false;
       return true;
@@ -749,20 +639,11 @@ public final class Messages {
       if (hasTerm()) {
         output.writeString(3, getTerm());
       }
-      if (hasSubtype()) {
-        output.writeString(4, getSubtype());
-      }
-      if (hasStartSubterm()) {
-        output.writeString(5, getStartSubterm());
-      }
-      if (hasEndSubterm()) {
-        output.writeString(6, getEndSubterm());
-      }
       if (hasPartition()) {
-        output.writeString(7, getPartition());
+        output.writeString(4, getPartition());
       }
       if (hasMessageType()) {
-        output.writeString(8, getMessageType());
+        output.writeString(5, getMessageType());
       }
       getUnknownFields().writeTo(output);
     }
@@ -785,25 +666,13 @@ public final class Messages {
         size += com.google.protobuf.CodedOutputStream
           .computeStringSize(3, getTerm());
       }
-      if (hasSubtype()) {
-        size += com.google.protobuf.CodedOutputStream
-          .computeStringSize(4, getSubtype());
-      }
-      if (hasStartSubterm()) {
-        size += com.google.protobuf.CodedOutputStream
-          .computeStringSize(5, getStartSubterm());
-      }
-      if (hasEndSubterm()) {
-        size += com.google.protobuf.CodedOutputStream
-          .computeStringSize(6, getEndSubterm());
-      }
       if (hasPartition()) {
         size += com.google.protobuf.CodedOutputStream
-          .computeStringSize(7, getPartition());
+          .computeStringSize(4, getPartition());
       }
       if (hasMessageType()) {
         size += com.google.protobuf.CodedOutputStream
-          .computeStringSize(8, getMessageType());
+          .computeStringSize(5, getMessageType());
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -972,15 +841,6 @@ public final class Messages {
         if (other.hasTerm()) {
           setTerm(other.getTerm());
         }
-        if (other.hasSubtype()) {
-          setSubtype(other.getSubtype());
-        }
-        if (other.hasStartSubterm()) {
-          setStartSubterm(other.getStartSubterm());
-        }
-        if (other.hasEndSubterm()) {
-          setEndSubterm(other.getEndSubterm());
-        }
         if (other.hasPartition()) {
           setPartition(other.getPartition());
         }
@@ -1025,22 +885,10 @@ public final class Messages {
               break;
             }
             case 34: {
-              setSubtype(input.readString());
-              break;
-            }
-            case 42: {
-              setStartSubterm(input.readString());
-              break;
-            }
-            case 50: {
-              setEndSubterm(input.readString());
-              break;
-            }
-            case 58: {
               setPartition(input.readString());
               break;
             }
-            case 66: {
+            case 42: {
               setMessageType(input.readString());
               break;
             }
@@ -1112,70 +960,7 @@ public final class Messages {
         return this;
       }
       
-      // required string subtype = 4;
-      public boolean hasSubtype() {
-        return result.hasSubtype();
-      }
-      public java.lang.String getSubtype() {
-        return result.getSubtype();
-      }
-      public Builder setSubtype(java.lang.String value) {
-        if (value == null) {
-    throw new NullPointerException();
-  }
-  result.hasSubtype = true;
-        result.subtype_ = value;
-        return this;
-      }
-      public Builder clearSubtype() {
-        result.hasSubtype = false;
-        result.subtype_ = getDefaultInstance().getSubtype();
-        return this;
-      }
-      
-      // required string start_subterm = 5;
-      public boolean hasStartSubterm() {
-        return result.hasStartSubterm();
-      }
-      public java.lang.String getStartSubterm() {
-        return result.getStartSubterm();
-      }
-      public Builder setStartSubterm(java.lang.String value) {
-        if (value == null) {
-    throw new NullPointerException();
-  }
-  result.hasStartSubterm = true;
-        result.startSubterm_ = value;
-        return this;
-      }
-      public Builder clearStartSubterm() {
-        result.hasStartSubterm = false;
-        result.startSubterm_ = getDefaultInstance().getStartSubterm();
-        return this;
-      }
-      
-      // required string end_subterm = 6;
-      public boolean hasEndSubterm() {
-        return result.hasEndSubterm();
-      }
-      public java.lang.String getEndSubterm() {
-        return result.getEndSubterm();
-      }
-      public Builder setEndSubterm(java.lang.String value) {
-        if (value == null) {
-    throw new NullPointerException();
-  }
-  result.hasEndSubterm = true;
-        result.endSubterm_ = value;
-        return this;
-      }
-      public Builder clearEndSubterm() {
-        result.hasEndSubterm = false;
-        result.endSubterm_ = getDefaultInstance().getEndSubterm();
-        return this;
-      }
-      
-      // required string partition = 7;
+      // required string partition = 4;
       public boolean hasPartition() {
         return result.hasPartition();
       }
@@ -1196,7 +981,7 @@ public final class Messages {
         return this;
       }
       
-      // required string message_type = 8;
+      // required string message_type = 5;
       public boolean hasMessageType() {
         return result.hasMessageType();
       }
@@ -1284,8 +1069,8 @@ public final class Messages {
     public boolean hasPartition() { return hasPartition; }
     public java.lang.String getPartition() { return partition_; }
     
-    // required string message_type = 8;
-    public static final int MESSAGE_TYPE_FIELD_NUMBER = 8;
+    // required string message_type = 5;
+    public static final int MESSAGE_TYPE_FIELD_NUMBER = 5;
     private boolean hasMessageType;
     private java.lang.String messageType_ = "";
     public boolean hasMessageType() { return hasMessageType; }
@@ -1318,7 +1103,7 @@ public final class Messages {
         output.writeString(4, getPartition());
       }
       if (hasMessageType()) {
-        output.writeString(8, getMessageType());
+        output.writeString(5, getMessageType());
       }
       getUnknownFields().writeTo(output);
     }
@@ -1347,7 +1132,7 @@ public final class Messages {
       }
       if (hasMessageType()) {
         size += com.google.protobuf.CodedOutputStream
-          .computeStringSize(8, getMessageType());
+          .computeStringSize(5, getMessageType());
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -1563,7 +1348,7 @@ public final class Messages {
               setPartition(input.readString());
               break;
             }
-            case 66: {
+            case 42: {
               setMessageType(input.readString());
               break;
             }
@@ -1656,7 +1441,7 @@ public final class Messages {
         return this;
       }
       
-      // required string message_type = 8;
+      // required string message_type = 5;
       public boolean hasMessageType() {
         return result.hasMessageType();
       }
@@ -1751,8 +1536,8 @@ public final class Messages {
     public boolean hasPartition() { return hasPartition; }
     public java.lang.String getPartition() { return partition_; }
     
-    // required string message_type = 8;
-    public static final int MESSAGE_TYPE_FIELD_NUMBER = 8;
+    // required string message_type = 6;
+    public static final int MESSAGE_TYPE_FIELD_NUMBER = 6;
     private boolean hasMessageType;
     private java.lang.String messageType_ = "";
     public boolean hasMessageType() { return hasMessageType; }
@@ -1789,7 +1574,7 @@ public final class Messages {
         output.writeString(5, getPartition());
       }
       if (hasMessageType()) {
-        output.writeString(8, getMessageType());
+        output.writeString(6, getMessageType());
       }
       getUnknownFields().writeTo(output);
     }
@@ -1822,7 +1607,7 @@ public final class Messages {
       }
       if (hasMessageType()) {
         size += com.google.protobuf.CodedOutputStream
-          .computeStringSize(8, getMessageType());
+          .computeStringSize(6, getMessageType());
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -2045,7 +1830,7 @@ public final class Messages {
               setPartition(input.readString());
               break;
             }
-            case 66: {
+            case 50: {
               setMessageType(input.readString());
               break;
             }
@@ -2159,7 +1944,7 @@ public final class Messages {
         return this;
       }
       
-      // required string message_type = 8;
+      // required string message_type = 6;
       public boolean hasMessageType() {
         return result.hasMessageType();
       }
@@ -3068,22 +2853,22 @@ public final class Messages {
     public boolean hasTerm() { return hasTerm; }
     public java.lang.String getTerm() { return term_; }
     
-    // required string doc_id = 6;
-    public static final int DOC_ID_FIELD_NUMBER = 6;
+    // required string doc_id = 4;
+    public static final int DOC_ID_FIELD_NUMBER = 4;
     private boolean hasDocId;
     private java.lang.String docId_ = "";
     public boolean hasDocId() { return hasDocId; }
     public java.lang.String getDocId() { return docId_; }
     
-    // required string partition = 7;
-    public static final int PARTITION_FIELD_NUMBER = 7;
+    // required string partition = 5;
+    public static final int PARTITION_FIELD_NUMBER = 5;
     private boolean hasPartition;
     private java.lang.String partition_ = "";
     public boolean hasPartition() { return hasPartition; }
     public java.lang.String getPartition() { return partition_; }
     
-    // required string message_type = 8;
-    public static final int MESSAGE_TYPE_FIELD_NUMBER = 8;
+    // required string message_type = 6;
+    public static final int MESSAGE_TYPE_FIELD_NUMBER = 6;
     private boolean hasMessageType;
     private java.lang.String messageType_ = "";
     public boolean hasMessageType() { return hasMessageType; }
@@ -3114,13 +2899,13 @@ public final class Messages {
         output.writeString(3, getTerm());
       }
       if (hasDocId()) {
-        output.writeString(6, getDocId());
+        output.writeString(4, getDocId());
       }
       if (hasPartition()) {
-        output.writeString(7, getPartition());
+        output.writeString(5, getPartition());
       }
       if (hasMessageType()) {
-        output.writeString(8, getMessageType());
+        output.writeString(6, getMessageType());
       }
       getUnknownFields().writeTo(output);
     }
@@ -3145,15 +2930,15 @@ public final class Messages {
       }
       if (hasDocId()) {
         size += com.google.protobuf.CodedOutputStream
-          .computeStringSize(6, getDocId());
+          .computeStringSize(4, getDocId());
       }
       if (hasPartition()) {
         size += com.google.protobuf.CodedOutputStream
-          .computeStringSize(7, getPartition());
+          .computeStringSize(5, getPartition());
       }
       if (hasMessageType()) {
         size += com.google.protobuf.CodedOutputStream
-          .computeStringSize(8, getMessageType());
+          .computeStringSize(6, getMessageType());
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -3368,15 +3153,15 @@ public final class Messages {
               setTerm(input.readString());
               break;
             }
-            case 50: {
+            case 34: {
               setDocId(input.readString());
               break;
             }
-            case 58: {
+            case 42: {
               setPartition(input.readString());
               break;
             }
-            case 66: {
+            case 50: {
               setMessageType(input.readString());
               break;
             }
@@ -3448,7 +3233,7 @@ public final class Messages {
         return this;
       }
       
-      // required string doc_id = 6;
+      // required string doc_id = 4;
       public boolean hasDocId() {
         return result.hasDocId();
       }
@@ -3469,7 +3254,7 @@ public final class Messages {
         return this;
       }
       
-      // required string partition = 7;
+      // required string partition = 5;
       public boolean hasPartition() {
         return result.hasPartition();
       }
@@ -3490,7 +3275,7 @@ public final class Messages {
         return this;
       }
       
-      // required string message_type = 8;
+      // required string message_type = 6;
       public boolean hasMessageType() {
         return result.hasMessageType();
       }
@@ -4994,34 +4779,32 @@ public final class Messages {
       descriptor;
   static {
     java.lang.String[] descriptorData = {
-      "\n\014raptor.proto\"\234\001\n\005Index\022\r\n\005index\030\001 \002(\t\022" +
-      "\r\n\005field\030\002 \002(\t\022\014\n\004term\030\003 \002(\t\022\017\n\007subtype\030" +
-      "\004 \002(\t\022\017\n\007subterm\030\005 \002(\t\022\r\n\005value\030\006 \002(\t\022\021\n" +
-      "\tpartition\030\007 \002(\t\022\024\n\014message_type\030\010 \002(\t\022\r" +
-      "\n\005props\030\t \002(\014\"\232\001\n\006Stream\022\r\n\005index\030\001 \002(\t\022" +
-      "\r\n\005field\030\002 \002(\t\022\014\n\004term\030\003 \002(\t\022\017\n\007subtype\030" +
-      "\004 \002(\t\022\025\n\rstart_subterm\030\005 \002(\t\022\023\n\013end_subt" +
-      "erm\030\006 \002(\t\022\021\n\tpartition\030\007 \002(\t\022\024\n\014message_" +
-      "type\030\010 \002(\t\"[\n\004Info\022\r\n\005index\030\001 \002(\t\022\r\n\005fie" +
-      "ld\030\002 \002(\t\022\014\n\004term\030\003 \002(\t\022\021\n\tpartition\030\004 \002(",
-      "\t\022\024\n\014message_type\030\010 \002(\t\"x\n\tInfoRange\022\r\n\005" +
-      "index\030\001 \002(\t\022\r\n\005field\030\002 \002(\t\022\022\n\nstart_term" +
-      "\030\003 \002(\t\022\020\n\010end_term\030\004 \002(\t\022\021\n\tpartition\030\005 " +
-      "\002(\t\022\024\n\014message_type\030\010 \002(\t\"O\n\014CatalogQuer" +
-      "y\022\024\n\014search_query\030\001 \002(\t\022\023\n\013max_results\030\002" +
-      " \002(\003\022\024\n\014message_type\030\003 \002(\t\"Z\n\007Command\022\024\n" +
-      "\014message_type\030\001 \002(\t\022\017\n\007command\030\002 \002(\t\022\014\n\004" +
-      "arg1\030\003 \001(\t\022\014\n\004arg2\030\004 \001(\t\022\014\n\004arg3\030\005 \001(\t\"r" +
-      "\n\013DeleteEntry\022\r\n\005index\030\001 \002(\t\022\r\n\005field\030\002 " +
-      "\002(\t\022\014\n\004term\030\003 \002(\t\022\016\n\006doc_id\030\006 \002(\t\022\021\n\tpar",
-      "tition\030\007 \002(\t\022\024\n\014message_type\030\010 \002(\t\".\n\016St" +
-      "reamResponse\022\r\n\005value\030\001 \002(\t\022\r\n\005props\030\002 \002" +
-      "(\014\"+\n\014InfoResponse\022\014\n\004term\030\001 \002(\t\022\r\n\005coun" +
-      "t\030\002 \002(\003\"i\n\024CatalogQueryResponse\022\021\n\tparti" +
-      "tion\030\001 \002(\t\022\r\n\005index\030\002 \002(\t\022\r\n\005field\030\003 \002(\t" +
-      "\022\014\n\004term\030\004 \002(\t\022\022\n\njson_props\030\005 \002(\t\"#\n\017Co" +
-      "mmandResponse\022\020\n\010response\030\001 \002(\tB\033\n\017rapto" +
-      "r.protobufB\010Messages"
+      "\n\014raptor.proto\"z\n\005Index\022\r\n\005index\030\001 \002(\t\022\r" +
+      "\n\005field\030\002 \002(\t\022\014\n\004term\030\003 \002(\t\022\r\n\005value\030\004 \002" +
+      "(\t\022\021\n\tpartition\030\005 \002(\t\022\024\n\014message_type\030\006 " +
+      "\002(\t\022\r\n\005props\030\007 \002(\014\"]\n\006Stream\022\r\n\005index\030\001 " +
+      "\002(\t\022\r\n\005field\030\002 \002(\t\022\014\n\004term\030\003 \002(\t\022\021\n\tpart" +
+      "ition\030\004 \002(\t\022\024\n\014message_type\030\005 \002(\t\"[\n\004Inf" +
+      "o\022\r\n\005index\030\001 \002(\t\022\r\n\005field\030\002 \002(\t\022\014\n\004term\030" +
+      "\003 \002(\t\022\021\n\tpartition\030\004 \002(\t\022\024\n\014message_type" +
+      "\030\005 \002(\t\"x\n\tInfoRange\022\r\n\005index\030\001 \002(\t\022\r\n\005fi" +
+      "eld\030\002 \002(\t\022\022\n\nstart_term\030\003 \002(\t\022\020\n\010end_ter",
+      "m\030\004 \002(\t\022\021\n\tpartition\030\005 \002(\t\022\024\n\014message_ty" +
+      "pe\030\006 \002(\t\"O\n\014CatalogQuery\022\024\n\014search_query" +
+      "\030\001 \002(\t\022\023\n\013max_results\030\002 \002(\003\022\024\n\014message_t" +
+      "ype\030\003 \002(\t\"Z\n\007Command\022\024\n\014message_type\030\001 \002" +
+      "(\t\022\017\n\007command\030\002 \002(\t\022\014\n\004arg1\030\003 \001(\t\022\014\n\004arg" +
+      "2\030\004 \001(\t\022\014\n\004arg3\030\005 \001(\t\"r\n\013DeleteEntry\022\r\n\005" +
+      "index\030\001 \002(\t\022\r\n\005field\030\002 \002(\t\022\014\n\004term\030\003 \002(\t" +
+      "\022\016\n\006doc_id\030\004 \002(\t\022\021\n\tpartition\030\005 \002(\t\022\024\n\014m" +
+      "essage_type\030\006 \002(\t\".\n\016StreamResponse\022\r\n\005v" +
+      "alue\030\001 \002(\t\022\r\n\005props\030\002 \002(\014\"+\n\014InfoRespons",
+      "e\022\014\n\004term\030\001 \002(\t\022\r\n\005count\030\002 \002(\003\"i\n\024Catalo" +
+      "gQueryResponse\022\021\n\tpartition\030\001 \002(\t\022\r\n\005ind" +
+      "ex\030\002 \002(\t\022\r\n\005field\030\003 \002(\t\022\014\n\004term\030\004 \002(\t\022\022\n" +
+      "\njson_props\030\005 \002(\t\"#\n\017CommandResponse\022\020\n\010" +
+      "response\030\001 \002(\tB\033\n\017raptor.protobufB\010Messa" +
+      "ges"
     };
     com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner assigner =
       new com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner() {
@@ -5033,7 +4816,7 @@ public final class Messages {
           internal_static_Index_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_Index_descriptor,
-              new java.lang.String[] { "Index", "Field", "Term", "Subtype", "Subterm", "Value", "Partition", "MessageType", "Props", },
+              new java.lang.String[] { "Index", "Field", "Term", "Value", "Partition", "MessageType", "Props", },
               raptor.protobuf.Messages.Index.class,
               raptor.protobuf.Messages.Index.Builder.class);
           internal_static_Stream_descriptor =
@@ -5041,7 +4824,7 @@ public final class Messages {
           internal_static_Stream_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_Stream_descriptor,
-              new java.lang.String[] { "Index", "Field", "Term", "Subtype", "StartSubterm", "EndSubterm", "Partition", "MessageType", },
+              new java.lang.String[] { "Index", "Field", "Term", "Partition", "MessageType", },
               raptor.protobuf.Messages.Stream.class,
               raptor.protobuf.Messages.Stream.Builder.class);
           internal_static_Info_descriptor =

@@ -137,13 +137,13 @@ read_buffers(Root, BufferOptions, [{BNum, BName}|Rest], NextID, Segments) ->
     read_buffers(Root, BufferOptions, Rest, NextID, [Segment|Segments]).
 
 
-handle_call({index, Index, Field, Term, SubType, SubTerm, Value, Props, TS}, _From, State) ->
+handle_call({index, Index, Field, Term, Value, Props, TS}, _From, State) ->
     %% Calculate the IFT...
     #state { indexes=Indexes, fields=Fields, terms=Terms, buffers=[CurrentBuffer0|Buffers] } = State,
     {IndexID, NewIndexes} = mi_incdex:lookup(Index, Indexes),
     {FieldID, NewFields} = mi_incdex:lookup(Field, Fields),
     {TermID, NewTerms} = mi_incdex:lookup(Term, Terms),
-    IFT = mi_utils:ift_pack(IndexID, FieldID, TermID, SubType, SubTerm),
+    IFT = mi_utils:ift_pack(IndexID, FieldID, TermID),
 
     %% Write to the buffer...
     CurrentBuffer = mi_buffer:write(IFT, Value, Props, TS, CurrentBuffer0),
@@ -257,13 +257,13 @@ handle_call({compacted, CompactSegment, OldSegments}, _From, State) ->
     },
     {reply, ok, NewState};
 
-handle_call({info, Index, Field, Term, SubType, SubTerm}, _From, State) ->
+handle_call({info, Index, Field, Term}, _From, State) ->
     %% Calculate the IFT...
     #state { indexes=Indexes, fields=Fields, terms=Terms, buffers=Buffers, segments=Segments } = State,
     IndexID = mi_incdex:lookup_nocreate(Index, Indexes),
     FieldID = mi_incdex:lookup_nocreate(Field, Fields),
     TermID = mi_incdex:lookup_nocreate(Term, Terms),
-    IFT = mi_utils:ift_pack(IndexID, FieldID, TermID, SubType, SubTerm),
+    IFT = mi_utils:ift_pack(IndexID, FieldID, TermID),
 
     %% Look up the counts in buffers and segments...
     BufferCount = lists:sum([mi_buffer:info(IFT, X) || X <- Buffers]),
@@ -273,17 +273,16 @@ handle_call({info, Index, Field, Term, SubType, SubTerm}, _From, State) ->
     %% Return...
     {reply, {ok, Counts}, State};
 
-handle_call({info_range, Index, Field, StartTerm, EndTerm, Size, SubType, StartSubTerm, EndSubTerm}, _From, State) ->
+handle_call({info_range, Index, Field, StartTerm, EndTerm, Size}, _From, State) ->
     %% Get the IDs...
     #state { indexes=Indexes, fields=Fields, terms=Terms, buffers=Buffers, segments=Segments } = State,
     IndexID = mi_incdex:lookup_nocreate(Index, Indexes),
     FieldID = mi_incdex:lookup_nocreate(Field, Fields),
     TermIDs = mi_incdex:select(StartTerm, EndTerm, Size, Terms),
-    {StartSubTerm1, EndSubTerm1} = normalize_subterm(StartSubTerm, EndSubTerm),
 
     F = fun({Term, TermID}) ->
-        StartIFT = mi_utils:ift_pack(IndexID, FieldID, TermID, SubType, StartSubTerm1),
-        EndIFT = mi_utils:ift_pack(IndexID, FieldID, TermID, SubType, EndSubTerm1),
+        StartIFT = mi_utils:ift_pack(IndexID, FieldID, TermID),
+        EndIFT = mi_utils:ift_pack(IndexID, FieldID, TermID),
         BufferCount = lists:sum([mi_buffer:info(StartIFT, EndIFT, X) || X <- Buffers]),
         SegmentCount = lists:sum([mi_segment:info(StartIFT, EndIFT, X) || X <- Segments]),
         {Term, BufferCount + SegmentCount}
@@ -291,15 +290,14 @@ handle_call({info_range, Index, Field, StartTerm, EndTerm, Size, SubType, StartS
     Counts = [F(X) || X <- TermIDs],
     {reply, {ok, Counts}, State};
 
-handle_call({stream, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, Pid, Ref, FilterFun}, _From, State) ->
+handle_call({stream, Index, Field, Term, Pid, Ref, FilterFun}, _From, State) ->
     %% Get the IDs...
     #state { locks=Locks, indexes=Indexes, fields=Fields, terms=Terms, buffers=Buffers, segments=Segments } = State,
     IndexID = mi_incdex:lookup_nocreate(Index, Indexes),
     FieldID = mi_incdex:lookup_nocreate(Field, Fields),
     TermID = mi_incdex:lookup_nocreate(Term, Terms),
-    {StartSubTerm1, EndSubTerm1} = normalize_subterm(StartSubTerm, EndSubTerm),
-    StartIFT = mi_utils:ift_pack(IndexID, FieldID, TermID, SubType, StartSubTerm1),
-    EndIFT = mi_utils:ift_pack(IndexID, FieldID, TermID, SubType, EndSubTerm1),
+    StartIFT = mi_utils:ift_pack(IndexID, FieldID, TermID),
+    EndIFT = mi_utils:ift_pack(IndexID, FieldID, TermID),
 
     %% Add locks to all buffers...
     F1 = fun(Buffer, Acc) ->
@@ -360,13 +358,13 @@ handle_call({fold, Fun, Acc}, _From, State) ->
     %% Create the fold function.
     WrappedFun = fun({IFT, Value, Props, TS}, AccIn) ->
         %% Look up the Index, Field, and Term...
-        {IndexID, FieldID, TermID, SubType, SubTerm} = mi_utils:ift_unpack(IFT),
+        {IndexID, FieldID, TermID} = mi_utils:ift_unpack(IFT),
         {value, Index} = gb_trees:lookup(IndexID, InvertedIndexes),
         {value, Field} = gb_trees:lookup(FieldID, InvertedFields),
         {value, Term} = gb_trees:lookup(TermID, InvertedTerms),
 
         %% Call the fold function...
-        Fun(Index, Field, Term, SubType, SubTerm, Value, Props, TS, AccIn)
+        Fun(Index, Field, Term, Value, Props, TS, AccIn)
     end,
 
     %% Fold over each buffer...
@@ -449,9 +447,7 @@ stream_inner(F, LastIFT, LastValue, {{IFT, Value, Props, TS}, Iter}) ->
     IsDeleted = (Props == undefined),
     case (not IsDuplicate) andalso (not IsDeleted) of
         true  -> 
-            {_IndexID, _FieldID, _TermID, SubType, SubTerm} = mi_utils:ift_unpack(IFT),
-            NewProps = [{subterm, {SubType, SubTerm}}|Props],
-            F(IFT, Value, NewProps, TS);
+            F(IFT, Value, Props, TS);
         false -> 
             skip
     end,
@@ -487,18 +483,6 @@ compare_fun({IFT1, Value1, _, TS1}, {IFT2, Value2, _, TS2}) ->
     ((IFT1 == IFT2) andalso (Value1 < Value2)) orelse
     ((IFT1 == IFT2) andalso (Value1 == Value2) andalso (TS1 > TS2)).
 
-
-%% SubTerm range...
-normalize_subterm(StartSubTerm, EndSubTerm) ->
-    StartSubTerm1 = case StartSubTerm of
-        all -> ?MINSUBTERM;
-        _   -> StartSubTerm
-    end,
-    EndSubTerm1 = case EndSubTerm of
-        all -> ?MAXSUBTERM;
-        _   -> EndSubTerm
-    end,
-    {StartSubTerm1, EndSubTerm1}.
 
 %% Return the starting and ending segment number in the list of
 %% segments, accounting for compaction segments which have a "1-5"

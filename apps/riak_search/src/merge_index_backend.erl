@@ -50,22 +50,18 @@ put(State, _BKey, ObjBin) ->
     Command = riak_object:get_value(Obj),
     handle_command(State, Command).
 
-handle_command(State, {index, Index, Field, Term, Value, Props}) ->
-    TS = mi_utils:now_to_timestamp(erlang:now()),
-    handle_command(State, {index, Index, Field, Term, 0, 0, Value, Props, TS});
-
-handle_command(State, {index, Index, Field, Term, SubType, SubTerm, Value, Props, Timestamp}) ->
+handle_command(State, {index, Index, Field, Term, Value, Props, Timestamp}) ->
     %% Put with properties.
     Pid = State#state.pid,
-    merge_index:index(Pid, Index, Field, Term, SubType, SubTerm, Value, Props, Timestamp),
+    merge_index:index(Pid, Index, Field, Term, Value, Props, Timestamp),
     ok;
 
-handle_command(State, {index, Index, Field, Term, SubType, SubTerm, Value, Props}) ->
+handle_command(State, {index, Index, Field, Term, Value, Props}) ->
     %% io:format("Got a put: ~p ~p ~p~n", [BucketName, Value, Props]),
     %% Put with properties.
     Pid = State#state.pid,
     TS = mi_utils:now_to_timestamp(erlang:now()),
-    merge_index:index(Pid, Index, Field, Term, SubType, SubTerm, Value, Props, TS),
+    merge_index:index(Pid, Index, Field, Term, Value, Props, TS),
     ok;
 
 handle_command(State, {init_stream, OutputPid, OutputRef}) ->
@@ -74,12 +70,12 @@ handle_command(State, {init_stream, OutputPid, OutputRef}) ->
     OutputPid!{stream_ready, Partition, node(), OutputRef},
     ok;
 
-handle_command(State, {stream, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, OutputPid, OutputRef, Partition, Node, FilterFun}) ->
+handle_command(State, {stream, Index, Field, Term, OutputPid, OutputRef, Partition, Node, FilterFun}) ->
     Pid = State#state.pid,
     case Partition == State#state.partition andalso Node == node() of
         true ->
             %% Stream some results.
-            merge_index:stream(Pid, Index, Field, Term, SubType, StartSubTerm, EndSubTerm, OutputPid, OutputRef, FilterFun);
+            merge_index:stream(Pid, Index, Field, Term, OutputPid, OutputRef, FilterFun);
         false ->
             %% The requester doesn't want results from this node, so
             %% ignore. This is a hack, to get around the fact that
@@ -121,15 +117,13 @@ is_empty(State) ->
     merge_index:is_empty(Pid).
 
 fold(State, Fun, Acc) ->
-    ?PRINT({fold, State, Fun, Acc}),
     %% The supplied function expects a BKey and an Object. Wrap this
     %% So that we can use the format that merge_index expects.
-    WrappedFun = fun(Index, Field, Term, SubType, SubTerm, Value, Props, TS, AccIn) ->
-        ?PRINT({wrapped_fun, Index, Field}),
+    WrappedFun = fun(Index, Field, Term, Value, Props, TS, AccIn) ->
         %% Construct the object...
         IndexBin = riak_search_utils:to_binary(Index),
         FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-        Payload = {index, Index, Field, Term, SubType, SubTerm, Value, Props, TS},
+        Payload = {index, Index, Field, Term, Value, Props, TS},
         BObj = term_to_binary(riak_object:new(IndexBin, FieldTermBin, Payload)),
         Fun({IndexBin, FieldTermBin}, BObj, AccIn)
     end,

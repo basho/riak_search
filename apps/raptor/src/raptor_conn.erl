@@ -7,9 +7,9 @@
 %% API
 -export([start_link/0,
          close/1,
-         index/9,
+         index/7,
          delete_entry/6,
-         stream/8,
+         stream/5,
          info/5,
          command/5,
          info_range/6,
@@ -28,12 +28,10 @@
 close(ConnPid) ->
     gen_server:call(ConnPid, close_conn).
 
-index(ConnPid, IndexName, FieldName, Term, SubType,
-      SubTerm, Value, Partition, Props) ->
+index(ConnPid, IndexName, FieldName, Term, Value, Partition, Props) ->
     MessageType = <<"Index">>,
     IndexRec = #index{index=IndexName, field=FieldName,
-                      term=Term, subtype=SubType,
-                      subterm=SubTerm, value=Value,
+                      term=Term, value=Value,
                       partition=Partition,
                       message_type=MessageType,
                       props=Props},
@@ -47,14 +45,10 @@ delete_entry(ConnPid, IndexName, FieldName, Term, DocId, Partition) ->
                                   message_type=MessageType},
     gen_server:call(ConnPid, {deleteentry, DeleteEntryRec}, ?TIMEOUT).
 
-stream(ConnPid, IndexName, FieldName, Term, SubType, StartSubTerm,
-       EndSubTerm, Partition) ->
+stream(ConnPid, IndexName, FieldName, Term, Partition) ->
     MessageType = <<"Stream">>,
     StreamRec = #stream{index=IndexName, field=FieldName,
-                        term=Term, subtype=SubType,
-                        start_subterm=StartSubTerm,
-                        end_subterm=EndSubTerm,
-                        partition=Partition,
+                        term=Term, partition=Partition,
                         message_type=MessageType},
     Ref = erlang:make_ref(),
     gen_server:call(ConnPid, {stream, self(), Ref, StreamRec}, ?TIMEOUT).

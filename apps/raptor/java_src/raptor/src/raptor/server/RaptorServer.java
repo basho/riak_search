@@ -96,8 +96,6 @@ public class RaptorServer {
                            idx.index(msg.getIndex(),
                                      msg.getField(),
                                      msg.getTerm(),
-                                     msg.getSubtype(),
-                                     msg.getSubterm(),
                                      msg.getValue(),
                                      msg.getPartition(),
                                      msg.getProps().toByteArray());

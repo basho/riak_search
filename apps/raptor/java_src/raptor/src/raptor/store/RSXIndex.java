@@ -90,12 +90,9 @@ public class RSXIndex implements Runnable {
         lucene.close();
     }
     
-    // todo: subtype, subterm, props
     public void index(String index,
                       String field,
                       String term,
-                      String subtype,
-                      String subterm,
                       String value,
                       String partition,
                       byte[] props) throws Exception {
@@ -123,9 +120,6 @@ public class RSXIndex implements Runnable {
     public void stream(String index,
                        String field,
                        String term,
-                       String subtype,
-                       String startSubterm,
-                       String endSubterm,
                        String partition,
                        final ResultHandler resultHandler) throws Exception {
         String table = makeTableKey(index, field, term, partition);
@@ -295,25 +289,25 @@ public class RSXIndex implements Runnable {
                     }
             };
         
-        idx.index("search", "payload", "test", "", "", "docid_1", "1", new byte[0]);
-        idx.index("search", "payload", "test", "", "", "docid_2", "1", new byte[0]);
-        idx.index("search", "payload", "test", "", "", "docid_3", "1", new byte[0]);
-        idx.index("search", "payload", "test", "", "", "docid_4", "1", new byte[0]);
-        idx.index("search", "payload", "test", "", "", "docid_5", "1", new byte[0]);
+        idx.index("search", "payload", "test", "docid_1", "1", new byte[0]);
+        idx.index("search", "payload", "test", "docid_2", "1", new byte[0]);
+        idx.index("search", "payload", "test", "docid_3", "1", new byte[0]);
+        idx.index("search", "payload", "test", "docid_4", "1", new byte[0]);
+        idx.index("search", "payload", "test", "docid_5", "1", new byte[0]);
         
-        idx.index("search", "payload", "funny", "", "", "docid_1", "1", new byte[0]);
-        idx.index("search", "payload", "funny", "", "", "docid_2", "1", new byte[0]);
-        idx.index("search", "payload", "funny", "", "", "docid_3", "1", new byte[0]);
-        idx.index("search", "payload", "funny", "", "", "docid_4", "1", new byte[0]);
-        idx.index("search", "payload", "funny", "", "", "docid_5", "1", new byte[0]);
+        idx.index("search", "payload", "funny", "docid_1", "1", new byte[0]);
+        idx.index("search", "payload", "funny", "docid_2", "1", new byte[0]);
+        idx.index("search", "payload", "funny", "docid_3", "1", new byte[0]);
+        idx.index("search", "payload", "funny", "docid_4", "1", new byte[0]);
+        idx.index("search", "payload", "funny", "docid_5", "1", new byte[0]);
         
-        idx.index("search", "payload", "bananas", "", "", "docid_1", "1", new byte[0]);
-        idx.index("search", "payload", "bananas", "", "", "docid_2", "1", new byte[0]);
-        idx.index("search", "payload", "bananas", "", "", "docid_3", "1", new byte[0]);
-        idx.index("search", "payload", "bananas", "", "", "docid_4", "1", new byte[0]);
-        idx.index("search", "payload", "bananas", "", "", "docid_5", "1", new byte[0]);
+        idx.index("search", "payload", "bananas", "docid_1", "1", new byte[0]);
+        idx.index("search", "payload", "bananas", "docid_2", "1", new byte[0]);
+        idx.index("search", "payload", "bananas", "docid_3", "1", new byte[0]);
+        idx.index("search", "payload", "bananas", "docid_4", "1", new byte[0]);
+        idx.index("search", "payload", "bananas", "docid_5", "1", new byte[0]);
         
-        idx.stream("search", "payload", "funny", "", "", "", "1", handler);
+        idx.stream("search", "payload", "funny", "1", handler);
         idx.info("search", "payload", "test", "1", handler);
         idx.infoRange("search", "payload", "apples", "ferrari", "1", handler);
         idx.infoRange("search", "payload", "energizer", "zebra", "1", handler);
