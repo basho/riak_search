@@ -196,3 +196,16 @@ index_recursive_file(Callback, File) ->
         Err ->
             io:format("index_file(~p): error: ~p~n", [File, Err])
     end.
+
+%% @private
+%% Calculate N and a partition number for an index/field/term combination
+calc_n_partition(Index, Field, Term) ->
+    %% Lookup N for the index
+    IndexBin = riak_search_utils:to_binary(Index),
+    Bucket = riak_core_bucket:get_bucket(IndexBin),
+    N = lists:keysearch(1, n_val, Bucket),
+
+    %% Work out which partition to use
+    FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
+    Partition = riak_core_util:chash_key({FieldTermBin, IndexBin}),
+    {N, Partition}.

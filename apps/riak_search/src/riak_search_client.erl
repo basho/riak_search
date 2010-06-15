@@ -164,20 +164,12 @@ build_props(Term, PositionTree) ->
 
 %% Index the specified term.
 index_term(Index, Field, Term, Value, Props) ->
-    IndexBin = riak_search_utils:to_binary(Index),
-    FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-    Payload = {index, Index, Field, Term, Value, Props},
-
-    %% Run the operation...
-    Obj = riak_object:new(IndexBin, FieldTermBin, Payload),
-    RiakClient:put(Obj, 0).
+    {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
+    riak_search_vnode:index(Partition, N, Index, Field, Term, Value, Props).
 
 delete_term(Index, Field, Term, DocId) ->
-    IndexBin = riak_search_utils:to_binary(Index),
-    FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-    Payload = {delete_entry, Index, Field, Term, DocId},
-    Obj = riak_object:new(IndexBin, FieldTermBin, Payload),
-    RiakClient:put(Obj, 0).
+    {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
+    riak_search_vnode:delete(Partition, N, Index, Field, Term, DocId).
 
 truncate_list(QueryStart, QueryRows, List) ->
     %% Remove the first QueryStart results...
