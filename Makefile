@@ -64,11 +64,10 @@ dev1 dev2 dev3: dev
 devclean: clean
 	rm -rf dev
 
-stage : rel
-	cd rel/riak/lib && \
-	rm -rf riak_core-* riak_kv-* && \
-	ln -s ../../../apps/riak_core && \
-	ln -s ../../../apps/riak_kv
+stage : dev
+	$(foreach app,$(wildcard apps/*), rm -rf dev/riak/lib/$(shell basename $(app))* && ln -sf $(abspath $(app)) dev/riak/lib;)
+	$(foreach dep,$(wildcard deps/*), rm -rf dev/riak/lib/$(shell basename $(dep))* && ln -sf $(abspath $(dep)) dev/riak/lib;)
+
 
 ##
 ## Doc targets
