@@ -39,8 +39,18 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-    Processes = [{riak_search_config,
-                 {riak_search_config, start_link, []},
-                  permanent, 5000, worker, [riak_search_config]}],
+    Config = {riak_search_config,
+              {riak_search_config, start_link, []},
+              permanent, 5000, worker, [riak_search_config]},
+    VSup = {riak_search_vnode_sup,
+            {riak_search_vnode_sup, start_link, []},
+            permanent, infinity, supervisor, [riak_search_vnode_sup]},
+    VMaster = {riak_search_vnode_master,
+               {riak_core_vnode_master, start_link, [riak_search_vnode]},
+               permanent, 5000, worker, [riak_core_vnode_master]},
+
+    Processes = [Config,
+                 VSup,
+                 VMaster],
     {ok, { {one_for_one, 5, 10}, Processes} }.
 

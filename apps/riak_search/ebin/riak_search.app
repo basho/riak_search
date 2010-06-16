@@ -32,6 +32,7 @@
              riak_search_test,
              riak_search_utils,
              riak_search_vnode,
+             riak_search_vnode_sup,
              merge_index_backend,
              raptor_index_backend,
              plists
