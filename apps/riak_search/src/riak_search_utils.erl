@@ -11,7 +11,8 @@
     to_integer/1,
     to_float/1,
     from_binary/1,
-    index_recursive/2
+    index_recursive/2,
+    calc_n_partition/3
 ]).
 
 -include("riak_search.hrl").
@@ -114,13 +115,13 @@ to_integer(L) when is_list(L) -> list_to_integer(L).
 to_float(F) ->
     list_to_float(to_list(F)).
 
-to_boolean(B) -> 
+to_boolean(B) ->
     A = to_atom(B),
     (A == yes) orelse (A == true) orelse (A == '1').
 
-from_binary(B) when is_binary(B) -> 
+from_binary(B) when is_binary(B) ->
     binary_to_list(B);
-from_binary(L) -> 
+from_binary(L) ->
     L.
 
 %% Parse a list date into {{Y, M, D}, {H, M, S}}.
