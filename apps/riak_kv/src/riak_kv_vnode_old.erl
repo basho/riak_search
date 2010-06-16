@@ -22,15 +22,14 @@
 
 %% @doc a single node's management of a single partition of data
 
--module(riak_kv_vnode).
+-module(riak_kv_vnode_old).
 -behaviour(gen_fsm).
-
+-include_lib("riak_kv/include/riak_kv_vnode.hrl").
 -export([start_link/1,
          get_vnode_index/1]).
 -export([init/1, handle_event/3, handle_sync_event/4,
          handle_info/3, terminate/3, code_change/4]).
 -export([active/2,active/3]).
-
 -define(TIMEOUT, 60000).
 -define(LOCK_RETRY_TIMEOUT, 10000).
 
@@ -143,9 +142,35 @@ active({put, FSM_pid, BKey, RObj, ReqID, FSMTime, Options},
     {next_state,
      active,StateData#state{mapcache=orddict:erase(BKey,Cache),
                             handoff_q=HQ},?TIMEOUT};
+active(?VNODE_REQ{sender=Sender,
+                  request=?KV_PUT_REQ{
+                             bucket=Bucket,
+                             key=Key,
+                             object=Object,
+                             req_id=ReqId,
+                             start_time=StartTime,
+                             options=Options}},
+       StateData=#state{idx=Idx,mapcache=Cache,handoff_q=HQ0}) ->
+    BKey = {Bucket, Key},
+    HQ = 
+        case HQ0 of
+            not_in_handoff -> not_in_handoff;
+            _  -> [BKey|HQ0]
+        end,
+    riak_core_vnode:reply(Sender, {w, Idx, ReqId}),
+    do_put(Sender, BKey,  Object, ReqId, StartTime, Options, StateData),
+    {next_state, 
+     active, StateData#state{mapcache=orddict:erase(BKey, Cache),
+                             handoff_q=HQ}, ?TIMEOUT};
 active({get, FSM_pid, BKey, ReqID}, StateData) ->
     do_get(FSM_pid, BKey, ReqID, StateData),
     {next_state,active,StateData,?TIMEOUT};
+active(?VNODE_REQ{sender=Sender,request=?KV_GET_REQ{bucket=Bucket,
+                                                    key=Key,
+                                                    req_id=ReqId}},
+       State) ->
+    do_get(Sender, {Bucket, Key}, ReqId, State),
+    {next_state, active, State, ?TIMEOUT};
 active({list_bucket, FSM_pid, Bucket, ReqID},
        StateData=#state{mod=Mod,modstate=ModState,idx=Idx}) ->
     do_list_bucket(FSM_pid,ReqID,Bucket,Mod,ModState,Idx),
@@ -176,14 +201,14 @@ active({mapcache, BKey,{M,F,Arg,KeyData},MF_Res},
      StateData#state{mapcache=orddict:store(BKey,KeyCache,Cache)},?TIMEOUT}.
 
 %% @private
-do_get(FSM_pid, BKey, ReqID,
+do_get(Sender, BKey, ReqID,
        _State=#state{idx=Idx,mod=Mod,modstate=ModState}) ->
     RetVal = case do_get_binary(BKey, Mod, ModState) of
         {ok, Binary} -> {ok, binary_to_term(Binary)};
         X -> X
     end,
     riak_kv_stat:update(vnode_get),
-    gen_fsm:send_event(FSM_pid, {r, RetVal, Idx, ReqID}).
+    riak_core_vnode:reply(Sender, {r, RetVal, Idx, ReqID}). 
 
 %% @private
 do_list_bucket(FSM_pid,ReqID,Bucket,Mod,ModState,Idx) ->
@@ -224,7 +249,7 @@ do_diffobj_put(BKey={Bucket,_}, DiffObj,
 
 %% @private
 % upon receipt of a client-initiated put
-do_put(FSM_pid, {Bucket,_Key}=BKey, RObj, ReqID, PruneTime, Options, State) ->
+do_put(Sender, {Bucket,_Key}=BKey, RObj, ReqID, PruneTime, Options, State) ->
     {ok,Ring} = riak_core_ring_manager:get_my_ring(),
     BProps = riak_core_bucket:get_bucket(Bucket, Ring),
     PutArgs = #putargs{returnbody=proplists:get_value(returnbody, Options, false),
@@ -234,7 +259,7 @@ do_put(FSM_pid, {Bucket,_Key}=BKey, RObj, ReqID, PruneTime, Options, State) ->
                        reqid=ReqID,
                        bprops=BProps,
                        prunetime=PruneTime},
-    gen_fsm:send_event(FSM_pid, perform_put(prepare_put(State, PutArgs), State, PutArgs)),
+    riak_core_vnode:reply(Sender, perform_put(prepare_put(State, PutArgs), State, PutArgs)),
     riak_kv_stat:update(vnode_put).
 
 prepare_put(#state{}, #putargs{lww=true, robj=RObj}) -> 

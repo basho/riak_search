@@ -27,8 +27,10 @@
 
 -export([is_x_deleted/1,
          obj_not_deleted/1,
-         try_cast/4,
-         fallback/4]).
+         try_cast/3,
+         fallback/3]).
+
+-include_lib("riak_kv/include/riak_kv_vnode.hrl").
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -67,17 +69,16 @@ obj_not_deleted(Obj) ->
 %%      if Node is in UpNodes.  The list of successful casts is the
 %%      first element of the return tuple, and the list of unavailable
 %%      nodes is the second element.  Used in riak_kv_put_fsm and riak_kv_get_fsm.
-try_cast(Cmd, Msg, UpNodes, Targets) ->
-    try_cast(Cmd, Msg, UpNodes, Targets, [], []).
-try_cast(_Cmd, _Msg, _UpNodes, [], Sent, Pangs) -> {Sent, Pangs};
-try_cast(Cmd, Msg, UpNodes, [{Index,Node}|Targets], Sent, Pangs) ->
+try_cast(Msg, UpNodes, Targets) ->
+    try_cast(Msg, UpNodes, Targets, [], []).
+try_cast(_Msg, _UpNodes, [], Sent, Pangs) -> {Sent, Pangs};
+try_cast(Msg, UpNodes, [{Index,Node}|Targets], Sent, Pangs) ->
     case lists:member(Node, [node()|UpNodes]) of
         false ->
-            try_cast(Cmd, Msg, UpNodes, Targets, Sent, [{Index,Node}|Pangs]);
+            try_cast(Msg, UpNodes, Targets, Sent, [{Index,Node}|Pangs]);
         true ->
-            gen_server:cast({riak_kv_vnode_master, Node},
-                            {Cmd, {Index,Node}, Msg}),
-            try_cast(Cmd, Msg, UpNodes, Targets, [{Index,Node,Node}|Sent],Pangs)
+            gen_server:cast({riak_kv_vnode_master, Node}, make_request(Msg, Index)),
+            try_cast(Msg, UpNodes, Targets, [{Index,Node,Node}|Sent],Pangs)
     end.
 
 %% @spec fallback(term(), term(), [{Index :: term(), Node :: node()}],
@@ -88,22 +89,24 @@ try_cast(Cmd, Msg, UpNodes, [{Index,Node}|Targets], Sent, Pangs) ->
 %%      from the second element of the response tuple of a call to
 %%      try_cast/3.
 %%      Used in riak_kv_put_fsm and riak_kv_get_fsm
-fallback(Cmd, Msg, Pangs, Fallbacks) ->
-    fallback(Cmd, Msg, Pangs, Fallbacks, []).
-fallback(_Cmd, _Msg, [], _Fallbacks, Sent) -> 
-    Sent;
-fallback(Cmd, Msg, [{Index, Node}|Pangs], [], Sent) -> 
-    FN = node(),
-    gen_server:cast({riak_kv_vnode_master, FN}, {Cmd, {Index, Node}, Msg}),
-    fallback(Cmd, Msg, Pangs, [], [{Index,Node,FN}|Sent]);
-fallback(Cmd, Msg, [{Index,Node}|Pangs], [{_,FN}|Fallbacks], Sent) ->
+fallback(Cmd, Pangs, Fallbacks) ->
+    fallback(Cmd, Pangs, Fallbacks, []).
+fallback(_Cmd, [], _Fallbacks, Sent) -> Sent;
+fallback(_Cmd, _Pangs, [], Sent) -> Sent;
+fallback(Cmd, [{Index,Node}|Pangs], [{_,FN}|Fallbacks], Sent) ->
     case lists:member(FN, [node()|nodes()]) of
-        false -> fallback(Cmd, Msg, [{Index,Node}|Pangs], Fallbacks, Sent);
+        false -> fallback(Cmd, [{Index,Node}|Pangs], Fallbacks, Sent);
         true ->
-            gen_server:cast({riak_kv_vnode_master, FN},
-                            {Cmd, {Index,Node}, Msg}),
-            fallback(Cmd, Msg, Pangs, Fallbacks, [{Index,Node,FN}|Sent])
+            gen_server:cast({riak_kv_vnode_master, FN}, make_request(Cmd, Index)),
+            fallback(Cmd, Pangs, Fallbacks, [{Index,Node,FN}|Sent])
     end.
+
+-spec make_request(vnode_req(), partition()) -> #riak_vnode_req_v1{}.
+make_request(Request, Index) ->
+    #riak_vnode_req_v1{
+              index=Index,
+              sender={fsm, make_ref(), self()},
+              request=Request}.
 
 %% ===================================================================
 %% EUnit tests

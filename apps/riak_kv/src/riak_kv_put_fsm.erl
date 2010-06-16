@@ -24,6 +24,7 @@
 
 -module(riak_kv_put_fsm).
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("riak_kv/include/riak_kv_vnode.hrl").
 -behaviour(gen_fsm).
 -define(DEFAULT_OPTS, [{returnbody, false}]).
 -export([start/6,start/7]).
@@ -116,14 +117,20 @@ initialize(timeout, StateData0=#state{robj=RObj0, req_id=ReqId, client=Client,
             RealStartTime = riak_core_util:moment(),
             BucketProps = riak_core_bucket:get_bucket(Bucket, Ring),
             DocIdx = riak_core_util:chash_key({Bucket, Key}),
-            Msg = {self(), {Bucket,Key}, RObj1, ReqId, RealStartTime, Options},
+            Req = ?KV_PUT_REQ{
+              bucket = Bucket,
+              key = Key,
+              object = RObj1,
+              req_id = ReqId,
+              start_time = RealStartTime,
+              options = Options},
             N = proplists:get_value(n_val,BucketProps),
             Preflist = riak_core_ring:preflist(DocIdx, Ring),
             {Targets, Fallbacks} = lists:split(N, Preflist),
-            {Sent1, Pangs1} = riak_kv_util:try_cast(vnode_put, Msg, nodes(), Targets),
+            {Sent1, Pangs1} = riak_kv_util:try_cast(Req, nodes(), Targets),
             Sent = case length(Sent1) =:= N of   % Sent is [{Index,TargetNode,SentNode}]
                        true -> Sent1;
-                       false -> Sent1 ++ riak_kv_util:fallback(vnode_put,Msg,Pangs1,Fallbacks)
+                       false -> Sent1 ++ riak_kv_util:fallback(Req,Pangs1,Fallbacks)
                    end,
             StateData = StateData0#state{
                           robj=RObj1, n=N, preflist=Preflist,
@@ -314,7 +321,7 @@ run_hooks(HookType, RObj, [{struct, Hook}|T]) ->
 invoke_hook(precommit, Mod0, Fun0, undefined, RObj) ->
     Mod = binary_to_atom(Mod0, utf8),
     Fun = binary_to_atom(Fun0, utf8),
-    Mod:Fun(RObj);
+    wrap_hook(Mod, Fun, RObj);
 invoke_hook(precommit, undefined, undefined, JSName, RObj) ->
     case riak_kv_js_manager:blocking_dispatch({{jsfun, JSName}, RObj}) of
         {ok, <<"fail">>} ->
@@ -331,13 +338,21 @@ invoke_hook(precommit, undefined, undefined, JSName, RObj) ->
 invoke_hook(postcommit, Mod0, Fun0, undefined, Obj) ->
     Mod = binary_to_atom(Mod0, utf8),
     Fun = binary_to_atom(Fun0, utf8),
-    proc_lib:spawn(fun() -> Mod:Fun(Obj) end);
-
+    proc_lib:spawn(fun() -> wrap_hook(Mod, Fun, Obj) end);
 invoke_hook(postcommit, undefined, undefined, _JSName, _Obj) ->
     error_logger:warning_msg("Javascript post-commit hooks aren't implemented");
 %% NOP to handle all other cases
 invoke_hook(_, _, _, _, RObj) ->
     RObj.
+
+wrap_hook(Mod, Fun, Obj)->
+    try Mod:Fun(Obj)
+    catch
+        EType:X ->
+            error_logger:error_msg("problem invoking hook ~p:~p -> ~p:~p~n~p~n",
+                                   [Mod,Fun,EType,X,erlang:get_stacktrace()]),
+            fail
+    end.
 
 merge_robjs(RObjs0,AllowMult) ->
     RObjs1 = [X || X <- RObjs0,

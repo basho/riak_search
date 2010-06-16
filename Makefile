@@ -6,8 +6,7 @@ all: deps compile
 
 compile:
 	./rebar compile
-	make -C apps/qilr/java_src
-	make -C apps/raptor/java_src
+
 deps:
 	./rebar get-deps
 
@@ -25,7 +24,7 @@ test:
 ##
 ## Release targets
 ##
-rel:
+rel: deps
 	make -C apps/qilr/java_src
 	make -C apps/raptor/java_src
 	./rebar compile generate
@@ -49,7 +48,7 @@ dev:
 	./rebar compile && cd dev && ../rebar generate
 
 dev1 dev2 dev3: dev
-	cp -Rn dev/riak dev/$@
+	yes n | cp -Ri dev/riak dev/$@
 	rm -rf dev/$@/data
 	mkdir -p dev/$@/data/ring
 	$(foreach app,$(wildcard apps/*), rm -rf dev/$@/lib/$(shell basename $(app))* && ln -sf $(abspath $(app)) dev/$@/lib;)
@@ -75,8 +74,12 @@ stage : rel
 ## Doc targets
 ##
 docs:
-	@erl -noshell -run edoc_run application riak '"apps/riak"' '[]'
-	@cp -R apps/riak/doc doc/riak
+	@erl -noshell -run edoc_run application luke '"apps/luke"' '[]' 
+	@cp -R apps/luke/doc doc/luke
+	@erl -noshell -run edoc_run application riak_core '"apps/riak_core"' '[]' 
+	@cp -R apps/riak_core/doc doc/riak_core
+	@erl -noshell -run edoc_run application riak_kv '"apps/riak_kv"' '[]' 
+	@cp -R apps/riak_kv/doc doc/riak_kv
 
 orgs: orgs-doc orgs-README
 
@@ -89,3 +92,24 @@ orgs-README:
 
 dialyzer: compile
 	@dialyzer -Wno_return -c apps/riak/ebin
+
+# Release tarball creation
+# Generates a tarball that includes all the deps sources so no checkouts are necessary
+
+distdir:
+	$(if $(findstring tip,$(RIAK_TAG)),$(error "You can't generate a release tarball from tip"))
+	mkdir distdir
+	hg clone . distdir/riak-clone
+	cd distdir/riak-clone; \
+	hg archive ../$(RIAK_TAG); \
+	mkdir ../$(RIAK_TAG)/deps; \
+	make deps; \
+	for dep in deps/*; do cd $${dep} && hg archive ../../../$(RIAK_TAG)/$${dep}; cd ../..; done
+
+dist $(RIAK_TAG).tar.gz: distdir
+	cd distdir; \
+	tar czf ../$(RIAK_TAG).tar.gz $(RIAK_TAG)
+
+allclean:
+	rm -rf $(RIAK_TAG).tar.gz distdir
+
