@@ -87,7 +87,7 @@ load_schema(SchemaName, SchemaDir) ->
         {error, enoent} ->
             %% Not found, use default...
             error_logger:warning_msg("Could not find schema '~s', using defaults.~n", [SchemaName]),
-            Schema = riak_search_schema:new(SchemaName, 0, "value", [], 'or'),
+            Schema = riak_search_schema:new(SchemaName, 0, "value", [], 'or', undefined),
             {ok, Schema};
         Error ->
             %% Some other error, so return...

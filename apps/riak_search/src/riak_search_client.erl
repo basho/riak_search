@@ -4,7 +4,7 @@
 
 -export([
     %% Searching...
-    parse_query/1,
+    parse_query/2,
     search/5,
     search_doc/5,
 
@@ -34,9 +34,11 @@
 
 %% Parse the provided query. Returns either {ok, QueryOps} or {error,
 %% Error}.
-parse_query(Query) ->
+parse_query(IndexOrSchema, Query) ->
+    {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
     {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
-    Result = qilr_parse:string(AnalyzerPid, Query),
+    Result = qilr_parse:string(AnalyzerPid, Query, list_to_atom(Schema:default_op()),
+                               Schema:analyzer_factory()),
     qilr_analyzer:close(AnalyzerPid),
     Result.
 
@@ -102,7 +104,7 @@ parse_idx_doc(AnalyzerPid, IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
     %% a de-duped list of the terms. For each, index the FieldName /
     %% Term / DocID / Props.
     F2 = fun({FieldName, FieldValue}, Acc2) ->
-        {ok, Terms} = qilr_analyzer:analyze(AnalyzerPid, FieldValue),
+        {ok, Terms} = qilr_analyzer:analyze(AnalyzerPid, FieldValue, Schema:analyzer_factory()),
         PositionTree = get_term_positions(Terms),
         Terms1 = gb_trees:keys(PositionTree),
         F3 = fun(Term, Acc3) ->

@@ -3,6 +3,7 @@ option java_package = "com.basho.search.proto";
 
 message AnalysisRequest {
   required string text = 1;
+  optional string analyzer_factory = 2;
 }
 
 message AnalysisStop {

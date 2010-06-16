@@ -4,27 +4,23 @@ import java.io.IOException;
 import java.io.StringReader;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
-import org.apache.lucene.analysis.LengthFilter;
-import org.apache.lucene.analysis.LowerCaseFilter;
-import org.apache.lucene.analysis.StopAnalyzer;
-import org.apache.lucene.analysis.StopFilter;
 import org.apache.lucene.analysis.TokenStream;
-import org.apache.lucene.analysis.WhitespaceTokenizer;
 import org.apache.lucene.analysis.tokenattributes.TermAttribute;
-import org.apache.lucene.analysis.standard.StandardTokenizer;
 import org.apache.lucene.util.Version;
 
 public class TextAnalyzer {
    
-   public static List<String> analyze(String text) throws IOException {
+   private static final Logger logger = Logger.getLogger(TextAnalyzer.class.getName());
+   
+   public static List<String> analyze(String text, String analyzerFactory) throws IOException {
       // Setup token stream and filters
-      //TokenStream stream = new WhitespaceTokenizer(new StringReader(text));
-      TokenStream stream = new StandardTokenizer(Version.LUCENE_CURRENT,
-         new StringReader(text));
-      stream = new LengthFilter(stream, 3, Integer.MAX_VALUE);
-      stream = new LowerCaseFilter(stream);
-      stream = new StopFilter(false, stream, StopAnalyzer.ENGLISH_STOP_WORDS_SET);
+
+      AnalyzerFactory factory = instantiateFactory(analyzerFactory);
+      TokenStream stream = factory.makeStream(Version.LUCENE_30, new StringReader(text));
+      
       // Prepare to iterate and collect tokens
       List<String> retval = new LinkedList<String>();
       stream.reset();
@@ -37,6 +33,23 @@ public class TextAnalyzer {
       // Clean up
       stream.end();
       stream.close();
+      return retval;
+   }
+   
+   @SuppressWarnings("unchecked")
+   private static AnalyzerFactory instantiateFactory(String factoryClassName) {
+      AnalyzerFactory retval = null;
+      try {
+         Class<AnalyzerFactory> klass = (Class<AnalyzerFactory>) Class.forName(factoryClassName);
+         retval = klass.newInstance();
+      }
+      catch (Exception e) {
+         logger.log(Level.WARNING, "Failure creating instance of " + factoryClassName, e);
+         logger.log(Level.WARNING, "Failure to create AnalyzerFactory: " + factoryClassName + "." +
+               " Falling back to default analyzer factory");
+         return new DefaultAnalyzerFactory();
+      }
+      
       return retval;
    }
 }
