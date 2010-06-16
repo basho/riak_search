@@ -204,7 +204,7 @@ calc_n_partition(Index, Field, Term) ->
     %% Lookup N for the index
     IndexBin = riak_search_utils:to_binary(Index),
     Bucket = riak_core_bucket:get_bucket(IndexBin),
-    N = lists:keysearch(1, n_val, Bucket),
+    {value, {n_val, N}} = lists:keysearch(n_val, 1, Bucket),
 
     %% Work out which partition to use
     FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),

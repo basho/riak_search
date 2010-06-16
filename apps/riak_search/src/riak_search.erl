@@ -22,7 +22,7 @@ stream(Index, Field, Term, FilterFun) ->
 
 info(Index, Field, Term) ->
     {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
-    {ok, Ref} = riak_search_vnode:info(Partition, N, Index, self()),
+    {ok, Ref} = riak_search_vnode:info(Partition, N, Index, Field, Term, self()),
     {ok, Results} = collect_info(N, Ref, []),
     {ok, hd(Results)}.
 
