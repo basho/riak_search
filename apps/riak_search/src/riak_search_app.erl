@@ -42,6 +42,9 @@ start(_StartType, _StartArgs) ->
                     [F(Bucket) || Bucket <- Buckets]
             end,
 
+            %% TODO: Make this safer w.r.t riak_core_ring_events crashing
+            ok = riak_core_ring_events:add_handler(riak_search_ring_handler, []),
+
             %% Set up the search_broadcast bucket. Any operations on
             %% this bucket will broadcast to all search_backend
             %% partitions.

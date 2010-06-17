@@ -208,5 +208,5 @@ calc_n_partition(Index, Field, Term) ->
 
     %% Work out which partition to use
     FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-    Partition = riak_core_util:chash_key({FieldTermBin, IndexBin}),
+    Partition = riak_core_util:chash_key({IndexBin, FieldTermBin}),
     {N, Partition}.

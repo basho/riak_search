@@ -1,13 +1,26 @@
 -module(riak_search_vnode).
--export([index/7,
+-export([index/6,
          delete_term/6,
          stream/7,
          info/6,
          info_range/6]).
 -export([init/1, handle_command/3]).
 
+-record(vstate, {idx, bmod, bstate}).
+-record(index_v1, {index, field, term, value, props}).
 
-index(_Partition, _N, Index, Field, Term, Value, Props) ->
+-export([other_index/6]).
+other_index(PrefList, Index, Field, Term, Value, Props) ->
+    Req = #index_v1{
+      index = Index,
+      field = Field,
+      term = Term,
+      value = Value,
+      props = Props
+     },
+    command(PrefList, Req).
+
+index(_Preflist, Index, Field, Term, Value, Props) ->
     IndexBin = riak_search_utils:to_binary(Index),
     FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
     Payload = {index, Index, Field, Term, Value, Props},
@@ -15,6 +28,7 @@ index(_Partition, _N, Index, Field, Term, Value, Props) ->
     Obj = riak_object:new(IndexBin, FieldTermBin, Payload),
     {ok, RiakClient} = riak:local_client(),
     RiakClient:put(Obj, 0).
+
 
 delete_term(_Partition, _Nval, Index, Field, Term, DocId) ->
     IndexBin = riak_search_utils:to_binary(Index),
@@ -90,33 +104,41 @@ wait_for_ready(RepliesRemaining, Ref, Partition, Node) ->
             wait_for_ready(RepliesRemaining -1, Ref, NewPartition, NewNode)
     end.
 
+
+%%
+%% Utility functions
+%%
+
+%% Issue the command to the riak vnode
+command(PrefList, Req) ->
+    riak_core_vnode_master:command(PrefList, Req, riak_search_vnode_master).
+
 %%
 %% Callbacks for riak_core_vnode
 %%
-%% -record(vstate, {bmod,bstate}).  %% Backend module
--record(state, {idx}).
 
-init([Index]) ->
-    {ok, #state{idx=Index}}.
+init([VNodeIndex]) ->
+    BMod = app_helper:get_env(riak_search, search_backend),
+    Configuration = app_helper:get_env(riak_search),
+    {ok, BState} = BMod:start(VNodeIndex, Configuration),
+    {ok, #vstate{idx=VNodeIndex,
+                 bmod=BMod,
+                 bstate=BState}}.
 
-handle_command(_Req, _Sender, State=#state{idx=_Idx}) ->
-    {reply, {error, not_implemented}, State}.
+handle_command(#index_v1{index = Index,
+                         field = Field,
+                         term = Term,
+                         value = Value,
+                         props = Props},
+               _Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
+    bmod_response(BMod:index(Index, Field, Term, Value, Props, BState), VState).
+
+bmod_response(ok, VState) ->
+    {noreply, VState};
+bmod_response({ok, NewBState}, VState) ->
+    {noreply, VState#vstate{bstate=NewBState}}.
 
 
-
-
-%% %% TODO: Consider renaming 'start'
-%% init([Partition]) ->
-%%     %% Discover backend module somehow
-%%     Bmod = riak_search_raptor_backend,
-%%     %% Discover backend arguments somehow
-%%     Bargs = [],
-%%     Bstate = Bmod:start(Partition, Bargs),
-%%     {ok, #state{bmod=Bmod,bstate=Bstate}}.
-
-%% handle_command({index, Index, Field, Term, Value, Props}, Sender, 
-%%                VState=#state{bmod=BMod,bstate=BState}) ->
-%%     bmod_response(BMod:index(Index, Field, Term, Value, Props, BState));
 %% handle_command({delete_entry, Index, Field, Term, DocId}, Sender,
 %%                VState=#state{bmod=BMod,bstate=BState}) ->
 %%     bmod_response(BMod:delete_entry(Index, Field, Term, Term, DocId, Bstate),VState);
@@ -129,47 +151,4 @@ handle_command(_Req, _Sender, State=#state{idx=_Idx}) ->
 %% handle_command({info_range, Index, Field, StartTerm, EndTerm, Size}, Sender, 
 %%                VState=#state{bmod=BMod,bstate=BState}) ->
 %%     bmod_response(BMod:info_range(Index, Field, StartTerm, EndTerm, Size, Sender, Bstate),VState).
-
-
-%% bmod_response(ok, VState) ->
-%%     {noreply, VState};
-%% bmod_response({ok, NewBState}, VState) ->
-%%     {noreply, VState#vstate{bstate=NewBState}}.
-
-%% %%% Or the super-meta version
-
-
-%% -record(index, {index, field, term, value, props}).
-%% -record(delete_entry, {index, field, term, docid}).
-%% -record(stream, {index, field, term, partition, filter_fun}).
-%% -record(info, {index, field, term}).
-%% -record(info_range, index, field, start_term, end_term, size}).
-
-%% handle_command(#index{}=Cmd, _Sender, VState) ->
-%%     noreply_bmod(Cmd, VState);
-%% handle_command(#delete{}=Cmd, _Sender, VState) ->
-%%     noreply_bmod(Cmd, VState);
-%% handle_command(#stream{}=Cmd, Sender, VState) ->
-%%     reply_bmod(Cmd, Sender, VState);
-%% handle_command(#info{}=Cmd, Sender, VState) ->
-%%     reply_bmod(Cmd, Sender, VState);
-%% handle_command(#info_range{}=Cmd, Sender, VState) ->
-%%     reply_bmod(Cmd, Sender, VState);
-
-%% noreply_bmod(Cmd, Sender, VState#vstate{bmod=BMod,bstate=BState}) ->
-%%     [Fun | Args] = tuple_to_list(Cmd) ++ [BState],
-%%     case apply(Bmod, Fun, Args) of
-%%         ok ->
-%%             {noreply, VState};
-%%         {ok, NewBState} ->
-%%             {noreply, VState#vstate{bstate=NewBState}}
-%%     end.
-%% reply_bmod(Cmd, Sender, VState#vstate{bmod=BMod,bstate=BState}) ->
-%%     [Fun | Args] = tuple_to_list(Cmd) ++ [Sender, BState],
-%%     case apply(Bmod, Fun, Args) of
-%%         ok ->
-%%             {noreply, VState};
-%%         {ok, NewBState} ->
-%%             {noreply, VState#vstate{bstate=NewBState}}
-%%     end.
 

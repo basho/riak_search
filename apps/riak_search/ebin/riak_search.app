@@ -9,6 +9,7 @@
              riak_indexed_doc,
              riak_search,
              riak_search_app,
+             riak_search_backend,
              riak_search_config,
              riak_search_client,
              riak_search_sup,
@@ -26,6 +27,8 @@
              riak_search_op_proximity,
              riak_search_op_node,
              riak_search_phase,
+             riak_search_raptor_backend,
+             riak_search_ring_handler,
              riak_search_schema,
              riak_search_schema_parser,
              riak_search_shell,
@@ -46,5 +49,5 @@
                   raptor
                  ]},
   {mod, { riak_search_app, []}},
-  {env, []}
+  {env, [{riak_search_backend, riak_search_raptor_backend}]}
  ]}.
