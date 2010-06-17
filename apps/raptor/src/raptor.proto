@@ -1,6 +1,3 @@
-option java_package = "raptor.protobuf";
-option java_outer_classname = "Messages";
-
 message Index {
     required string index = 1;
     required string field = 2;

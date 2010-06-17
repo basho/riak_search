@@ -34,8 +34,7 @@
 
 %% Parse the provided query. Returns either {ok, QueryOps} or {error,
 %% Error}.
-parse_query(IndexOrSchema, Query) ->
-    {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
+parse_query(_IndexOrSchema, Query) ->
     {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
     try
         qilr_parse:string(AnalyzerPid, Query)
