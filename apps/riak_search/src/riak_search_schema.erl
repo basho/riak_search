@@ -1,27 +1,28 @@
--module(riak_search_schema, [Name, Version, DefaultField, FieldsAndFacets, DefaultOp]).
+-module(riak_search_schema, [Name, Version, DefaultField, FieldsAndFacets, DefaultOp, AnalyzerFactory]).
 -export([
     %% Properties...
-    name/0, 
-    version/0, 
+    name/0,
+    version/0,
     fields_and_facets/0,
     facets/0,
-    fields/0, 
-    default_field/0, 
+    fields/0,
+    default_field/0,
     set_default_field/1,
-    default_op/0, 
+    default_op/0,
+    analyzer_factory/0,
     set_default_op/1,
-    
+
     %% Field properties...
     field_name/1,
     field_type/1,
     is_field_required/1,
     is_field_facet/1,
-    
+
     %% Field lookup
     find_field_or_facet/1,
     find_field/1,
     find_facet/1,
-    
+
     %% Validation
     validate_commands/2
 ]).
@@ -45,6 +46,11 @@ facets() ->
 
 default_field() ->
     DefaultField.
+
+analyzer_factory() when is_list(AnalyzerFactory) ->
+    list_to_binary(AnalyzerFactory);
+analyzer_factory() ->
+    AnalyzerFactory.
 
 set_default_field(NewDefaultField) ->
     ?MODULE:new(Name, Version, NewDefaultField, FieldsAndFacets, DefaultOp).
@@ -70,9 +76,9 @@ is_field_facet(Field) ->
 %% Return the field or facet matching the specified name, or 'undefined'.
 find_field_or_facet(FName) ->
     case lists:keyfind(FName, #riak_search_field.name, FieldsAndFacets) of
-        Field when is_record(Field, riak_search_field) -> 
+        Field when is_record(Field, riak_search_field) ->
             Field;
-        false -> 
+        false ->
             undefined
         end.
 
@@ -112,9 +118,9 @@ validate_required_fields([Doc|Rest], Required) ->
     end.
 
 %% @private
-%% Validate required fields in a single document. 
+%% Validate required fields in a single document.
 %% Return 'ok' or an {error, Error} if a field is missing.
-validate_required_fields_1(_, []) -> 
+validate_required_fields_1(_, []) ->
     ok;
 validate_required_fields_1(Doc, [Field|Rest]) ->
     FieldName = Field#riak_search_field.name,

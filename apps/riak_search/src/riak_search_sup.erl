@@ -47,7 +47,6 @@ init([]) ->
                permanent, 5000, worker, [riak_core_vnode_master]},
 
     Processes = [Config,
-                 VSup,
                  VMaster],
     {ok, { {one_for_one, 5, 10}, Processes} }.
 

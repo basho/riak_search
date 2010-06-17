@@ -15,7 +15,7 @@ clean:
 	make -C apps/qilr/java_src clean
 	make -C apps/raptor/java_src clean
 
-distclean: clean devclean relclean allclean
+distclean: clean devclean relclean
 	./rebar delete-deps
 
 test:
