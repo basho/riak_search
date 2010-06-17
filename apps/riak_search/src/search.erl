@@ -68,21 +68,24 @@ index_dir(Directory) ->
 %% Full text index the specified directory of plain text files.
 index_dir(IndexOrSchema, Directory) ->
     {ok, Client} = riak_search:local_client(),
-    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
     Index = Schema:name(),
     Field = Schema:default_field(),
+    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
     F = fun(BaseName, Body) ->
         Fields = [{Field, binary_to_list(Body)}],
         IdxDoc = riak_indexed_doc:new(BaseName, Index),
         IdxDoc2 = riak_indexed_doc:set_fields(Fields, IdxDoc),
-        Terms = Client:parse_idx_doc(AnalyzerPid, IdxDoc2),
+        Terms = Client:parse_idx_doc(IdxDoc2),
         [begin
             {Index, Field, Term, Value, Props} = X,
             Client:index_term(Index, Field, Term, Value, Props)
         end || X <- Terms],
         Client:store_idx_doc(IdxDoc2)
     end,
-    riak_search_utils:index_recursive(F, Directory),
-    qilr_analyzer:close(AnalyzerPid),
+    try
+        riak_search_utils:index_recursive(F, Directory)
+    after
+        qilr_analyzer:close(AnalyzerPid)
+    end,
     ok.

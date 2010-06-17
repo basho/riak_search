@@ -47,9 +47,9 @@ start(Partition, _Config) ->
     {ok, #state { partition=Partition, conn=Conn }}.
 
 %% @spec stop(state()) -> ok | {error, Reason :: term()}
-stop(_State) ->
+stop(#state{conn=Conn}) ->
+    raptor_conn:close(Conn),
     ok.
-
 
 %% @spec put(state(), BKey :: riak_object:bkey(), Val :: binary()) ->
 %%         ok | {error, Reason :: term()}
@@ -112,16 +112,18 @@ handle_command(State, {stream, Index, Field, Term, OutputPid, OutputRef, DestPar
         case DestPartition == State#state.partition andalso Node == node() of
             true ->
                 spawn_link(fun() ->
-                    {ok, Conn} = raptor_conn_sup:new_conn(),
-                    {ok, StreamRef} = raptor_conn:stream(
-                        Conn,
-                        list_to_binary(Index),
-                        list_to_binary(Field),
-                        list_to_binary(Term),
-                        Partition),
-                    receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun),
-                    raptor_conn:close(Conn)
-                end),
+                                   {ok, Conn} = raptor_conn_sup:new_conn(),
+                                   try
+                                       {ok, StreamRef} = raptor_conn:stream(
+                                                           Conn,
+                                                           list_to_binary(Index),
+                                                           list_to_binary(Field),
+                                                           list_to_binary(Term),
+                                                           Partition),
+                                       receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun)
+                                   after
+                                       raptor_conn:close(Conn)
+                                   end end),
                 ok;
             false ->
                 %% The requester doesn't want results from this node, so
@@ -140,40 +142,50 @@ handle_command(_State, {info_test__, _Index, _Field, Term, OutputPid, OutputRef}
 handle_command(State, {info_range, Index, Field, StartTerm, EndTerm, _Size, OutputPid, OutputRef}) ->
     Partition = list_to_binary(integer_to_list(State#state.partition)),
     spawn_link(fun() ->
-        {ok, Conn} = raptor_conn_sup:new_conn(),
-        {ok, StreamRef} = raptor_conn:info_range(
-            Conn,
-            list_to_binary(Index),
-            list_to_binary(Field),
-            list_to_binary(StartTerm),
-            list_to_binary(EndTerm),
-            Partition),
-        receive_info_range_results(StreamRef, OutputPid, OutputRef),
-        raptor_conn:close(Conn)
+                       {ok, Conn} = raptor_conn_sup:new_conn(),
+                       try
+                           {ok, StreamRef} = raptor_conn:info_range(
+                                               Conn,
+                                               list_to_binary(Index),
+                                               list_to_binary(Field),
+                                               list_to_binary(StartTerm),
+                                               list_to_binary(EndTerm),
+                                               Partition),
+                           receive_info_range_results(StreamRef, OutputPid, OutputRef)
+                       after
+                           raptor_conn:close(Conn)
+                       end
     end),
     ok;
 
 handle_command(_State, {catalog_query, CatalogQuery, OutputPid, OutputRef}) ->
     spawn_link(fun() ->
-        {ok, Conn} = raptor_conn_sup:new_conn(),
-        {ok, StreamRef} = raptor_conn:catalog_query(
-            Conn,
-            CatalogQuery),
-        receive_catalog_query_results(StreamRef, OutputPid, OutputRef),
-        raptor_conn:close(Conn)
+                       {ok, Conn} = raptor_conn_sup:new_conn(),
+                       try
+                           {ok, StreamRef} = raptor_conn:catalog_query(
+                                               Conn,
+                                               CatalogQuery),
+                           receive_catalog_query_results(StreamRef, OutputPid, OutputRef)
+                       after
+                           raptor_conn:close(Conn)
+                       end
     end),
     ok;
 
 handle_command(_State, {command, Command, Arg1, Arg2, Arg3}) ->
     {ok, Conn} = raptor_conn_sup:new_conn(),
-    {ok, _StreamRef} = raptor_conn:command(Conn, Command, Arg1, Arg2, Arg3),
-    receive
-        {command, _ReqId, Response} ->
-            io:format("command: Response = ~p~n", [Response]),
-            Response;
-        Msg ->
-            io:format("handle_command/command, unexpected response: Msg = ~p~n", [Msg]),
-            Msg
+    try
+        {ok, _StreamRef} = raptor_conn:command(Conn, Command, Arg1, Arg2, Arg3),
+        receive
+            {command, _ReqId, Response} ->
+                io:format("command: Response = ~p~n", [Response]),
+                Response;
+            Msg ->
+                io:format("handle_command/command, unexpected response: Msg = ~p~n", [Msg]),
+                Msg
+        end
+    after
+        raptor_conn:close(Conn)
     end;
 
 handle_command(_State, Other) ->
