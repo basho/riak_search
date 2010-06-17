@@ -54,22 +54,22 @@ put(State, _BKey, ObjBin) ->
     Command = riak_object:get_value(Obj),
     handle_command(State, Command).
 
-handle_command(State, {index, Index, Field, Term, Value, Props}) ->
-    TS = mi_utils:now_to_timestamp(erlang:now()),
-    handle_command(State, {index, Index, Field, Term, Value, Props, TS});
+%% handle_command(State, {index, Index, Field, Term, Value, Props}) ->
+%%     TS = mi_utils:now_to_timestamp(erlang:now()),
+%%     handle_command(State, {index, Index, Field, Term, Value, Props, TS});
 
-handle_command(State, {index, Index, Field, Term, Value, Props, _Timestamp}) ->
-    %% Put with properties.
-    Partition = list_to_binary("" ++ integer_to_list(State#state.partition)),
-    Conn = State#state.conn,
-    raptor_conn:index(Conn,
-                      list_to_binary(Index),
-                      list_to_binary(Field),
-                      Term,
-                      list_to_binary(Value),
-                      Partition,
-                      term_to_binary(Props)),
-    ok;
+%% handle_command(State, {index, Index, Field, Term, Value, Props, _Timestamp}) ->
+%%     %% Put with properties.
+%%     Partition = list_to_binary("" ++ integer_to_list(State#state.partition)),
+%%     Conn = State#state.conn,
+%%     raptor_conn:index(Conn,
+%%                       list_to_binary(Index),
+%%                       list_to_binary(Field),
+%%                       Term,
+%%                       list_to_binary(Value),
+%%                       Partition,
+%%                       term_to_binary(Props)),
+%%     ok;
 
 handle_command(State, {delete_entry, Index, Field, Term, DocId}) ->
     Partition = list_to_binary(integer_to_list(State#state.partition)),
@@ -118,20 +118,20 @@ handle_command(_State, {info_test__, _Index, _Field, Term, OutputPid, OutputRef}
     OutputPid ! {info_response, [{Term, node(), 1}], OutputRef},
     ok;
 
-handle_command(State, {info, Index, Field, Term, OutputPid, OutputRef}) ->
-    Partition = list_to_binary(integer_to_list(State#state.partition)),
-    spawn_link(fun() ->
-        {ok, Conn} = raptor_conn_sup:new_conn(),
-        {ok, StreamRef} = raptor_conn:info(
-            Conn,
-            list_to_binary(Index),
-            list_to_binary(Field),
-            list_to_binary(Term),
-            Partition),
-        receive_info_results(StreamRef, OutputPid, OutputRef),
-        raptor_conn:close(Conn)
-    end),
-    ok;
+%% handle_command(State, {info, Index, Field, Term, OutputPid, OutputRef}) ->
+%%     Partition = list_to_binary(integer_to_list(State#state.partition)),
+%%     spawn_link(fun() ->
+%%         {ok, Conn} = raptor_conn_sup:new_conn(),
+%%         {ok, StreamRef} = raptor_conn:info(
+%%             Conn,
+%%             list_to_binary(Index),
+%%             list_to_binary(Field),
+%%             list_to_binary(Term),
+%%             Partition),
+%%         receive_info_results(StreamRef, OutputPid, OutputRef),
+%%         raptor_conn:close(Conn)
+%%     end),
+%%     ok;
 
 handle_command(State, {info_range, Index, Field, StartTerm, EndTerm, _Size, OutputPid, OutputRef}) ->
     Partition = list_to_binary(integer_to_list(State#state.partition)),
@@ -252,16 +252,16 @@ receive_info_range_results(StreamRef, OutputPid, OutputRef, Results) ->
     end,
     ok.
 
-receive_info_results(StreamRef, OutputPid, OutputRef) ->
-    receive
-        {info, StreamRef, Term, Count} ->
-            OutputPid ! {info_response, [{Term, node(), Count}], OutputRef};
-        Msg ->
-            io:format("receive_info_results(~p, ~p, ~p) -> ~p~n",
-                [StreamRef, OutputPid, OutputRef, Msg]),
-            OutputPid ! []
-    end,
-    ok.
+%% receive_info_results(StreamRef, OutputPid, OutputRef) ->
+%%     receive
+%%         {info, StreamRef, Term, Count} ->
+%%             OutputPid ! {info_response, [{Term, node(), Count}], OutputRef};
+%%         Msg ->
+%%             io:format("receive_info_results(~p, ~p, ~p) -> ~p~n",
+%%                 [StreamRef, OutputPid, OutputRef, Msg]),
+%%             OutputPid ! []
+%%     end,
+%%     ok.
 
 receive_catalog_query_results(StreamRef, OutputPid, OutputRef) ->
     receive

@@ -22,19 +22,33 @@ stream(Index, Field, Term, FilterFun) ->
 
 info(Index, Field, Term) ->
     {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
-    {ok, Ref} = riak_search_vnode:info(Partition, N, Index, Field, Term, self()),
-    {ok, Results} = collect_info(N, Ref, []),
+    Preflist = riak_core_apl:get_apl(Partition, N),
+    {ok, Ref} = riak_search_vnode:info(Preflist, Index, Field, Term, self()),
+    {ok, Results} = riak_search_backend:collect_info_response(N, Ref, []),
+    %% TODO: Replace this with a middleman process that returns after 
+    %% the first response.
     {ok, hd(Results)}.
+
+%% info(Index, Field, Term) ->
+%%     {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
+%%     Preflist = riak_core_apl:get_apl(Partition, N),
+%%     {ok, Ref} = riak_search_vnode:info(Preflist, Index, Field, Term, self()),
+%%     {ok, Results} = collect_info(N, Ref, []),
+%%     %% TODO: Replace this with a middleman process that returns after 
+%%     %% the first response.
+%%     {ok, hd(Results)}.
 
 info_range(Index, Field, StartTerm, EndTerm, Size) ->
     {ok, Ref} = riak_search_vnode:info_range(Index, Field, StartTerm, EndTerm, Size),
     {ok, _Results} = collect_info(ringsize(), Ref, []).
+
 
 collect_info(RepliesRemaining, Ref, Acc) ->
     receive
         {info_response, List, Ref} when RepliesRemaining > 1 ->
             collect_info(RepliesRemaining - 1, Ref, List ++ Acc);
         {info_response, List, Ref} when RepliesRemaining == 1 ->
+            io:format("collect_info returning ~p\n", [List++Acc]),
             {ok, List ++ Acc}
 %%         Other ->
 %%             error_logger:info_msg("Unexpected response: ~p~n", [Other]),

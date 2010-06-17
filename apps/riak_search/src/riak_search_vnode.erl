@@ -2,12 +2,13 @@
 -export([index/6,
          delete_term/6,
          stream/7,
-         info/6,
+         info/5,
          info_range/6]).
 -export([init/1, handle_command/3]).
 
 -record(vstate, {idx, bmod, bstate}).
 -record(index_v1, {index, field, term, value, props}).
+-record(info_v1, {index, field, term}).
 
 index(PrefList, Index, Field, Term, Value, Props) ->
     Req = #index_v1{
@@ -20,6 +21,7 @@ index(PrefList, Index, Field, Term, Value, Props) ->
     command(PrefList, Req).
 
 delete_term(_Partition, _Nval, Index, Field, Term, DocId) ->
+    io:format("info: Index=~p, Field=~p, Term=~p\n", [Index, Field, Term]),
     IndexBin = riak_search_utils:to_binary(Index),
     FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
     Payload = {delete_entry, Index, Field, Term, DocId},
@@ -29,6 +31,8 @@ delete_term(_Partition, _Nval, Index, Field, Term, DocId) ->
 
 
 stream(_Partition, _Nval, Index, Field, Term, FilterFun, ReplyTo) ->
+    io:format("stream Index=~p, Field=~p, Term=~p, FilterFun=~p, ReplyTo=~p\n", 
+              [Index, Field, Term, FilterFun, ReplyTo]),
     %% Construct the operation...
     IndexBin = riak_search_utils:to_binary(Index),
     FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
@@ -51,20 +55,35 @@ stream(_Partition, _Nval, Index, Field, Term, FilterFun, ReplyTo) ->
     RiakClient:put(Obj2, 0, 0),
     {ok, Ref}.
 
-info(_Partition, _Nval, Index, Field, Term, ReplyTo) ->
-    %% Construct the operation...
-    IndexBin = riak_search_utils:to_binary(Index),
-    FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-    Ref = make_ref(),
-    Payload = {info, Index, Field, Term, ReplyTo, Ref},
+%% info(_Preflist, Index, Field, Term, ReplyTo) ->
+%%     io:format("info: Index=~p, Field=~p, Term=~p, ReplyTo=~p\n", [Index, Field, Term, ReplyTo]),
+%%     %% Construct the operation...
+%%     IndexBin = riak_search_utils:to_binary(Index),
+%%     FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
+%%     Ref = make_ref(),
+%%     Payload = {info, Index, Field, Term, ReplyTo, Ref},
 
-    %% Run the operation...
-    {ok, RiakClient} = riak:local_client(),
-    Obj = riak_object:new(IndexBin, FieldTermBin, Payload),
-    RiakClient:put(Obj, 0, 0),
+%%     %% Run the operation...
+%%     {ok, RiakClient} = riak:local_client(),
+%%     Obj = riak_object:new(IndexBin, FieldTermBin, Payload),
+%%     RiakClient:put(Obj, 0, 0),
+%%     {ok, Ref}.
+
+info(Preflist, Index, Field, Term, ReplyTo) ->
+    io:format("info: Index=~p, Field=~p, Term=~p, ReplyTo=~p\n", [Index, Field, Term, ReplyTo]),
+    Req = #info_v1{
+      index = Index,
+      field = Field,
+      term = Term
+     },
+    Ref = {info_response, make_ref()},
+    command(Preflist, Req, {raw, Ref, ReplyTo}),
     {ok, Ref}.
 
+
 info_range(Index, Field, StartTerm, EndTerm, Size, ReplyTo) ->
+    io:format("info_range: Index=~p, Field=~p, StartTerm=~p, EndTerm=~p, Size=~p, ReplyTo=~p\n",
+              [Index, Field, StartTerm, EndTerm, Size, ReplyTo]),
     %% Construct the operation...
     Bucket = <<"search_broadcast">>,
     Key = <<"ignored">>,
@@ -102,6 +121,11 @@ wait_for_ready(RepliesRemaining, Ref, Partition, Node) ->
 command(PrefList, Req) ->
     riak_core_vnode_master:command(PrefList, Req, riak_search_vnode_master).
 
+%% Issue the command to the riak vnode
+command(PrefList, Req, Sender) ->
+    riak_core_vnode_master:command(PrefList, Req, Sender,
+                                   riak_search_vnode_master).
+
 %%
 %% Callbacks for riak_core_vnode
 %%
@@ -120,12 +144,22 @@ handle_command(#index_v1{index = Index,
                          value = Value,
                          props = Props},
                _Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
-    bmod_response(BMod:index(Index, Field, Term, Value, Props, BState), VState).
+    bmod_response(BMod:index(Index, Field, Term, Value, Props, BState), VState);
+handle_command(#info_v1{index = Index,
+                        field = Field,
+                        term = Term},
+               Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
+    bmod_response(BMod:info(Index, Field, Term, Sender, BState), VState).
 
-bmod_response(ok, VState) ->
+bmod_response(noreply, VState) ->
     {noreply, VState};
-bmod_response({ok, NewBState}, VState) ->
-    {noreply, VState#vstate{bstate=NewBState}}.
+bmod_response({reply, Reply}, VState) ->
+    {reply, Reply, VState};
+bmod_response({noreply, NewBState}, VState) ->
+    {noreply, VState#vstate{bstate=NewBState}};
+bmod_response({reply, Reply, NewBState}, VState) ->
+    {reply, Reply, VState#vstate{bstate=NewBState}}.
+
 
 
 %% handle_command({delete_entry, Index, Field, Term, DocId}, Sender,

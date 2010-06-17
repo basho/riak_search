@@ -22,7 +22,7 @@
 -author("John Muellerleile <johnm@basho.com>").
 -behavior(riak_search_backend).
 
--export([start/2,stop/1,index/6]).
+-export([start/2,stop/1,index/6,info/5]).
 -export([get/2,put/3,list/1,list_bucket/2,delete/2]).
 -export([fold/3, drop/1, is_empty/1, toggle_raptor_debug/0, shutdown_raptor/0]).
 -export([sync/0, poke/1, raptor_status/0]).
@@ -37,6 +37,7 @@
 
 -define(FOLD_TIMEOUT, 30000).
 -define(MAX_HANDOFF_STREAMS, 50).
+-define(INFO_TIMEOUT, 5000).
 
 %% @spec start(Partition :: integer(), Config :: proplist()) ->
 %%          {ok, state()} | {{error, Reason :: term()}, state()}
@@ -68,7 +69,25 @@ index(Index, Field, Term, Value, Props, State) ->
                       list_to_binary(Value),
                       Partition,
                       term_to_binary(Props)),
-    ok.
+    noreply.
+
+info(Index, Field, Term, Sender, State) ->
+    Partition = list_to_binary(integer_to_list(State#state.partition)),
+    spawn_link(fun() ->
+        {ok, Conn} = raptor_conn_sup:new_conn(),
+        try
+            {ok, StreamRef} = raptor_conn:info(
+                Conn,
+                list_to_binary(Index),
+                list_to_binary(Field),
+                list_to_binary(Term),
+                Partition),
+            receive_info_results(StreamRef, Sender)
+        after
+          raptor_conn:close(Conn)
+        end
+    end),
+    noreply.
 
 handle_command(State, {delete_entry, Index, Field, Term, DocId}) ->
     Partition = list_to_binary(integer_to_list(State#state.partition)),
@@ -117,20 +136,6 @@ handle_command(_State, {info_test__, _Index, _Field, Term, OutputPid, OutputRef}
     OutputPid ! {info_response, [{Term, node(), 1}], OutputRef},
     ok;
 
-handle_command(State, {info, Index, Field, Term, OutputPid, OutputRef}) ->
-    Partition = list_to_binary(integer_to_list(State#state.partition)),
-    spawn_link(fun() ->
-        {ok, Conn} = raptor_conn_sup:new_conn(),
-        {ok, StreamRef} = raptor_conn:info(
-            Conn,
-            list_to_binary(Index),
-            list_to_binary(Field),
-            list_to_binary(Term),
-            Partition),
-        receive_info_results(StreamRef, OutputPid, OutputRef),
-        raptor_conn:close(Conn)
-    end),
-    ok;
 
 handle_command(State, {info_range, Index, Field, StartTerm, EndTerm, _Size, OutputPid, OutputRef}) ->
     Partition = list_to_binary(integer_to_list(State#state.partition)),
@@ -251,14 +256,13 @@ receive_info_range_results(StreamRef, OutputPid, OutputRef, Results) ->
     end,
     ok.
 
-receive_info_results(StreamRef, OutputPid, OutputRef) ->
+receive_info_results(StreamRef, Sender) ->
     receive
         {info, StreamRef, Term, Count} ->
-            OutputPid ! {info_response, [{Term, node(), Count}], OutputRef};
-        Msg ->
-            io:format("receive_info_results(~p, ~p, ~p) -> ~p~n",
-                [StreamRef, OutputPid, OutputRef, Msg]),
-            OutputPid ! []
+            riak_search_backend:info_response(Sender, Term, node(), Count)
+    after
+        ?INFO_TIMEOUT ->
+            ok
     end,
     ok.
 
