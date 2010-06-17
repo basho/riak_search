@@ -1,6 +1,6 @@
 -module(solr_search).
 -export([
-    index_dir/1,
+    index_dir/1, 
     index_dir/2
 ]).
 
@@ -16,6 +16,7 @@ index_dir(Directory) ->
 %% to contain a solr formatted file.
 index_dir(IndexOrSchema, Directory) ->
     {ok, SolrClient} = riak_solr_app:local_client(),
+    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
     F = fun(_BaseName, Body) ->
         try
@@ -27,4 +28,7 @@ index_dir(IndexOrSchema, Directory) ->
         end
     end,
     riak_search_utils:index_recursive(F, Directory),
+    qilr_analyzer:close(AnalyzerPid),
     ok.
+
+

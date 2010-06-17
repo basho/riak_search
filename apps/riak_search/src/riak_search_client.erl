@@ -17,7 +17,7 @@
     query_as_graph/1,
 
     %% Indexing...
-    parse_idx_doc/1,
+    parse_idx_doc/2,
     get_idx_doc/2,
     store_idx_doc/1,
     index_term/5,
@@ -37,12 +37,10 @@
 parse_query(IndexOrSchema, Query) ->
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
     {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
-    try
-        qilr_parse:string(AnalyzerPid, Query, list_to_atom(Schema:default_op()),
-                          Schema:analyzer_factory())
-    after
-        qilr_analyzer:close(AnalyzerPid)
-    end.
+    Result = qilr_parse:string(AnalyzerPid, Query, list_to_atom(Schema:default_op()),
+                               Schema:analyzer_factory()),
+    qilr_analyzer:close(AnalyzerPid),
+    Result.
 
 %% Run the Query, return the list of keys.
 %% Timeout is in milliseconds.
@@ -83,44 +81,40 @@ explain(IndexOrSchema, QueryOps) ->
     riak_search_preplan:preplan(QueryOps, DefaultIndex, DefaultField, Facets).
 
 %% Parse a #riak_idx_doc{} record using the provided analyzer pid.
-parse_idx_doc(IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
-    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
-    try
-        %% Extract fields, get schema...
-        #riak_idx_doc{id=DocID, index=Index, fields=DocFields}=IdxDoc,
-        {ok, Schema} = riak_search_config:get_schema(Index),
+parse_idx_doc(AnalyzerPid, IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
+    %% Extract fields, get schema...
+    #riak_idx_doc{id=DocID, index=Index, fields=DocFields}=IdxDoc,
+    {ok, Schema} = riak_search_config:get_schema(Index),
 
 
-        %% Put together a list of Facet properties...
-        F1 = fun(Facet, Acc) ->
-                     FName = Schema:field_name(Facet),
-                     case lists:keyfind(FName, 1, DocFields) of
-                         {FName, Value} ->
-                             [{FName, Value}|Acc];
-                         false ->
-                             Acc
-                     end
-             end,
-        FacetProps = lists:foldl(F1, [], Schema:facets()),
-        %% For each Field = {FieldName, FieldValue}, split the FieldValue
-        %% into terms. Build a list of positions for those terms, then get
-        %% a de-duped list of the terms. For each, index the FieldName /
-        %% Term / DocID / Props.
-        F2 = fun({FieldName, FieldValue}, Acc2) ->
-                     {ok, Terms} = qilr_analyzer:analyze(AnalyzerPid, FieldValue, Schema:analyzer_factory()),
-                     PositionTree = get_term_positions(Terms),
-                     Terms1 = gb_trees:keys(PositionTree),
-                     F3 = fun(Term, Acc3) ->
-                                  Props = build_props(Term, PositionTree),
-                                  [{Index, FieldName, Term, DocID, Props ++ FacetProps}|Acc3]
-                          end,
-                     lists:foldl(F3, Acc2, Terms1)
-             end,
-        DocFields1 = DocFields -- FacetProps,
-        lists:foldl(F2, [], DocFields1)
-    after
-        qilr_analyzer:close(AnalyzerPid)
-    end.
+    %% Put together a list of Facet properties...
+    F1 = fun(Facet, Acc) ->
+        FName = Schema:field_name(Facet),
+        case lists:keyfind(FName, 1, DocFields) of
+            {FName, Value} ->
+                [{FName, Value}|Acc];
+            false ->
+                Acc
+        end
+    end,
+    FacetProps = lists:foldl(F1, [], Schema:facets()),
+
+    %% For each Field = {FieldName, FieldValue}, split the FieldValue
+    %% into terms. Build a list of positions for those terms, then get
+    %% a de-duped list of the terms. For each, index the FieldName /
+    %% Term / DocID / Props.
+    F2 = fun({FieldName, FieldValue}, Acc2) ->
+        {ok, Terms} = qilr_analyzer:analyze(AnalyzerPid, FieldValue, Schema:analyzer_factory()),
+        PositionTree = get_term_positions(Terms),
+        Terms1 = gb_trees:keys(PositionTree),
+        F3 = fun(Term, Acc3) ->
+            Props = build_props(Term, PositionTree),
+            [{Index, FieldName, Term, DocID, Props ++ FacetProps}|Acc3]
+        end,
+        lists:foldl(F3, Acc2, Terms1)
+    end,
+    DocFields1 = DocFields -- FacetProps,
+    lists:foldl(F2, [], DocFields1).
 
 get_idx_doc(DocIndex, DocID) ->
     DocBucket = to_binary(from_binary(DocIndex) ++ "_docs"),

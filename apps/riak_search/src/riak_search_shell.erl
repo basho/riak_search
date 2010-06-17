@@ -9,15 +9,12 @@
 
 start(Index) ->
     {ok, P} = qilr_analyzer_sup:new_analyzer(),
-    try
-        {ok, Client} = riak_search:local_client(),
-        read_input(#state{client=Client,
-                          index=Index,
-                          analyzer=P,
-                          handler=fun riak_search_shell:search/2}, [])
-    after
-        qilr_analyzer:close(P)
-    end.
+    {ok, Client} = riak_search:local_client(),
+    read_input(#state{client=Client,
+                      index=Index,
+                      analyzer=P,
+                      handler=fun riak_search_shell:search/2}, []),
+    qilr_analyzer:close(P).
 
 start() ->
     start("search").

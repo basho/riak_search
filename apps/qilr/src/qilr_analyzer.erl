@@ -97,7 +97,6 @@ code_change(_OldVsn, State, _Extra) ->
 service_connect(Port) ->
     gen_tcp:connect("127.0.0.1", Port, [binary, {active, once},
                                         {packet, 4},
-                                        {linger, {true, 0}},
                                         {nodelay, true}], 1000).
 
 parse_results([0]) ->

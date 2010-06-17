@@ -1,6 +1,8 @@
 -module(riak_solr_search_client, [Client]).
--export([parse_solr_xml/2,
-         run_solr_command/3
+-export([
+    parse_solr_xml/2,
+    parse_solr_xml/3,
+    run_solr_command/3
 ]).
 
 -define(DEFAULT_INDEX, "search").
@@ -9,6 +11,13 @@
 
 %% Parse a solr XML formatted file.
 parse_solr_xml(IndexOrSchema, Body) when is_binary(Body) ->
+    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
+    Result = parse_solr_xml(AnalyzerPid, IndexOrSchema, Body),
+    qilr_analyzer:close(AnalyzerPid),
+    Result.
+
+%% Index a solr XML formatted file using the provided analyzer pid.
+parse_solr_xml(AnalyzerPid, IndexOrSchema, Body) ->
     %% Get the schema...
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
     Index = Schema:name(),
@@ -16,22 +25,21 @@ parse_solr_xml(IndexOrSchema, Body) when is_binary(Body) ->
     %% Parse the xml...
     {ok, Command, Entries} = riak_solr_xml_xform:xform(Body),
 
-    ParsedDocs = [parse_solr_entry(Index, Command, X) || X <- Entries],
+    ParsedDocs = [parse_solr_entry(AnalyzerPid, Index, Command, X) || X <- Entries],
     {ok, Command, ParsedDocs}.
-
 
 %% @private
 %% Parse a document to add...
-parse_solr_entry(Index, add, {"doc", Entry}) ->
+parse_solr_entry(AnalyzerPid, Index, add, {"doc", Entry}) ->
     IdxDoc = to_riak_idx_doc(Index, Entry),
-    {IdxDoc, Client:parse_idx_doc(IdxDoc)};
+    {IdxDoc, Client:parse_idx_doc(AnalyzerPid, IdxDoc)};
 
 %% Deletion by ID or Query. If query, then parse...
-parse_solr_entry(_Index, delete, {"id", ID}) ->
+parse_solr_entry(_AnalyzerPid, _Index, delete, {"id", ID}) ->
     {'id', ID};
-parse_solr_entry(_Index, delete, {"query", Query}) ->
+parse_solr_entry(_AnalyzerPid, _Index, delete, {"query", Query}) ->
     case Client:parse_query(Query) of
-        {ok, QueryOps} ->
+        {ok, QueryOps} -> 
             {'query', QueryOps};
         {error, Error} ->
             M = "Error parsing query '~s': ~p~n",
@@ -40,19 +48,20 @@ parse_solr_entry(_Index, delete, {"query", Query}) ->
     end;
 
 %% Some unknown command...
-parse_solr_entry(_, Command, Entry) ->
+parse_solr_entry(_, _, Command, Entry) ->
     throw({?MODULE, unknown_command, Command, Entry}).
+        
 
 %% @private
 to_riak_idx_doc(Index, Doc) ->
     case lists:keyfind("id", 1, Doc) of
-        {"id", Id} ->
+        {"id", Id} -> 
             Id;
         false ->
             Id = undefined, % Prevent compiler warnings.
             throw({?MODULE, required_field_not_found, "id", Doc})
     end,
-    Fields = lists:keydelete("id", 1, Doc),
+    Fields = lists:keydelete("id", 1, Doc), 
     #riak_idx_doc{id=Id, index=Index, fields=Fields, props=[]}.
 
 
@@ -68,7 +77,7 @@ run_solr_command(Schema, add, [{IdxDoc, Terms}|Docs]) ->
         Client:index_term(Index, Field, Term, DocID, Props)
     end,
     plists:map(F, Terms, {processes, 4}),
-
+    
     %% Store the document.
     Client:store_idx_doc(IdxDoc),
     run_solr_command(Schema, add, Docs);
