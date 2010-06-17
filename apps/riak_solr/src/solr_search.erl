@@ -17,7 +17,6 @@ index_dir(Directory) ->
 index_dir(IndexOrSchema, Directory) ->
     {ok, SolrClient} = riak_solr_app:local_client(),
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
-    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
     F = fun(_BaseName, Body) ->
         try
             {ok, Command, Docs} = SolrClient:parse_solr_xml(Schema, Body),
@@ -26,10 +25,4 @@ index_dir(IndexOrSchema, Directory) ->
             M = "Could not parse docs '~s'.~n~p~n~p~n",
             error_logger:error_msg(M, [Schema:name(), Error, erlang:get_stacktrace()])
         end
-    end,
-    try
-        riak_search_utils:index_recursive(F, Directory),
-        ok
-    after
-        qilr_analyzer:close(AnalyzerPid)
     end.
