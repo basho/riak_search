@@ -1,7 +1,6 @@
 -module(testing_config).
 
 -include_lib("eunit/include/eunit.hrl").
--include_lib("riak_solr/include/riak_solr.hrl").
 
 parse_test_() ->
     [{setup, fun() -> start_config_server() end,
