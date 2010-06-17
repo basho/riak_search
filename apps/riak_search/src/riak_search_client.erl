@@ -36,9 +36,11 @@
 %% Error}.
 parse_query(Query) ->
     {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
-    Result = qilr_parse:string(AnalyzerPid, Query),
-    qilr_analyzer:close(AnalyzerPid),
-    Result.
+    try
+        qilr_parse:string(AnalyzerPid, Query)
+    after
+        qilr_analyzer:close(AnalyzerPid)
+    end.
 
 %% Run the Query, return the list of keys.
 %% Timeout is in milliseconds.
