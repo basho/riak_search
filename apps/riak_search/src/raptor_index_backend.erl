@@ -43,7 +43,7 @@ start(Partition, _Config) ->
     {ok, #state { partition=Partition, conn=Conn }}.
 
 %% @spec stop(state()) -> ok | {error, Reason :: term()}
-stop(#state{conn=Conn}=State) ->
+stop(#state{conn=Conn}) ->
     raptor_conn:close(Conn),
     ok.
 
