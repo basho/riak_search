@@ -7,6 +7,7 @@ from_eterm({schema, SchemaProps, FieldDefs}) ->
     Name = proplists:get_value(name, SchemaProps),
     Version = proplists:get_value(version, SchemaProps),
     DefaultField = proplists:get_value(default_field, SchemaProps),
+    AnalyzerFactory = proplists:get_value(analyzer_factory, SchemaProps),
     DefaultOp = case proplists:get_value(default_op, SchemaProps, "or") of
                     Op when Op =:= "and" orelse Op =:= "or" ->
                         Op;
@@ -23,7 +24,8 @@ from_eterm({schema, SchemaProps, FieldDefs}) ->
                     {error, {malformed_schema, {schema, SchemaProps}}};
                 false ->
                     Fields = parse_fields(FieldDefs, []),
-                    {ok, riak_search_schema:new(Name, Version, DefaultField, Fields, DefaultOp)}
+                    {ok, riak_search_schema:new(Name, Version, DefaultField, Fields,
+                                                DefaultOp, AnalyzerFactory)}
             end
     end.
 

@@ -18,7 +18,7 @@ optimize(AnalyzerPid, {ok, Query0}, Opts) when is_list(Query0) ->
     end;
 optimize(_, {error, {_, _, [_Message, [91, Error, 93]]}}, _) ->
     Err = [list_to_integer(M) || M <- Error,
-                                  is_list(M)],
+                                 is_list(M)],
     throw({syntax_error, Err});
 optimize(_, Error, _) ->
     throw(Error).
@@ -44,24 +44,25 @@ consolidate_exprs([H|T], Acc) ->
 consolidate_exprs(Term, Acc) ->
     lists:reverse([Term|Acc]).
 
-process_terms(AnalyzerPid, Query, _Opts) ->
-  analyze_terms(AnalyzerPid, Query, []).
+process_terms(AnalyzerPid, Query, Opts) ->
+    AnalyzerFactory = proplists:get_value(analyzer_factory, Opts),
+    analyze_terms(AnalyzerPid, AnalyzerFactory, Query, []).
 
-analyze_terms(_AnalyzerPid, [], Acc) ->
-  lists:reverse(Acc);
-analyze_terms(AnalyzerPid, [{Op, Terms}|T], Acc) when Op =:= land;
-                                                      Op =:= lor;
-                                                      Op =:= group ->
-    case analyze_terms(AnalyzerPid, Terms, []) of
+analyze_terms(_AnalyzerPid, _AnalyzerFactory, [], Acc) ->
+    lists:reverse(Acc);
+analyze_terms(AnalyzerPid, AnalyzerFactory, [{Op, Terms}|T], Acc) when Op =:= land;
+                                                                       Op =:= lor;
+                                                                       Op =:= group ->
+    case analyze_terms(AnalyzerPid, AnalyzerFactory, Terms, []) of
         [] ->
-            analyze_terms(AnalyzerPid, T, Acc);
+            analyze_terms(AnalyzerPid, AnalyzerFactory, T, Acc);
         NewTerms ->
-            analyze_terms(AnalyzerPid, T, [{Op, NewTerms}|Acc])
+            analyze_terms(AnalyzerPid, AnalyzerFactory, T, [{Op, NewTerms}|Acc])
     end;
-analyze_terms(AnalyzerPid, [{field, FieldName, TermText, TProps}|T], Acc) ->
+analyze_terms(AnalyzerPid, AnalyzerFactory, [{field, FieldName, TermText, TProps}|T], Acc) ->
     NewTerm = case string:chr(TermText, $\ ) of
                   0 ->
-                      case analyze_term_text(AnalyzerPid, TermText) of
+                      case analyze_term_text(AnalyzerPid, AnalyzerFactory, TermText) of
                           {single, NewText} ->
                               {field, FieldName, NewText, TProps};
                           {multi, NewTexts} ->
@@ -72,7 +73,7 @@ analyze_terms(AnalyzerPid, [{field, FieldName, TermText, TProps}|T], Acc) ->
                               none
                       end;
                   _ ->
-                      case analyze_term_text(AnalyzerPid, TermText) of
+                      case analyze_term_text(AnalyzerPid, AnalyzerFactory, TermText) of
                           {single, NewText} ->
                               BaseQuery = {field, FieldName, NewText, TProps},
                               {phrase, TermText, BaseQuery};
@@ -87,15 +88,15 @@ analyze_terms(AnalyzerPid, [{field, FieldName, TermText, TProps}|T], Acc) ->
               end,
     case NewTerm of
         none ->
-            analyze_terms(AnalyzerPid, T, Acc);
+            analyze_terms(AnalyzerPid, AnalyzerFactory, T, Acc);
         _ ->
-            analyze_terms(AnalyzerPid, T, [NewTerm|Acc])
+            analyze_terms(AnalyzerPid, AnalyzerFactory, T, [NewTerm|Acc])
     end;
 
-analyze_terms(AnalyzerPid, [{term, TermText, TProps}|T], Acc) ->
+analyze_terms(AnalyzerPid, AnalyzerFactory, [{term, TermText, TProps}|T], Acc) ->
     NewTerm = case string:chr(TermText, $\ ) of
                   0 ->
-                      case analyze_term_text(AnalyzerPid, TermText) of
+                      case analyze_term_text(AnalyzerPid, AnalyzerFactory, TermText) of
                           {single, NewText} ->
                               {term, NewText, TProps};
                           {multi, NewTexts} ->
@@ -106,7 +107,7 @@ analyze_terms(AnalyzerPid, [{term, TermText, TProps}|T], Acc) ->
                               none
                       end;
                   _ ->
-                      case analyze_term_text(AnalyzerPid, TermText) of
+                      case analyze_term_text(AnalyzerPid, AnalyzerFactory, TermText) of
                           {single, NewText} ->
                               BaseQuery = {term, NewText, TProps},
                               {phrase, TermText, [{base_query, BaseQuery}|TProps]};
@@ -121,12 +122,12 @@ analyze_terms(AnalyzerPid, [{term, TermText, TProps}|T], Acc) ->
               end,
     case NewTerm of
         none ->
-            analyze_terms(AnalyzerPid, T, Acc);
+            analyze_terms(AnalyzerPid, AnalyzerFactory, T, Acc);
         _ ->
-            analyze_terms(AnalyzerPid, T, [NewTerm|Acc])
+            analyze_terms(AnalyzerPid, AnalyzerFactory, T, [NewTerm|Acc])
     end;
-analyze_terms(AnalyzerPid, [H|T], Acc) ->
-    analyze_terms(AnalyzerPid, T, [H|Acc]).
+analyze_terms(AnalyzerPid, AnalyzerFactory, [H|T], Acc) ->
+    analyze_terms(AnalyzerPid, AnalyzerFactory, T, [H|Acc]).
 
 default_bool([{term, _, _}=H|T], Opts) ->
     DefaultBool = proplists:get_value(default_bool, Opts),
@@ -153,20 +154,7 @@ default_bool_children([H|T], Opts) ->
 default_bool_children(Query, _Opts) ->
     Query.
 
-%% needs_implicit_bool(term, T) when length(T) > 0 ->
-%%     true;
-%% needs_implicit_bool(group, T) when length(T) > 0 ->
-%%     true;
-%% needs_implicit_bool(lnot, T) when length(T) > 0 ->
-%%     true;
-%% needs_implicit_bool(lor, T) when length(T) > 0 ->
-%%     true;
-%% needs_implicit_bool(land, T) when length(T) > 0 ->
-%%     true;
-%% needs_implicit_bool(_, _) ->
-%%     false.
-
-analyze_term_text(AnalyzerPid, Text0) ->
+analyze_term_text(AnalyzerPid, AnalyzerFactory, Text0) ->
     Start = hd(Text0),
     End = hd(lists:reverse(Text0)),
     Text = case Start == $" andalso End == $" of
@@ -175,7 +163,7 @@ analyze_term_text(AnalyzerPid, Text0) ->
                false ->
                    Text0
            end,
-    case qilr_analyzer:analyze(AnalyzerPid, Text) of
+    case qilr_analyzer:analyze(AnalyzerPid, Text, AnalyzerFactory) of
         {ok, []} ->
             none;
         {ok, [Token]} ->
