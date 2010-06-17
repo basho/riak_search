@@ -1,19 +1,19 @@
 package com.basho.search.analysis.server;
 
+import java.io.FileOutputStream;
 import java.util.Iterator;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import java.net.InetAddress;
 
 import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelHandlerContext;
 import org.jboss.netty.channel.ChannelPipelineCoverage;
+import org.jboss.netty.channel.ChannelStateEvent;
 import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
-import org.jboss.netty.channel.ChannelState;
-import org.jboss.netty.channel.ChannelStateEvent;
 
+import com.basho.search.analysis.DefaultAnalyzerFactory;
 import com.basho.search.analysis.TextAnalyzer;
 import com.basho.search.proto.Analysis.AnalysisError;
 import com.basho.search.proto.Analysis.AnalysisRequest;
@@ -22,6 +22,8 @@ import com.basho.search.proto.Analysis.AnalysisResult;
 @ChannelPipelineCoverage("all")
 public class AnalysisHandler extends SimpleChannelUpstreamHandler {
 
+   private static final String DEFAULT_ANALYZER_FACTORY = DefaultAnalyzerFactory.class.getName();
+   
    private static final Logger logger = Logger.getLogger(AnalysisHandler.class.getName());
 
    @Override
@@ -36,19 +38,28 @@ public class AnalysisHandler extends SimpleChannelUpstreamHandler {
    
    public void messageReceived(ChannelHandlerContext ctx, MessageEvent e) {
       AnalysisRequest request = (AnalysisRequest) e.getMessage();
-      if (request.getText().equals("__basho_analyzer_monitor_stop__")) {
-         System.exit(0);
-      }
-      else {
-         doAnalyze(request, e);
-      }
+      doAnalyze(request, e);
    }
    
    private void doAnalyze(AnalysisRequest request, MessageEvent e) {
       String text = request.getText();
+      String analyzerFactory = DEFAULT_ANALYZER_FACTORY;
+      if (request.hasAnalyzerFactory()) {
+         analyzerFactory = request.getAnalyzerFactory();
+      }
+      try {
+         String message = "Calling " + analyzerFactory + "\n";
+         FileOutputStream fout = new FileOutputStream("/tmp/analyzer_out.txt", true);
+         fout.write(message.getBytes());
+         message = "Client sent " + request.getAnalyzerFactory() + "\n";
+         fout.write(message.getBytes());
+         fout.close();
+      }
+      catch (Exception ex) {}
+
       Channel chan = e.getChannel();
       try {
-         List<String> tokens = TextAnalyzer.analyze(text);
+         List<String> tokens = TextAnalyzer.analyze(text, analyzerFactory);
          if (tokens.size() > 0) {
             StringBuilder buf = new StringBuilder();
             if (tokens.size() == 1) {

@@ -156,17 +156,8 @@ normalize_field(OriginalField, Config) when is_list(OriginalField) ->
 normalize_field(Field, _) when is_tuple(Field) -> Field.
 
 
-%% Possibly rewrite a term. The term may be a "special" term, so
-%% we rewrite it to a subterm_type. Or, it may be a facet.
-rewrite_term({Index, "date", Term}, Options, _Config) ->
-    case riak_search_utils:parse_datetime(Term) of
-        {YMD, HMS} ->
-            SubTerm = riak_search_utils:date_to_subterm({YMD, HMS}),
-            #term { q={Index, subterm, {1, SubTerm}}, options=[facet|Options]};
-        error ->
-            throw({could_not_parse_date, Term})
-    end;
-
+%% Rewrite a term, adding either a facet flag or node weights
+%% depending on whether this is a facet.
 rewrite_term(Q, Options, Config) ->
     case is_facet(Q, Config) of
         true ->

@@ -7,7 +7,7 @@
 -include_lib("eunit/include/eunit.hrl").
 
 %% API
--export([start_link/0, analyze/2, close/1]).
+-export([start_link/0, analyze/2, analyze/3, close/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -26,9 +26,14 @@ analyze(Pid, Text) when is_list(Text) ->
             Error
     end;
 analyze(Pid, Text) when is_binary(Text) ->
-    case gen_server:call(Pid, {analyze, Text}) of
+    analyze(Pid, Text, undefined).
+
+analyze(Pid, Text, AnalyzerFactory) when is_list(Text) ->
+    analyze(Pid, list_to_binary(Text), AnalyzerFactory);
+analyze(Pid, Text, AnalyzerFactory) ->
+    case gen_server:call(Pid, {analyze, Text, AnalyzerFactory}) of
         ignore ->
-            analyze(Pid, Text);
+            analyze(Pid, Text, AnalyzerFactory);
         R ->
             R
     end.
@@ -62,8 +67,8 @@ handle_call(close, _From, #state{socket=Sock}=State) ->
     gen_tcp:close(Sock),
     {stop, normal, ok, State};
 
-handle_call({analyze, Text}, From, #state{socket=Sock, caller=undefined}=State) ->
-    Req = #analysisrequest{text=Text},
+handle_call({analyze, Text, Factory}, From, #state{socket=Sock, caller=undefined}=State) ->
+    Req = #analysisrequest{text=Text, analyzer_factory=Factory},
     gen_tcp:send(Sock, analysis_pb:encode_analysisrequest(Req)),
     inet:setopts(Sock, [{active, once}]),
     {noreply, State#state{caller=From}};

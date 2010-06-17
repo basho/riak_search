@@ -17,7 +17,7 @@
 -author("Rusty Klophaus <rusty@basho.com>").
 -include("merge_index.hrl").
 -export([
-    ift_pack/5,
+    ift_pack/3,
     ift_unpack/1,
     fold/3,
     read_value/1,
@@ -28,24 +28,20 @@
     ets_next/2
 ]).
 
-ift_pack(IndexID, FieldID, TermID, SubType, SubTerm) ->
+ift_pack(IndexID, FieldID, TermID) ->
     <<
         IndexID:24/integer, 
         FieldID:24/integer,
-        TermID:32/integer,
-        SubType:16/integer,
-        SubTerm:64/integer
+        TermID:32/integer
         >>.
 
 ift_unpack(IFT) ->
     <<
         IndexID:24/integer, 
         FieldID:24/integer,
-        TermID:32/integer,
-        SubType:16/integer,
-        SubTerm:64/integer
+        TermID:32/integer
         >> = IFT,
-    {IndexID, FieldID, TermID, SubType, SubTerm}.
+    {IndexID, FieldID, TermID}.
 
 fold(F, Acc, Resource) ->
     case F(Resource, Acc) of

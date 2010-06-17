@@ -1,24 +1,22 @@
+option java_package = "raptor.protobuf";
+option java_outer_classname = "Messages";
+
 message Index {
     required string index = 1;
     required string field = 2;
     required string term = 3;
-    required string subtype = 4;
-    required string subterm = 5;
-    required string value = 6;
-    required string partition = 7;
-    required string message_type = 8;
-    required bytes  props = 9;
+    required string value = 4;
+    required string partition = 5;
+    required string message_type = 6;
+    required bytes  props = 7;
 }
 
 message Stream {
     required string index = 1;
     required string field = 2;
     required string term = 3;
-    required string subtype = 4;
-    required string start_subterm = 5;
-    required string end_subterm = 6;
-    required string partition = 7;
-    required string message_type = 8;
+    required string partition = 4;
+    required string message_type = 5;
 }
 
 message Info {
@@ -26,7 +24,7 @@ message Info {
     required string field = 2;
     required string term = 3;
     required string partition = 4;
-    required string message_type = 8;
+    required string message_type = 5;
 }
 
 message InfoRange {
@@ -35,7 +33,7 @@ message InfoRange {
     required string start_term = 3;
     required string end_term = 4;
     required string partition = 5;
-    required string message_type = 8;
+    required string message_type = 6;
 }
 
 message CatalogQuery {
@@ -56,9 +54,9 @@ message DeleteEntry {
     required string index = 1;
     required string field = 2;
     required string term = 3;
-    required string doc_id = 6;
-    required string partition = 7;
-    required string message_type = 8;
+    required string doc_id = 4;
+    required string partition = 5;
+    required string message_type = 6;
 }
 
 message StreamResponse {
@@ -82,4 +80,3 @@ message CatalogQueryResponse {
 message CommandResponse {
     required string response = 1;
 }
-

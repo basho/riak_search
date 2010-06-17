@@ -4,7 +4,7 @@
 
 -export([
     %% Searching...
-    parse_query/1,
+    parse_query/2,
     search/5,
     search_doc/5,
 
@@ -34,7 +34,8 @@
 
 %% Parse the provided query. Returns either {ok, QueryOps} or {error,
 %% Error}.
-parse_query(Query) ->
+parse_query(IndexOrSchema, Query) ->
+    {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
     {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
     try
         qilr_parse:string(AnalyzerPid, Query)
@@ -104,7 +105,7 @@ parse_idx_doc(AnalyzerPid, IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
     %% a de-duped list of the terms. For each, index the FieldName /
     %% Term / DocID / Props.
     F2 = fun({FieldName, FieldValue}, Acc2) ->
-        {ok, Terms} = qilr_analyzer:analyze(AnalyzerPid, FieldValue),
+        {ok, Terms} = qilr_analyzer:analyze(AnalyzerPid, FieldValue, Schema:analyzer_factory()),
         PositionTree = get_term_positions(Terms),
         Terms1 = gb_trees:keys(PositionTree),
         F3 = fun(Term, Acc3) ->
@@ -166,20 +167,12 @@ build_props(Term, PositionTree) ->
 
 %% Index the specified term.
 index_term(Index, Field, Term, Value, Props) ->
-    IndexBin = riak_search_utils:to_binary(Index),
-    FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-    Payload = {index, Index, Field, Term, Value, Props},
-
-    %% Run the operation...
-    Obj = riak_object:new(IndexBin, FieldTermBin, Payload),
-    RiakClient:put(Obj, 0).
+    {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
+    riak_search_vnode:index(Partition, N, Index, Field, Term, Value, Props).
 
 delete_term(Index, Field, Term, DocId) ->
-    IndexBin = riak_search_utils:to_binary(Index),
-    FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-    Payload = {delete_entry, Index, Field, Term, DocId},
-    Obj = riak_object:new(IndexBin, FieldTermBin, Payload),
-    RiakClient:put(Obj, 0).
+    {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
+    riak_search_vnode:delete(Partition, N, Index, Field, Term, DocId).
 
 truncate_list(QueryStart, QueryRows, List) ->
     %% Remove the first QueryStart results...

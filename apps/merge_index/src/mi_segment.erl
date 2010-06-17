@@ -120,7 +120,6 @@ when LastIFT == IFT andalso LastValue /= Value ->
 from_iterator_inner(FH, Offset, Pos, Count, LastIFT, LastValue, {{IFT, Value, _Props, _TS}, Iterator}, Table)
 when LastIFT == IFT andalso LastValue == Value ->
     %% Skip...
-    ?PRINT({skipping, Value}),
     from_iterator_inner(FH, Offset, Pos, Count, LastIFT, LastValue, Iterator(), Table);
 
 from_iterator_inner(_FH, 0, 0, 0, undefined, undefined, eof, _Table) ->

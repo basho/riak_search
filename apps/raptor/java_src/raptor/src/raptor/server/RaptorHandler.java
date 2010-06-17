@@ -227,9 +227,6 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
          RaptorServer.idx.stream(msg.getIndex(),
                                  msg.getField(),
                                  msg.getTerm(),
-                                 msg.getSubtype(),
-                                 msg.getStartSubterm(),
-                                 msg.getEndSubterm(),
                                  msg.getPartition(),
                                  new ResultHandler() {
                                         public void handleResult(byte[] key, byte[] value) {

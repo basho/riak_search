@@ -16,7 +16,7 @@ search(Q) ->
 
 search(Index, Q) ->
     {ok, Client} = riak_search:local_client(),
-    case Client:parse_query(Q) of
+    case Client:parse_query(Index, Q) of
         {ok, Ops} ->
             Client:search(Index, Ops, 0, 10000, 60000);
         {error, Error} ->
@@ -30,7 +30,7 @@ search_doc(Q) ->
 
 search_doc(Index, Q) ->
     {ok, Client} = riak_search:local_client(),
-    case Client:parse_query(Q) of
+    case Client:parse_query(Index, Q) of
         {ok, Ops} ->
             Client:search_doc(Index, Ops, 0, 10000, 60000);
         {error, Error} ->
@@ -44,7 +44,7 @@ explain(Q) ->
 
 explain(Index, Q) ->
     {ok, Client} = riak_search:local_client(),
-    case Client:parse_query(Q) of
+    case Client:parse_query(Index, Q) of
         {ok, Ops} ->
             Client:explain(Index, Ops);
         {error, Error} ->

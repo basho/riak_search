@@ -3,7 +3,6 @@
 -export([
     iterator_chain/3,
     combine_terms/2,
-    date_to_subterm/1,
     parse_datetime/1,
     to_atom/1,
     to_binary/1,
@@ -12,7 +11,8 @@
     to_integer/1,
     to_float/1,
     from_binary/1,
-    index_recursive/2
+    index_recursive/2,
+    calc_n_partition/3
 ]).
 
 -include("riak_search.hrl").
@@ -115,33 +115,14 @@ to_integer(L) when is_list(L) -> list_to_integer(L).
 to_float(F) ->
     list_to_float(to_list(F)).
 
-to_boolean(B) -> 
+to_boolean(B) ->
     A = to_atom(B),
     (A == yes) orelse (A == true) orelse (A == '1').
 
-from_binary(B) when is_binary(B) -> 
+from_binary(B) when is_binary(B) ->
     binary_to_list(B);
-from_binary(L) -> 
+from_binary(L) ->
     L.
-
-%%% Convert a date to a 64-bit SubTerm integer.
-date_to_subterm(min) ->
-    <<0, 0, 0, 0, 0, 0, 0>>;
-date_to_subterm(max) ->
-    <<255, 255, 255, 255, 255, 255, 255, 255>>;
-date_to_subterm({{Y,M,D}, min}) ->
-    EndBits = <<0, 0, 0, 0, 0>>,
-    <<SubTerm:64/integer>> = <<Y:16/integer, M:4/integer, D:4/integer, EndBits:5/binary>>,
-    SubTerm;
-date_to_subterm({{Y,M,D}, max}) ->
-    EndBits = <<255, 255, 255, 255, 255>>,
-    <<SubTerm:64/integer>> = <<Y:16/integer, M:4/integer, D:4/integer, EndBits:5/binary>>,
-    SubTerm;
-date_to_subterm({{Y,M,D}, {HH,MM,SS}}) ->
-    <<SubTerm:64/integer>> = <<Y:16/integer, M:4/integer, D:4/integer, HH:4/integer, MM:4/integer, SS:4/integer, 0:28/integer>>,
-    SubTerm;
-date_to_subterm(Other) ->
-    throw({date_to_subterm, unknown_format, Other}).
 
 %% Parse a list date into {{Y, M, D}, {H, M, S}}.
 
@@ -216,3 +197,16 @@ index_recursive_file(Callback, File) ->
         Err ->
             io:format("index_file(~p): error: ~p~n", [File, Err])
     end.
+
+%% @private
+%% Calculate N and a partition number for an index/field/term combination
+calc_n_partition(Index, Field, Term) ->
+    %% Lookup N for the index
+    IndexBin = riak_search_utils:to_binary(Index),
+    Bucket = riak_core_bucket:get_bucket(IndexBin),
+    {value, {n_val, N}} = lists:keysearch(n_val, 1, Bucket),
+
+    %% Work out which partition to use
+    FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
+    Partition = riak_core_util:chash_key({FieldTermBin, IndexBin}),
+    {N, Partition}.
