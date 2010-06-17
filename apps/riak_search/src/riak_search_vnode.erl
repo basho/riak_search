@@ -9,8 +9,7 @@
 -record(vstate, {idx, bmod, bstate}).
 -record(index_v1, {index, field, term, value, props}).
 
--export([other_index/6]).
-other_index(PrefList, Index, Field, Term, Value, Props) ->
+index(PrefList, Index, Field, Term, Value, Props) ->
     Req = #index_v1{
       index = Index,
       field = Field,
@@ -19,16 +18,6 @@ other_index(PrefList, Index, Field, Term, Value, Props) ->
       props = Props
      },
     command(PrefList, Req).
-
-index(_Preflist, Index, Field, Term, Value, Props) ->
-    IndexBin = riak_search_utils:to_binary(Index),
-    FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-    Payload = {index, Index, Field, Term, Value, Props},
-    %% Run the operation...
-    Obj = riak_object:new(IndexBin, FieldTermBin, Payload),
-    {ok, RiakClient} = riak:local_client(),
-    RiakClient:put(Obj, 0).
-
 
 delete_term(_Partition, _Nval, Index, Field, Term, DocId) ->
     IndexBin = riak_search_utils:to_binary(Index),
