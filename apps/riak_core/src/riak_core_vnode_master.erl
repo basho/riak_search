@@ -33,7 +33,6 @@
 
 make_name(VNodeMod,Suffix) -> list_to_atom(atom_to_list(VNodeMod)++Suffix).
 reg_name(VNodeMod) ->  make_name(VNodeMod, "_master").
-sup_name(VNodeMod) ->  make_name(VNodeMod, "_sup").
 
 start_link(VNodeMod) -> 
     RegName = reg_name(VNodeMod),
@@ -51,17 +50,19 @@ init([VNodeMod, RegName]) ->
     %% Get the current list of vnodes running in the supervisor. We use this
     %% to rebuild our ETS table for routing messages to the appropriate
     %% vnode.
-    SupName = sup_name(VNodeMod),
     VnodePids = [Pid || {_, Pid, worker, _}
-                            <- supervisor:which_children(SupName)],
+                            <- supervisor:which_children(riak_core_vnode_sup)],
     IdxTable = ets:new(RegName, [{keypos, 2}]),
-    
-    F = fun(Pid) ->
-                Idx = riak_core_vnode:get_index(Pid),
+    PidIdxs = [{Pid, riak_core_vnode:get_mod_index(Pid)} || Pid <- VnodePids],
+
+    %% Populate the ETS table with processes running this VNodeMod (filtered
+    %% in the list comprehension)
+    F = fun(Pid, Idx) ->
                 Mref = erlang:monitor(process, Pid),
                 #idxrec { idx = Idx, pid = Pid, monref = Mref }
         end,
-    true = ets:insert_new(IdxTable, [F(Pid) || Pid <- VnodePids]),
+    IdxRecs = [F(Pid, Idx) || {Pid, {Mod, Idx}} <- PidIdxs, Mod =:= VNodeMod],
+    true = ets:insert_new(IdxTable, IdxRecs),
     {ok, #state{idxtab=IdxTable,
                 vnode_mod=VNodeMod}}.
 
