@@ -25,4 +25,5 @@ index_dir(IndexOrSchema, Directory) ->
             M = "Could not parse docs '~s'.~n~p~n~p~n",
             error_logger:error_msg(M, [Schema:name(), Error, erlang:get_stacktrace()])
         end
-    end.
+    end,
+    riak_search_utils:index_recursive(F, Directory).
