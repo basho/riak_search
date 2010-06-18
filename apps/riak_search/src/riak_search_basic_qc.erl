@@ -1,7 +1,7 @@
 -module(riak_search_basic_qc).
 -export([
-    test_all/0, 
-    test_all/1,
+    test/0, 
+    test/1,
     test_index_search/1
 ]).
 -import(riak_search_utils, [to_list/1]).
@@ -14,12 +14,13 @@
 -include("riak_search.hrl").
 
 
-test_all() -> 
-    test_all(100).
-test_all(N) ->
+test() -> 
+    test(100).
+test(N) ->
     eqc:quickcheck(numtests(N, prop_index())),
     eqc:quickcheck(numtests(N, prop_index_search())),
-    eqc:quickcheck(numtests(N, prop_index_search_delete())).
+    eqc:quickcheck(numtests(N, prop_index_search_delete())),
+    ok.
 
 test_index_search(N) ->
     eqc:quickcheck(numtests(N, prop_index_search())).
