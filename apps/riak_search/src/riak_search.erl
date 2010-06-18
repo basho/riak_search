@@ -17,8 +17,13 @@ local_client() ->
     {ok, riak_search_client:new(Client)}.
 
 stream(Index, Field, Term, FilterFun) ->
-    {_N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
-    riak_search_vnode:stream(Partition, 1, Index, Field, Term, FilterFun, self()).
+    {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
+    %% Calculate the preflist with full N but then only ask the first
+    %% node in it.  Preflists are ordered with primaries first followed
+    %% by fallbacks, so this will prefer a primary node over a fallback.
+    [FirstEntry|_] = riak_core_apl:get_apl(Partition, N),
+    Preflist = [FirstEntry],
+    riak_search_vnode:stream(Preflist, Index, Field, Term, FilterFun, self()).
 
 info(Index, Field, Term) ->
     {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),

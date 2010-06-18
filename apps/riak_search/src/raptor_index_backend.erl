@@ -55,22 +55,22 @@ put(State, _BKey, ObjBin) ->
     Command = riak_object:get_value(Obj),
     handle_command(State, Command).
 
-handle_command(State, {index, Index, Field, Term, Value, Props}) ->
-    TS = mi_utils:now_to_timestamp(erlang:now()),
-    handle_command(State, {index, Index, Field, Term, Value, Props, TS});
+%% handle_command(State, {index, Index, Field, Term, Value, Props}) ->
+%%     TS = mi_utils:now_to_timestamp(erlang:now()),
+%%     handle_command(State, {index, Index, Field, Term, Value, Props, TS});
 
-handle_command(State, {index, Index, Field, Term, Value, Props, _Timestamp}) ->
-    %% Put with properties.
-    Partition = list_to_binary("" ++ integer_to_list(State#state.partition)),
-    Conn = State#state.conn,
-    raptor_conn:index(Conn,
-                      list_to_binary(Index),
-                      list_to_binary(Field),
-                      Term,
-                      list_to_binary(Value),
-                      Partition,
-                      term_to_binary(Props)),
-    ok;
+%% handle_command(State, {index, Index, Field, Term, Value, Props, _Timestamp}) ->
+%%     %% Put with properties.
+%%     Partition = list_to_binary("" ++ integer_to_list(State#state.partition)),
+%%     Conn = State#state.conn,
+%%     raptor_conn:index(Conn,
+%%                       list_to_binary(Index),
+%%                       list_to_binary(Field),
+%%                       Term,
+%%                       list_to_binary(Value),
+%%                       Partition,
+%%                       term_to_binary(Props)),
+%%     ok;
 
 handle_command(State, {delete_entry, Index, Field, Term, DocId}) ->
     Partition = list_to_binary(integer_to_list(State#state.partition)),
@@ -83,61 +83,61 @@ handle_command(State, {delete_entry, Index, Field, Term, DocId}) ->
                              Partition),
     ok;
 
-handle_command(State, {init_stream, OutputPid, OutputRef}) ->
-    %% Do some handshaking so that we only stream results from one partition/node.
-    Partition = State#state.partition,
-    OutputPid!{stream_ready, Partition, node(), OutputRef},
-    ok;
+%% handle_command(State, {init_stream, OutputPid, OutputRef}) ->
+%%     %% Do some handshaking so that we only stream results from one partition/node.
+%%     Partition = State#state.partition,
+%%     OutputPid!{stream_ready, Partition, node(), OutputRef},
+%%     ok;
 
-handle_command(State, {stream, Index, Field, Term, OutputPid, OutputRef, DestPartition, Node, FilterFun}) ->
-    spawn(fun() ->
-        Partition = list_to_binary(integer_to_list(State#state.partition)),
-        case DestPartition == State#state.partition andalso Node == node() of
-            true ->
-                spawn_link(fun() ->
-                                   {ok, Conn} = raptor_conn_sup:new_conn(),
-                                   try
-                                       {ok, StreamRef} = raptor_conn:stream(
-                                                           Conn,
-                                                           list_to_binary(Index),
-                                                           list_to_binary(Field),
-                                                           list_to_binary(Term),
-                                                           Partition),
-                                       receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun)
-                                   after
-                                       raptor_conn:close(Conn)
-                                   end end),
-                ok;
-            false ->
-                %% The requester doesn't want results from this node, so
-                %% ignore. This is a hack, to get around the fact that
-                %% there is no way to send a put or other command to a
-                %% specific v-node.
-                ignore
-        end end),
-    ok;
+%% handle_command(State, {stream, Index, Field, Term, OutputPid, OutputRef, DestPartition, Node, FilterFun}) ->
+%%     spawn(fun() ->
+%%         Partition = list_to_binary(integer_to_list(State#state.partition)),
+%%         case DestPartition == State#state.partition andalso Node == node() of
+%%             true ->
+%%                 spawn_link(fun() ->
+%%                                    {ok, Conn} = raptor_conn_sup:new_conn(),
+%%                                    try
+%%                                        {ok, StreamRef} = raptor_conn:stream(
+%%                                                            Conn,
+%%                                                            list_to_binary(Index),
+%%                                                            list_to_binary(Field),
+%%                                                            list_to_binary(Term),
+%%                                                            Partition),
+%%                                        receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun)
+%%                                    after
+%%                                        raptor_conn:close(Conn)
+%%                                    end end),
+%%                 ok;
+%%             false ->
+%%                 %% The requester doesn't want results from this node, so
+%%                 %% ignore. This is a hack, to get around the fact that
+%%                 %% there is no way to send a put or other command to a
+%%                 %% specific v-node.
+%%                 ignore
+%%         end end),
+%%     ok;
 
-handle_command(_State, {info_test__, _Index, _Field, Term, OutputPid, OutputRef}) ->
-    OutputPid ! {info_response, [{Term, node(), 1}], OutputRef},
-    ok;
+%% handle_command(_State, {info_test__, _Index, _Field, Term, OutputPid, OutputRef}) ->
+%%     OutputPid ! {info_response, [{Term, node(), 1}], OutputRef},
+%%     ok;
 
-handle_command(State, {info, Index, Field, Term, OutputPid, OutputRef}) ->
-    Partition = list_to_binary(integer_to_list(State#state.partition)),
-    spawn_link(fun() ->
-                       {ok, Conn} = raptor_conn_sup:new_conn(),
-                       try
-                           {ok, StreamRef} = raptor_conn:info(
-                                               Conn,
-                                               list_to_binary(Index),
-                                               list_to_binary(Field),
-                                               list_to_binary(Term),
-                                               Partition),
-                           receive_info_results(StreamRef, OutputPid, OutputRef)
-                       after
-                           raptor_conn:close(Conn)
-                       end
-    end),
-    ok;
+%% handle_command(State, {info, Index, Field, Term, OutputPid, OutputRef}) ->
+%%     Partition = list_to_binary(integer_to_list(State#state.partition)),
+%%     spawn_link(fun() ->
+%%                        {ok, Conn} = raptor_conn_sup:new_conn(),
+%%                        try
+%%                            {ok, StreamRef} = raptor_conn:info(
+%%                                                Conn,
+%%                                                list_to_binary(Index),
+%%                                                list_to_binary(Field),
+%%                                                list_to_binary(Term),
+%%                                                Partition),
+%%                            receive_info_results(StreamRef, OutputPid, OutputRef)
+%%                        after
+%%                            raptor_conn:close(Conn)
+%%                        end
+%%     end),
+%%     ok;
 
 handle_command(State, {info_range, Index, Field, StartTerm, EndTerm, _Size, OutputPid, OutputRef}) ->
     Partition = list_to_binary(integer_to_list(State#state.partition)),
@@ -191,48 +191,48 @@ handle_command(_State, {command, Command, Arg1, Arg2, Arg3}) ->
 handle_command(_State, Other) ->
     throw({unexpected_operation, Other}).
 
-receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun) ->
-    receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, []).
+%% receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun) ->
+%%     receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, []).
 
-receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, Acc0) ->
-    case length(Acc0) > 500 of
-        true ->
-            io:format("chunk (~p) ~p~n", [length(Acc0), StreamRef]),
-            OutputPid ! {result_vec, Acc0, OutputRef},
-            Acc = [];
-        false ->
-            Acc = Acc0
-    end,
-    receive
-        {stream, StreamRef, "$end_of_table", _} ->
-            case length(Acc) > 0 of
-                true ->
-                    OutputPid ! {result_vec, Acc, OutputRef};
-                false -> skip
-            end,
-            OutputPid ! {result, '$end_of_table', OutputRef};
-        {stream, StreamRef, Value, Props} ->
-            case Props of
-                <<"">> ->
-                    Props2 = [];
-                _ ->
-                    Props2 = binary_to_term(Props)
-            end,
-            case FilterFun(Value, Props2) of
-                true ->
-                    Acc2 = Acc ++ [{Value, Props2}];
-                    %OutputPid ! {result, {Value, Props2}, OutputRef};
-                _ ->
-                    Acc2 = Acc,
-                    skip
-            end,
-            receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, Acc2);
-        Msg ->
-            io:format("receive_stream_results(~p, ~p, ~p, ~p) -> ~p~n",
-                [StreamRef, OutputPid, OutputRef, FilterFun, Msg]),
-            OutputPid ! {result, '$end_of_table', OutputRef}
-    end,
-    ok.
+%% receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, Acc0) ->
+%%     case length(Acc0) > 500 of
+%%         true ->
+%%             io:format("chunk (~p) ~p~n", [length(Acc0), StreamRef]),
+%%             OutputPid ! {result_vec, Acc0, OutputRef},
+%%             Acc = [];
+%%         false ->
+%%             Acc = Acc0
+%%     end,
+%%     receive
+%%         {stream, StreamRef, "$end_of_table", _} ->
+%%             case length(Acc) > 0 of
+%%                 true ->
+%%                     OutputPid ! {result_vec, Acc, OutputRef};
+%%                 false -> skip
+%%             end,
+%%             OutputPid ! {result, '$end_of_table', OutputRef};
+%%         {stream, StreamRef, Value, Props} ->
+%%             case Props of
+%%                 <<"">> ->
+%%                     Props2 = [];
+%%                 _ ->
+%%                     Props2 = binary_to_term(Props)
+%%             end,
+%%             case FilterFun(Value, Props2) of
+%%                 true ->
+%%                     Acc2 = Acc ++ [{Value, Props2}];
+%%                     %OutputPid ! {result, {Value, Props2}, OutputRef};
+%%                 _ ->
+%%                     Acc2 = Acc,
+%%                     skip
+%%             end,
+%%             receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, Acc2);
+%%         Msg ->
+%%             io:format("receive_stream_results(~p, ~p, ~p, ~p) -> ~p~n",
+%%                 [StreamRef, OutputPid, OutputRef, FilterFun, Msg]),
+%%             OutputPid ! {result, '$end_of_table', OutputRef}
+%%     end,
+%%     ok.
 
 %% receive_stream_results2(StreamRef, OutputPid, OutputRef, FilterFun) ->
 %%     receive
@@ -268,16 +268,16 @@ receive_info_range_results(StreamRef, OutputPid, OutputRef, Results) ->
     end,
     ok.
 
-receive_info_results(StreamRef, OutputPid, OutputRef) ->
-    receive
-        {info, StreamRef, Term, Count} ->
-            OutputPid ! {info_response, [{Term, node(), Count}], OutputRef};
-        Msg ->
-            io:format("receive_info_results(~p, ~p, ~p) -> ~p~n",
-                [StreamRef, OutputPid, OutputRef, Msg]),
-            OutputPid ! []
-    end,
-    ok.
+%% receive_info_results(StreamRef, OutputPid, OutputRef) ->
+%%     receive
+%%         {info, StreamRef, Term, Count} ->
+%%             OutputPid ! {info_response, [{Term, node(), Count}], OutputRef};
+%%         Msg ->
+%%             io:format("receive_info_results(~p, ~p, ~p) -> ~p~n",
+%%                 [StreamRef, OutputPid, OutputRef, Msg]),
+%%             OutputPid ! []
+%%     end,
+%%     ok.
 
 receive_catalog_query_results(StreamRef, OutputPid, OutputRef) ->
     receive

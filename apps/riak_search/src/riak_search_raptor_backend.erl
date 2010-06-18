@@ -22,7 +22,7 @@
 -author("John Muellerleile <johnm@basho.com>").
 -behavior(riak_search_backend).
 
--export([start/2,stop/1,index/6,info/5]).
+-export([start/2,stop/1,index/6,info/5,stream/6]).
 -export([get/2,put/3,list/1,list_bucket/2,delete/2]).
 -export([fold/3, drop/1, is_empty/1, toggle_raptor_debug/0, shutdown_raptor/0]).
 -export([sync/0, poke/1, raptor_status/0]).
@@ -89,6 +89,24 @@ info(Index, Field, Term, Sender, State) ->
     end),
     noreply.
 
+stream(Index, Field, Term, FilterFun, Sender, State) ->
+    Partition = list_to_binary(integer_to_list(State#state.partition)),
+    spawn_link(fun() ->
+                       {ok, Conn} = raptor_conn_sup:new_conn(),
+                       try
+                           {ok, StreamRef} = raptor_conn:stream(
+                                               Conn,
+                                               list_to_binary(Index),
+                                               list_to_binary(Field),
+                                               list_to_binary(Term),
+                                               Partition),
+                           receive_stream_results(StreamRef, Sender, FilterFun)
+                       after
+                           raptor_conn:close(Conn)
+                       end
+               end),
+    noreply.
+
 handle_command(State, {delete_entry, Index, Field, Term, DocId}) ->
     Partition = list_to_binary(integer_to_list(State#state.partition)),
     Conn = State#state.conn,
@@ -98,44 +116,6 @@ handle_command(State, {delete_entry, Index, Field, Term, DocId}) ->
                              Term,
                              list_to_binary(DocId),
                              Partition),
-    ok;
-
-handle_command(State, {init_stream, OutputPid, OutputRef}) ->
-    %% Do some handshaking so that we only stream results from one partition/node.
-    Partition = State#state.partition,
-    OutputPid!{stream_ready, Partition, node(), OutputRef},
-    ok;
-
-handle_command(State, {stream, Index, Field, Term, OutputPid, OutputRef, DestPartition, Node, FilterFun}) ->
-    spawn(fun() ->
-        Partition = list_to_binary(integer_to_list(State#state.partition)),
-        case DestPartition == State#state.partition andalso Node == node() of
-            true ->
-                spawn_link(fun() ->
-                                   {ok, Conn} = raptor_conn_sup:new_conn(),
-                                   try
-                                       {ok, StreamRef} = raptor_conn:stream(
-                                                           Conn,
-                                                           list_to_binary(Index),
-                                                           list_to_binary(Field),
-                                                           list_to_binary(Term),
-                                                           Partition),
-                                       receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun)
-                                   after
-                                       raptor_conn:close(Conn)
-                                   end end),
-                ok;
-            false ->
-                %% The requester doesn't want results from this node, so
-                %% ignore. This is a hack, to get around the fact that
-                %% there is no way to send a put or other command to a
-                %% specific v-node.
-                ignore
-        end end),
-    ok;
-
-handle_command(_State, {info_test__, _Index, _Field, Term, OutputPid, OutputRef}) ->
-    OutputPid ! {info_response, [{Term, node(), 1}], OutputRef},
     ok;
 
 
@@ -191,14 +171,14 @@ handle_command(_State, {command, Command, Arg1, Arg2, Arg3}) ->
 handle_command(_State, Other) ->
     throw({unexpected_operation, Other}).
 
-receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun) ->
-    receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, []).
+receive_stream_results(StreamRef, Sender, FilterFun) ->
+    receive_stream_results(StreamRef, Sender, FilterFun, []).
 
-receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, Acc0) ->
+receive_stream_results(StreamRef, Sender, FilterFun, Acc0) ->
     case length(Acc0) > 500 of
         true ->
             io:format("chunk (~p) ~p~n", [length(Acc0), StreamRef]),
-            OutputPid ! {result_vec, Acc0, OutputRef},
+            riak_search_backend:stream_response_results(Sender, Acc0),
             Acc = [];
         false ->
             Acc = Acc0
@@ -207,10 +187,11 @@ receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, Acc0) ->
         {stream, StreamRef, "$end_of_table", _} ->
             case length(Acc) > 0 of
                 true ->
-                    OutputPid ! {result_vec, Acc, OutputRef};
+                    riak_search_backend:stream_response_results(Sender, Acc);
+                
                 false -> skip
             end,
-            OutputPid ! {result, '$end_of_table', OutputRef};
+            riak_search_backend:stream_response_done(Sender);
         {stream, StreamRef, Value, Props} ->
             case Props of
                 <<"">> ->
@@ -226,11 +207,12 @@ receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, Acc0) ->
                     Acc2 = Acc,
                     skip
             end,
-            receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, Acc2);
+            receive_stream_results(StreamRef, Sender, FilterFun, Acc2);
         Msg ->
-            io:format("receive_stream_results(~p, ~p, ~p, ~p) -> ~p~n",
-                [StreamRef, OutputPid, OutputRef, FilterFun, Msg]),
-            OutputPid ! {result, '$end_of_table', OutputRef}
+            %% TODO: Should this throw - must be an error
+            io:format("receive_stream_results(~p, ~p, ~p) -> ~p~n",
+                [StreamRef, Sender, FilterFun, Msg]),
+            riak_search_backend:stream_response_done(Sender)
     end,
     ok.
 

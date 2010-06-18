@@ -5,9 +5,10 @@
         ]).
 
 -include("riak_search.hrl").
+-define(STREAM_TIMEOUT, 15000).
+
 -record(scoring_vars, {term_boost, doc_frequency, num_docs}).
 preplan_op(Op, _F) -> Op.
-
 
 chain_op(Op, OutputPid, OutputRef, QueryProps) ->
     spawn_link(fun() -> start_loop(Op, OutputPid, OutputRef, QueryProps) end),
@@ -36,11 +37,11 @@ start_loop(Op, OutputPid, OutputRef, QueryProps) ->
 
 loop(ScoringVars, Ref, OutputPid, OutputRef) ->
     receive 
-        {result, '$end_of_table', Ref} ->
+        {Ref, done} ->
             %io:format("riak_search_op_term: disconnect ($end_of_table)~n"),
             OutputPid!{disconnect, OutputRef};
             
-        {result_vec, ResultVec, Ref} ->
+        {Ref, {result_vec, ResultVec}} ->
             % todo: scoring
             ResultVec2 = lists:map(fun({Key, Props}) ->
                 NewProps = calculate_score(ScoringVars, Props),
@@ -49,10 +50,14 @@ loop(ScoringVars, Ref, OutputPid, OutputRef) ->
             OutputPid!{results, ResultVec2, OutputRef},
             loop(ScoringVars, Ref, OutputPid, OutputRef);
 
-        {result, {Key, Props}, Ref} ->
+        %% TODO: Check if this is dead code
+        {Ref, {result, {Key, Props}}} ->
             NewProps = calculate_score(ScoringVars, Props),
             OutputPid!{results, [{Key, NewProps}], OutputRef},
             loop(ScoringVars, Ref, OutputPid, OutputRef)
+    after
+        ?STREAM_TIMEOUT ->
+            throw(stream_timeout)
     end.
 
 calculate_score(ScoringVars, Props) ->
