@@ -23,7 +23,8 @@
     index_term/5,
 
     %% Delete
-    delete_document/2
+    delete_document/2,
+    delete_term/4
 ]).
 
 -import(riak_search_utils, [
@@ -171,7 +172,7 @@ index_term(Index, Field, Term, Value, Props) ->
 
 delete_term(Index, Field, Term, DocId) ->
     {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
-    riak_search_vnode:delete(Partition, N, Index, Field, Term, DocId).
+    riak_search_vnode:delete_term(Partition, N, Index, Field, Term, DocId).
 
 truncate_list(QueryStart, QueryRows, List) ->
     %% Remove the first QueryStart results...

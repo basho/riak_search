@@ -60,25 +60,25 @@ handle_command(State, {index, Index, Field, Term, Value, Props}) ->
 
 handle_command(State, {index, Index, Field, Term, Value, Props, _Timestamp}) ->
     %% Put with properties.
-    Partition = list_to_binary("" ++ integer_to_list(State#state.partition)),
+    Partition = to_binary(State#state.partition),
     Conn = State#state.conn,
     raptor_conn:index(Conn,
-                      list_to_binary(Index),
-                      list_to_binary(Field),
-                      Term,
-                      list_to_binary(Value),
+                      to_binary(Index),
+                      to_binary(Field),
+                      to_binary(Term),
+                      to_binary(Value),
                       Partition,
                       term_to_binary(Props)),
     ok;
 
 handle_command(State, {delete_entry, Index, Field, Term, DocId}) ->
-    Partition = list_to_binary(integer_to_list(State#state.partition)),
+    Partition = to_binary(State#state.partition),
     Conn = State#state.conn,
     raptor_conn:delete_entry(Conn,
-                             list_to_binary(Index),
-                             list_to_binary(Field),
-                             Term,
-                             list_to_binary(DocId),
+                             to_binary(Index),
+                             to_binary(Field),
+                             to_binary(Term),
+                             to_binary(DocId),
                              Partition),
     ok;
 
@@ -90,16 +90,16 @@ handle_command(State, {init_stream, OutputPid, OutputRef}) ->
 
 handle_command(State, {stream, Index, Field, Term, OutputPid, OutputRef, DestPartition, Node, FilterFun}) ->
     spawn(fun() ->
-        Partition = list_to_binary(integer_to_list(State#state.partition)),
+        Partition = to_binary(State#state.partition),
         case DestPartition == State#state.partition andalso Node == node() of
             true ->
                 spawn_link(fun() ->
                     {ok, Conn} = raptor_conn_sup:new_conn(),
                     {ok, StreamRef} = raptor_conn:stream(
                         Conn,
-                        list_to_binary(Index),
-                        list_to_binary(Field),
-                        list_to_binary(Term),
+                        to_binary(Index),
+                        to_binary(Field),
+                        to_binary(Term),
                         Partition),
                     receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun),
                     raptor_conn:close(Conn)
@@ -119,14 +119,14 @@ handle_command(_State, {info_test__, _Index, _Field, Term, OutputPid, OutputRef}
     ok;
 
 handle_command(State, {info, Index, Field, Term, OutputPid, OutputRef}) ->
-    Partition = list_to_binary(integer_to_list(State#state.partition)),
+    Partition = to_binary(State#state.partition),
     spawn_link(fun() ->
         {ok, Conn} = raptor_conn_sup:new_conn(),
         {ok, StreamRef} = raptor_conn:info(
             Conn,
-            list_to_binary(Index),
-            list_to_binary(Field),
-            list_to_binary(Term),
+            to_binary(Index),
+            to_binary(Field),
+            to_binary(Term),
             Partition),
         receive_info_results(StreamRef, OutputPid, OutputRef),
         raptor_conn:close(Conn)
@@ -134,15 +134,15 @@ handle_command(State, {info, Index, Field, Term, OutputPid, OutputRef}) ->
     ok;
 
 handle_command(State, {info_range, Index, Field, StartTerm, EndTerm, _Size, OutputPid, OutputRef}) ->
-    Partition = list_to_binary(integer_to_list(State#state.partition)),
+    Partition = to_binary(State#state.partition),
     spawn_link(fun() ->
         {ok, Conn} = raptor_conn_sup:new_conn(),
         {ok, StreamRef} = raptor_conn:info_range(
             Conn,
-            list_to_binary(Index),
-            list_to_binary(Field),
-            list_to_binary(StartTerm),
-            list_to_binary(EndTerm),
+            to_binary(Index),
+            to_binary(Field),
+            to_binary(StartTerm),
+            to_binary(EndTerm),
             Partition),
         receive_info_range_results(StreamRef, OutputPid, OutputRef),
         raptor_conn:close(Conn)
@@ -290,7 +290,7 @@ get(_State, _BKey) ->
 
 is_empty(State) ->
     io:format("is_empty(~p)~n", [State]),
-    Partition = list_to_binary(integer_to_list(State#state.partition)),
+    Partition = to_binary(State#state.partition),
     handle_command(no_state, {command,
                               <<"partition_count">>,
                               Partition,
@@ -299,7 +299,7 @@ is_empty(State) ->
 
 drop(State) ->
     io:format("drop(~p)~n", [State]),
-    Partition = list_to_binary(integer_to_list(State#state.partition)),
+    Partition = to_binary(State#state.partition),
     handle_command(no_state, {command,
                               <<"drop_partition">>,
                               Partition,
@@ -391,11 +391,10 @@ fold_catalog_process(FoldResultPid,
                         {ok, Conn} = raptor_conn_sup:new_conn(),
                         {ok, StreamRef} = raptor_conn:stream(
                             Conn,
-                            list_to_binary(Index),
-                            list_to_binary(Field),
-                            list_to_binary(Term),
-                            <<"0">>, <<"0">>, <<"0">>, %% todo: sub type, startterm, endterm (tbd)
-                            list_to_binary(Partition)),
+                            to_binary(Index),
+                            to_binary(Field),
+                            to_binary(Term),
+                            to_binary(Partition)),
                         fold_stream_process(Me, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term),
                         raptor_conn:close(Conn) end),
                     fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
@@ -470,7 +469,10 @@ receive_fold_results(Acc, Count) ->
 
 %%%
 
-
+to_binary(A) when is_atom(A) -> to_binary(atom_to_list(A));
+to_binary(B) when is_binary(B) -> B;
+to_binary(I) when is_integer(I) -> to_binary(integer_to_list(I));
+to_binary(L) when is_list(L) -> list_to_binary(L).
 
 poke(Command) ->
     handle_command(no_state, {command, Command, <<"">>, <<"">>, <<"">>}).

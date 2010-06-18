@@ -164,7 +164,7 @@ rewrite_term(Q, Options, Config) ->
             [#term { q=Q, options=[facet|Options] }];
         false ->
             {Index, Field, Term} = Q,
-            {ok, {Term, Node, Count}} = riak_search:info(Index, Field, Term),
+            {ok, {_, Node, Count}} = riak_search:info(Index, Field, Term),
             Weights = [{node_weight, Node, Count}],
             [#term { q=Q, options=Weights ++ Options }]
     end.

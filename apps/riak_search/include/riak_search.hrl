@@ -13,7 +13,7 @@
 
 %% Q will be normalized to {"index", "field", "term"} in
 %% riak_search_preplan:normalize_term/2
--record(term,             {q, options}).
+-record(term,             {q, options=[]}).
 
 %% #lnot's are collapsed down to the #term level in
 %% riak_search_preplan:pass5/2.
