@@ -1,13 +1,13 @@
 -module(testing_config).
 
+-include_lib("riak_search/include/riak_search.hrl").
 -include_lib("eunit/include/eunit.hrl").
--include_lib("riak_solr/include/riak_solr.hrl").
 
 parse_test_() ->
     [{setup, fun() -> start_config_server() end,
       fun({ok, Pid}) -> exit(Pid, kill) end,
       [fun() ->
-               {ok, Schema} = riak_solr_config:get_schema("schema1"),
+               {ok, Schema} = riak_search_config:get_schema("schema1"),
                validate_schema(schema1, Schema) end,
        fun() ->
                %% Parse...
@@ -15,15 +15,15 @@ parse_test_() ->
                {ok, Command, Entries} = riak_solr_xml_xform:xform(Xml),
 
                %% Validate...
-               {ok, Schema} = riak_solr_config:get_schema("schema1"),
-               ok = Schema:validate_commands(Command, Entries),
+               {ok, Schema} = riak_search_config:get_schema("schema1"),
+               {ok, Cmds1} = Schema:validate_commands(Command, Entries),
                sanity_check_cmds(Cmds1) end]}].
 
 %% Helper functions
 start_config_server() ->
-    application:load(riak_solr),
-    application:set_env(riak_solr, schema_dir, "./../test/test_data"),
-    riak_solr_config:start_link().
+    application:load(riak_search),
+    application:set_env(riak_search, schema_dir, "./../test/test_data"),
+    riak_search_config:start_link().
 
 sanity_check_cmds([]) ->
     ok;
@@ -46,15 +46,15 @@ validate_schema(schema1, Schema) ->
     LastName = Schema:find_field("last_name"),
     Paygrade = Schema:find_field("paygrade"),
     Cookies = Schema:find_field("likes_cookies"),
-    ?assertMatch("first_name", FirstName#riak_solr_field.name),
-    ?assertMatch(string, FirstName#riak_solr_field.type),
-    ?assertMatch(true, FirstName#riak_solr_field.required),
-    ?assertMatch("last_name", LastName#riak_solr_field.name),
-    ?assertMatch(string, LastName#riak_solr_field.type),
-    ?assertMatch(true, LastName#riak_solr_field.required),
-    ?assertMatch("paygrade", Paygrade#riak_solr_field.name),
-    ?assertMatch(integer, Paygrade#riak_solr_field.type),
-    ?assertMatch(true, Paygrade#riak_solr_field.required),
-    ?assertMatch("likes_cookies", Cookies#riak_solr_field.name),
-    ?assertMatch(boolean, Cookies#riak_solr_field.type),
-    ?assertMatch(false, Cookies#riak_solr_field.required).
+    ?assertMatch("first_name", FirstName#riak_search_field.name),
+    ?assertMatch(string, FirstName#riak_search_field.type),
+    ?assertMatch(true, FirstName#riak_search_field.required),
+    ?assertMatch("last_name", LastName#riak_search_field.name),
+    ?assertMatch(string, LastName#riak_search_field.type),
+    ?assertMatch(true, LastName#riak_search_field.required),
+    ?assertMatch("paygrade", Paygrade#riak_search_field.name),
+    ?assertMatch(integer, Paygrade#riak_search_field.type),
+    ?assertMatch(true, Paygrade#riak_search_field.required),
+    ?assertMatch("likes_cookies", Cookies#riak_search_field.name),
+    ?assertMatch(boolean, Cookies#riak_search_field.type),
+    ?assertMatch(false, Cookies#riak_search_field.required).

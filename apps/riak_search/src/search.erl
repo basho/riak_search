@@ -76,7 +76,7 @@ index_dir(IndexOrSchema, Directory) ->
         Fields = [{Field, binary_to_list(Body)}],
         IdxDoc = riak_indexed_doc:new(BaseName, Index),
         IdxDoc2 = riak_indexed_doc:set_fields(Fields, IdxDoc),
-        Terms = Client:parse_idx_doc(AnalyzerPid, IdxDoc2),
+        Terms = Client:parse_idx_doc(IdxDoc2),
         [begin
             {Index, Field, Term, Value, Props} = X,
             Client:index_term(Index, Field, Term, Value, Props)
