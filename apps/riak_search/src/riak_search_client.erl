@@ -280,11 +280,13 @@ get_scoring_info_1(Op) when is_record(Op, term) ->
     DocFrequency = hd(Weights ++ [0]),
     Boost = proplists:get_value(boost, Op#term.options, 1),
     [{DocFrequency, Boost}];
+get_scoring_info_1(Op) when is_record(Op, mockterm) ->
+    [];
 get_scoring_info_1(#phrase{base_query=BaseQuery}) ->
     get_scoring_info_1(BaseQuery);
 get_scoring_info_1(Op) when is_tuple(Op) ->
     get_scoring_info_1(element(2, Op));
-get_scoring_info_1(Ops) ->
+get_scoring_info_1(Ops) when is_list(Ops) ->
     [get_scoring_info_1(X) || X <- Ops].
 
 
@@ -294,7 +296,7 @@ sort_by_score(#riak_search_ref{querynorm=QNorm, termcount=TermCount}, Results) -
 
 calculate_scores(QueryNorm, NumTerms, [{Value, Props}|Results]) ->
     ScoreList = proplists:get_value(score, Props),
-    Coord = length(ScoreList) / NumTerms,
+    Coord = length(ScoreList) / (NumTerms + 1),
     Score = Coord * QueryNorm * lists:sum(ScoreList),
     NewProps = lists:keystore(score, 1, Props, {score, Score}),
     [{-1 * Score, Value, NewProps}|calculate_scores(QueryNorm, NumTerms, Results)];

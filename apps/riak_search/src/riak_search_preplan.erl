@@ -101,37 +101,37 @@ pass2(Op = #term {}, Config) ->
     Options = Op#term.options,
     rewrite_term(NewQ, Options, Config);
 
-pass2(Op = #land {}, Config) ->
-    %% Collapse nested and operations.
-    F = fun
-        (X = #land {}, {_, Acc}) -> {loop, X#land.ops ++ Acc};
-        (X, {Again, Acc}) -> {Again, [X|Acc]}
-        end,
-    {Continue, NewOps} = lists:foldl(F, {stop, []}, Op#land.ops),
+%% pass2(Op = #land {}, Config) ->
+%%     %% Collapse nested and operations.
+%%     F = fun
+%%         (X = #land {}, {_, Acc}) -> {loop, X#land.ops ++ Acc};
+%%         (X, {Again, Acc}) -> {Again, [X|Acc]}
+%%         end,
+%%     {Continue, NewOps} = lists:foldl(F, {stop, []}, Op#land.ops),
 
-    %% If anything changed, do another round of collapsing...
-    case Continue of
-        stop ->
-            Op#land { ops=pass2(NewOps, Config) };
-        loop ->
-            pass2(Op#land { ops=NewOps }, Config)
-    end;
+%%     %% If anything changed, do another round of collapsing...
+%%     case Continue of
+%%         stop ->
+%%             Op#land { ops=pass2(NewOps, Config) };
+%%         loop ->
+%%             pass2(Op#land { ops=NewOps }, Config)
+%%     end;
 
-pass2(Op = #lor {}, Config) ->
-    %% Collapse nested or operations.
-    F = fun
-        (X = #lor {}, {_, Acc}) -> {loop, X#lor.ops ++ Acc};
-        (X, {Again, Acc}) -> {Again, [X|Acc]}
-        end,
-    {Continue, NewOps} = lists:foldl(F, {stop, []}, Op#lor.ops),
+%% pass2(Op = #lor {}, Config) ->
+%%     %% Collapse nested or operations.
+%%     F = fun
+%%         (X = #lor {}, {_, Acc}) -> {loop, X#lor.ops ++ Acc};
+%%         (X, {Again, Acc}) -> {Again, [X|Acc]}
+%%         end,
+%%     {Continue, NewOps} = lists:foldl(F, {stop, []}, Op#lor.ops),
 
-    %% If anything changed, do another round of collapsing...
-    case Continue of
-        stop ->
-            Op#lor { ops=pass2(NewOps, Config) };
-        loop ->
-            pass2(Op#lor { ops=NewOps }, Config)
-    end;
+%%     %% If anything changed, do another round of collapsing...
+%%     case Continue of
+%%         stop ->
+%%             Op#lor { ops=pass2(NewOps, Config) };
+%%         loop ->
+%%             pass2(Op#lor { ops=NewOps }, Config)
+%%     end;
 
 pass2(Op, Config) ->
     F = fun(X) -> lists:flatten([pass2(Y, Config) || Y <- to_list(X)]) end,
@@ -216,6 +216,8 @@ facetize(Ops) ->
 %% joined with lands and lors.
 is_all_facets(Op) when is_record(Op, term) ->
     ?IS_TERM_FACET(Op);
+is_all_facets(Op) when is_record(Op, mockterm) ->
+    false;
 is_all_facets(Op) when is_record(Op, phrase) ->
     false;
 is_all_facets(Op) when is_tuple(Op) ->
@@ -227,6 +229,8 @@ is_all_facets(Ops) when is_list(Ops) ->
 inject_facets(Op, Facets) when is_record(Op, term) ->
     NewOptions = [{facets, Facets}|Op#term.options],
     Op#term { options=NewOptions };
+inject_facets(Op, _Facets) when is_record(Op, mockterm) ->
+    Op;
 inject_facets(Op, _Facets) when is_record(Op, phrase) ->
     Op;
 inject_facets(Op, Facets) when is_tuple(Op) ->
@@ -416,6 +420,8 @@ get_largest([{NewNode, NewWeight}|T], Node, Weight) ->
 %% Given a nested list of operations, return a list of [{Node, Weight}].
 get_preferred_node_inner(Op) when is_record(Op, term) ->
     [{Node, Weight} || {node_weight, Node, Weight} <- Op#term.options];
+get_preferred_node_inner(Op) when is_record(Op, mockterm) ->
+    [];
 get_preferred_node_inner(#phrase{base_query={land, [Op|_]}}) ->
     get_preferred_node_inner(Op);
 get_preferred_node_inner(Op) ->

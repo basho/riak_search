@@ -99,7 +99,6 @@ prop_index_search_delete() ->
 get_client() ->
     case get(client) of
         undefined -> 
-            ?PRINT(create_new_client),
             put(client, riak_search:local_client());
         _ -> ignore
     end,

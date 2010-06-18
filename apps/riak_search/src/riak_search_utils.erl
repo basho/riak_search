@@ -35,7 +35,7 @@ iterator_chain(_, [], _) ->
 %% Chain an operator, and build an iterator function around it. The
 %% iterator will return {Result, NotFlag, NewIteratorFun} each time it is called, or block
 %% until one is available. When there are no more results, it will
-%% return {eof, NotFlag, NewIteratorFun}.
+%% return {eof, NotFlag}.
 iterator_chain_op(Op, QueryProps) ->
     %% Spawn a collection process...
     Ref = make_ref(),

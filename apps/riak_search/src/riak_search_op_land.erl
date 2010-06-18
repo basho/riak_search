@@ -27,8 +27,10 @@ chain_op(Op, OutputPid, OutputRef, QueryProps, Type) ->
     {ok, 1}.
 
 gather_results(OutputPid, OutputRef, TermFilter, {Term, Op, Iterator}) ->
-    case is_record(Op, lnot) of
-        true  -> skip;
+    NotFlag = (is_tuple(Op) andalso is_record(Op, lnot)) orelse Op == true,
+    case NotFlag of
+        true  -> 
+            skip;
         false ->
             case TermFilter of
                 undefined ->
@@ -170,6 +172,10 @@ select_fun(lor, {eof, _}, {Term2, false, Iterator2}) ->
 
 
 %% Handle 'OR' cases, notflags = [true, true]
+select_fun(lor, {eof, _}, {_, true, _}) ->
+    {eof, false};
+select_fun(lor, {_, true, _}, {eof, _}) ->
+    {eof, false};
 select_fun(lor, {_, true, _}, {_, true, _}) ->
     {eof, false};
 
