@@ -44,7 +44,7 @@ info(Index, Field, Term) ->
 %%     {ok, hd(Results)}.
 
 info_range(Index, Field, StartTerm, EndTerm, Size) ->
-    {ok, Ref} = riak_search_vnode:info_range(Index, Field, StartTerm, EndTerm, Size),
+    {ok, Ref} = riak_search_vnode:info_range(Index, Field, StartTerm, EndTerm, Size, self()),
     {ok, _Results} = collect_info(ringsize(), Ref, []).
 
 
