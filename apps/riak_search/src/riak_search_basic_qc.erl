@@ -1,14 +1,12 @@
 -module(riak_search_basic_qc).
+-ifdef(EQC).
+
 -export([
     test/0, 
     test/1,
     test_index_search/1
 ]).
 -import(riak_search_utils, [to_list/1]).
-
--define(EQC, true).
--ifdef(EQC).
-
 -include_lib("eqc/include/eqc.hrl").
 -include_lib("eunit/include/eunit.hrl").
 -include("riak_search.hrl").
@@ -52,6 +50,8 @@ props() ->
 
 %% Properties...
 
+
+%% Test 
 prop_index() ->
     {ok, Client} = get_client(),
     ?FORALL(
