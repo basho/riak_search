@@ -3,12 +3,13 @@
          delete_term/6,
          stream/6,
          info/5,
-         info_range/6]).
+         info_range/7]).
 -export([init/1, handle_command/3]).
 
 -record(vstate, {idx, bmod, bstate}).
 -record(index_v1, {index, field, term, value, props}).
 -record(info_v1, {index, field, term}).
+-record(info_range_v1, {index, field, start_term, end_term, size}).
 -record(stream_v1, {index, field, term, filter_fun}).
 
 
@@ -45,31 +46,6 @@ stream(Preflist, Index, Field, Term, FilterFun, ReplyTo) ->
     command(Preflist, Req, {raw, Ref, ReplyTo}),
     {ok, Ref}.
 
-%% stream(PrefList, Index, Field, Term, FilterFun, ReplyTo) ->
-%%     io:format("stream Index=~p, Field=~p, Term=~p, FilterFun=~p, ReplyTo=~p\n", 
-%%               [Index, Field, Term, FilterFun, ReplyTo]),
-%%     %% Construct the operation...
-%%     IndexBin = riak_search_utils:to_binary(Index),
-%%     FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-%%     {ok, RiakClient} = riak:local_client(),
-%%     Ref = make_ref(),
-
-%%     %% How many replicas?
-%%     BucketProps = riak_core_bucket:get_bucket(IndexBin),
-%%     NVal = proplists:get_value(n_val, BucketProps),
-
-%%     %% Figure out which nodes we can stream from.
-%%     Payload1 = {init_stream, self(), Ref},
-%%     Obj1 = riak_object:new(IndexBin, FieldTermBin, Payload1),
-%%     RiakClient:put(Obj1, 0, 0),
-%%     {ok, Partition, Node} = wait_for_ready(NVal, Ref, undefined, undefined),
-
-%%     %% Run the operation...
-%%     Payload2 = {stream, Index, Field, Term, ReplyTo, Ref, Partition, Node, FilterFun},
-%%     Obj2 = riak_object:new(IndexBin, FieldTermBin, Payload2),
-%%     RiakClient:put(Obj2, 0, 0),
-%%     {ok, Ref}.
-
 info(Preflist, Index, Field, Term, ReplyTo) ->
     io:format("info: Index=~p, Field=~p, Term=~p, ReplyTo=~p\n", [Index, Field, Term, ReplyTo]),
     Req = #info_v1{
@@ -82,19 +58,18 @@ info(Preflist, Index, Field, Term, ReplyTo) ->
     {ok, Ref}.
 
 
-info_range(Index, Field, StartTerm, EndTerm, Size, ReplyTo) ->
+info_range(Preflist, Index, Field, StartTerm, EndTerm, Size, ReplyTo) ->
     io:format("info_range: Index=~p, Field=~p, StartTerm=~p, EndTerm=~p, Size=~p, ReplyTo=~p\n",
               [Index, Field, StartTerm, EndTerm, Size, ReplyTo]),
-    %% Construct the operation...
-    Bucket = <<"search_broadcast">>,
-    Key = <<"ignored">>,
-    Ref = make_ref(),
-    Payload = {info_range, Index, Field, StartTerm, EndTerm, Size, ReplyTo, Ref},
-
-    %% Run the operation...
-    {ok, RiakClient} = riak:local_client(),
-    Obj = riak_object:new(Bucket, Key, Payload),
-    RiakClient:put(Obj, 0, 0),
+    Req = #info_range_v1{
+      index = Index,
+      field = Field,
+      start_term = StartTerm,
+      end_term = EndTerm,
+      size = Size
+     },
+    Ref = {info_response, make_ref()},
+    command(Preflist, Req, {raw, Ref, ReplyTo}),
     {ok, Ref}.
 
 %% %% Get replies from all nodes that are willing to stream this
@@ -151,6 +126,14 @@ handle_command(#info_v1{index = Index,
                         term = Term},
                Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
     bmod_response(BMod:info(Index, Field, Term, Sender, BState), VState);
+handle_command(#info_range_v1{index = Index,
+                              field = Field,
+                              start_term = StartTerm,
+                              end_term = EndTerm,
+                              size = Size},
+               Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
+    bmod_response(BMod:info_range(Index, Field, StartTerm, EndTerm,
+                                  Size, Sender, BState), VState);
 handle_command(#stream_v1{index = Index,
                           field = Field,
                           term = Term,

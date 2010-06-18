@@ -22,7 +22,7 @@
 -author("John Muellerleile <johnm@basho.com>").
 -behavior(riak_search_backend).
 
--export([start/2,stop/1,index/6,info/5,stream/6]).
+-export([start/2,stop/1,index/6,info/5,info_range/7,stream/6]).
 -export([get/2,put/3,list/1,list_bucket/2,delete/2]).
 -export([fold/3, drop/1, is_empty/1, toggle_raptor_debug/0, shutdown_raptor/0]).
 -export([sync/0, poke/1, raptor_status/0]).
@@ -89,6 +89,25 @@ info(Index, Field, Term, Sender, State) ->
     end),
     noreply.
 
+info_range(Index, Field, StartTerm, EndTerm, _Size, Sender, State) ->
+    Partition = list_to_binary(integer_to_list(State#state.partition)),
+    spawn_link(fun() ->
+                       {ok, Conn} = raptor_conn_sup:new_conn(),
+                       try
+                           {ok, StreamRef} = raptor_conn:info_range(
+                                               Conn,
+                                               list_to_binary(Index),
+                                               list_to_binary(Field),
+                                               list_to_binary(StartTerm),
+                                               list_to_binary(EndTerm),
+                                               Partition),
+                           receive_info_range_results(StreamRef, Sender)
+                       after
+                           raptor_conn:close(Conn)
+                       end
+               end),
+    noreply.
+
 stream(Index, Field, Term, FilterFun, Sender, State) ->
     Partition = list_to_binary(integer_to_list(State#state.partition)),
     spawn_link(fun() ->
@@ -119,24 +138,6 @@ handle_command(State, {delete_entry, Index, Field, Term, DocId}) ->
     ok;
 
 
-handle_command(State, {info_range, Index, Field, StartTerm, EndTerm, _Size, OutputPid, OutputRef}) ->
-    Partition = list_to_binary(integer_to_list(State#state.partition)),
-    spawn_link(fun() ->
-                       {ok, Conn} = raptor_conn_sup:new_conn(),
-                       try
-                           {ok, StreamRef} = raptor_conn:info_range(
-                                               Conn,
-                                               list_to_binary(Index),
-                                               list_to_binary(Field),
-                                               list_to_binary(StartTerm),
-                                               list_to_binary(EndTerm),
-                                               Partition),
-                           receive_info_range_results(StreamRef, OutputPid, OutputRef)
-                       after
-                           raptor_conn:close(Conn)
-                       end
-    end),
-    ok;
 
 handle_command(_State, {catalog_query, CatalogQuery, OutputPid, OutputRef}) ->
     spawn_link(fun() ->
@@ -234,26 +235,30 @@ receive_stream_results(StreamRef, Sender, FilterFun, Acc0) ->
 %%     end,
 %%     ok.
 
-receive_info_range_results(StreamRef, OutputPid, OutputRef) ->
-    receive_info_range_results(StreamRef, OutputPid, OutputRef, []).
-receive_info_range_results(StreamRef, OutputPid, OutputRef, Results) ->
+receive_info_range_results(StreamRef, Sender) ->
+    receive_info_range_results(StreamRef, Sender, []).
+
+receive_info_range_results(StreamRef, Sender, Results) ->
     receive
         {info, StreamRef, "$end_of_info", 0} ->
-            OutputPid ! {info_response, Results, OutputRef};
+            riak_search_backend:info_response(Sender, Results);
+        
+        %% TODO: Replace this with a [New | Acc] and lists:reverse
         {info, StreamRef, Term, Count} ->
-            receive_info_range_results(StreamRef, OutputPid, OutputRef,
+            receive_info_range_results(StreamRef, Sender,
                 Results ++ [{Term, node(), Count}]);
         Msg ->
-            io:format("receive_info_range_results(~p, ~p, ~p) -> ~p~n",
-                [StreamRef, OutputPid, OutputRef, Msg]),
-            receive_info_range_results(StreamRef, OutputPid, OutputRef, Results)
+            %% TODO: Should this throw?
+            io:format("receive_info_range_results(~p, ~p) -> ~p~n",
+                [StreamRef, Sender, Msg]),
+            receive_info_range_results(StreamRef, Sender, Results)
     end,
     ok.
 
 receive_info_results(StreamRef, Sender) ->
     receive
         {info, StreamRef, Term, Count} ->
-            riak_search_backend:info_response(Sender, Term, node(), Count)
+            riak_search_backend:info_response(Sender, [{Term, node(), Count}])
     after
         ?INFO_TIMEOUT ->
             ok

@@ -44,24 +44,31 @@ info(Index, Field, Term) ->
 %%     {ok, hd(Results)}.
 
 info_range(Index, Field, StartTerm, EndTerm, Size) ->
-    {ok, Ref} = riak_search_vnode:info_range(Index, Field, StartTerm, EndTerm, Size, self()),
-    {ok, _Results} = collect_info(ringsize(), Ref, []).
+    %% TODO: Duplicating current bevhaior for now - a PUT against a preflist with
+    %%       the N val set to the size of the ring - this will mean no failbacks
+    %%       will be available.  Instead should work out the preflist for
+    %%       each partition index and find which node is responsible for that partition
+    %%       and talk to that.
+    Preflist = riak_core_apl:active_owners(),
+    {ok, Ref} = riak_search_vnode:info_range(Preflist, Index, Field, StartTerm, EndTerm, 
+                                             Size, self()),
+    {ok, _Results} = riak_search_backend:collect_info_response(length(Preflist), Ref, []).
 
 
-collect_info(RepliesRemaining, Ref, Acc) ->
-    receive
-        {info_response, List, Ref} when RepliesRemaining > 1 ->
-            collect_info(RepliesRemaining - 1, Ref, List ++ Acc);
-        {info_response, List, Ref} when RepliesRemaining == 1 ->
-            io:format("collect_info returning ~p\n", [List++Acc]),
-            {ok, List ++ Acc}
-%%         Other ->
-%%             error_logger:info_msg("Unexpected response: ~p~n", [Other]),
-%%             collect_info(RepliesRemaining, Ref, Acc)
-    after 5000 ->
-        error_logger:error_msg("range_loop timed out!"),
-        throw({timeout, range_loop})
-    end.
+%% collect_info(RepliesRemaining, Ref, Acc) ->
+%%     receive
+%%         {info_response, List, Ref} when RepliesRemaining > 1 ->
+%%             collect_info(RepliesRemaining - 1, Ref, List ++ Acc);
+%%         {info_response, List, Ref} when RepliesRemaining == 1 ->
+%%             io:format("collect_info returning ~p\n", [List++Acc]),
+%%             {ok, List ++ Acc}
+%% %%         Other ->
+%% %%             error_logger:info_msg("Unexpected response: ~p~n", [Other]),
+%% %%             collect_info(RepliesRemaining, Ref, Acc)
+%%     after 5000 ->
+%%         error_logger:error_msg("range_loop timed out!"),
+%%         throw({timeout, range_loop})
+%%     end.
 
-ringsize() ->
-    app_helper:get_env(riak_core, ring_creation_size).
+%% ringsize() ->
+%%     app_helper:get_env(riak_core, ring_creation_size).

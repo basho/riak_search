@@ -1,7 +1,7 @@
 -module(riak_search_backend).
 -export([behaviour_info/1]).
 -export([stream_response_results/2, stream_response_done/1]).
--export([info_response/4, collect_info_response/3]).
+-export([info_response/2, collect_info_response/3]).
 
 -spec behaviour_info(atom()) -> 'undefined' | [{atom(), arity()}].
 behaviour_info(callbacks) ->
@@ -9,14 +9,15 @@ behaviour_info(callbacks) ->
      {stop,1},
      {index,6},
      {stream,6},
-     {info,5}];
+     {info,5},
+     {info_range,7}];
 behaviour_info(_Other) ->
     undefined.
 
 %% Send a response to an info() request
-info_response(Sender, Term, Node, Count) ->
+info_response(Sender, Result) ->
     %% TODO: Decide if this really needs to be a list of terms
-    riak_core_vnode:reply(Sender, [{Term, Node, Count}]).
+    riak_core_vnode:reply(Sender, Result).
 
 %% Send a resposne to a stream() request
 stream_response_results(Sender, Results) ->
