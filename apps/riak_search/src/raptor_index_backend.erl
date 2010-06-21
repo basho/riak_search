@@ -205,6 +205,8 @@ receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, Acc0) ->
             Acc = Acc0
     end,
     receive
+        {stream, StreamRef, timeout} ->
+            OutputPid ! {result, '$end_of_table', OutputRef};
         {stream, StreamRef, "$end_of_table", _} ->
             case length(Acc) > 0 of
                 true ->
@@ -227,9 +229,7 @@ receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, Acc0) ->
                     Acc2 = Acc,
                     skip
             end,
-            receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, Acc2);
-        Msg ->
-            OutputPid ! {result, '$end_of_table', OutputRef}
+            receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, Acc2)
     end,
     ok.
 
@@ -255,6 +255,8 @@ receive_info_range_results(StreamRef, OutputPid, OutputRef) ->
     receive_info_range_results(StreamRef, OutputPid, OutputRef, []).
 receive_info_range_results(StreamRef, OutputPid, OutputRef, Results) ->
     receive
+        {info, StreamRef, timeout} ->
+            OutputPid ! {info_response, Results, OutputRef};
         {info, StreamRef, "$end_of_info", 0} ->
             OutputPid ! {info_response, Results, OutputRef};
         {info, StreamRef, Term, Count} ->
@@ -265,6 +267,8 @@ receive_info_range_results(StreamRef, OutputPid, OutputRef, Results) ->
 
 receive_info_results(StreamRef, OutputPid, OutputRef) ->
     receive
+        {info, StreamRef, timeout} ->
+            ok;
         {info, StreamRef, "$end_of_info", Count} ->
             ok;
         {info, StreamRef, Term, Count} ->
@@ -275,6 +279,8 @@ receive_info_results(StreamRef, OutputPid, OutputRef) ->
 
 receive_catalog_query_results(StreamRef, OutputPid, OutputRef) ->
     receive
+        {catalog_query, ReqId, timeout} ->
+            OutputPid ! {catalog_query_response, done, OutputRef};
         {catalog_query, _ReqId, "$end_of_results", _, _, _, _} ->
             OutputPid ! {catalog_query_response, done, OutputRef};
         {catalog_query, StreamRef, Partition, Index,
@@ -433,6 +439,8 @@ fold_catalog_process(FoldResultPid,
 %%   to receive_fold_results process
 fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term) ->
     receive
+        {stream, StreamRef, timeout} ->
+            CatalogProcessPid ! {fold_stream, done, StreamRef};
         {stream, StreamRef, "$end_of_table", _} ->
             CatalogProcessPid ! {fold_stream, done, StreamRef},
             io:format("fold_stream_process: table complete: ~p.~p.~p~n",
@@ -450,8 +458,8 @@ fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Inde
             fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term)
         after ?FOLD_TIMEOUT ->
             CatalogProcessPid ! {fold_stream, done, StreamRef},
-            io:format("fold_stream_process: table timed out: ~p.~p.~p~n",
-                [Index, Field, Term])
+            error_logger:warning_msg("fold_stream_process: table timed out: ~p.~p.~p~n",
+                                      [Index, Field, Term])
     end.
 
 %% receive the Fun0(processed) objects from all the "buckets" on this partition, accumulate them
