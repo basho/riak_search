@@ -33,7 +33,9 @@
              riak_search_vnode,
              merge_index_backend,
              raptor_index_backend,
-             riak_search_basic_qc
+             riak_search_basic_qc,
+             riak_search_operators_qc,
+             riak_search_op_mockterm
             ]},
   {registered, []},
   {applications, [
