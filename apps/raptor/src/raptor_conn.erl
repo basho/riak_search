@@ -4,6 +4,8 @@
 
 -include("raptor_pb.hrl").
 
+-define(RECV_TIMEOUT, 3000).
+
 %% API
 -export([start_link/0,
          close/1,
@@ -119,37 +121,44 @@ handle_call(close_conn, _From, State) ->
 handle_call({index, IndexRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_index(IndexRec),
     gen_tcp:send(Sock, Data),
+    inet:setopts(Sock, [{active, once}]),
     {reply, ok, State};
 
 handle_call({deleteentry, DeleteEntryRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_deleteentry(DeleteEntryRec),
     gen_tcp:send(Sock, Data),
+    inet:setopts(Sock, [{active, once}]),
     {reply, ok, State};
 
 handle_call({stream, Caller, ReqId, StreamRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_stream(StreamRec),
     gen_tcp:send(Sock, Data),
-    {reply, {ok, ReqId}, State#state{req_type=stream, reqid=ReqId, dest=Caller}};
+    inet:setopts(Sock, [{active, once}]),
+    {reply, {ok, ReqId}, State#state{req_type=stream, reqid=ReqId, dest=Caller}, ?RECV_TIMEOUT};
 
 handle_call({info, Caller, ReqId, InfoRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_info(InfoRec),
     gen_tcp:send(Sock, Data),
-    {reply, {ok, ReqId}, State#state{req_type=info, reqid=ReqId, dest=Caller}};
+    inet:setopts(Sock, [{active, once}]),
+    {reply, {ok, ReqId}, State#state{req_type=info, reqid=ReqId, dest=Caller}, ?RECV_TIMEOUT};
 
 handle_call({info_range, Caller, ReqId, InfoRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_inforange(InfoRec),
     gen_tcp:send(Sock, Data),
-    {reply, {ok, ReqId}, State#state{req_type=info, reqid=ReqId, dest=Caller}};
+    inet:setopts(Sock, [{active, once}]),
+    {reply, {ok, ReqId}, State#state{req_type=info, reqid=ReqId, dest=Caller}, ?RECV_TIMEOUT};
 
 handle_call({catalog_query, Caller, ReqId, CatalogQueryRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_catalogquery(CatalogQueryRec),
     gen_tcp:send(Sock, Data),
-    {reply, {ok, ReqId}, State#state{req_type=catalogquery, reqid=ReqId, dest=Caller}};
+    inet:setopts(Sock, [{active, once}]),
+    {reply, {ok, ReqId}, State#state{req_type=catalogquery, reqid=ReqId, dest=Caller}, ?RECV_TIMEOUT};
 
 handle_call({command, Caller, ReqId, CommandRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_command(CommandRec),
     gen_tcp:send(Sock, Data),
-    {reply, {ok, ReqId}, State#state{req_type=command, reqid=ReqId, dest=Caller}};
+    inet:setopts(Sock, [{active, once}]),
+    {reply, {ok, ReqId}, State#state{req_type=command, reqid=ReqId, dest=Caller}, ?RECV_TIMEOUT};
 
 handle_call(_Request, _From, State) ->
     {reply, ignore, State}.
@@ -157,6 +166,10 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
+handle_info(timeout, #state{req_type=ReqType, reqid=ReqId, dest=Dest}=State) ->
+    Message = build_timeout_message(ReqType, ReqId),
+    Dest ! Message,
+    {noreply, State#state{req_type=undefined, reqid=undefined, dest=undefined}};
 handle_info({tcp, Sock, Data}, #state{req_type=stream, reqid=ReqId, dest=Dest}=State) ->
     StreamResponse = raptor_pb:decode_streamresponse(Data),
     Dest ! {stream, ReqId, StreamResponse#streamresponse.value, StreamResponse#streamresponse.props},
@@ -203,9 +216,10 @@ handle_info({tcp, Sock, Data}, #state{req_type=catalogquery, reqid=ReqId, dest=D
                end,
     {noreply, NewState};
 
-handle_info({tcp, _Sock, Data}, #state{req_type=command, reqid=ReqId, dest=Dest}=State) ->
+handle_info({tcp, Sock, Data}, #state{req_type=command, reqid=ReqId, dest=Dest}=State) ->
     CommandResponse = raptor_pb:decode_commandresponse(Data),
     Dest ! {command, ReqId, CommandResponse#commandresponse.response},
+    inet:setopts(Sock, [{active, once}]),
     {noreply, State#state{req_type=undefined, reqid=undefined, dest=undefined}};
 
 handle_info({tcp_error, _Sock, Reason}, State) ->
@@ -222,6 +236,15 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% Internal functions
+build_timeout_message(stream, ReqId) ->
+    {stream, ReqId, undefined, undefined};
+build_timeout_message(info, ReqId) ->
+    {info, ReqId, undefined, 0};
+build_timeout_message(catalogquery, ReqId) ->
+    {catalog_query, ReqId, undefined, undefined, undefined, undefined, undefined};
+build_timeout_message(Command, ReqId) ->
+    {Command, ReqId, undefined}.
+
 raptor_connect(Port) ->
     gen_tcp:connect("127.0.0.1", Port, [binary, {active, once},
                                         {packet, 4},

@@ -5,6 +5,7 @@
   {modules,      [raptor_pb,
                   raptor_conn,
                   raptor_conn_sup,
+                  raptor_conn_pool,
                   raptor_monitor,
                   raptor_sup,
                   raptor_util,

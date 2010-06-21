@@ -36,12 +36,8 @@ collect_info(RepliesRemaining, Ref, Acc) ->
             collect_info(RepliesRemaining - 1, Ref, List ++ Acc);
         {info_response, List, Ref} when RepliesRemaining == 1 ->
             {ok, List ++ Acc}
-%%         Other ->
-%%             error_logger:info_msg("Unexpected response: ~p~n", [Other]),
-%%             collect_info(RepliesRemaining, Ref, Acc)
     after 5000 ->
-        error_logger:error_msg("range_loop timed out!"),
-        throw({timeout, range_loop})
+        throw({timeout, collect_info})
     end.
 
 ringsize() ->
