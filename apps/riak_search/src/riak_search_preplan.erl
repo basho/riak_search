@@ -347,20 +347,47 @@ typesafe_size(Term) when is_binary(Term) -> size(Term);
 typesafe_size(Term) when is_list(Term) -> length(Term).
 
 %% FIFTH PASS
+%% Expand NOTs into multiple branches depending on parent.
 %% Collapse nested NOTs.
 pass5(OpList, Config) when is_list(OpList) ->
     [pass5(X, Config) || X <- OpList];
 
-pass5(Op = #lnot {}, Config) ->
-    F = fun(X) ->
-                case is_record(X, lnot) of
-                    true ->
-                        pass5(X, Config);
-                    false ->
-                        #lnot { ops=to_list(pass5(X, Config)) }
-                end
-        end,
-    [F(X) || X <- to_list(Op#lnot.ops)];
+pass5(Op = #land {}, Config) ->
+    %% If the operation is a land, and it has a child lnot operation
+    %% with with multiple ops, then split those ops.
+    F = fun(X, Acc) ->
+        case is_record(X, lnot) of
+            true  -> [#lnot { ops=Y } || Y <- to_list(X#lnot.ops)] ++ Acc;
+            false -> [X|Acc]
+        end
+    end,
+    NewOps = lists:foldl(F, [], Op#land.ops),
+    #land { ops=to_list(pass5(NewOps, Config)) };
+
+pass5(Op = #lor {}, Config) ->
+    %% If the operation is a lor, and it has a child lnot operation
+    %% with with multiple ops, then split those ops.
+    F = fun(X, Acc) ->
+        case is_record(X, lnot) of
+            true  -> [#lnot { ops=Y } || Y <- to_list(X#lnot.ops)] ++ Acc;
+            false -> [X|Acc]
+        end
+    end,
+    NewOps = lists:foldl(F, [], Op#lor.ops),
+    #lor { ops=to_list(pass5(NewOps, Config)) };
+
+pass5(Op = #lnot { ops=Op }, _Config) when is_list(Op)->
+    throw({unexpected, Op});
+
+pass5(Op = #lnot { ops=Op }, Config) when not is_list(Op)->
+    case is_record(Op, lnot) of
+        true ->
+            pass5(Op#lnot.ops, Config);
+        false ->
+            #lnot { ops=to_list(pass5(Op, Config)) }
+    end;
+
+    
 
 pass5(Op, Config) ->
     F = fun(X) -> lists:flatten([pass5(Y, Config) || Y <- to_list(X)]) end,
@@ -418,6 +445,10 @@ get_largest([{NewNode, NewWeight}|T], Node, Weight) ->
     end.
 
 %% Given a nested list of operations, return a list of [{Node, Weight}].
+get_preferred_node_inner([]) -> 
+    [];
+get_preferred_node_inner([Op|Ops]) ->
+    [get_preferred_node_inner(Op)|get_preferred_node_inner(Ops)];
 get_preferred_node_inner(Op) when is_record(Op, term) ->
     [{Node, Weight} || {node_weight, Node, Weight} <- Op#term.options];
 get_preferred_node_inner(Op) when is_record(Op, mockterm) ->
