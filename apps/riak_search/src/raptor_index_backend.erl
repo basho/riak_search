@@ -269,7 +269,7 @@ receive_info_results(StreamRef, OutputPid, OutputRef) ->
     receive
         {info, StreamRef, timeout} ->
             ok;
-        {info, StreamRef, "$end_of_info", Count} ->
+        {info, StreamRef, "$end_of_info", _Count} ->
             ok;
         {info, StreamRef, Term, Count} ->
             Message = {info_response, [{Term, node(), Count}], OutputRef},
@@ -279,7 +279,7 @@ receive_info_results(StreamRef, OutputPid, OutputRef) ->
 
 receive_catalog_query_results(StreamRef, OutputPid, OutputRef) ->
     receive
-        {catalog_query, ReqId, timeout} ->
+        {catalog_query, _ReqId, timeout} ->
             OutputPid ! {catalog_query_response, done, OutputRef};
         {catalog_query, _ReqId, "$end_of_results", _, _, _, _} ->
             OutputPid ! {catalog_query_response, done, OutputRef};
