@@ -3,7 +3,8 @@
          delete_term/6,
          stream/7,
          info/6,
-         info_range/6]).
+         info_range/6,
+         term/3]).
 
 index(_Partition, _N, Index, Field, Term, Value, Props) ->
     IndexBin = riak_search_utils:to_binary(Index),
@@ -70,6 +71,17 @@ info_range(Index, Field, StartTerm, EndTerm, Size, ReplyTo) ->
     %% Run the operation...
     {ok, RiakClient} = riak:local_client(),
     Obj = riak_object:new(Bucket, Key, Payload),
+    RiakClient:put(Obj, 0, 0),
+    {ok, Ref}.
+
+term(Index, Term, ReplyTo) ->
+    IndexBin = <<"search_broadcast">>,
+    FieldBin = <<"unused">>,
+    Query = lists:flatten(["index:", riak_search_utils:to_list(Index),
+                          " AND term:", riak_search_utils:to_list(Term)]),
+    {ok, RiakClient} = riak:local_client(),
+    Ref = make_ref(),
+    Obj = riak_object:new(IndexBin, FieldBin, {catalog_query, Query, ReplyTo, Ref}),
     RiakClient:put(Obj, 0, 0),
     {ok, Ref}.
 

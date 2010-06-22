@@ -178,7 +178,7 @@ reqd_omit_prefix -> minus:
     prohibited.
 
 tilde_suffix -> tilde:
-    {fuzzy, 0.5}.
+    {fuzzy, "0.5"}.
 tilde_suffix -> tilde term:
     make_suffix('$2').
 boost_suffix -> caret term:
@@ -266,7 +266,7 @@ make_suffix({term, Line, Term}) ->
     try
         case lists:member($., Term) of
             true ->
-                {fuzzy, list_to_float(Term)};
+                {fuzzy, Term};
             false ->
                 {proximity, list_to_integer(Term)}
         end
