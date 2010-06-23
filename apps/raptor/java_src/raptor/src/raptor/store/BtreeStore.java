@@ -46,7 +46,7 @@ public class BtreeStore {
     final private static Logger log = 
         Logger.getLogger(BtreeStore.class);
     
-    private static final int DB_PAGE_SIZE = 2048;
+    private static final int DB_PAGE_SIZE = 512;
     private DatabaseConfig databaseConfig;
     private Database db;
     private Environment env;

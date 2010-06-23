@@ -1,4 +1,4 @@
-ption java_package = "raptor.protobuf";
+option java_package = "raptor.protobuf";
 option java_outer_classname = "Messages";
 
 message Index {
