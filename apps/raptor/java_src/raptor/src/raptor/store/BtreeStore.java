@@ -45,6 +45,8 @@ import raptor.store.handlers.*;
 public class BtreeStore {
     final private static Logger log = 
         Logger.getLogger(BtreeStore.class);
+    
+    private static final int DB_PAGE_SIZE = 2048;
     private DatabaseConfig databaseConfig;
     private Database db;
     private Environment env;
@@ -59,20 +61,20 @@ public class BtreeStore {
 
     public BtreeStore(String filename,
                       String name) throws Exception {
-        this(getDefaultEnvironment(".", "."), filename, name, 512);
+        this(getDefaultEnvironment(".", "."), filename, name, DB_PAGE_SIZE);
     }
     
     public BtreeStore(String filename,
                       String directory, 
                       String name) throws Exception {
-        this(getDefaultEnvironment(directory, directory), filename, name, 512);
+        this(getDefaultEnvironment(directory, directory), filename, name, DB_PAGE_SIZE);
     }
     
     public BtreeStore(String filename,
                       String directory, 
                       String logDirectory,
                       String name) throws Exception {
-        this(getDefaultEnvironment(directory, logDirectory), filename, name, 512);
+        this(getDefaultEnvironment(directory, logDirectory), filename, name, DB_PAGE_SIZE);
     }
     
     public BtreeStore(Environment env, 
@@ -115,7 +117,6 @@ public class BtreeStore {
         //envConf.setInitializeLocking(false);
         envConf.setLogAutoRemove(true);
         envConf.setDsyncLog(true);
-        
         envConf.setDsyncDatabases(false);
         envConf.setMessageHandler(defaultMessageHandler);
         envConf.setMessageStream(System.out);

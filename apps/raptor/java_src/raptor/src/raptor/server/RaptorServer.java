@@ -85,7 +85,7 @@ public class RaptorServer {
     }
     
     private static void configureStorage(String dataDir) {
-       writeQueue = new LinkedBlockingQueue<Index>();
+       writeQueue = new LinkedBlockingQueue<Index>(500);
        writeThread = new Thread(new Runnable() {
            public void run() {
                try {
