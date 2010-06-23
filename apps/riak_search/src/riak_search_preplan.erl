@@ -1,7 +1,6 @@
 -module(riak_search_preplan).
--export([
-         preplan/4
-]).
+-export([preplan/4]).
+
 -include("riak_search.hrl").
 -record(config, { default_index, default_field, facets }).
 
@@ -198,7 +197,7 @@ pass3({BoolOp, SubTerms}, Config) when BoolOp =:= land;
                                        BoolOp =:= lnot->
 
     {BoolOp, pass3(SubTerms, Config)};
-pass3(#term{q={Index, _Field, Term0},
+pass3(#term{q={Index, Field, Term0},
             options=Options}=Op, _Config) ->
     case proplists:get_value(fuzzy, Options) of
         undefined ->
@@ -206,7 +205,7 @@ pass3(#term{q={Index, _Field, Term0},
         V ->
             Term = Term0 ++ "~" ++ V,
             {ok, Ref} = riak_search_vnode:term(Index, Term, self()),
-            FuzzyTerms = receive_matched_terms(Ref, proplists:delete(fuzzy, Options), dict:new(), []),
+            FuzzyTerms = receive_matched_terms(Ref, Field, proplists:delete(fuzzy, Options), []),
             case length(FuzzyTerms) < 2 of
                 true ->
                     Op;
@@ -493,19 +492,14 @@ get_preferred_node_inner(Op) ->
 to_list(L) when is_list(L) -> L;
 to_list(T) when is_tuple(T) -> [T].
 
-receive_matched_terms(Ref, NewOpts, UList, Acc) ->
+receive_matched_terms(Ref, TargetField, NewOpts, Acc) ->
     receive
-        {catalog_query_response,{_Partition, Index, Field, Term, _}, Ref} ->
-            case dict:find(Term, UList) of
-                error ->
-                    T = #term{q={Index, Field, Term},
-                                 options=NewOpts},
-                    receive_matched_terms(Ref, NewOpts, dict:store(Term, 1, UList), [T|Acc]);
-                _ ->
-                    receive_matched_terms(Ref, NewOpts, UList, Acc)
-            end;
-        {catalog_query_response, done, Ref} ->
-            Acc
-    after 750 ->
-            Acc
+        {term, Index, TargetField, Term, Ref} ->
+            T = #term{q={Index, TargetField, Term},
+                      options=NewOpts},
+                    receive_matched_terms(Ref, TargetField, NewOpts, [T|Acc]);
+        {term, done, Ref} ->
+            Acc;
+        _ ->
+            receive_matched_terms(Ref, TargetField, NewOpts, Acc)
     end.

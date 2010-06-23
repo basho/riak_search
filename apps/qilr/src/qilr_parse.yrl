@@ -260,7 +260,7 @@ make_field_term({field, Field}, {RangeType, _, _}=Range) when RangeType =:= incl
     {field, Field, [Range]}.
 
 make_field_term({field, Field}, {term, Term, SL0}, SL) ->
-    {field, Field, Term, SL0 ++ SL}.
+    {field, Field, Term, SL0 ++ [SL]}.
 
 make_suffix({term, Line, Term}) ->
     try

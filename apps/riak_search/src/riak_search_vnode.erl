@@ -75,14 +75,15 @@ info_range(Index, Field, StartTerm, EndTerm, Size, ReplyTo) ->
     {ok, Ref}.
 
 term(Index, Term, ReplyTo) ->
-    IndexBin = <<"search_broadcast">>,
-    FieldBin = <<"unused">>,
-    Query = lists:flatten(["index:", riak_search_utils:to_list(Index),
-                          " AND term:", riak_search_utils:to_list(Term)]),
-    {ok, RiakClient} = riak:local_client(),
     Ref = make_ref(),
-    Obj = riak_object:new(IndexBin, FieldBin, {catalog_query, Query, ReplyTo, Ref}),
-    RiakClient:put(Obj, 0, 0),
+    spawn(fun() ->
+                  IndexBin = riak_search_utils:to_binary(Index),
+                  FieldBin = <<"unused">>,
+                  Query = lists:flatten(["term:", riak_search_utils:to_list(Term)]),
+                  {ok, RiakClient} = riak:local_client(),
+                  Obj = riak_object:new(IndexBin, FieldBin, {catalog_query, Query, self(), Ref}),
+                  RiakClient:put(Obj, 0, 0),
+                  filter_unique_terms(dict:new(), ReplyTo, Ref) end),
     {ok, Ref}.
 
 %% Get replies from all nodes that are willing to stream this
@@ -99,4 +100,20 @@ wait_for_ready(RepliesRemaining, Ref, Partition, Node) ->
             wait_for_ready(RepliesRemaining - 1, Ref, Partition, Node);
         {stream_ready, NewPartition, NewNode, Ref} ->
             wait_for_ready(RepliesRemaining -1, Ref, NewPartition, NewNode)
+    end.
+
+filter_unique_terms(Terms, ReplyTo, Ref) ->
+    receive
+        {catalog_query_response, {_Partition, Index, Field, Term, _}, Ref} ->
+            case dict:find(Term, Terms) of
+                error ->
+                    ReplyTo ! {term, Index, Field, Term, Ref},
+                    filter_unique_terms(dict:store(Term, true, Terms), ReplyTo, Ref);
+                _ ->
+                    filter_unique_terms(Terms, ReplyTo, Ref)
+            end;
+        {catalog_query_response, done, Ref} ->
+            ReplyTo ! {term, done, Ref}
+    after 750 ->
+            ReplyTo ! {term, done, Ref}
     end.
