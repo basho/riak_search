@@ -6,6 +6,7 @@
     parse_datetime/1,
     to_atom/1,
     to_binary/1,
+    to_utf8/1,
     to_boolean/1,
     to_list/1,
     to_integer/1,
@@ -106,6 +107,12 @@ to_binary(A) when is_atom(A) -> to_binary(atom_to_list(A));
 to_binary(B) when is_binary(B) -> B;
 to_binary(I) when is_integer(I) -> to_binary(integer_to_list(I));
 to_binary(L) when is_list(L) -> list_to_binary(L).
+
+to_utf8(A) when is_atom(A) -> to_utf8(atom_to_list(A));
+to_utf8(B) when is_binary(B) -> B;
+to_utf8(I) when is_integer(I) -> to_utf8(integer_to_list(I));
+to_utf8(L) when is_list(L) -> unicode:characters_to_binary(L).
+
 
 to_integer(A) when is_atom(A) -> to_integer(atom_to_list(A));
 to_integer(B) when is_binary(B) -> to_integer(binary_to_list(B));
