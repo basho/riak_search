@@ -159,7 +159,6 @@ normalize_field(Field, _) when is_tuple(Field) -> Field.
 %% Rewrite a term, adding either a facet flag or node weights
 %% depending on whether this is a facet.
 rewrite_term(Q, Options, Config) ->
-    io:format("(~p) ~p/~p: Query: ~p~n", [self(), ?MODULE, ?LINE, Q]),
     case is_facet(Q, Config) of
         true ->
             [#term { q=Q, options=[facet|Options] }];

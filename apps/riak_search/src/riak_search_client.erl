@@ -29,7 +29,7 @@
     %% Delete
     delete_document/2,
     delete_term/4,
-    
+
     %% utility
     dump_graph/1
 ]).
@@ -129,6 +129,13 @@ parse_idx_doc(IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
         qilr_analyzer:close(AnalyzerPid)
     end.
 
+analyze_field(AnalyzerPid, FieldName, FieldValue, Schema) ->
+    Field = Schema:find_field(FieldName),
+    #riak_search_field{type=Type} = Field,
+    AnalyzerFactory = determine_analyzer(Schema, Type),
+    {ok, Tokens} = qilr_analyzer:analyze(AnalyzerPid, FieldValue, AnalyzerFactory),
+    {ok, [left_pad(Type, Token) || Token <- Tokens]}.
+
 get_idx_doc(DocIndex, DocID) ->
     DocBucket = to_binary(from_binary(DocIndex) ++ "_docs"),
     case RiakClient:get(DocBucket, to_binary(DocID), 1) of
@@ -211,10 +218,10 @@ stream_search(IndexOrSchema, OpList) ->
 
     %% Normalize, Optimize, and Expand Buckets.
     OpList1 = riak_search_preplan:preplan(OpList, DefaultIndex, DefaultField, Facets),
-    
+
     %% Query optimization pass
     OpList2 = optimize_query(OpList1),
-    
+
     %% Get the total number of terms and weight in query...
     {NumTerms, NumDocs, QueryNorm} = get_scoring_info(OpList1),
 
@@ -621,3 +628,18 @@ query_as_graph(OpList, Parent, C0, G) ->
             query_as_graph([OpList], Parent, C0, G)
     end.
 
+left_pad(integer, FV) when is_binary(FV) ->
+    list_to_binary(left_pad(integer, binary_to_list(FV)));
+left_pad(integer, FV) when length(FV) >= 10 ->
+    FV;
+left_pad(integer, FV) ->
+    left_pad(integer, [$0|FV]);
+left_pad(_, FV) ->
+    FV.
+
+determine_analyzer(_Schema, integer) ->
+    ?WHITESPACE_ANALYZER;
+determine_analyzer(_Schema, date) ->
+    ?WHITESPACE_ANALYZER;
+determine_analyzer(Schema, _) ->
+    Schema:analyzer_factory().

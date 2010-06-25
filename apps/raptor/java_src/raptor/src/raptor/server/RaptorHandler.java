@@ -312,7 +312,6 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
 
    private void processInfoMessage(MessageEvent e, Info msg) {
       try {
-         LogHelper.log("Got a info request for " + msg.getTerm());
          final Channel chan = e.getChannel();
          RaptorServer.idx.info(msg.getIndex(),
                                msg.getField(),

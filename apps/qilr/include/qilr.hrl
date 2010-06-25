@@ -1,0 +1,1 @@
+-define(WHITESPACE_ANALYZER, "com.basho.search.analysis.WhitespaceAnalyzerFactory").
