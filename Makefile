@@ -41,9 +41,9 @@ dev1 dev2 dev3:
 devclean: clean
 	rm -rf dev
 
-stage : dev
-	$(foreach app,$(wildcard apps/*), rm -rf dev/riak/lib/$(shell basename $(app))* && ln -sf $(abspath $(app)) dev/riak/lib;)
-	$(foreach dep,$(wildcard deps/*), rm -rf dev/riak/lib/$(shell basename $(dep))* && ln -sf $(abspath $(dep)) dev/riak/lib;)
+stage : rel
+	$(foreach app,$(wildcard apps/*), rm -rf rel/riak/lib/$(shell basename $(app))* && ln -sf $(abspath $(app)) rel/riak/lib;)
+	$(foreach dep,$(wildcard deps/*), rm -rf rel/riak/lib/$(shell basename $(dep))* && ln -sf $(abspath $(dep)) rel/riak/lib;)
 
 
 ##
