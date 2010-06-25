@@ -29,7 +29,7 @@ info(Index, Field, Term) ->
     {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
     Preflist = riak_core_apl:get_apl(Partition, N),
     {ok, Ref} = riak_search_vnode:info(Preflist, Index, Field, Term, self()),
-    {ok, Results} = riak_search_backend:collect_info_response(N, Ref, []),
+    {ok, Results} = riak_search_backend:collect_info_response(length(Preflist), Ref, []),
     %% TODO: Replace this with a middleman process that returns after 
     %% the first response.
     {ok, hd(Results)}.
