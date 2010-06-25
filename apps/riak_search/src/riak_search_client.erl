@@ -70,7 +70,7 @@ search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
         get_idx_doc(Index, DocID)
     end,
     Documents = plists:map(F, Results, {processes, 4}),
-    {Length, Documents}.
+    {Length, [X || X <- Documents, X /= {error, notfound}]}.
 
 %% Run the query through preplanning, return the result.
 explain(IndexOrSchema, QueryOps) ->
@@ -125,7 +125,7 @@ parse_idx_doc(IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
 
 get_idx_doc(DocIndex, DocID) ->
     DocBucket = to_binary(from_binary(DocIndex) ++ "_docs"),
-    case RiakClient:get(DocBucket, to_binary(DocID), 2) of
+    case RiakClient:get(DocBucket, to_binary(DocID), 1) of
         {error, notfound} ->
             {error, notfound};
         {ok, Obj} ->
@@ -138,7 +138,7 @@ store_idx_doc(IdxDoc) ->
     DocBucket = riak_search_utils:to_binary(DocIndex ++ "_docs"),
     DocKey = riak_search_utils:to_binary(DocID),
     DocObj = riak_object:new(DocBucket, DocKey, IdxDoc),
-    ok = RiakClient:put(DocObj, 2).
+    ok = RiakClient:put(DocObj, 1).
 
 
 %% @private Given a list of tokens, build a gb_tree mapping words to a
@@ -310,25 +310,28 @@ delete_document(Index, DocId) ->
         IdxDoc ->
             #riak_idx_doc{id=DocID, index=Index, fields=DocFields}=IdxDoc,
             {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
-            F2 = fun({FieldName, FieldValue}, Acc2) ->
-                {ok, Terms} = qilr_analyzer:analyze(AnalyzerPid, FieldValue),
-                PositionTree = get_term_positions(Terms),
-                Terms1 = gb_trees:keys(PositionTree),
-                F3 = fun(Term, Acc3) ->
-                    Props = build_props(Term, PositionTree),
-                    [{Index, FieldName, Term, DocID, Props}|Acc3]
+            try
+                F2 = fun({FieldName, FieldValue}, Acc2) ->
+                    {ok, Terms} = qilr_analyzer:analyze(AnalyzerPid, FieldValue),
+                    PositionTree = get_term_positions(Terms),
+                    Terms1 = gb_trees:keys(PositionTree),
+                    F3 = fun(Term, Acc3) ->
+                        Props = build_props(Term, PositionTree),
+                        [{Index, FieldName, Term, DocID, Props}|Acc3]
+                    end,
+                    lists:foldl(F3, Acc2, Terms1)
                 end,
-                lists:foldl(F3, Acc2, Terms1)
-            end,
-            DocFields1 = DocFields,
-            FieldTerms = lists:foldl(F2, [], DocFields1),
-            io:format("FieldTerms = ~p~n", [FieldTerms]),
-            lists:foreach(fun({_Index, Field, Term, _DocId, _Props}) ->
-                delete_term(Index, Field, Term, DocId)
-            end, FieldTerms),
-            DocBucket = riak_search_utils:to_binary(Index ++ "_docs"),
-            DocKey = riak_search_utils:to_binary(DocId),
-            RiakClient:delete(DocBucket, DocKey, 1)
+                DocFields1 = DocFields,
+                FieldTerms = lists:foldl(F2, [], DocFields1),
+                lists:foreach(fun({_Index, Field, Term, _DocId, _Props}) ->
+                    delete_term(Index, Field, Term, DocId)
+                end, FieldTerms),
+                DocBucket = riak_search_utils:to_binary(Index ++ "_docs"),
+                DocKey = riak_search_utils:to_binary(DocId),
+                RiakClient:delete(DocBucket, DocKey, 1)
+            after
+                qilr_analyzer:close(AnalyzerPid)
+            end
     end.
 
 query_as_graph(OpList) ->

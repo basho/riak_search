@@ -63,6 +63,9 @@ run_solr_command(_, _, []) ->
 
 %% Add a list of documents to the index...
 run_solr_command(Schema, add, [{IdxDoc, Terms}|Docs]) ->
+    %% If there is an old document, then delete it.
+    ensure_deleted(Schema:name(), IdxDoc#riak_idx_doc.id),
+
     %% Store the terms...
     F = fun(X) ->
         {Index, Field, Term, DocID, Props} = X,
@@ -84,10 +87,21 @@ run_solr_command(Schema, delete, [{'id', ID}|IDs]) ->
 run_solr_command(Schema, delete, [{'query', QueryOps}|Queries]) ->
     Index = Schema:name(),
     {_NumFound, Docs} = Client:search_doc(Schema, QueryOps, 0, infinity, ?DEFAULT_TIMEOUT),
-    [Client:delete_document(Index, X#riak_idx_doc.id) || X <- Docs],
+    [Client:delete_document(Index, X#riak_idx_doc.id) || X <- Docs, X /= {error, notfound}],
     run_solr_command(Schema, delete, Queries);
 
 %% Unknown command, so error...
 run_solr_command(_Schema, Command, _Docs) ->
     error_logger:error_msg("Unknown solr command: ~p~n", [Command]),
     throw({unknown_solr_command, Command}).
+
+
+ensure_deleted(Index, DocID) ->
+    case Client:get_idx_doc(Index, DocID) of
+        {error, notfound} -> 
+            ok;
+        _ ->
+            Client:delete_document(Index, DocID),
+            timer:sleep(10),
+            ensure_deleted(Index, DocID)
+    end.

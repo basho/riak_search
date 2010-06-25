@@ -91,8 +91,9 @@ prop_index_search_delete() ->
                     {Length, Results} = Client:search(Index, QueryOps, 0, infinity, 5000),
                     (Length > 0) andalso (lists:keymember(to_list(Value), 1, Results))
                 end,
-                Result = run_until_true(F, 3),
+                run_until_true(F, 3),
                 Client:delete_term(Index, Field, Term, Value),
+                Result = run_until_true(fun() -> not F() end, 3),
                 Result
             end)).
 
@@ -110,7 +111,9 @@ run_until_true(_, 0) ->
 run_until_true(F, Count) ->
     case F() of
         true ->  true;
-        false -> run_until_true(F, Count - 1)
+        false -> 
+            timer:sleep(100),
+            run_until_true(F, Count - 1)
     end.
 
 -endif. %EQC
