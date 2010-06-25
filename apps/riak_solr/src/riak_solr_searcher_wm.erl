@@ -12,7 +12,8 @@
     client,
     schema,
     squery,
-    query_ops
+    query_ops,
+    sort
 }).
 
 -record(squery, {
@@ -48,7 +49,8 @@ malformed_request(Req, State) ->
                     Client = State#state.client,
                     try
                         {ok, QueryOps} = Client:parse_query(Schema:name(), SQuery#squery.q),
-                        {false, Req, State#state{schema=Schema1, squery=SQuery, query_ops=QueryOps}}
+                        {false, Req, State#state{schema=Schema1, squery=SQuery, query_ops=QueryOps,
+                                                 sort=wrq:get_qs_value("sort", "none", Req)}}
                     catch _ : Error ->
                         error_logger:error_msg("Could not parse query '~s'.~n~p~n", [SQuery#squery.q, Error]),
                         {true, Req, State}
@@ -64,7 +66,7 @@ malformed_request(Req, State) ->
 content_types_provided(Req, State) ->
     {[{"application/json", to_json}], Req, State}.
 
-to_json(Req, State) ->
+to_json(Req, #state{sort=SortBy}=State) ->
     %% Pull out values...
     #state{client=Client, schema=Schema, squery=SQuery, query_ops=QueryOps}=State,
     #squery{query_start=QStart, query_rows=QRows}=SQuery,
@@ -73,10 +75,10 @@ to_json(Req, State) ->
     StartTime = erlang:now(),
     {NumFound, Docs} = Client:search_doc(Schema:name(), QueryOps, QStart, QRows, ?DEFAULT_TIMEOUT),
     ElapsedTime = erlang:trunc(timer:now_diff(erlang:now(), StartTime) / 1000),
-    {build_json_response(Schema, ElapsedTime, SQuery, NumFound, Docs), Req, State}.
+    {build_json_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, Docs), Req, State}.
 
 %% @private
-build_json_response(Schema, ElapsedTime, SQuery, NumFound, []) ->
+build_json_response(Schema, _SortBy, ElapsedTime, SQuery, NumFound, []) ->
     Response = [{<<"responseHeader">>,
                  {struct, [{<<"status">>, 0},
                            {<<"QTime">>, ElapsedTime},
@@ -89,7 +91,7 @@ build_json_response(Schema, ElapsedTime, SQuery, NumFound, []) ->
                             {<<"numFound">>, NumFound},
                             {<<"start">>, SQuery#squery.query_start}]}}],
     mochijson2:encode({struct, Response});
-build_json_response(Schema, ElapsedTime, SQuery, NumFound, Docs) ->
+build_json_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, Docs0) ->
     F = fun({Name, Value}) ->
         case Schema:find_field_or_facet(Name) of
             Field when is_record(Field, riak_search_field) ->
@@ -99,6 +101,7 @@ build_json_response(Schema, ElapsedTime, SQuery, NumFound, Docs) ->
         end,
         convert_type(Value, Type)
     end,
+    Docs = riak_solr_sort:sort(Docs0, SortBy),
     Response = [{<<"responseHeader">>,
                  {struct, [{<<"status">>, 0},
                            {<<"QTime">>, ElapsedTime},

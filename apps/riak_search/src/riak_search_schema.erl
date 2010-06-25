@@ -17,6 +17,7 @@
     field_type/1,
     is_field_required/1,
     is_field_facet/1,
+    field_types/0,
 
     %% Field lookup
     find_field_or_facet/1,
@@ -72,6 +73,18 @@ is_field_required(Field) ->
 
 is_field_facet(Field) ->
     Field#riak_search_field.facet == true.
+
+field_types() ->
+    FTypes0 = [{Field#riak_search_field.name,
+                Field#riak_search_field.type} || Field <- fields()],
+    case proplists:get_value(default_field(), fields()) of
+        undefined ->
+            FTypes0;
+        Field ->
+            [{default,
+              Field#riak_search_field.type}|FTypes0]
+    end.
+
 
 %% Return the field or facet matching the specified name, or 'undefined'.
 find_field_or_facet(FName) ->

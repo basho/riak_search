@@ -37,11 +37,13 @@ search(Query, #state{index=Index}) ->
             [io:format("~p~n", [Result]) || Result <- Results]
     end.
 
-parse(Query, #state{analyzer=Analyzer}) ->
-    io:format("~p~n", [qilr_parse:string(Analyzer, Query)]).
+parse(Query, #state{analyzer=Analyzer, index=Index}) ->
+    {ok, Schema} = riak_search_config:get_schema(Index),
+    io:format("~p~n", [qilr_parse:string(Analyzer, Query, list_to_atom(Schema:default_op()),
+                                         Schema:field_types(), Schema:analyzer_factory())]).
 
 graph(Query, #state{client=Client, index=Index}) ->
-    case Client:parse_query(Query) of
+    case Client:parse_query(Index, Query) of
         {ok, AST} ->
             io:format("~p~n", [Client:query_as_graph(Client:explain(Index, AST))]);
         Error->
@@ -72,7 +74,7 @@ read_input(#state{handler=Handler}=State, Accum0) ->
                 _ ->
                     case catch Handler(Accum, State) of
                         {'EXIT', Error} ->
-                            io:format("~p~n", [Error]);
+                            io:format("ERROR: ~p~n", [Error]);
                         {error, _} = Error ->
                             io:format("~p~n", [Error]);
                         _ ->

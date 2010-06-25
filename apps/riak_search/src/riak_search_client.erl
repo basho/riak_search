@@ -1,6 +1,7 @@
 -module(riak_search_client, [RiakClient]).
 
 -include("riak_search.hrl").
+-include_lib("qilr/include/qilr.hrl").
 
 -define(MAX_MULTI_TERM_SZ, 250).
 -define(OPTIMIZER_PROC_CT, 32).
@@ -46,7 +47,7 @@ parse_query(IndexOrSchema, Query) ->
     {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
     try
         qilr_parse:string(AnalyzerPid, Query, list_to_atom(Schema:default_op()),
-                          Schema:analyzer_factory())
+                          Schema:field_types(), Schema:analyzer_factory())
     after
         qilr_analyzer:close(AnalyzerPid)
     end.
@@ -97,7 +98,6 @@ parse_idx_doc(IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
         #riak_idx_doc{id=DocID, index=Index, fields=DocFields}=IdxDoc,
         {ok, Schema} = riak_search_config:get_schema(Index),
 
-
         %% Put together a list of Facet properties...
         F1 = fun(Facet, Acc) ->
                      FName = Schema:field_name(Facet),
@@ -114,7 +114,7 @@ parse_idx_doc(IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
         %% a de-duped list of the terms. For each, index the FieldName /
         %% Term / DocID / Props.
         F2 = fun({FieldName, FieldValue}, Acc2) ->
-                     {ok, Terms} = qilr_analyzer:analyze(AnalyzerPid, FieldValue, Schema:analyzer_factory()),
+                     {ok, Terms} = analyze_field(AnalyzerPid, FieldName, FieldValue, Schema),
                      PositionTree = get_term_positions(Terms),
                      Terms1 = gb_trees:keys(PositionTree),
                      F3 = fun(Term, Acc3) ->

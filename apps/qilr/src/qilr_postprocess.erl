@@ -4,6 +4,8 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-include("qilr.hrl").
+
 optimize(AnalyzerPid, {ok, Query}, Opts) when not is_list(Query) ->
     optimize(AnalyzerPid, {ok, [Query]}, Opts);
 optimize(AnalyzerPid, {ok, Query0}, Opts) when is_list(Query0) ->
@@ -13,8 +15,7 @@ optimize(AnalyzerPid, {ok, Query0}, Opts) when is_list(Query0) ->
         Query1 ->
             Query2 = consolidate_exprs(Query1, []),
             Query3 = default_bool(Query2, Opts),
-            Query4 = consolidate_exprs(Query3, []),
-            {ok, Query4}
+            {ok, consolidate_exprs(Query3, [])}
     end;
 optimize(_, {error, {_, _, [_Message, [91, Error, 93]]}}, _) ->
     Err = [list_to_integer(M) || M <- Error,
@@ -46,24 +47,27 @@ consolidate_exprs(Term, Acc) ->
 
 process_terms(AnalyzerPid, Query, Opts) ->
     AnalyzerFactory = proplists:get_value(analyzer_factory, Opts),
-    analyze_terms(AnalyzerPid, AnalyzerFactory, Query, []).
+    SchemaFields = proplists:get_value(schema_fields, Opts),
+    analyze_terms(AnalyzerPid, AnalyzerFactory, SchemaFields, Query, []).
 
-analyze_terms(_AnalyzerPid, _AnalyzerFactory, [], Acc) ->
+analyze_terms(_AnalyzerPid, _AnalyzerFactory, _SchemaFields, [], Acc) ->
     lists:reverse(Acc);
-analyze_terms(AnalyzerPid, AnalyzerFactory, [{Op, Terms}|T], Acc) when Op =:= land;
-                                                                       Op =:= lor;
-                                                                       Op =:= group ->
-    case analyze_terms(AnalyzerPid, AnalyzerFactory, Terms, []) of
+analyze_terms(AnalyzerPid, AnalyzerFactory,
+              SchemaFields, [{Op, Terms}|T], Acc) when Op =:= land;
+                                                       Op =:= lor;
+                                                       Op =:= group ->
+    case analyze_terms(AnalyzerPid, AnalyzerFactory, SchemaFields, Terms, []) of
         [] ->
-            analyze_terms(AnalyzerPid, AnalyzerFactory, T, Acc);
+            analyze_terms(AnalyzerPid, AnalyzerFactory, SchemaFields, T, Acc);
         NewTerms ->
-            analyze_terms(AnalyzerPid, AnalyzerFactory, T, [{Op, NewTerms}|Acc])
+            analyze_terms(AnalyzerPid, AnalyzerFactory, SchemaFields, T, [{Op, NewTerms}|Acc])
     end;
-analyze_terms(AnalyzerPid, AnalyzerFactory, [{field, FieldName, TermText, TProps}|T], Acc) ->
+analyze_terms(AnalyzerPid, AnalyzerFactory,
+              SchemaFields, [{field, FieldName, TermText, TProps}|T], Acc) ->
     NewTerm = case string:chr(TermText, $\ ) > 0 andalso
-                  hd(TermText) =:= $\" of
+                  hd(TermText) =:= 34 of %% double quotes
                   false ->
-                      case analyze_term_text(AnalyzerPid, AnalyzerFactory, TermText) of
+                      case analyze_term_text(FieldName, AnalyzerPid, AnalyzerFactory, SchemaFields, TermText) of
                           {single, NewText} ->
                               {field, FieldName, NewText, TProps};
                           {multi, NewTexts} ->
@@ -74,7 +78,7 @@ analyze_terms(AnalyzerPid, AnalyzerFactory, [{field, FieldName, TermText, TProps
                               none
                       end;
                   true ->
-                      case analyze_term_text(AnalyzerPid, AnalyzerFactory, TermText) of
+                      case analyze_term_text(FieldName, AnalyzerPid, AnalyzerFactory, SchemaFields, TermText) of
                           {single, NewText} ->
                               BaseQuery = {field, FieldName, NewText, TProps},
                               {phrase, TermText, BaseQuery};
@@ -89,27 +93,27 @@ analyze_terms(AnalyzerPid, AnalyzerFactory, [{field, FieldName, TermText, TProps
               end,
     case NewTerm of
         none ->
-            analyze_terms(AnalyzerPid, AnalyzerFactory, T, Acc);
+            analyze_terms(AnalyzerPid, AnalyzerFactory, SchemaFields, T, Acc);
         _ ->
-            analyze_terms(AnalyzerPid, AnalyzerFactory, T, [NewTerm|Acc])
+            analyze_terms(AnalyzerPid, AnalyzerFactory, SchemaFields, T, [NewTerm|Acc])
     end;
 
-analyze_terms(AnalyzerPid, AnalyzerFactory, [{term, TermText, TProps}|T], Acc) ->
+analyze_terms(AnalyzerPid, AnalyzerFactory, SchemaFields, [{term, TermText, TProps}|T], Acc) ->
     NewTerm = case string:chr(TermText, $\ ) > 0 andalso
-                  hd(TermText) =:= $\" of
+                  hd(TermText) =:= 34 of %% double quotes
                   false ->
-                      case analyze_term_text(AnalyzerPid, AnalyzerFactory, TermText) of
+                      case analyze_term_text(default, AnalyzerPid, AnalyzerFactory, SchemaFields, TermText) of
                           {single, NewText} ->
                               {term, NewText, TProps};
                           {multi, NewTexts} ->
-                              {group, [{land,
+                               {group, [{land,
                                         [{term, NT, TProps} ||
                                             NT <- NewTexts]}]};
                           none ->
                               none
                       end;
                   true ->
-                      case analyze_term_text(AnalyzerPid, AnalyzerFactory, TermText) of
+                      case analyze_term_text(default, AnalyzerPid, AnalyzerFactory, SchemaFields, TermText) of
                           {single, NewText} ->
                               BaseQuery = {term, NewText, TProps},
                               {phrase, TermText, [{base_query, BaseQuery}|TProps]};
@@ -124,12 +128,12 @@ analyze_terms(AnalyzerPid, AnalyzerFactory, [{term, TermText, TProps}|T], Acc) -
               end,
     case NewTerm of
         none ->
-            analyze_terms(AnalyzerPid, AnalyzerFactory, T, Acc);
+            analyze_terms(AnalyzerPid, AnalyzerFactory, SchemaFields, T, Acc);
         _ ->
-            analyze_terms(AnalyzerPid, AnalyzerFactory, T, [NewTerm|Acc])
+            analyze_terms(AnalyzerPid, AnalyzerFactory, SchemaFields, T, [NewTerm|Acc])
     end;
-analyze_terms(AnalyzerPid, AnalyzerFactory, [H|T], Acc) ->
-    analyze_terms(AnalyzerPid, AnalyzerFactory, T, [H|Acc]).
+analyze_terms(AnalyzerPid, AnalyzerFactory, SchemaFields, [H|T], Acc) ->
+    analyze_terms(AnalyzerPid, AnalyzerFactory, SchemaFields, T, [H|Acc]).
 
 default_bool([{term, _, _}=H|T], Opts) ->
     DefaultBool = proplists:get_value(default_bool, Opts),
@@ -156,7 +160,7 @@ default_bool_children([H|T], Opts) ->
 default_bool_children(Query, _Opts) ->
     Query.
 
-analyze_term_text(AnalyzerPid, AnalyzerFactory, Text0) ->
+analyze_term_text(FieldName, AnalyzerPid, AnalyzerFactory, SchemaFields, Text0) ->
     Start = hd(Text0),
     End = hd(lists:reverse(Text0)),
     Text = case Start == $" andalso End == $" of
@@ -165,13 +169,15 @@ analyze_term_text(AnalyzerPid, AnalyzerFactory, Text0) ->
                false ->
                    Text0
            end,
-    case qilr_analyzer:analyze(AnalyzerPid, Text, AnalyzerFactory) of
+    Type = proplists:get_value(FieldName, SchemaFields),
+    case qilr_analyzer:analyze(AnalyzerPid, Text,
+                               determine_analyzer(AnalyzerFactory, Type)) of
         {ok, []} ->
             none;
         {ok, [Token]} ->
-            {single, Token};
+            {single, left_pad(Type, Token)};
         {ok, Tokens} ->
-            case [Tok || Tok <- Tokens,
+            case [left_pad(Type, Tok) || Tok <- Tokens,
                          not(Tok =:= "")] of
                 [] ->
                     none;
@@ -192,3 +198,19 @@ get_type({field, _, _, _}) ->
     field;
 get_type({term, _, _}) ->
     term.
+
+left_pad(integer, V) when is_binary(V) ->
+    list_to_binary(left_pad(integer, binary_to_list(V)));
+left_pad(integer, V) when length(V) >= 10 ->
+    V;
+left_pad(integer, V) ->
+    left_pad(integer, [$0|V]);
+left_pad(_, V) ->
+    V.
+
+determine_analyzer(_AnalyzerFactory, integer) ->
+    ?WHITESPACE_ANALYZER;
+determine_analyzer(_AnalyzerFactory, date) ->
+    ?WHITESPACE_ANALYZER;
+determine_analyzer(AnalyzerFactory, _) ->
+    AnalyzerFactory.
