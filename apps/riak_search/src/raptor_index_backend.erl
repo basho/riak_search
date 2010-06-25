@@ -123,6 +123,27 @@ handle_command(State, {stream, Index, Field, Term, OutputPid, OutputRef, DestPar
         end end),
     ok;
 
+handle_command(State, {multi_stream, Terms, OutputPid, OutputRef, Partition, Node, FilterFun}) ->
+    case Partition == State#state.partition andalso Node == node() of
+        true ->
+            %io:format("raptor_index_backend: multi_stream: ~p~n~n~p ~p ~p ~p ~p~n",
+            %    [Terms, OutputPid, OutputRef, Partition, Node, FilterFun]),
+            Terms1 = lists:map(fun({term, {I, F, T}}) ->
+                string:join([I, F, T], "~")
+            end, Terms),
+            TermArg = string:join(Terms1, "`"),
+            spawn(fun() ->
+                {ok, Conn} = raptor_conn_sup:new_conn(),
+                {ok, StreamRef} = raptor_conn:multi_stream(
+                    Conn,
+                    list_to_binary(TermArg)),
+                receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun),
+                raptor_conn:close(Conn)
+            end);
+        _ -> ignore
+    end,
+    ok;
+
 handle_command(_State, {info_test__, _Index, _Field, Term, OutputPid, OutputRef}) ->
     OutputPid ! {info_response, [{Term, node(), 1}], OutputRef},
     ok;

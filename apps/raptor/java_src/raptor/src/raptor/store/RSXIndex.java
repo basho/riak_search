@@ -26,15 +26,19 @@
 package raptor.store;
 
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Map;
 
 import org.apache.log4j.Logger;
 import org.apache.lucene.document.Document;
 import org.apache.lucene.document.Field;
 import org.json.JSONObject;
+import org.json.JSONArray;
 
 import raptor.server.RaptorServer;
 import raptor.store.handlers.ResultHandler;
+
+import com.googlecode.concurrentlinkedhashmap.ConcurrentLinkedHashMap.Builder;
 
 public class RSXIndex implements Runnable {
     final private static Logger log = 
@@ -47,10 +51,16 @@ public class RSXIndex implements Runnable {
     final private static int LUCENE_COMMIT_INTERVAL = 30000; /* ms */
     final private ColumnStore store;
     final private LuceneStore lucene;
-    
+    final private Map<String, List<JSONObject>> catalogCache;
+
     public static long stat_index_c = 0;
     
     public RSXIndex(String dataDir) throws Exception {
+        catalogCache = new Builder<String, List<JSONObject>>()
+            .initialCapacity(25000)
+            .maximumWeightedCapacity(25000)
+            .concurrencyLevel(Runtime.getRuntime().availableProcessors()*2)
+            .build();
         store = new ColumnStore(dataDir + "/raptor-db", "log", 1);
         lucene = new LuceneStore(dataDir + "/raptor-catalog");
         RaptorServer.writeThread.start();
@@ -133,6 +143,67 @@ public class RSXIndex implements Runnable {
         /*for(byte[] k: results.keySet()) {
             resultHandler.handleResult(k, results.get(k));
         }*/
+        resultHandler.handleResult("$end_of_table", "");
+    }
+    
+    public void multistream(JSONArray terms,
+                            final ResultHandler resultHandler)
+                            throws Exception {
+        long ctime = System.currentTimeMillis();
+        StringBuffer sb = new StringBuffer();
+        for(int i=0; i<terms.length(); i++) {
+            JSONObject jo = terms.getJSONObject(i);
+            sb.append("(index:\"");
+            sb.append(jo.getString("index"));
+            sb.append("\" AND field:\"");
+            sb.append(jo.getString("field"));
+            sb.append("\" AND term:\"");
+            sb.append(jo.getString("term"));
+            sb.append("\")");
+            if (i < (terms.length()-1)) sb.append(" OR ");
+        }
+        String query = sb.toString();
+
+        final List<JSONObject> catalogEntries;
+
+        if (catalogCache.get(query) == null) {
+            catalogEntries = new ArrayList<JSONObject>();
+            lucene.query(query, new ResultHandler() {
+                                    public void handleCatalogResult(JSONObject obj) {
+                                        catalogEntries.add(obj);
+                                        /* partition_id, index, field, term */
+                                    }
+                                });
+            catalogCache.put(query, catalogEntries);
+        } else {
+            catalogEntries = catalogCache.get(query);
+        }
+
+        for (int j=0; j<catalogEntries.size(); j++) {
+            long t1 = System.currentTimeMillis();
+            JSONObject catalogEntry = catalogEntries.get(j);
+            String index = catalogEntry.getString("index");
+            String field = catalogEntry.getString("field");
+            String term = catalogEntry.getString("term");
+            String partition = catalogEntry.getString("partition_id");
+            String table = makeTableKey(index, field, term, partition);
+            Map<byte[], byte[]> results =
+                store.getRange(table,
+                               ("").getBytes("UTF-8"),
+                               ("").getBytes("UTF-8"),
+                               true,
+                               true,
+                               resultHandler);
+                               
+            log.info("multistream: starting: " +
+                index + "." +
+                field + "." +
+                term + "/" +
+                partition + " <" + (System.currentTimeMillis() - t1) + "ms>");
+
+        }
+        long elapsed = System.currentTimeMillis() - ctime;
+        log.info("<< multistream complete, " + elapsed + "ms elapsed >>");
         resultHandler.handleResult("$end_of_table", "");
     }
     
@@ -273,7 +344,7 @@ public class RSXIndex implements Runnable {
         
         lucene.addDocument(doc);
     }
-    
+        
     public static void main(String args[]) throws Exception {
         RSXIndex idx = new RSXIndex("");
         

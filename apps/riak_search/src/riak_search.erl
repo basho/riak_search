@@ -2,6 +2,7 @@
 -export([client_connect/1,
          local_client/0,
          stream/4,
+         multi_stream/2,
          info/3,
          info_range/5]).
 -include("riak_search.hrl").
@@ -19,6 +20,9 @@ local_client() ->
 stream(Index, Field, Term, FilterFun) ->
     {_N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
     riak_search_vnode:stream(Partition, 1, Index, Field, Term, FilterFun, self()).
+
+multi_stream(IFTList, FilterFun) ->
+    riak_search_vnode:multi_stream(IFTList, FilterFun, self()).
 
 info(Index, Field, Term) ->
     {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),

@@ -109,8 +109,9 @@ public class BtreeStore {
         EnvironmentConfig envConf = new EnvironmentConfig();
         envConf.setAllowCreate(true);
         envConf.setInitializeLogging(true);
+        envConf.setRunRecovery(true);
         envConf.setLogDirectory(new File(logDirectory));
-        envConf.setCacheSize(436870912);
+        envConf.setCacheSize(218435456);
         envConf.setInitializeCache(true);
         envConf.setMMapSize(1000000000);
         envConf.setMaxLogFileSize(10000000);
@@ -236,6 +237,8 @@ public class BtreeStore {
                     retVal = cursor.getNext(dbKey, dbVal, LockMode.DEFAULT);
                 }
             }
+        } catch (com.sleepycat.db.DatabaseException ex) {
+            log.info("com.sleepycat.db.DatabaseException: " + ex.toString());
         } finally {
             if (cursor != null) cursor.close();
         }

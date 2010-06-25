@@ -40,6 +40,7 @@ import org.jboss.netty.channel.ChannelStateEvent;
 import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
 import org.json.JSONObject;
+import org.json.JSONArray;
 
 import raptor.protobuf.Messages.CatalogQuery;
 import raptor.protobuf.Messages.CatalogQueryResponse;
@@ -51,6 +52,7 @@ import raptor.protobuf.Messages.Info;
 import raptor.protobuf.Messages.InfoRange;
 import raptor.protobuf.Messages.InfoResponse;
 import raptor.protobuf.Messages.Stream;
+import raptor.protobuf.Messages.MultiStream;
 import raptor.protobuf.Messages.StreamResponse;
 import raptor.store.handlers.ResultHandler;
 
@@ -64,6 +66,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
    final private static String MSG_INDEX = "Index";
    final private static String MSG_DELETE_ENTRY = "DeleteEntry";
    final private static String MSG_STREAM = "Stream";
+   final private static String MSG_MULTISTREAM = "MultiStream";
    final private static String MSG_INFORANGE = "InfoRange";
    final private static String MSG_CATALOG_QUERY = "CatalogQuery";
    final private static String MSG_COMMAND = "Command";
@@ -131,6 +134,17 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
             if (stream.getMessageType().equals(MSG_STREAM)) {
                if (RaptorServer.debugging) log.info("stream: " + stream);
                processStreamMessage(e, stream);
+               return;
+            }
+         } catch (com.google.protobuf.UninitializedMessageException ex) { }
+           catch (com.google.protobuf.InvalidProtocolBufferException ex) { }
+         
+         // multi_stream
+         try {
+            MultiStream multistream = MultiStream.newBuilder().mergeFrom(b_ar).build();
+            if (multistream.getMessageType().equals(MSG_MULTISTREAM)) {
+               if (RaptorServer.debugging) log.info("multistream: " + multistream);
+               processMultiStreamMessage(e, multistream);
                return;
             }
          } catch (com.google.protobuf.UninitializedMessageException ex) { }
@@ -248,6 +262,54 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
       }
    }
    
+   private void processMultiStreamMessage(MessageEvent e, MultiStream msg) {
+      try {
+         final Channel chan = e.getChannel();
+         String[] iftStrings = msg.getTermList().split("\\`");
+         JSONArray terms = new JSONArray();
+         for(String iftStr: iftStrings) {
+            String[] ift = iftStr.split("~");
+            JSONObject jo = new JSONObject();
+            jo.put("index", ift[0]);
+            jo.put("field", ift[1]);
+            jo.put("term", ift[2]);
+            
+            log.info("processMultiStreamMessage: jo = " + jo.toString(4));
+                
+            terms.put(jo);
+         }
+         
+         RaptorServer.idx.multistream(terms,
+                                      new ResultHandler() {
+                                        public void handleResult(byte[] key, byte[] value) {
+                                            try {
+                                               StreamResponse.Builder response =
+                                                   StreamResponse.newBuilder();
+                                               response.setValue(new String(key, "UTF-8"))
+                                                       .setProps(ByteString.copyFrom(value));
+                                               chan.write(response.build());
+                                            } catch (java.io.UnsupportedEncodingException ex) {
+                                               ex.printStackTrace();
+                                            }
+                                        }
+                                        public void handleResult(String key, String value) {
+                                            try {
+                                                StreamResponse.Builder response =
+                                                    StreamResponse.newBuilder();
+                                                response.setValue(key)
+                                                        .setProps(ByteString.copyFrom(
+                                                            value.getBytes("UTF-8")));
+                                                chan.write(response.build());
+                                            } catch (java.io.UnsupportedEncodingException ex) {
+                                               ex.printStackTrace();
+                                            }
+                                        }
+                                   });
+      } catch (Exception ex) {
+         ex.printStackTrace();
+      }
+   }
+
    private void processInfoMessage(MessageEvent e, Info msg) {
       try {
          final Channel chan = e.getChannel();

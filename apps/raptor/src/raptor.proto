@@ -42,6 +42,11 @@ message CatalogQuery {
     required string message_type = 3;
 }
 
+message MultiStream {
+    required string term_list = 1;
+    required string message_type = 2;
+}
+
 message Command {
     required string message_type = 1;
     required string command = 2;
