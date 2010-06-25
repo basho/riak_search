@@ -1,7 +1,10 @@
 -module(riak_core_vnode).
 -behaviour(gen_fsm).
 -include_lib("riak_core/include/riak_core_vnode.hrl").
--export([start_link/2]).
+-export([behaviour_info/1]).
+-export([start_link/2,
+         send_command/2,
+         send_command_after/2]).
 -export([init/1, 
          active/2, 
          active/3, 
@@ -12,6 +15,13 @@
          code_change/4]).
 -export([reply/2, test/2]).
 -export([get_mod_index/1]).
+
+-spec behaviour_info(atom()) -> 'undefined' | [{atom(), arity()}].
+behaviour_info(callbacks) ->
+    [{init,1},
+     {handle_command,3}];
+behaviour_info(_Other) ->
+    undefined.
 
 -define(TIMEOUT, 60000).
 
@@ -24,7 +34,19 @@
 start_link(Mod, Index) ->
     gen_fsm:start_link(?MODULE, [Mod, Index], []).
 
+%% Send a command message for the vnode module by Pid - 
+%% typically to do some deferred processing after returning yourself
+send_command(Pid, Request) ->
+    gen_fsm:send_event(Pid, ?VNODE_REQ{request=Request}).
+
+%% Sends a command to the FSM that called it after Time 
+%% has passed.
+send_command_after(Time, Request) ->
+    gen_fsm:send_event_after(Time, ?VNODE_REQ{request=Request}).
+    
+
 init([Mod, Index]) ->
+    %%TODO: Should init args really be an array if it just gets Init?
     {ok, ModState} = Mod:init([Index]),
     {ok, active, #state{index=Index, mod=Mod, modstate=ModState}}.
 
@@ -88,19 +110,23 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 
 
 
-
+%% @doc Send a reply to a vnode request.  If 
+%%      the Ref is undefined just send the reply
+%%      for compatibility with pre-0.12 requestors.
+%%      If Ref is defined, send it along with the
+%%      reply.
+%%      
 -spec reply(sender(), term()) -> true.
-reply({Type, Ref, From}, Reply) ->
-    case Type of
-        fsm ->
-            %% Perhaps this should send {Ref, Reply}
-            gen_fsm:send_event(From, Reply);
-        server ->
-            %% Do not send the Ref - included in the 
-            gen_server:reply(From, Reply);
-        raw ->
-            From ! {Ref, Reply}
-    end.
+reply({fsm, undefined, From}, Reply) ->
+    gen_fsm:send_event(From, Reply);
+reply({fsm, Ref, From}, Reply) ->
+    gen_fsm:send_event(From, {Ref, Reply});
+reply({server, undefined, From}, Reply) ->
+    gen_server:reply(From, Reply);
+reply({server, Ref, From}, Reply) ->
+    gen_server:reply(From, {Ref, Reply});
+reply({raw, Ref, From}, Reply) ->
+    From ! {Ref, Reply}.
                    
 
 test(K, V) ->

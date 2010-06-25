@@ -25,19 +25,30 @@
 -module(riak_core_vnode_master).
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 -behaviour(gen_server).
--export([start_link/1, command/3, command/4]).
+-export([start_link/1, start_link/2,
+         start_vnode/2, command/3, command/4, sync_command/3,
+         make_request/3,
+         all_nodes/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 -record(idxrec, {idx, pid, monref}).
--record(state, {idxtab, excl=ordsets:new(), sup_name, vnode_mod}).
+-record(state, {idxtab, excl=ordsets:new(), sup_name, vnode_mod, legacy}).
 
 make_name(VNodeMod,Suffix) -> list_to_atom(atom_to_list(VNodeMod)++Suffix).
 reg_name(VNodeMod) ->  make_name(VNodeMod, "_master").
 
 start_link(VNodeMod) -> 
-    RegName = reg_name(VNodeMod),
-    gen_server:start_link({local, RegName}, ?MODULE, [VNodeMod,RegName], []).
+    start_link(VNodeMod, undefined).
 
+start_link(VNodeMod, LegacyMod) -> 
+    RegName = reg_name(VNodeMod),
+    gen_server:start_link({local, RegName}, ?MODULE, 
+                          [VNodeMod,LegacyMod,RegName], []).
+
+start_vnode(Index, VNodeMod) ->
+    RegName = reg_name(VNodeMod),
+    gen_server:cast(RegName, {Index, start_vnode}).
+    
 command(Preflist, Msg, VMaster) ->
     command(Preflist, Msg, noreply, VMaster).
      
@@ -46,10 +57,36 @@ command([], _Msg, _Sender, _VMaster) ->
     ok;
 command([{Index,Node}|Rest], Msg, Sender, VMaster) ->
     gen_server:cast({VMaster, Node}, make_request(Msg, Sender, Index)),
-    command(Rest, Msg, Sender, VMaster).
+    command(Rest, Msg, Sender, VMaster);
+
+%% Send the command to an individual Index/Node combination
+command({Index,Node}, Msg, Sender, VMaster) ->
+    gen_server:cast({VMaster, Node}, make_request(Msg, Sender, Index)).
+
+%% Send a synchronus command to an individual Index/Node combination.
+%% Will not return until the vnode has returned
+sync_command({Index,Node}, Msg, VMaster) ->
+    %% Issue the call to the master, it will update the Sender with
+    %% the From for handle_call so that the {reply} return gets 
+    %% sent here.
+    gen_server:call({VMaster, Node}, 
+                    make_request(Msg, {server, undefined, undefined}, Index)).
+
+%% Make a request record - exported for use by legacy modules
+-spec make_request(vnode_req(), sender(), partition()) -> #riak_vnode_req_v1{}.
+make_request(Request, Sender, Index) ->
+    #riak_vnode_req_v1{
+              index=Index,
+              sender=Sender,
+              request=Request}.
+
+%% Request a list of Pids for all vnodes 
+all_nodes(VNodeMod) ->
+    RegName = reg_name(VNodeMod),
+    gen_server:call(RegName, all_nodes).
 
 %% @private
-init([VNodeMod, RegName]) ->
+init([VNodeMod, LegacyMod, RegName]) ->
     %% Get the current list of vnodes running in the supervisor. We use this
     %% to rebuild our ETS table for routing messages to the appropriate
     %% vnode.
@@ -67,7 +104,8 @@ init([VNodeMod, RegName]) ->
     IdxRecs = [F(Pid, Idx) || {Pid, {Mod, Idx}} <- PidIdxs, Mod =:= VNodeMod],
     true = ets:insert_new(IdxTable, IdxRecs),
     {ok, #state{idxtab=IdxTable,
-                vnode_mod=VNodeMod}}.
+                vnode_mod=VNodeMod,
+                legacy=LegacyMod}}.
 
 handle_cast({Partition, start_vnode}, State=#state{excl=Excl}) ->
     get_vnode(Partition, State),
@@ -76,18 +114,35 @@ handle_cast(Req=?VNODE_REQ{index=Idx}, State) ->
     Pid = get_vnode(Idx, State),
     gen_fsm:send_event(Pid, Req),
     {noreply, State};
-handle_cast({Partition, Msg}, State) ->
-    Pid = get_vnode(Partition, State),
-    gen_fsm:send_event(Pid, Msg),
-    {noreply, State}.
-%% handle_call(Req=?VNODE_REQ{index=Idx}, State) ->
-%%     Pid = get_vnode(Idx, State),
-%%     gen_fsm:send_event(Pid, Req),
+%% handle_cast({Partition, Msg}, State) ->
+%%     Pid = get_vnode(Partition, State),
+%%     gen_fsm:send_event(Pid, Msg),
 %%     {noreply, State};
-handle_call({Partition, Msg}, From, State) ->
-    Pid = get_vnode(Partition, State),
-    gen_fsm:send_event(Pid, {From, Msg}),
-    {noreply, State}.
+handle_cast(Other, State=#state{legacy=Legacy}) when Legacy =/= undefined ->
+    case catch Legacy:rewrite_cast(Other) of
+        {ok, ?VNODE_REQ{}=Req} ->
+            handle_cast(Req, State);
+        _ ->
+            {noreply, State}
+    end.
+
+handle_call(Req=?VNODE_REQ{index=Idx, sender={server, undefined, undefined}}, From, State) ->
+    Pid = get_vnode(Idx, State),
+    gen_fsm:send_event(Pid, Req?VNODE_REQ{sender={server, undefined, From}}),
+    {noreply, State};
+%% handle_call({Partition, Msg}, From, State) ->
+%%     Pid = get_vnode(Partition, State),
+%%     gen_fsm:send_event(Pid, {From, Msg}),
+%%     {noreply, State};
+handle_call(all_nodes, _From, State) ->
+    {reply, lists:flatten(ets:match(State#state.idxtab, {idxrec, '_', '$1', '_'})), State};
+handle_call(Other, From, State=#state{legacy=Legacy}) when Legacy =/= undefined ->
+    case catch Legacy:rewrite_call(Other, From) of
+        {ok, ?VNODE_REQ{}=Req} ->
+            handle_call(Req, From, State);
+        _ ->
+            {noreply, State}
+    end.
 
 
 %    
@@ -175,10 +230,3 @@ get_vnode(Idx, State=#state{vnode_mod=Mod}) ->
 %make_all_active(State) ->
 %    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
 %    [{I,get_vnode(I,State)} || I <- riak_core_ring:my_indices(Ring)].
-
--spec make_request(vnode_req(), sender(), partition()) -> #riak_vnode_req_v1{}.
-make_request(Request, Sender, Index) ->
-    #riak_vnode_req_v1{
-              index=Index,
-              sender=Sender,
-              request=Request}.
