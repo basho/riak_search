@@ -29,7 +29,7 @@ start_link() ->
 checkout() ->
     case gen_server:call(?SERVER, checkout) of
         empty_pool ->
-            error_logger:info_msg("(~p) raptor_conn_pool empty. Retrying...~n", [self()]),
+            %error_logger:info_msg("(~p) raptor_conn_pool empty. Retrying...~n", [self()]),
             timer:sleep(random:uniform(?MAX_RETRY_WAIT)),
             checkout();
         R ->

@@ -53,13 +53,13 @@ analyzer_factory() ->
     AnalyzerFactory.
 
 set_default_field(NewDefaultField) ->
-    ?MODULE:new(Name, Version, NewDefaultField, FieldsAndFacets, DefaultOp).
+    ?MODULE:new(Name, Version, NewDefaultField, FieldsAndFacets, DefaultOp, AnalyzerFactory).
 
 default_op() ->
     DefaultOp.
 
 set_default_op(NewDefaultOp) ->
-    ?MODULE:new(Name, Version, DefaultField, FieldsAndFacets, NewDefaultOp).
+    ?MODULE:new(Name, Version, DefaultField, FieldsAndFacets, NewDefaultOp, AnalyzerFactory).
 
 field_name(Field) ->
     Field#riak_search_field.name.

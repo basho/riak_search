@@ -47,7 +47,7 @@ malformed_request(Req, State) ->
                     %% Try to parse the query
                     Client = State#state.client,
                     try
-                        {ok, QueryOps} = Client:parse_query(SQuery#squery.q),
+                        {ok, QueryOps} = Client:parse_query(Schema:name(), SQuery#squery.q),
                         {false, Req, State#state{schema=Schema1, squery=SQuery, query_ops=QueryOps}}
                     catch _ : Error ->
                         error_logger:error_msg("Could not parse query '~s'.~n~p~n", [SQuery#squery.q, Error]),

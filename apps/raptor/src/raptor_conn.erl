@@ -170,6 +170,7 @@ handle_info(timeout, #state{req_type=ReqType, reqid=ReqId, dest=Dest}=State) ->
     Message = build_timeout_message(ReqType, ReqId),
     Dest ! Message,
     {noreply, State#state{req_type=undefined, reqid=undefined, dest=undefined}};
+
 handle_info({tcp, Sock, Data}, #state{req_type=stream, reqid=ReqId, dest=Dest}=State) ->
     StreamResponse = raptor_pb:decode_streamresponse(Data),
     Dest ! {stream, ReqId, StreamResponse#streamresponse.value, StreamResponse#streamresponse.props},
@@ -236,14 +237,8 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% Internal functions
-build_timeout_message(stream, ReqId) ->
-    {stream, ReqId, undefined, undefined};
-build_timeout_message(info, ReqId) ->
-    {info, ReqId, undefined, 0};
-build_timeout_message(catalogquery, ReqId) ->
-    {catalog_query, ReqId, undefined, undefined, undefined, undefined, undefined};
 build_timeout_message(Command, ReqId) ->
-    {Command, ReqId, undefined}.
+    {Command, ReqId, timeout}.
 
 raptor_connect(Port) ->
     gen_tcp:connect("127.0.0.1", Port, [binary, {active, once},

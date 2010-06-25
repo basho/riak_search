@@ -100,8 +100,8 @@ handle_command(State, {stream, Index, Field, Term, OutputPid, OutputRef, DestPar
         Partition = to_binary(State#state.partition),
         case DestPartition == State#state.partition andalso Node == node() of
             true ->
+                {ok, Conn} = raptor_conn_pool:checkout(),
                 spawn_link(fun() ->
-                                   {ok, Conn} = raptor_conn_pool:checkout(),
                                    try
                                        {ok, StreamRef} = raptor_conn:stream(
                                                            Conn,
@@ -129,8 +129,8 @@ handle_command(_State, {info_test__, _Index, _Field, Term, OutputPid, OutputRef}
 
 handle_command(State, {info, Index, Field, Term, OutputPid, OutputRef}) ->
     Partition = to_binary(State#state.partition),
+    {ok, Conn} = raptor_conn_pool:checkout(),
     spawn_link(fun() ->
-                       {ok, Conn} = raptor_conn_pool:checkout(),
                        try
                            {ok, StreamRef} = raptor_conn:info(
                                                Conn,
@@ -147,8 +147,8 @@ handle_command(State, {info, Index, Field, Term, OutputPid, OutputRef}) ->
 
 handle_command(State, {info_range, Index, Field, StartTerm, EndTerm, _Size, OutputPid, OutputRef}) ->
     Partition = to_binary(State#state.partition),
+    {ok, Conn} = raptor_conn_pool:checkout(),
     spawn_link(fun() ->
-                       {ok, Conn} = raptor_conn_pool:checkout(),
                        try
                            {ok, StreamRef} = raptor_conn:info_range(
                                                Conn,
@@ -165,8 +165,8 @@ handle_command(State, {info_range, Index, Field, StartTerm, EndTerm, _Size, Outp
     ok;
 
 handle_command(_State, {catalog_query, CatalogQuery, OutputPid, OutputRef}) ->
+    {ok, Conn} = raptor_conn_pool:checkout(),
     spawn_link(fun() ->
-                       {ok, Conn} = raptor_conn_pool:checkout(),
                        try
                            {ok, StreamRef} = raptor_conn:catalog_query(
                                                Conn,
@@ -205,6 +205,8 @@ receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, Acc0) ->
             Acc = Acc0
     end,
     receive
+        {stream, StreamRef, timeout} ->
+            OutputPid ! {result, '$end_of_table', OutputRef};
         {stream, StreamRef, "$end_of_table", _} ->
             case length(Acc) > 0 of
                 true ->
@@ -227,9 +229,7 @@ receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, Acc0) ->
                     Acc2 = Acc,
                     skip
             end,
-            receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, Acc2);
-        Msg ->
-            OutputPid ! {result, '$end_of_table', OutputRef}
+            receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, Acc2)
     end,
     ok.
 
@@ -255,6 +255,8 @@ receive_info_range_results(StreamRef, OutputPid, OutputRef) ->
     receive_info_range_results(StreamRef, OutputPid, OutputRef, []).
 receive_info_range_results(StreamRef, OutputPid, OutputRef, Results) ->
     receive
+        {info, StreamRef, timeout} ->
+            OutputPid ! {info_response, Results, OutputRef};
         {info, StreamRef, "$end_of_info", 0} ->
             OutputPid ! {info_response, Results, OutputRef};
         {info, StreamRef, Term, Count} ->
@@ -265,7 +267,9 @@ receive_info_range_results(StreamRef, OutputPid, OutputRef, Results) ->
 
 receive_info_results(StreamRef, OutputPid, OutputRef) ->
     receive
-        {info, StreamRef, "$end_of_info", Count} ->
+        {info, StreamRef, timeout} ->
+            ok;
+        {info, StreamRef, "$end_of_info", _Count} ->
             ok;
         {info, StreamRef, Term, Count} ->
             Message = {info_response, [{Term, node(), Count}], OutputRef},
@@ -275,6 +279,8 @@ receive_info_results(StreamRef, OutputPid, OutputRef) ->
 
 receive_catalog_query_results(StreamRef, OutputPid, OutputRef) ->
     receive
+        {catalog_query, _ReqId, timeout} ->
+            OutputPid ! {catalog_query_response, done, OutputRef};
         {catalog_query, _ReqId, "$end_of_results", _, _, _, _} ->
             OutputPid ! {catalog_query_response, done, OutputRef};
         {catalog_query, StreamRef, Partition, Index,
@@ -337,13 +343,16 @@ fold(State, Fun0, Acc) ->
     {ok, Conn} = raptor_conn_pool:checkout(),
     Me = self(),
     CatalogResultsPid = spawn_link(fun() ->
-        fold_catalog_process(Me, Fun0, Acc, false, 0, 0, false) end),
+                                           fold_catalog_process(Me, Fun0, Acc, false, 0, 0, false) end),
     spawn_link(fun() ->
-        {ok, StreamRef} = raptor_conn:catalog_query(
-            Conn,
-            ["partition_id:\"", Partition , "\""]),
-        receive_catalog_query_results(StreamRef, CatalogResultsPid, erlang:make_ref()),
-        raptor_conn_pool:checkin(Conn) end),
+                       try
+                           {ok, StreamRef} = raptor_conn:catalog_query(
+                                               Conn,
+                                               ["partition_id:\"", Partition , "\""]),
+                           receive_catalog_query_results(StreamRef, CatalogResultsPid, erlang:make_ref())
+                       after
+                           raptor_conn_pool:checkin(Conn)
+                       end end),
     receive_fold_results(Acc, 0).
 
 %% receive catalog entries for current partition & kick
@@ -433,6 +442,8 @@ fold_catalog_process(FoldResultPid,
 %%   to receive_fold_results process
 fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term) ->
     receive
+        {stream, StreamRef, timeout} ->
+            CatalogProcessPid ! {fold_stream, done, StreamRef};
         {stream, StreamRef, "$end_of_table", _} ->
             CatalogProcessPid ! {fold_stream, done, StreamRef},
             io:format("fold_stream_process: table complete: ~p.~p.~p~n",
@@ -450,8 +461,8 @@ fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Inde
             fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term)
         after ?FOLD_TIMEOUT ->
             CatalogProcessPid ! {fold_stream, done, StreamRef},
-            io:format("fold_stream_process: table timed out: ~p.~p.~p~n",
-                [Index, Field, Term])
+            error_logger:warning_msg("fold_stream_process: table timed out: ~p.~p.~p~n",
+                                      [Index, Field, Term])
     end.
 
 %% receive the Fun0(processed) objects from all the "buckets" on this partition, accumulate them
