@@ -6,24 +6,29 @@ all: deps compile
 
 compile:
 	./rebar compile
-
+	make -C apps/qilr/java_src
+	make -C apps/raptor/java_src
 deps:
 	./rebar get-deps
 
 clean:
 	./rebar clean
+	make -C apps/qilr/java_src clean
+	make -C apps/raptor/java_src clean
 
 distclean: clean devclean relclean ballclean
 	./rebar delete-deps
 
-test: 
+test:
 	./rebar skip_deps=true eunit
 
 ##
 ## Release targets
 ##
 rel: deps
-	./rebar compile generate 
+	make -C apps/qilr/java_src
+	make -C apps/raptor/java_src
+	./rebar compile generate
 
 relclean:
 	rm -rf rel/riak
@@ -42,8 +47,8 @@ devclean: clean
 	rm -rf dev
 
 stage : rel
-	$(foreach app,$(wildcard apps/*), rm -rf rel/riak/lib/$(shell basename $(app))* && ln -sf $(abspath $(app)) rel/riak/lib;)
-	$(foreach dep,$(wildcard deps/*), rm -rf rel/riak/lib/$(shell basename $(dep))* && ln -sf $(abspath $(dep)) rel/riak/lib;)
+	$(foreach app,$(wildcard apps/*), rm -rf rel/riak/lib/$(shell basename $(app))-* && ln -sf $(abspath $(app)) rel/riak/lib;)
+	$(foreach dep,$(wildcard deps/*), rm -rf rel/riak/lib/$(shell basename $(dep))-* && ln -sf $(abspath $(dep)) rel/riak/lib;)
 
 
 ##
@@ -73,9 +78,7 @@ dialyzer: compile
 distdir:
 	$(if $(findstring tip,$(RIAK_TAG)),$(error "You can't generate a release tarball from tip"))
 	mkdir distdir
-	hg clone . distdir/riak-clone
-	cd distdir/riak-clone; \
-	hg update -r $(RIAK_TAG)
+	hg clone -u $(RIAK_TAG) . distdir/riak-clone
 	cd distdir/riak-clone; \
 	hg archive ../$(RIAK_TAG); \
 	mkdir ../$(RIAK_TAG)/deps; \
@@ -88,4 +91,3 @@ dist $(RIAK_TAG).tar.gz: distdir
 
 ballclean:
 	rm -rf $(RIAK_TAG).tar.gz distdir
-

@@ -3,7 +3,8 @@
          local_client/0,
          stream/4,
          info/3,
-         info_range/5]).
+         info_range/5,
+         term/2]).
 -include("riak_search.hrl").
 
 -define(TIMEOUT, 30000).
@@ -34,17 +35,8 @@ info(Index, Field, Term) ->
     %% the first response.
     {ok, hd(Results)}.
 
-%% info(Index, Field, Term) ->
-%%     {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
-%%     Preflist = riak_core_apl:get_apl(Partition, N),
-%%     {ok, Ref} = riak_search_vnode:info(Preflist, Index, Field, Term, self()),
-%%     {ok, Results} = collect_info(N, Ref, []),
-%%     %% TODO: Replace this with a middleman process that returns after 
-%%     %% the first response.
-%%     {ok, hd(Results)}.
-
 info_range(Index, Field, StartTerm, EndTerm, Size) ->
-    %% TODO: Duplicating current bevhaior for now - a PUT against a preflist with
+    %% TODO: Duplicating current behavior for now - a PUT against a preflist with
     %%       the N val set to the size of the ring - this will mean no failbacks
     %%       will be available.  Instead should work out the preflist for
     %%       each partition index and find which node is responsible for that partition
@@ -54,21 +46,43 @@ info_range(Index, Field, StartTerm, EndTerm, Size) ->
                                              Size, self()),
     {ok, _Results} = riak_search_backend:collect_info_response(length(Preflist), Ref, []).
 
-
-%% collect_info(RepliesRemaining, Ref, Acc) ->
-%%     receive
-%%         {info_response, List, Ref} when RepliesRemaining > 1 ->
-%%             collect_info(RepliesRemaining - 1, Ref, List ++ Acc);
-%%         {info_response, List, Ref} when RepliesRemaining == 1 ->
-%%             io:format("collect_info returning ~p\n", [List++Acc]),
-%%             {ok, List ++ Acc}
-%% %%         Other ->
-%% %%             error_logger:info_msg("Unexpected response: ~p~n", [Other]),
-%% %%             collect_info(RepliesRemaining, Ref, Acc)
-%%     after 5000 ->
-%%         error_logger:error_msg("range_loop timed out!"),
-%%         throw({timeout, range_loop})
-%%     end.
-
-%% ringsize() ->
-%%     app_helper:get_env(riak_core, ring_creation_size).
+%%
+%% This code has issues at the moment - as discussed with Kevin.
+%% It will probably return incomplete lists in a multi-node setup.
+%% There will be multiple senders issuing streams.
+%% Making do for now.
+%% 
+term(Index, Term) ->
+    Query = lists:flatten(["term:", riak_search_utils:to_list(Term)]),
+    ReplyTo = self(),
+    FwdRef = make_ref(),
+    spawn(fun() ->
+                  {ok, RecvRef} = do_catalog_query(Index, Query, self()),
+                  filter_unique_terms(dict:new(), ReplyTo, RecvRef, FwdRef)
+          end),
+    {ok, FwdRef}.
+    
+do_catalog_query(Index, Query, ReplyTo) ->
+    {N, Partition} = riak_search_utils:calc_n_partition(Index, <<"unused">>),
+    Preflist = riak_core_apl:get_apl(Partition, N),
+    riak_search_vnode:catalog_query(Preflist, Query, ReplyTo).
+    
+   
+%% Receive the terms from the catalog process and forward on
+%% the first time 
+filter_unique_terms(Terms, ReplyTo, RecvRef, FwdRef) ->
+    receive
+        {RecvRef, {_Partition, Index, Field, Term, _}} ->
+            case dict:find(Term, Terms) of
+                error ->
+                    ReplyTo ! {term, Index, Field, Term, FwdRef},
+                    filter_unique_terms(dict:store(Term, true, Terms),
+                                        ReplyTo, RecvRef, FwdRef);
+                _ ->
+                    filter_unique_terms(Terms, ReplyTo, RecvRef, FwdRef)
+            end;
+        {RecvRef, done} ->
+            ReplyTo ! {term, done, FwdRef}
+    after 750 ->
+            ReplyTo ! {term, done, FwdRef}
+    end.

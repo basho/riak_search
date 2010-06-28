@@ -25,46 +25,36 @@
 
 package raptor.server;
 
-import java.util.Iterator;
-import java.util.List;
 import java.nio.ByteBuffer;
-import java.net.InetAddress;
 
-import org.jboss.netty.channel.Channel;
-import org.jboss.netty.channel.ChannelHandlerContext;
-import org.jboss.netty.channel.ChannelPipelineCoverage;
-import org.jboss.netty.channel.MessageEvent;
-import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
+import org.apache.log4j.Logger;
 import org.jboss.netty.buffer.ChannelBuffer;
-
+import org.jboss.netty.channel.Channel;
 import org.jboss.netty.channel.ChannelEvent;
 import org.jboss.netty.channel.ChannelFuture;
 import org.jboss.netty.channel.ChannelFutureListener;
-import org.jboss.netty.channel.ChannelStateEvent;
-import org.jboss.netty.channel.ExceptionEvent;
+import org.jboss.netty.channel.ChannelHandlerContext;
+import org.jboss.netty.channel.ChannelPipelineCoverage;
 import org.jboss.netty.channel.ChannelState;
+import org.jboss.netty.channel.ChannelStateEvent;
+import org.jboss.netty.channel.MessageEvent;
+import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
+import org.json.JSONObject;
 
-import org.apache.log4j.BasicConfigurator;
-import org.apache.log4j.LogManager;
-import org.apache.log4j.Logger;
-
-import com.google.protobuf.ByteString;
-import org.json.*;
-
-import raptor.protobuf.Messages.Index;
+import raptor.protobuf.Messages.CatalogQuery;
+import raptor.protobuf.Messages.CatalogQueryResponse;
+import raptor.protobuf.Messages.Command;
+import raptor.protobuf.Messages.CommandResponse;
 import raptor.protobuf.Messages.DeleteEntry;
-import raptor.protobuf.Messages.Stream;
+import raptor.protobuf.Messages.Index;
 import raptor.protobuf.Messages.Info;
 import raptor.protobuf.Messages.InfoRange;
-import raptor.protobuf.Messages.CatalogQuery;
-import raptor.protobuf.Messages.Command;
-import raptor.protobuf.Messages.StreamResponse;
 import raptor.protobuf.Messages.InfoResponse;
-import raptor.protobuf.Messages.CatalogQueryResponse;
-import raptor.protobuf.Messages.CommandResponse;
+import raptor.protobuf.Messages.Stream;
+import raptor.protobuf.Messages.StreamResponse;
+import raptor.store.handlers.ResultHandler;
 
-import raptor.store.RSXIndex;
-import raptor.store.handlers.*;
+import com.google.protobuf.ByteString;
 
 @ChannelPipelineCoverage("all")
 public class RaptorHandler extends SimpleChannelUpstreamHandler {
@@ -78,20 +68,20 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
    final private static String MSG_CATALOG_QUERY = "CatalogQuery";
    final private static String MSG_COMMAND = "Command";
 
-    @Override
-    public void handleUpstream(
-            ChannelHandlerContext ctx, ChannelEvent e) throws Exception {
-        if (e instanceof ChannelStateEvent) {
-            ChannelState state = ( (ChannelStateEvent) e).getState();
-            if (state == state.CONNECTED &&
-                ( (ChannelStateEvent)e).getValue() == null) {
-                //log.info("> DISCONNECTED");
-            } else {
-                //log.info(e.toString());
-            }
-        }
-        super.handleUpstream(ctx, e);
-    }
+//    @Override
+//    public void handleUpstream(
+//            ChannelHandlerContext ctx, ChannelEvent e) throws Exception {
+//        if (e instanceof ChannelStateEvent) {
+//            ChannelState state = ( (ChannelStateEvent) e).getState();
+//            if (state == state.CONNECTED &&
+//                ( (ChannelStateEvent)e).getValue() == null) {
+//                //log.info("> DISCONNECTED");
+//            } else {
+//                //log.info(e.toString());
+//            }
+//        }
+//        super.handleUpstream(ctx, e);
+//    }
 
     @Override
     public void channelConnected(ChannelHandlerContext ctx, 
@@ -205,7 +195,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
       try {
          RaptorServer.writeQueue.offer(msg);
       } catch (Exception ex) {
-         ex.printStackTrace();
+         log.error("Error handling index request", ex);
       }
    }
    
@@ -217,7 +207,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
                                       msg.getDocId(),
                                       msg.getPartition());
       } catch (Exception ex) {
-         ex.printStackTrace();
+         log.error("Error handling delete", ex);
       }
    }
    
@@ -254,7 +244,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
                                         }
                                  });
       } catch (Exception ex) {
-         ex.printStackTrace();
+         log.error("Error handling stream query", ex);
       }
    }
    
@@ -274,10 +264,11 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
                                       response.setTerm(term)
                                               .setCount(count);
                                       chan.write(response.build());
+                                      
                                   }
                                 });
       } catch (Exception ex) {
-         ex.printStackTrace();
+         log.error("Error handling info query", ex);
       }
    }
    
@@ -300,7 +291,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
                                         }
                                       });
       } catch (Exception ex) {
-         ex.printStackTrace();
+         log.error("Error handling info range query", ex);
       }
    }
    
@@ -339,7 +330,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
                                         }
                                       });
       } catch (Exception ex) {
-         ex.printStackTrace();
+         log.error("Error handling catalog query", ex);
       }
    }
    

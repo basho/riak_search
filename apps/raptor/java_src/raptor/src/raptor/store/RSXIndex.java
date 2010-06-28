@@ -144,6 +144,7 @@ public class RSXIndex implements Runnable {
         String table = makeTableKey(index, field, term, partition);
         long n = store.count(table);
         resultHandler.handleInfoResult(table, n);
+        resultHandler.handleInfoResult("$end_of_info", 0);
     }
 
     public void infoRange(String index,

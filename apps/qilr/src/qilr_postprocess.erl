@@ -60,8 +60,9 @@ analyze_terms(AnalyzerPid, AnalyzerFactory, [{Op, Terms}|T], Acc) when Op =:= la
             analyze_terms(AnalyzerPid, AnalyzerFactory, T, [{Op, NewTerms}|Acc])
     end;
 analyze_terms(AnalyzerPid, AnalyzerFactory, [{field, FieldName, TermText, TProps}|T], Acc) ->
-    NewTerm = case string:chr(TermText, $\ ) of
-                  0 ->
+    NewTerm = case string:chr(TermText, $\ ) > 0 andalso
+                  hd(TermText) =:= $\" of
+                  false ->
                       case analyze_term_text(AnalyzerPid, AnalyzerFactory, TermText) of
                           {single, NewText} ->
                               {field, FieldName, NewText, TProps};
@@ -72,7 +73,7 @@ analyze_terms(AnalyzerPid, AnalyzerFactory, [{field, FieldName, TermText, TProps
                           none ->
                               none
                       end;
-                  _ ->
+                  true ->
                       case analyze_term_text(AnalyzerPid, AnalyzerFactory, TermText) of
                           {single, NewText} ->
                               BaseQuery = {field, FieldName, NewText, TProps},
@@ -94,8 +95,9 @@ analyze_terms(AnalyzerPid, AnalyzerFactory, [{field, FieldName, TermText, TProps
     end;
 
 analyze_terms(AnalyzerPid, AnalyzerFactory, [{term, TermText, TProps}|T], Acc) ->
-    NewTerm = case string:chr(TermText, $\ ) of
-                  0 ->
+    NewTerm = case string:chr(TermText, $\ ) > 0 andalso
+                  hd(TermText) =:= $\" of
+                  false ->
                       case analyze_term_text(AnalyzerPid, AnalyzerFactory, TermText) of
                           {single, NewText} ->
                               {term, NewText, TProps};
@@ -106,7 +108,7 @@ analyze_terms(AnalyzerPid, AnalyzerFactory, [{term, TermText, TProps}|T], Acc) -
                           none ->
                               none
                       end;
-                  _ ->
+                  true ->
                       case analyze_term_text(AnalyzerPid, AnalyzerFactory, TermText) of
                           {single, NewText} ->
                               BaseQuery = {term, NewText, TProps},

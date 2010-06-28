@@ -36,17 +36,17 @@ sax_cb({startElement, _Uri, Name, _QualName, Attrs}, _Location, State) ->
 %% Got a value, set it to the value of the topmost element in the stack...
 sax_cb({characters, Value}, _Location, State) ->
     [Head|Tail] = State#state.stack,
-    NewStack = [Head#partial { value = Value }|Tail],
+    NewStack = [Head#partial { value = riak_search_utils:to_utf8(Value) }|Tail],
     State#state { stack=NewStack };
 
 %% End of an element, collapse it into the previous item on the stack...
 sax_cb({endElement, _Uri, _Name, _QualName}, _Location, State) ->
     [Head0|Tail] = State#state.stack,
-    
+
     %% Special cases, if the partial is named "field" then look for
     %% "name" attribute. (Otherwise, the element name itself is used.)
-    case Head0#partial.name == "field" of 
-        true -> 
+    case Head0#partial.name == "field" of
+        true ->
             NewName = find_attr("name", Head0#partial.attrs),
             Head = Head0#partial { name=NewName };
         false ->
@@ -57,7 +57,7 @@ sax_cb({endElement, _Uri, _Name, _QualName}, _Location, State) ->
     %% document. Otherwise, collapse into the previous item on the
     %% stack.
     Value = {Head#partial.name, Head#partial.value},
-    case Tail of 
+    case Tail of
         [] ->
             %% Return the parsed doc...
             Value;
@@ -73,6 +73,6 @@ find_attr(Name, Attrs) ->
     case lists:keyfind(Name, 3, Attrs) of
         {_, _, Name, Value} ->
             Value;
-        false -> 
+        false ->
             undefined
     end.

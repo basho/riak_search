@@ -6,13 +6,14 @@
     parse_datetime/1,
     to_atom/1,
     to_binary/1,
+    to_utf8/1,
     to_boolean/1,
     to_list/1,
     to_integer/1,
     to_float/1,
     from_binary/1,
     index_recursive/2,
-    calc_n_partition/3
+    calc_n_partition/2, calc_n_partition/3
 ]).
 
 -include("riak_search.hrl").
@@ -35,7 +36,7 @@ iterator_chain(_, [], _) ->
 %% Chain an operator, and build an iterator function around it. The
 %% iterator will return {Result, NotFlag, NewIteratorFun} each time it is called, or block
 %% until one is available. When there are no more results, it will
-%% return {eof, NotFlag, NewIteratorFun}.
+%% return {eof, NotFlag}.
 iterator_chain_op(Op, QueryProps) ->
     %% Spawn a collection process...
     Ref = make_ref(),
@@ -106,6 +107,12 @@ to_binary(A) when is_atom(A) -> to_binary(atom_to_list(A));
 to_binary(B) when is_binary(B) -> B;
 to_binary(I) when is_integer(I) -> to_binary(integer_to_list(I));
 to_binary(L) when is_list(L) -> list_to_binary(L).
+
+to_utf8(A) when is_atom(A) -> to_utf8(atom_to_list(A));
+to_utf8(B) when is_binary(B) -> B;
+to_utf8(I) when is_integer(I) -> to_utf8(integer_to_list(I));
+to_utf8(L) when is_list(L) -> unicode:characters_to_binary(L).
+
 
 to_integer(A) when is_atom(A) -> to_integer(atom_to_list(A));
 to_integer(B) when is_binary(B) -> to_integer(binary_to_list(B));
@@ -201,12 +208,18 @@ index_recursive_file(Callback, File) ->
 %% @private
 %% Calculate N and a partition number for an index/field/term combination
 calc_n_partition(Index, Field, Term) ->
+    %% Work out which partition to use
+    FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
+    calc_n_partition(Index, FieldTermBin).
+
+%% @private
+%% Calculate N and a partition number for an index/field/term combination
+calc_n_partition(Index, FieldTermBin) ->
     %% Lookup N for the index
     IndexBin = riak_search_utils:to_binary(Index),
     Bucket = riak_core_bucket:get_bucket(IndexBin),
     {value, {n_val, N}} = lists:keysearch(n_val, 1, Bucket),
 
     %% Work out which partition to use
-    FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
     Partition = riak_core_util:chash_key({IndexBin, FieldTermBin}),
     {N, Partition}.

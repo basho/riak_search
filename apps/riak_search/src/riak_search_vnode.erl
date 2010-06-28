@@ -3,7 +3,8 @@
          delete_term/6,
          stream/6,
          info/5,
-         info_range/7]).
+         info_range/7,
+         catalog_query/3]).
 -export([init/1, handle_command/3]).
 
 -record(vstate, {idx, bmod, bstate}).
@@ -11,6 +12,7 @@
 -record(info_v1, {index, field, term}).
 -record(info_range_v1, {index, field, start_term, end_term, size}).
 -record(stream_v1, {index, field, term, filter_fun}).
+-record(catalog_query_v1, {index, catalog_query}).
 
 
 index(Preflist, Index, Field, Term, Value, Props) ->
@@ -71,6 +73,17 @@ info_range(Preflist, Index, Field, StartTerm, EndTerm, Size, ReplyTo) ->
     Ref = {info_response, make_ref()},
     command(Preflist, Req, {raw, Ref, ReplyTo}),
     {ok, Ref}.
+
+catalog_query(Preflist, CatalogQuery, ReplyTo) ->
+    io:format("catalog_query: CatalogQuery: ~p, ReplyTo=~p\n",
+              [CatalogQuery, ReplyTo]),
+    Req = #catalog_query_v1{
+      catalog_query = CatalogQuery
+     },
+    Ref = {catalog_query, make_ref()},
+    command(Preflist, Req, {raw, Ref, ReplyTo}),
+    {ok, Ref}.
+
 
 %% %% Get replies from all nodes that are willing to stream this
 %% %% bucket. If there is one on the local node, then use it, otherwise,
@@ -139,7 +152,12 @@ handle_command(#stream_v1{index = Index,
                           term = Term,
                           filter_fun = FilterFun},
                Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
-    bmod_response(BMod:stream(Index, Field, Term, FilterFun, Sender, BState), VState).
+    bmod_response(BMod:stream(Index, Field, Term, FilterFun, Sender, BState), VState);
+
+handle_command(#catalog_query_v1{catalog_query = CatalogQuery},
+               Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
+    bmod_response(BMod:catalog_query(CatalogQuery, Sender, BState), VState).
+
 
 bmod_response(noreply, VState) ->
     {noreply, VState};

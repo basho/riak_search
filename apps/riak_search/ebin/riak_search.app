@@ -5,7 +5,6 @@
   {modules, [
              search,
              plists,
-             raptor_index_backend,
              riak_indexed_doc,
              riak_search,
              riak_search_app,
@@ -38,7 +37,9 @@
              riak_search_vnode_sup,
              merge_index_backend,
              raptor_index_backend,
-             plists
+             riak_search_basic_qc,
+             riak_search_operators_qc,
+             riak_search_op_mockterm
             ]},
   {registered, []},
   {applications, [

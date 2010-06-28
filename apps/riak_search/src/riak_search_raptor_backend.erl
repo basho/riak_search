@@ -22,7 +22,7 @@
 -author("John Muellerleile <johnm@basho.com>").
 -behavior(riak_search_backend).
 
--export([start/2,stop/1,index/6,info/5,info_range/7,stream/6]).
+-export([start/2,stop/1,index/6,info/5,info_range/7,stream/6,catalog_query/3]).
 -export([get/2,put/3,list/1,list_bucket/2,delete/2]).
 -export([fold/3, drop/1, is_empty/1, toggle_raptor_debug/0, shutdown_raptor/0]).
 -export([sync/0, poke/1, raptor_status/0]).
@@ -33,7 +33,7 @@
 -include("riak_search.hrl").
 
 % @type state() = term().
--record(state, {partition, conn}).
+-record(state, {partition}).
 
 -define(FOLD_TIMEOUT, 30000).
 -define(MAX_HANDOFF_STREAMS, 50).
@@ -43,12 +43,10 @@
 %%          {ok, state()} | {{error, Reason :: term()}, state()}
 %% @doc Start this backend.
 start(Partition, _Config) ->
-    {ok, Conn} = raptor_conn_sup:new_conn(),
-    {ok, #state { partition=Partition, conn=Conn }}.
+    {ok, #state { partition=Partition }}.
 
 %% @spec stop(state()) -> ok | {error, Reason :: term()}
-stop(#state{conn=Conn}) ->
-    raptor_conn:close(Conn),
+stop(_State) ->
     ok.
 
 %% @spec put(state(), BKey :: riak_object:bkey(), Val :: binary()) ->
@@ -60,113 +58,117 @@ put(State, _BKey, ObjBin) ->
     handle_command(State, Command).
 
 index(Index, Field, Term, Value, Props, State) ->
-    Partition = list_to_binary(integer_to_list(State#state.partition)),
-    Conn = State#state.conn,
-    raptor_conn:index(Conn,
-                      list_to_binary(Index),
-                      list_to_binary(Field),
-                      Term,
-                      list_to_binary(Value),
-                      Partition,
-                      term_to_binary(Props)),
+    Partition = to_binary(State#state.partition),
+    {ok, Conn} = raptor_conn_pool:checkout(),
+    try
+        raptor_conn:index(Conn,
+                          to_binary(Index),
+                          to_binary(Field),
+                          to_binary(Term),
+                          to_binary(Value),
+                          Partition,
+                          term_to_binary(Props))
+    after
+        raptor_conn_pool:checkin(Conn)
+    end,
     noreply.
 
 info(Index, Field, Term, Sender, State) ->
-    Partition = list_to_binary(integer_to_list(State#state.partition)),
+    Partition = to_binary(State#state.partition),
+    {ok, Conn} = raptor_conn_pool:checkout(),
     spawn_link(fun() ->
-        {ok, Conn} = raptor_conn_sup:new_conn(),
-        try
-            {ok, StreamRef} = raptor_conn:info(
-                Conn,
-                list_to_binary(Index),
-                list_to_binary(Field),
-                list_to_binary(Term),
-                Partition),
-            receive_info_results(StreamRef, Sender)
-        after
-          raptor_conn:close(Conn)
-        end
+                       try
+                           {ok, StreamRef} = raptor_conn:info(
+                                               Conn,
+                                               to_binary(Index),
+                                               to_binary(Field),
+                                               to_binary(Term),
+                                               Partition),
+                           receive_info_results(StreamRef, Sender)
+                       after
+                           raptor_conn_pool:checkin(Conn)
+                       end
     end),
+
     noreply.
 
 info_range(Index, Field, StartTerm, EndTerm, _Size, Sender, State) ->
-    Partition = list_to_binary(integer_to_list(State#state.partition)),
+    Partition = to_binary(State#state.partition),
+    {ok, Conn} = raptor_conn_pool:checkout(),
     spawn_link(fun() ->
-                       {ok, Conn} = raptor_conn_sup:new_conn(),
                        try
                            {ok, StreamRef} = raptor_conn:info_range(
                                                Conn,
-                                               list_to_binary(Index),
-                                               list_to_binary(Field),
-                                               list_to_binary(StartTerm),
-                                               list_to_binary(EndTerm),
+                                               to_binary(Index),
+                                               to_binary(Field),
+                                               to_binary(StartTerm),
+                                               to_binary(EndTerm),
                                                Partition),
                            receive_info_range_results(StreamRef, Sender)
                        after
-                           raptor_conn:close(Conn)
+                           raptor_conn_pool:checkin(Conn)
                        end
-               end),
+    end),
     noreply.
 
 stream(Index, Field, Term, FilterFun, Sender, State) ->
-    Partition = list_to_binary(integer_to_list(State#state.partition)),
+    Partition = to_binary(State#state.partition),
+    {ok, Conn} = raptor_conn_pool:checkout(),
     spawn_link(fun() ->
-                       {ok, Conn} = raptor_conn_sup:new_conn(),
-                       try
-                           {ok, StreamRef} = raptor_conn:stream(
-                                               Conn,
-                                               list_to_binary(Index),
-                                               list_to_binary(Field),
-                                               list_to_binary(Term),
-                                               Partition),
-                           receive_stream_results(StreamRef, Sender, FilterFun)
-                       after
-                           raptor_conn:close(Conn)
-                       end
+                                    try
+                                       {ok, StreamRef} = raptor_conn:stream(
+                                                           Conn,
+                                                           to_binary(Index),
+                                                           to_binary(Field),
+                                                           to_binary(Term),
+                                                           Partition),
+                                       receive_stream_results(StreamRef, Sender, FilterFun)
+                                   after
+                                       raptor_conn_pool:checkin(Conn)
+                                   end
                end),
     noreply.
 
-handle_command(State, {delete_entry, Index, Field, Term, DocId}) ->
-    Partition = list_to_binary(integer_to_list(State#state.partition)),
-    Conn = State#state.conn,
-    raptor_conn:delete_entry(Conn,
-                             list_to_binary(Index),
-                             list_to_binary(Field),
-                             Term,
-                             list_to_binary(DocId),
-                             Partition),
-    ok;
-
-
-
-handle_command(_State, {catalog_query, CatalogQuery, OutputPid, OutputRef}) ->
+catalog_query(CatalogQuery, Sender, _State) ->
+    {ok, Conn} = raptor_conn_pool:checkout(),
     spawn_link(fun() ->
-                       {ok, Conn} = raptor_conn_sup:new_conn(),
                        try
                            {ok, StreamRef} = raptor_conn:catalog_query(
                                                Conn,
                                                CatalogQuery),
-                           receive_catalog_query_results(StreamRef, OutputPid, OutputRef)
+                           receive_catalog_query_results(StreamRef, Sender)
                        after
-                           raptor_conn:close(Conn)
+                           raptor_conn_pool:checkin(Conn)
                        end
-    end),
+               end),
+    noreply.
+
+
+handle_command(State, {delete_entry, Index, Field, Term, DocId}) ->
+    Partition = to_binary(State#state.partition),
+    {ok, Conn} = raptor_conn_pool:checkout(),
+    try
+        raptor_conn:delete_entry(Conn,
+                                 to_binary(Index),
+                                 to_binary(Field),
+                                 to_binary(Term),
+                                 to_binary(DocId),
+                                 Partition)
+    after
+        raptor_conn_pool:checkin(Conn)
+    end,
     ok;
 
 handle_command(_State, {command, Command, Arg1, Arg2, Arg3}) ->
-    {ok, Conn} = raptor_conn_sup:new_conn(),
+    {ok, Conn} = raptor_conn_pool:checkout(),
     try
         {ok, _StreamRef} = raptor_conn:command(Conn, Command, Arg1, Arg2, Arg3),
         receive
             {command, _ReqId, Response} ->
-                io:format("command: Response = ~p~n", [Response]),
-                Response;
-            Msg ->
-                io:format("handle_command/command, unexpected response: Msg = ~p~n", [Msg]),
-                Msg
+                Response
         end
     after
-        raptor_conn:close(Conn)
+        raptor_conn_pool:checkin(Conn)
     end;
 
 handle_command(_State, Other) ->
@@ -185,6 +187,14 @@ receive_stream_results(StreamRef, Sender, FilterFun, Acc0) ->
             Acc = Acc0
     end,
     receive
+        {stream, StreamRef, timeout} ->
+            case length(Acc) > 0 of
+                true ->
+                    riak_search_backend:stream_response_results(Sender, Acc);
+                
+                false -> skip
+            end,
+            riak_search_backend:stream_response_done(Sender);
         {stream, StreamRef, "$end_of_table", _} ->
             case length(Acc) > 0 of
                 true ->
@@ -240,45 +250,45 @@ receive_info_range_results(StreamRef, Sender) ->
 
 receive_info_range_results(StreamRef, Sender, Results) ->
     receive
+        {info, StreamRef, timeout} ->
+            riak_search_backend:info_response(Sender, Results);
         {info, StreamRef, "$end_of_info", 0} ->
             riak_search_backend:info_response(Sender, Results);
         
         %% TODO: Replace this with a [New | Acc] and lists:reverse
         {info, StreamRef, Term, Count} ->
             receive_info_range_results(StreamRef, Sender,
-                Results ++ [{Term, node(), Count}]);
-        Msg ->
-            %% TODO: Should this throw?
-            io:format("receive_info_range_results(~p, ~p) -> ~p~n",
-                [StreamRef, Sender, Msg]),
-            receive_info_range_results(StreamRef, Sender, Results)
+                Results ++ [{Term, node(), Count}])
+
     end,
     ok.
 
 receive_info_results(StreamRef, Sender) ->
     receive
+        {info, StreamRef, timeout} ->
+            ok;
+        {info, StreamRef, "$end_of_info", _Count} ->
+            ok;
         {info, StreamRef, Term, Count} ->
-            riak_search_backend:info_response(Sender, [{Term, node(), Count}])
+            riak_search_backend:info_response(Sender, [{Term, node(), Count}]),
+            receive_info_results(StreamRef, Sender)
     after
         ?INFO_TIMEOUT ->
             ok
     end,
     ok.
 
-receive_catalog_query_results(StreamRef, OutputPid, OutputRef) ->
+receive_catalog_query_results(StreamRef, Sender) ->
     receive
+        {catalog_query, _ReqId, timeout} ->
+            riak_search_backend:catalog_query_done(Sender);
         {catalog_query, _ReqId, "$end_of_results", _, _, _, _} ->
-            io:format("catalog_query_results -> $end_of_results~n", []),
-            OutputPid ! {catalog_query_response, done, OutputRef};
+            riak_search_backend:catalog_query_done(Sender);
         {catalog_query, StreamRef, Partition, Index,
                         Field, Term, JSONProps} ->
-            OutputPid ! {catalog_query_response,
-                            {Partition, Index, Field, Term, JSONProps},
-                            OutputRef},
-            receive_catalog_query_results(StreamRef, OutputPid, OutputRef);
-        Msg ->
-            io:format("receive_catalog_query_results: unknown message: ~p~n", [Msg]),
-            receive_catalog_query_results(StreamRef, OutputPid, OutputRef)
+            riak_search_backend:catalog_query_response(Sender, Partition, Index,
+                                                       Field, Term, JSONProps),
+            receive_catalog_query_results(StreamRef, Sender)
     end,
     ok.
 
@@ -292,7 +302,7 @@ get(_State, _BKey) ->
 
 is_empty(State) ->
     io:format("is_empty(~p)~n", [State]),
-    Partition = list_to_binary(integer_to_list(State#state.partition)),
+    Partition = to_binary(State#state.partition),
     handle_command(no_state, {command,
                               <<"partition_count">>,
                               Partition,
@@ -300,8 +310,7 @@ is_empty(State) ->
                               <<"">>}) == "0".
 
 drop(State) ->
-    io:format("drop(~p)~n", [State]),
-    Partition = list_to_binary(integer_to_list(State#state.partition)),
+    Partition = to_binary(State#state.partition),
     handle_command(no_state, {command,
                               <<"drop_partition">>,
                               Partition,
@@ -337,16 +346,20 @@ fold(State, Fun0, Acc) ->
     sync(),
     io:format("fold/sync complete.~n"),
     Partition = integer_to_list(State#state.partition),
-    {ok, Conn} = raptor_conn_sup:new_conn(),
+    {ok, Conn} = raptor_conn_pool:checkout(),
     Me = self(),
     CatalogResultsPid = spawn_link(fun() ->
-        fold_catalog_process(Me, Fun0, Acc, false, 0, 0, false) end),
+                                           fold_catalog_process(Me, Fun0, Acc, false, 0, 0, false) end),
     spawn_link(fun() ->
-        {ok, StreamRef} = raptor_conn:catalog_query(
-            Conn,
-            ["partition_id:\"", Partition , "\""]),
-        receive_catalog_query_results(StreamRef, CatalogResultsPid, erlang:make_ref()),
-        raptor_conn:close(Conn) end),
+                       try
+                           {ok, StreamRef} = raptor_conn:catalog_query(
+                                               Conn,
+                                               ["partition_id:\"", Partition , "\""]),
+                           Sender = {pid, erlang:make_ref(), CatalogResultsPid},
+                           receive_catalog_query_results(StreamRef, Sender)
+                       after
+                           raptor_conn_pool:checkin(Conn)
+                       end end),
     receive_fold_results(Acc, 0).
 
 %% receive catalog entries for current partition & kick
@@ -390,16 +403,15 @@ fold_catalog_process(FoldResultPid,
                     spawn_link(fun() ->
                         io:format("fold_catalog_process: catalog_query_response: ~p: ~p.~p.~p (~p)~n",
                             [Partition, Index, Field, Term, JSONProps]),
-                        {ok, Conn} = raptor_conn_sup:new_conn(),
+                        {ok, Conn} = raptor_conn_pool:checkout(),
                         {ok, StreamRef} = raptor_conn:stream(
                             Conn,
-                            list_to_binary(Index),
-                            list_to_binary(Field),
-                            list_to_binary(Term),
-                            <<"0">>, <<"0">>, <<"0">>, %% todo: sub type, startterm, endterm (tbd)
-                            list_to_binary(Partition)),
+                            to_binary(Index),
+                            to_binary(Field),
+                            to_binary(Term),
+                            to_binary(Partition)),
                         fold_stream_process(Me, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term),
-                        raptor_conn:close(Conn) end),
+                        raptor_conn_pool:checkin(Conn) end),
                     fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
                                          StreamProcessCount+1, FinishedStreamProcessCount, false)
                 end;
@@ -437,6 +449,8 @@ fold_catalog_process(FoldResultPid,
 %%   to receive_fold_results process
 fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term) ->
     receive
+        {stream, StreamRef, timeout} ->
+            CatalogProcessPid ! {fold_stream, done, StreamRef};
         {stream, StreamRef, "$end_of_table", _} ->
             CatalogProcessPid ! {fold_stream, done, StreamRef},
             io:format("fold_stream_process: table complete: ~p.~p.~p~n",
@@ -454,8 +468,8 @@ fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Inde
             fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term)
         after ?FOLD_TIMEOUT ->
             CatalogProcessPid ! {fold_stream, done, StreamRef},
-            io:format("fold_stream_process: table timed out: ~p.~p.~p~n",
-                [Index, Field, Term])
+            error_logger:warning_msg("fold_stream_process: table timed out: ~p.~p.~p~n",
+                                      [Index, Field, Term])
     end.
 
 %% receive the Fun0(processed) objects from all the "buckets" on this partition, accumulate them
@@ -472,7 +486,10 @@ receive_fold_results(Acc, Count) ->
 
 %%%
 
-
+to_binary(A) when is_atom(A) -> to_binary(atom_to_list(A));
+to_binary(B) when is_binary(B) -> B;
+to_binary(I) when is_integer(I) -> to_binary(integer_to_list(I));
+to_binary(L) when is_list(L) -> list_to_binary(L).
 
 poke(Command) ->
     handle_command(no_state, {command, Command, <<"">>, <<"">>, <<"">>}).
@@ -497,14 +514,14 @@ test_fold() ->
     Fun0 = fun(_BKey, _Obj, Acc) ->
         Acc
     end,
-    State = #state { partition=0, conn=undefined },
+    State = #state { partition=0 },
     spawn(fun() ->
         fold(State, Fun0, []) end).
 
 test_is_empty() ->
-    State = #state { partition=0, conn=undefined },
+    State = #state { partition=0 },
     is_empty(State).
 
 test_drop() ->
-    State = #state { partition=0, conn=undefined },
+    State = #state { partition=0 },
     drop(State).
