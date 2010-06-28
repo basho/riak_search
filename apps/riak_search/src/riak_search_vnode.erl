@@ -121,7 +121,7 @@ command(PrefList, Req, Sender) ->
 %%
 
 start_vnode(I) ->
-    riak_core_vnode_master:start_vnode(I, riak_search_vnode).
+    riak_core_vnode_master:get_vnode_pid(I, riak_search_vnode).
 
 init([VNodeIndex]) ->
     BMod = app_helper:get_env(riak_search, search_backend),

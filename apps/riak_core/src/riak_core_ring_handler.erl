@@ -26,10 +26,21 @@
 %% ===================================================================
 %% gen_event callbacks
 %% ===================================================================
+%% dbghstart() ->
+%%   dbg:tracer(),
+%%   dbg:p(all,[c,sos,sol]).
+
+%% dbghtrace(ModuleName) ->
+%%   dbg:tpl(ModuleName,[{'_',[],[{message,{return_trace}}]}]).
+
+%% dbghtrace(ModuleName,Function) ->
+%%   dbg:tpl(ModuleName,Function,[{'_',[],[{message,{return_trace}}]}]).
 
 init([]) ->
     %% Pull the initial ring and make sure all vnodes are started
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
+    %% dbghstart(),
+    %% dbghtrace(?MODULE),
     ensure_vnodes_started(Ring),
     {ok, #state{}}.
 
