@@ -53,6 +53,6 @@ compare(F, S, {Field, Dir}) ->
                 FV < SV ->
                     -1;
                 true ->
-                    1
+                    0
             end
     end.
