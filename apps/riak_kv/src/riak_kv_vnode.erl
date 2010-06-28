@@ -1,7 +1,25 @@
+%% This file is provided to you under the Apache License,
+%% Version 2.0 (the "License"); you may not use this file
+%% except in compliance with the License.  You may obtain
+%% a copy of the License at
+%%
+%%   http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing,
+%% software distributed under the License is distributed on an
+%% "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+%% KIND, either express or implied.  See the License for the
+%% specific language governing permissions and limitations
+%% under the License.
+
+%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+
 -module(riak_kv_vnode).
--export([start_vnode/1, del/3, put/6, list_keys/3,map/5]).
+-export([start_vnode/1, del/3, put/6, list_keys/3,map/5, fold/3]).
 -export([purge_mapcaches/0,mapcache/4]).
--export([init/1, handle_command/3]).
+-export([is_empty/1, delete_and_exit/1]).
+-export([handoff_starting/2, handoff_cancelled/1, handoff_finished/2, handle_handoff_data/3]).
+-export([init/1, handle_command/3, handle_handoff_command/3]).
 -include_lib("riak_kv/include/riak_kv_vnode.hrl").
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -10,7 +28,9 @@
 -record(state, {idx :: partition(), 
                 mod :: module(),
                 modstate :: term(),
-                mapcache :: term()}).
+                mapcache :: term(),
+                in_handoff = false :: boolean()}).
+
 -record(putargs, {returnbody :: boolean(),
                   lww :: boolean(),
                   bkey :: {binary(), binary()},
@@ -57,6 +77,13 @@ map(Preflist, ClientPid, QTerm, BKey, KeyData) ->
                                    {fsm, undefined, ClientPid},
                                    riak_kv_vnode_master).
 
+fold(Preflist, Fun, Acc0) ->
+    riak_core_vnode_master:sync_spawn_command(Preflist,
+                                              ?FOLD_REQ{
+                                                 foldfun=Fun,
+                                                 acc0=Acc0},
+                                              riak_kv_vnode_master).
+
 purge_mapcaches() ->
     VNodes = riak_core_vnode_master:all_nodes(?MODULE),
     lists:foreach(fun(VNode) -> riak_core_vnode:send_command(VNode, purge_mapcache) end, VNodes).
@@ -102,7 +129,9 @@ handle_command(?KV_DELETE_REQ{bkey=BKey, req_id=ReqId}, _Sender,
 handle_command(?KV_MAP_REQ{bkey=BKey,qterm=QTerm,keydata=KeyData},
                Sender, State) ->
     do_map(Sender,QTerm,BKey,KeyData,State,self());
-
+handle_command(?FOLD_REQ{foldfun=Fun, acc0=Acc},_Sender,State) ->
+    Reply = do_fold(Fun, Acc, State),
+    {reply, Reply, State};
 %% Commands originating from inside this vnode
 handle_command({mapcache, BKey,{FunName,Arg,KeyData}, MF_Res}, _Sender,
                State=#state{mapcache=Cache}) ->
@@ -126,7 +155,38 @@ handle_command(clear_mapcache, _Sender, State) ->
     schedule_clear_mapcache(),
     {noreply, State#state{mapcache=orddict:new()}}.
 
+handle_handoff_command(Req=?FOLD_REQ{}, Sender, State) -> 
+    handle_command(Req, Sender, State);
+handle_handoff_command(purge_mapcache, Sender, State) ->
+    handle_command(purge_mapcache, Sender, State);
+handle_handoff_command(clear_mapcache, Sender, State) ->
+    handle_command(clear_mapcache, Sender, State);
+handle_handoff_command(_Req, _Sender, State) -> {forward, State}.
 
+
+handoff_starting(_TargetNode, State) ->
+    {true, State#state{in_handoff=true}}.
+
+handoff_cancelled(State) ->
+    {ok, State#state{in_handoff=false}}.
+
+handoff_finished(_TargetNode, State) ->
+    {ok, State}.
+
+handle_handoff_data(BKey, Obj, State) ->
+    case do_diffobj_put(BKey, Obj, State) of
+        ok ->
+            {reply, ok, State};
+        Err ->
+            {reply, {error, Err}, State}
+    end.
+
+is_empty(State=#state{mod=Mod, modstate=ModState}) ->
+    {Mod:is_empty(ModState), State}.
+
+delete_and_exit(State=#state{mod=Mod, modstate=ModState}) ->
+    ok = Mod:drop(ModState),
+    {stop, normal, State}.
 
 %% old vnode helper functions
 
@@ -246,6 +306,28 @@ do_get_binary(BKey, Mod, ModState) ->
 do_list_bucket(ReqID,Bucket,Mod,ModState,Idx,State) ->
     RetVal = Mod:list_bucket(ModState,Bucket),
     {reply, {kl, RetVal, Idx, ReqID}, State}.
+
+%% @private
+do_fold(Fun, Acc0, _State=#state{mod=Mod, modstate=ModState}) ->
+    Mod:fold(ModState, Fun, Acc0).
+
+%% @private
+% upon receipt of a handoff datum, there is no client FSM
+do_diffobj_put(BKey={Bucket,_}, DiffObj,
+       _StateData=#state{mod=Mod,modstate=ModState}) ->
+    ReqID = erlang:phash2(erlang:now()),
+    case syntactic_put_merge(Mod, ModState, BKey, DiffObj, ReqID) of
+        {newobj, NewObj} ->
+            AMObj = enforce_allow_mult(NewObj, riak_core_bucket:get_bucket(Bucket)),
+            Val = term_to_binary(AMObj),
+            Res = Mod:put(ModState, BKey, Val),
+            case Res of
+                ok -> riak_kv_stat:update(vnode_put);
+                _ -> nop
+            end,
+            Res;
+        _ -> ok
+    end.
 
 %% @private
 do_map(Sender, QTerm, BKey, KeyData, #state{mod=Mod, modstate=ModState, mapcache=Cache}=State, VNode) ->

@@ -25,10 +25,10 @@
 -module(riak_core_vnode_master).
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 -behaviour(gen_server).
--export([start_link/1, start_link/2,
+-export([start_link/1, start_link/2, get_vnode_pid/2,
          start_vnode/2, command/3, command/4, sync_command/3,
-         make_request/3,
-         all_nodes/1]).
+         sync_spawn_command/3, make_request/3,
+         all_nodes/1, reg_name/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 -record(idxrec, {idx, pid, monref}).
@@ -48,6 +48,10 @@ start_link(VNodeMod, LegacyMod) ->
 start_vnode(Index, VNodeMod) ->
     RegName = reg_name(VNodeMod),
     gen_server:cast(RegName, {Index, start_vnode}).
+
+get_vnode_pid(Index, VNodeMod) ->
+    RegName = reg_name(VNodeMod),
+    gen_server:call(RegName, {Index, get_vnode}).
     
 command(Preflist, Msg, VMaster) ->
     command(Preflist, Msg, noreply, VMaster).
@@ -63,7 +67,7 @@ command([{Index,Node}|Rest], Msg, Sender, VMaster) ->
 command({Index,Node}, Msg, Sender, VMaster) ->
     gen_server:cast({VMaster, Node}, make_request(Msg, Sender, Index)).
 
-%% Send a synchronus command to an individual Index/Node combination.
+%% Send a synchronous command to an individual Index/Node combination.
 %% Will not return until the vnode has returned
 sync_command({Index,Node}, Msg, VMaster) ->
     %% Issue the call to the master, it will update the Sender with
@@ -72,6 +76,15 @@ sync_command({Index,Node}, Msg, VMaster) ->
     gen_server:call({VMaster, Node}, 
                     make_request(Msg, {server, undefined, undefined}, Index)).
 
+
+%% Send a synchronous spawned command to an individual Index/Node combination.
+%% Will not return until the vnode has returned, but the vnode_master will
+%% continue to handle requests.
+sync_spawn_command({Index,Node}, Msg, VMaster) ->
+    gen_server:call({VMaster, Node}, 
+                    {spawn, make_request(Msg, {server, undefined, undefined}, Index)}).
+
+    
 %% Make a request record - exported for use by legacy modules
 -spec make_request(vnode_req(), sender(), partition()) -> #riak_vnode_req_v1{}.
 make_request(Request, Sender, Index) ->
@@ -130,12 +143,23 @@ handle_call(Req=?VNODE_REQ{index=Idx, sender={server, undefined, undefined}}, Fr
     Pid = get_vnode(Idx, State),
     gen_fsm:send_event(Pid, Req?VNODE_REQ{sender={server, undefined, From}}),
     {noreply, State};
+handle_call({spawn, 
+             Req=?VNODE_REQ{index=Idx, sender={server, undefined, undefined}}}, From, State) ->
+    Pid = get_vnode(Idx, State),
+    Sender = {server, undefined, From},
+    spawn(
+      fun() -> gen_fsm:send_all_state_event(Pid, Req?VNODE_REQ{sender=Sender}) end),
+    {noreply, State};
+
 %% handle_call({Partition, Msg}, From, State) ->
 %%     Pid = get_vnode(Partition, State),
 %%     gen_fsm:send_event(Pid, {From, Msg}),
 %%     {noreply, State};
 handle_call(all_nodes, _From, State) ->
     {reply, lists:flatten(ets:match(State#state.idxtab, {idxrec, '_', '$1', '_'})), State};
+handle_call({Partition, get_vnode}, _From, State) ->
+    Pid = get_vnode(Partition, State),
+    {reply, {ok, Pid}, State};
 handle_call(Other, From, State=#state{legacy=Legacy}) when Legacy =/= undefined ->
     case catch Legacy:rewrite_call(Other, From) of
         {ok, ?VNODE_REQ{}=Req} ->
