@@ -96,7 +96,7 @@ try_cast(Msg, UpNodes, [{Index,Node}|Targets], Sent, Pangs) ->
 fallback(Cmd, UpNodes, Pangs, Fallbacks) ->
     fallback(Cmd, UpNodes, Pangs, Fallbacks, []).
 fallback(_Cmd, _UpNodes, [], _Fallbacks, Sent) -> Sent;
-fallback(Msg, [{Index, Node}|Pangs], [], Sent) -> 
+fallback(Msg, _UpNodes, [{Index, Node}|Pangs], [], Sent) -> 
     %% No fallbacks left - a last gasp effort to send to ourselves
     FN = node(),
     gen_server:cast({riak_kv_vnode_master, FN}, make_request(Msg, Index)),
