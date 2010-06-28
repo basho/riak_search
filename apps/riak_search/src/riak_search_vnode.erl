@@ -5,7 +5,10 @@
          info/5,
          info_range/7,
          catalog_query/3]).
--export([init/1, handle_command/3]).
+-export([init/1, handle_command/3,
+         start_handoff/2, is_empty/1, delete_and_exit/1,
+         handoff_cancelled/1, handle_handoff_data/3]).
+-include_lib("riak_core/include/riak_core_vnode.hrl").
 
 -record(vstate, {idx, bmod, bstate}).
 -record(index_v1, {index, field, term, value, props}).
@@ -84,7 +87,6 @@ catalog_query(Preflist, CatalogQuery, ReplyTo) ->
     command(Preflist, Req, {raw, Ref, ReplyTo}),
     {ok, Ref}.
 
-
 %% %% Get replies from all nodes that are willing to stream this
 %% %% bucket. If there is one on the local node, then use it, otherwise,
 %% %% use the first one that responds.
@@ -156,8 +158,35 @@ handle_command(#stream_v1{index = Index,
 
 handle_command(#catalog_query_v1{catalog_query = CatalogQuery},
                Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
-    bmod_response(BMod:catalog_query(CatalogQuery, Sender, BState), VState).
+    bmod_response(BMod:catalog_query(CatalogQuery, Sender, BState), VState);
 
+%% Request from core_vnode_handoff_sender - fold function
+%% expects to be called with {{Bucket,Key},Value}
+handle_command(?FOLD_REQ{foldfun=Fun, acc0=Acc},_Sender,
+               #vstate{bmod=BMod,bstate=BState}=VState) ->
+    bmod_response(BMod:fold(Fun, Acc, BState), VState).
+
+start_handoff(_TargetNode, VState) ->
+    {true, VState}.
+
+handoff_cancelled(VState) ->
+    {ok, VState}.
+
+handle_handoff_data({Index,_FieldTerm}, Obj, #vstate{bmod=BMod,bstate=BState}=VState) ->
+    %% The previous k/v backend wrapper for Raptor always returned
+    %% {error, not_found} on a get request, so it would always
+    %% overwrite with handoff data.  Keep this behavior until 
+    %% we get a chance to fix.
+    {Field, Term, Value, Props} = binary_to_term(Obj),
+    noreply = BMod:index(Index, Field, Term, Value, Props, BState),
+    {reply, ok, VState}.
+
+is_empty(VState=#vstate{bmod=BMod, bstate=BState}) ->
+    {BMod:is_empty(BState), VState}.
+
+delete_and_exit(VState=#vstate{bmod=BMod, bstate=BState}) ->
+    ok = BMod:drop(BState),
+    {stop, normal, VState}.
 
 bmod_response(noreply, VState) ->
     {noreply, VState};
@@ -167,7 +196,6 @@ bmod_response({noreply, NewBState}, VState) ->
     {noreply, VState#vstate{bstate=NewBState}};
 bmod_response({reply, Reply, NewBState}, VState) ->
     {reply, Reply, VState#vstate{bstate=NewBState}}.
-
 
 
 %% handle_command({delete_entry, Index, Field, Term, DocId}, Sender,

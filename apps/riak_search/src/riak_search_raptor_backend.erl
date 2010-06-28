@@ -23,8 +23,10 @@
 -behavior(riak_search_backend).
 
 -export([start/2,stop/1,index/6,info/5,info_range/7,stream/6,catalog_query/3]).
+-export([drop/1, is_empty/1, fold/3]).
+
 -export([get/2,put/3,list/1,list_bucket/2,delete/2]).
--export([fold/3, drop/1, is_empty/1, toggle_raptor_debug/0, shutdown_raptor/0]).
+-export([toggle_raptor_debug/0, shutdown_raptor/0]).
 -export([sync/0, poke/1, raptor_status/0]).
 
 -export([test_fold/0, test_is_empty/0, test_drop/0]).
@@ -143,6 +145,49 @@ catalog_query(CatalogQuery, Sender, _State) ->
                end),
     noreply.
 
+fold(Folder, Acc, State) ->
+%% spawn a process to kick off the catalog listing
+%%   for the this partition, e.g.,
+    io:format("fold(~p, ~p, ~p)~n", [State, Folder, Acc]),
+    io:format("fold/sync...~n"),
+    sync(),
+    io:format("fold/sync complete.~n"),
+    Partition = integer_to_list(State#state.partition),
+    {ok, Conn} = raptor_conn_pool:checkout(),
+    Me = self(),
+    FoldCatRef = {fold_catalog, erlang:make_ref()},
+    CatalogResultsPid = spawn_link(fun() ->
+                                           fold_catalog_process(FoldCatRef, Me, Folder, Acc, 
+                                                                false, 0, 0, false) end),
+    spawn_link(fun() ->
+                       try
+                           {ok, StreamRef} = raptor_conn:catalog_query(
+                                               Conn,
+                                               ["partition_id:\"", Partition , "\""]),
+                           Sender = {pid, FoldCatRef, CatalogResultsPid},
+                           receive_catalog_query_results(StreamRef, Sender)
+                       after
+                           raptor_conn_pool:checkin(Conn)
+                       end end),
+    receive_fold_results(Acc, 0).
+
+is_empty(State) ->
+    io:format("is_empty(~p)~n", [State]),
+    Partition = to_binary(State#state.partition),
+    handle_command(no_state, {command,
+                              <<"partition_count">>,
+                              Partition,
+                              <<"">>,
+                              <<"">>}) == "0".
+
+drop(State) ->
+    Partition = to_binary(State#state.partition),
+    handle_command(no_state, {command,
+                              <<"drop_partition">>,
+                              Partition,
+                              <<"">>,
+                              <<"">>}),
+    ok.
 
 handle_command(State, {delete_entry, Index, Field, Term, DocId}) ->
     Partition = to_binary(State#state.partition),
@@ -300,23 +345,6 @@ receive_catalog_query_results(StreamRef, Sender) ->
 get(_State, _BKey) ->
     {error, notfound}.
 
-is_empty(State) ->
-    io:format("is_empty(~p)~n", [State]),
-    Partition = to_binary(State#state.partition),
-    handle_command(no_state, {command,
-                              <<"partition_count">>,
-                              Partition,
-                              <<"">>,
-                              <<"">>}) == "0".
-
-drop(State) ->
-    Partition = to_binary(State#state.partition),
-    handle_command(no_state, {command,
-                              <<"drop_partition">>,
-                              Partition,
-                              <<"">>,
-                              <<"">>}),
-    ok.
 
 %% @spec delete(state(), BKey :: riak_object:bkey()) ->
 %%          ok | {error, Reason :: term()}
@@ -338,33 +366,10 @@ list_bucket(_State, _Bucket) ->
     io:format("list_bucket(~p, ~p)~n", [_State, _Bucket]),
     throw({error, not_supported}).
 
-%% spawn a process to kick off the catalog listing
-%%   for the this partition, e.g.,
-fold(State, Fun0, Acc) ->
-    io:format("fold(~p, ~p, ~p)~n", [State, Fun0, Acc]),
-    io:format("fold/sync...~n"),
-    sync(),
-    io:format("fold/sync complete.~n"),
-    Partition = integer_to_list(State#state.partition),
-    {ok, Conn} = raptor_conn_pool:checkout(),
-    Me = self(),
-    CatalogResultsPid = spawn_link(fun() ->
-                                           fold_catalog_process(Me, Fun0, Acc, false, 0, 0, false) end),
-    spawn_link(fun() ->
-                       try
-                           {ok, StreamRef} = raptor_conn:catalog_query(
-                                               Conn,
-                                               ["partition_id:\"", Partition , "\""]),
-                           Sender = {pid, erlang:make_ref(), CatalogResultsPid},
-                           receive_catalog_query_results(StreamRef, Sender)
-                       after
-                           raptor_conn_pool:checkin(Conn)
-                       end end),
-    receive_fold_results(Acc, 0).
-
 %% receive catalog entries for current partition & kick
 %%   off a stream process for each one in parallel
-fold_catalog_process(FoldResultPid,
+fold_catalog_process(CatRef,
+                     FoldResultPid,
                      Fun0, Acc,
                      CatalogDone,
                      StreamProcessCount,
@@ -378,26 +383,25 @@ fold_catalog_process(FoldResultPid,
     %%   exit
     Me = self(),
     receive
-        {catalog_query_response, done, _OutputRef} ->
+        {CatRef, done} ->
             case StreamProcessCount of
                 0 ->
                     FoldResultPid ! {fold_result, done},
                     true;
                 _SPC ->
-                    fold_catalog_process(FoldResultPid, Fun0, Acc, true,
+                    fold_catalog_process(CatRef, FoldResultPid, Fun0, Acc, true,
                         StreamProcessCount, FinishedStreamProcessCount, DeferredTables)
             end;
 
-        {catalog_query_response, {Partition, Index, Field, Term, JSONProps}, _OutputRef} ->
+        {CatRef, {Partition, Index, Field, Term, JSONProps}} ->
             %% kick off stream for this PIFT
             case (StreamProcessCount - FinishedStreamProcessCount) >
                   ?MAX_HANDOFF_STREAMS of
                 true ->
                     %io:format("fold_catalog_process: deferring ~p.~p.~p~n",
                     %    [Index, Field, Term]),
-                    self() ! {catalog_query_response,
-                              {Partition, Index, Field, Term, JSONProps}, _OutputRef},
-                    fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
+                    self() ! {CatRef, {Partition, Index, Field, Term, JSONProps}},
+                    fold_catalog_process(CatRef, FoldResultPid, Fun0, Acc, CatalogDone,
                                          StreamProcessCount, FinishedStreamProcessCount, true);
                 false ->
                     spawn_link(fun() ->
@@ -412,7 +416,7 @@ fold_catalog_process(FoldResultPid,
                             to_binary(Partition)),
                         fold_stream_process(Me, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term),
                         raptor_conn_pool:checkin(Conn) end),
-                    fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
+                    fold_catalog_process(CatRef, FoldResultPid, Fun0, Acc, CatalogDone,
                                          StreamProcessCount+1, FinishedStreamProcessCount, false)
                 end;
 
@@ -427,12 +431,12 @@ fold_catalog_process(FoldResultPid,
                             [(FinishedStreamProcessCount+1), StreamProcessCount]),
                         FoldResultPid ! {fold_result, done};
                     false ->
-                        fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
+                        fold_catalog_process(CatRef, FoldResultPid, Fun0, Acc, CatalogDone,
                             StreamProcessCount, FinishedStreamProcessCount+1, false)
                 end;
         Msg ->
             io:format("fold_catalog_process: unknown message: ~p~n", [Msg]),
-            fold_catalog_process(FoldResultPid, Fun0, Acc, CatalogDone,
+            fold_catalog_process(CatRef, FoldResultPid, Fun0, Acc, CatalogDone,
                 StreamProcessCount, FinishedStreamProcessCount, DeferredTables)
         after ?FOLD_TIMEOUT ->
             case FinishedStreamProcessCount >= (StreamProcessCount) of
@@ -456,11 +460,9 @@ fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Inde
             io:format("fold_stream_process: table complete: ~p.~p.~p~n",
                 [Index, Field, Term]);
         {stream, StreamRef, Value, Props} ->
-            Props2 = binary_to_term(Props),
             IndexBin = riak_search_utils:to_binary(Index),
             FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-            Payload = {index, Index, Field, Term, Value, Props2, erlang:now()},
-            BObj = term_to_binary(riak_object:new(IndexBin, FieldTermBin, Payload)),
+            BObj = term_to_binary({Field, Term, Value, Props}),
             FoldResultPid ! {fold_result, Fun0({IndexBin, FieldTermBin}, BObj, Acc)},
             fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term);
         Msg ->
