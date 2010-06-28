@@ -5,8 +5,8 @@
          info/5,
          info_range/7,
          catalog_query/3]).
--export([init/1, handle_command/3,
-         start_handoff/2, is_empty/1, delete_and_exit/1,
+-export([start_vnode/1, init/1, handle_command/3,
+         handoff_starting/2, is_empty/1, delete_and_exit/1,
          handoff_cancelled/1, handle_handoff_data/3]).
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 
@@ -16,7 +16,6 @@
 -record(info_range_v1, {index, field, start_term, end_term, size}).
 -record(stream_v1, {index, field, term, filter_fun}).
 -record(catalog_query_v1, {index, catalog_query}).
-
 
 index(Preflist, Index, Field, Term, Value, Props) ->
     Req = #index_v1{
@@ -121,6 +120,9 @@ command(PrefList, Req, Sender) ->
 %% Callbacks for riak_core_vnode
 %%
 
+start_vnode(I) ->
+    riak_core_vnode_master:start_vnode(I, riak_search_vnode).
+
 init([VNodeIndex]) ->
     BMod = app_helper:get_env(riak_search, search_backend),
     Configuration = app_helper:get_env(riak_search),
@@ -166,7 +168,7 @@ handle_command(?FOLD_REQ{foldfun=Fun, acc0=Acc},_Sender,
                #vstate{bmod=BMod,bstate=BState}=VState) ->
     bmod_response(BMod:fold(Fun, Acc, BState), VState).
 
-start_handoff(_TargetNode, VState) ->
+handoff_starting(_TargetNode, VState) ->
     {true, VState}.
 
 handoff_cancelled(VState) ->

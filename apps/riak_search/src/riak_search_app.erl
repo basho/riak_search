@@ -42,16 +42,21 @@ start(_StartType, _StartArgs) ->
                     [F(Bucket) || Bucket <- Buckets]
             end,
 
-            %% TODO: Make this safer w.r.t riak_core_ring_events crashing
-            ok = riak_core_ring_events:add_handler(riak_search_ring_handler, []),
+            %% %% Set up the search_broadcast bucket. Any operations on
+            %% %% this bucket will broadcast to all search_backend
+            %% %% partitions.
+            %% RingSize = app_helper:get_env(riak_core, ring_creation_size),
+            %% riak_core_bucket:set_bucket(<<"search_broadcast">>, [{n_val, RingSize},
+            %%                                                      {backend, search_backend}]),
+ 
+            %% Register the search vnode with core and mark the node
+            %% as available for search requests.
+            error_logger:info_msg("registering search vnode\n"),
+            riak_core:register_vnode_module(riak_search_vnode),
+            error_logger:info_msg("marking search vnode up\n"),
+            riak_core_node_watcher:service_up(riak_search, self()),
 
-            %% Set up the search_broadcast bucket. Any operations on
-            %% this bucket will broadcast to all search_backend
-            %% partitions.
-            RingSize = app_helper:get_env(riak_core, ring_creation_size),
-            riak_core_bucket:set_bucket(<<"search_broadcast">>, [{n_val, RingSize},
-                                                                 {backend, search_backend}]),
-            {ok, Pid};
+           {ok, Pid};
         Error ->
             Error
     end.

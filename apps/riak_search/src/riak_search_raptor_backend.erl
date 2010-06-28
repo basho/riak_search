@@ -408,14 +408,18 @@ fold_catalog_process(CatRef,
                         io:format("fold_catalog_process: catalog_query_response: ~p: ~p.~p.~p (~p)~n",
                             [Partition, Index, Field, Term, JSONProps]),
                         {ok, Conn} = raptor_conn_pool:checkout(),
-                        {ok, StreamRef} = raptor_conn:stream(
-                            Conn,
-                            to_binary(Index),
-                            to_binary(Field),
-                            to_binary(Term),
-                            to_binary(Partition)),
-                        fold_stream_process(Me, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term),
-                        raptor_conn_pool:checkin(Conn) end),
+                        try
+                          {ok, StreamRef} = raptor_conn:stream(
+                              Conn,
+                              to_binary(Index),
+                              to_binary(Field),
+                              to_binary(Term),
+                              to_binary(Partition)),
+                          fold_stream_process(Me, FoldResultPid, StreamRef, Fun0, Acc, 
+                                              Index, Field, Term)
+                        after 
+                            raptor_conn_pool:checkin(Conn)
+                        end end),
                     fold_catalog_process(CatRef, FoldResultPid, Fun0, Acc, CatalogDone,
                                          StreamProcessCount+1, FinishedStreamProcessCount, false)
                 end;
