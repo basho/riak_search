@@ -44,12 +44,12 @@
 %% Error}.
 parse_query(IndexOrSchema, Query) ->
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
-    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
+    {ok, AnalyzerPid} = qilr:new_analyzer(),
     try
         qilr_parse:string(AnalyzerPid, Query, list_to_atom(Schema:default_op()),
                           Schema:field_types(), Schema:analyzer_factory())
     after
-        qilr_analyzer:close(AnalyzerPid)
+        qilr:close_analyzer(AnalyzerPid)
     end.
 
 %% Run the Query, return the list of keys.
@@ -92,7 +92,7 @@ explain(IndexOrSchema, QueryOps) ->
 
 %% Parse a #riak_idx_doc{} record using the provided analyzer pid.
 parse_idx_doc(IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
-    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
+    {ok, AnalyzerPid} = qilr:new_analyzer(),
     try
         %% Extract fields, get schema...
         #riak_idx_doc{id=DocID, index=Index, fields=DocFields}=IdxDoc,
@@ -126,7 +126,7 @@ parse_idx_doc(IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
         DocFields1 = DocFields -- FacetProps,
         lists:foldl(F2, [], DocFields1)
     after
-        qilr_analyzer:close(AnalyzerPid)
+        qilr:close_analyzer(AnalyzerPid)
     end.
 
 analyze_field(AnalyzerPid, FieldName, FieldValue, Schema) ->
@@ -220,7 +220,7 @@ stream_search(IndexOrSchema, OpList) ->
     OpList1 = riak_search_preplan:preplan(OpList, DefaultIndex, DefaultField, Facets),
 
     %% Query optimization pass
-    OpList2 = optimize_query(OpList1),
+    %OpList2 = optimize_query(OpList1),
 
     %% Get the total number of terms and weight in query...
     {NumTerms, NumDocs, QueryNorm} = get_scoring_info(OpList1),
@@ -232,7 +232,7 @@ stream_search(IndexOrSchema, OpList) ->
                   {index_name, IndexOrSchema}],
 
     %% Start the query process ...
-    {ok, NumInputs} = riak_search_op:chain_op(OpList2, self(), Ref, QueryProps),
+    {ok, NumInputs} = riak_search_op:chain_op(OpList1, self(), Ref, QueryProps),
     #riak_search_ref {
         id=Ref, termcount=NumTerms,
         inputcount=NumInputs, querynorm=QueryNorm }.
@@ -325,7 +325,7 @@ delete_document(Index, DocId) ->
             {error, notfound};
         IdxDoc ->
             #riak_idx_doc{id=DocID, index=Index, fields=DocFields}=IdxDoc,
-            {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
+            {ok, AnalyzerPid} = qilr:new_analyzer(),
             try
                 F2 = fun({FieldName, FieldValue}, Acc2) ->
                     {ok, Terms} = qilr_analyzer:analyze(AnalyzerPid, FieldValue),
@@ -346,7 +346,7 @@ delete_document(Index, DocId) ->
                 DocKey = riak_search_utils:to_binary(DocId),
                 RiakClient:delete(DocBucket, DocKey, 1)
             after
-                qilr_analyzer:close(AnalyzerPid)
+                qilr:close_analyzer(AnalyzerPid)
             end
     end.
 

@@ -2,6 +2,8 @@
 
 -behaviour(supervisor).
 
+-include("raptor.hrl").
+
 %% API
 -export([start_link/0]).
 
@@ -24,8 +26,10 @@ init([]) ->
                permanent, infinity, supervisor, [raptor_conn_sup]},
     Monitor = {raptor_monitor, {raptor_monitor, start_link, []},
                permanent, 5000, worker, [raptor_monitor]},
-    ConnPool = {raptor_conn_pool, {raptor_conn_pool, start_link, []},
-                permanent, 5000, worker, [raptor_conn_pool]},
 
+    PoolCountFun = fun() -> raptor_util:get_env(raptor, backend_cons, 10) end,
+
+    ConnPool = {?CONN_POOL, {riak_sock_pool, start_link, [?CONN_POOL, {raptor_conn_sup, raptor_conn}, PoolCountFun]},
+                permanent, 5000, worker, [riak_sock_pool]},
 
     {ok, {SupFlags, [Monitor, ConnSup, ConnPool]}}.

@@ -2,6 +2,8 @@
 
 -behaviour(supervisor).
 
+-include("qilr.hrl").
+
 %% API
 -export([start_link/0]).
 
@@ -18,7 +20,12 @@ init([]) ->
                        permanent, 2000, worker, [qilr_analyzer_monitor]},
 
     AnalyzerSup = {qilr_analyzer_sup, {qilr_analyzer_sup, start_link, []},
-                   permanent, infinity, supervisor, [qilr_analyzer_sup]},
+                       permanent, infinity, supervisor, [qilr_analyzer_sup]},
+
+    PoolCountFun = fun() -> 10 end,
+
+    ConnPool = {?CONN_POOL, {riak_sock_pool, start_link, [?CONN_POOL, {qilr_analyzer_sup, qilr_analyzer}, PoolCountFun]},
+                permanent, 5000, worker, [riak_sock_pool]},
 
 
-    {ok, {{one_for_all, 100, 10}, [AnalyzerMonitor, AnalyzerSup]}}.
+    {ok, {{one_for_all, 100, 10}, [AnalyzerMonitor, AnalyzerSup, ConnPool]}}.

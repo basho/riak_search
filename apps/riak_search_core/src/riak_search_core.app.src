@@ -1,0 +1,11 @@
+{application, riak_search_core,
+ [
+  {description, "Generic socket connection pool"},
+  {vsn, "0.01"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {env, []}
+ ]}.

@@ -44,6 +44,7 @@
                   stdlib,
                   riak_core,
                   riak_kv,
+                  riak_search_core,
                   qilr,
                   raptor
                  ]},
