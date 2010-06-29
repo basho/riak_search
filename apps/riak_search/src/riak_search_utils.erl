@@ -216,10 +216,9 @@ calc_n_partition(Index, Field, Term) ->
 %% Calculate N and a partition number for an index/field/term combination
 calc_n_partition(Index, FieldTermBin) ->
     %% Lookup N for the index
-    IndexBin = riak_search_utils:to_binary(Index),
-    Bucket = riak_core_bucket:get_bucket(IndexBin),
-    {value, {n_val, N}} = lists:keysearch(n_val, 1, Bucket),
+    N = app_helper:get_env(riak_search, n_val, 2),
 
     %% Work out which partition to use
+    IndexBin = riak_search_utils:to_binary(Index),
     Partition = riak_core_util:chash_key({IndexBin, FieldTermBin}),
     {N, Partition}.
