@@ -27,7 +27,7 @@ init([]) ->
     Monitor = {raptor_monitor, {raptor_monitor, start_link, []},
                permanent, 5000, worker, [raptor_monitor]},
 
-    PoolCountFun = fun() -> raptor_util:get_env(raptor, backend_cons, 10) end,
+    PoolCountFun = fun() -> app_helper:get_env(raptor, backend_conn_count, 10) end,
 
     ConnPool = {?CONN_POOL, {riak_sock_pool, start_link, [?CONN_POOL, {raptor_conn_sup, raptor_conn}, PoolCountFun]},
                 permanent, 5000, worker, [riak_sock_pool]},

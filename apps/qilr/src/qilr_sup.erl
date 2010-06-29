@@ -22,7 +22,7 @@ init([]) ->
     AnalyzerSup = {qilr_analyzer_sup, {qilr_analyzer_sup, start_link, []},
                        permanent, infinity, supervisor, [qilr_analyzer_sup]},
 
-    PoolCountFun = fun() -> 10 end,
+    PoolCountFun = fun() -> app_helper:get_env(qilr, backend_conn_count, 10) end,
 
     ConnPool = {?CONN_POOL, {riak_sock_pool, start_link, [?CONN_POOL, {qilr_analyzer_sup, qilr_analyzer}, PoolCountFun]},
                 permanent, 5000, worker, [riak_sock_pool]},
