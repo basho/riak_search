@@ -5,7 +5,7 @@
          info/5,
          info_range/7,
          catalog_query/3]).
--export([start_vnode/1, init/1, handle_command/3,
+-export([start_vnode/1, init/1, handle_command/3, handle_handoff_command/3,
          handoff_starting/2, is_empty/1, delete_and_exit/1,
          handoff_cancelled/1, handle_handoff_data/3]).
 -include_lib("riak_core/include/riak_core_vnode.hrl").
@@ -173,6 +173,14 @@ handle_command(#catalog_query_v1{catalog_query = CatalogQuery},
 handle_command(?FOLD_REQ{foldfun=Fun, acc0=Acc},_Sender,
                #vstate{bmod=BMod,bstate=BState}=VState) ->
     bmod_response(BMod:fold(Fun, Acc, BState), VState).
+
+%% Handle a command during handoff - if it's a fold then
+%% make sure it runs locally, otherwise forward it on to the
+%% correct vnode.
+handle_handoff_command(Req=?FOLD_REQ{}, Sender, VState) -> 
+    handle_command(Req, Sender, VState);
+handle_handoff_command(_Req, _Sender, VState) -> 
+    {forward, VState}.
 
 handoff_starting(_TargetNode, VState) ->
     {true, VState}.
