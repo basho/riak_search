@@ -76,7 +76,7 @@ try_cast(Msg, UpNodes, Targets) ->
     try_cast(Msg, UpNodes, Targets, [], []).
 try_cast(_Msg, _UpNodes, [], Sent, Pangs) -> {Sent, Pangs};
 try_cast(Msg, UpNodes, [{Index,Node}|Targets], Sent, Pangs) ->
-    case lists:member(Node, [Node|UpNodes]) of
+    case lists:member(Node, UpNodes) of
         false ->
             try_cast(Msg, UpNodes, Targets, Sent, [{Index,Node}|Pangs]);
         true ->
@@ -103,7 +103,7 @@ fallback(Msg, _UpNodes, [{Index, Node}|Pangs], [], Sent) ->
     fallback(Msg, Pangs, [], [{Index,Node,FN}|Sent]);
 fallback(Cmd, UpNodes, [{Index,Node}|Pangs], [{_,FN}|Fallbacks], Sent) ->
     case lists:member(FN, UpNodes) of
-        false -> fallback(Cmd, [{Index,Node}|Pangs], Fallbacks, Sent);
+        false -> fallback(Cmd, UpNodes, [{Index,Node}|Pangs], Fallbacks, Sent);
         true ->
             gen_server:cast({riak_kv_vnode_master, FN}, make_request(Cmd, Index)),
             fallback(Cmd, UpNodes, Pangs, Fallbacks, [{Index,Node,FN}|Sent])

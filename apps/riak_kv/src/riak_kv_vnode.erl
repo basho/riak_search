@@ -15,7 +15,7 @@
 %% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
 
 -module(riak_kv_vnode).
--export([start_vnode/1, del/3, put/6, list_keys/3,map/5, fold/3]).
+-export([start_vnode/1, del/3, put/6, readrepair/6, list_keys/3,map/5, fold/3]).
 -export([purge_mapcaches/0,mapcache/4]).
 -export([is_empty/1, delete_and_exit/1]).
 -export([handoff_starting/2, handoff_cancelled/1, handoff_finished/2, handle_handoff_data/3]).
@@ -50,7 +50,12 @@ del(Preflist, BKey, ReqId) ->
                                                        req_id=ReqId},
                                         riak_kv_vnode_master).
 
-put(Preflist, BKey, Obj, ReqId, StartTime, Options) ->   
+%% Issue a put for the object to the preflist, expecting a reply
+%% to an FSM.
+put(Preflist, BKey, Obj, ReqId, StartTime, Options) ->
+    put(Preflist, BKey, Obj, ReqId, StartTime, Options, {fsm, undefined, self()}).
+
+put(Preflist, BKey, Obj, ReqId, StartTime, Options, Sender) ->   
     riak_core_vnode_master:command(Preflist,
                                    ?KV_PUT_REQ{
                                       bkey = BKey,
@@ -58,7 +63,12 @@ put(Preflist, BKey, Obj, ReqId, StartTime, Options) ->
                                       req_id = ReqId,
                                       start_time = StartTime,
                                       options = Options},
+                                   Sender,
                                    riak_kv_vnode_master).
+
+%% Do a put without sending any replies
+readrepair(Preflist, BKey, Obj, ReqId, StartTime, Options) ->   
+    put(Preflist, BKey, Obj, ReqId, StartTime, Options, noreply).
 
 list_keys(Preflist, Bucket, ReqId) ->
     riak_core_vnode_master:command(Preflist,
@@ -417,11 +427,9 @@ schedule_clear_mapcache() ->
 
 -ifdef(TEST).
 
--define(RING_KEY, riak_ring).
-
 dummy_backend() ->
     Ring = riak_core_ring:fresh(16,node()),
-    mochiglobal:put(?RING_KEY, Ring),
+    riak_core_ring_manager:set_ring_global(Ring),
     application:set_env(riak_kv, storage_backend, riak_kv_ets_backend),
     application:set_env(riak_core, default_bucket_props, []).
    
@@ -467,48 +475,62 @@ mapcache_delete_test() ->
     flush_msgs().
 
 purge_mapcaches_test() ->
-            dummy_backend(),
+    dummy_backend(),
 
-            %%
-            %% Start up 3 vnodes
-            %%
-            
-            %% make sure we create the registered processes - no test hangovers
-            riak_kv_test_util:stop_process(riak_core_vnode_sup),
-            riak_kv_test_util:stop_process(riak_kv_vnode_master),
-            {ok, _Sup} = riak_core_vnode_sup:start_link(),
-            {ok, _VMaster} = riak_core_vnode_master:start_link(riak_kv_vnode),
-            Partitions = lists:seq(0,2),
-            [start_vnode(Index) || Index <- Partitions],
-            timer:sleep(50),
-            Pids = [Pid || {_,Pid,_,_} <- supervisor:which_children(riak_core_vnode_sup)],
-            ?assertEqual(length(Pids), length(Partitions)),
+    %%
+    %% Start up 3 vnodes
+    %%
 
-            %% Prove nothing there
-            FunTerm = {modfun, ?MODULE, map_test},
-            Arg = arg, 
-            QTerm = {erlang, {map, FunTerm, Arg, acc}},
-            KeyData = keydata,
-            CacheKey = build_key(FunTerm, Arg, KeyData),
-            BKey = {<<"b">>,<<"k">>},
-            [check_mapcache(I, QTerm, BKey, KeyData, {error, notfound}) || I <- Partitions],
+    %% make sure we create the registered processes - no test hangovers
+    cleanup_servers(),
+    {ok, _Sup} = riak_core_vnode_sup:start_link(),
+    {ok, _VMaster} = riak_core_vnode_master:start_link(riak_kv_vnode),
+    application:load(riak_core),
+    {ok, _RingEvents} = riak_core_ring_events:start_link(),
+    {ok, _NodeEvent} = riak_core_node_watcher_events:start_link(),
+    {ok, _NodeWatcher} = riak_core_node_watcher:start_link(),
+    riak_core_node_watcher:service_up(riak_kv, self()),
 
-            %% Send them each something to cache
-            [mapcache(Pid, BKey, CacheKey, some_val) || Pid <- Pids],
+    %% Get the first three partitions and start up vnodes
+    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
+    Partitions = lists:sublist([I || {I,_N} <- riak_core_ring:all_owners(Ring)], 3),
+    [start_vnode(Index) || Index <- Partitions],
+    Pids = [Pid || {_,Pid,_,_} <- supervisor:which_children(riak_core_vnode_sup)],
+    ?assertEqual(length(Partitions), length(Pids)),
 
-            %% Check it is there by issuing a map request
-            flush_msgs(),
-            [check_mapcache(I, QTerm, BKey, KeyData, some_val) || I <- Partitions],
+    %% Prove nothing there
+    FunTerm = {modfun, ?MODULE, map_test},
+    Arg = arg, 
+    QTerm = {erlang, {map, FunTerm, Arg, acc}},
+    KeyData = keydata,
+    CacheKey = build_key(FunTerm, Arg, KeyData),
+    BKey = {<<"b">>,<<"k">>},
+    [check_mapcache(I, QTerm, BKey, KeyData, {error, notfound}) || I <- Partitions],
 
-            %% Purge all nodes
-            purge_mapcaches(),
+    %% Send them each something to cache
+    [mapcache(Pid, BKey, CacheKey, some_val) || Pid <- Pids],
 
-            %% Check it is gone
-            [check_mapcache(I, QTerm, BKey, KeyData, {error, notfound}) || I <- Partitions],
-    
+    %% Check it is there by issuing a map request
+    flush_msgs(),
+    [check_mapcache(I, QTerm, BKey, KeyData, some_val) || I <- Partitions],
+
+    %% Purge all nodes
+    purge_mapcaches(),
+
+    %% Check it is gone
+    [check_mapcache(I, QTerm, BKey, KeyData, {error, notfound}) || I <- Partitions],
+
+    riak_core_node_watcher:service_down(riak_kv),
+    cleanup_servers().
+     
+cleanup_servers() ->
+    riak_kv_test_util:stop_process(riak_core_node_watcher),
+    riak_kv_test_util:stop_process(riak_core_node_watcher_events),
+    riak_kv_test_util:stop_process(riak_core_ring_events),
     riak_kv_test_util:stop_process(riak_core_vnode_sup),
     riak_kv_test_util:stop_process(riak_kv_vnode_master).
-     
+    
+
 check_mapcache(Index, QTerm, BKey, KeyData, Expect) ->
     map({Index,node()}, self(), QTerm, BKey, KeyData),
     receive
