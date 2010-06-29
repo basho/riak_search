@@ -5,9 +5,10 @@
          info/5,
          info_range/7,
          catalog_query/3]).
--export([start_vnode/1, init/1, handle_command/3, handle_handoff_command/3,
-         handoff_starting/2, is_empty/1, delete_and_exit/1,
-         handoff_cancelled/1, handle_handoff_data/3]).
+-export([start_vnode/1, init/1, handle_command/3,
+         handle_handoff_command/3, handle_handoff_data/3,
+         handoff_starting/2, handoff_cancelled/1, handoff_finished/2,
+         is_empty/1, delete_and_exit/1]).
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 
 -record(vstate, {idx, bmod, bstate}).
@@ -188,12 +189,15 @@ handoff_starting(_TargetNode, VState) ->
 handoff_cancelled(VState) ->
     {ok, VState}.
 
+handoff_finished(_TargetNode, State) ->
+    {ok, State}.
+
 handle_handoff_data({Index,_FieldTerm}, Obj, #vstate{bmod=BMod,bstate=BState}=VState) ->
     %% The previous k/v backend wrapper for Raptor always returned
     %% {error, not_found} on a get request, so it would always
     %% overwrite with handoff data.  Keep this behavior until 
     %% we get a chance to fix.
-    {Field, Term, Value, Props} = binary_to_term(Obj),
+    {Field, Term, Value, Props} = Obj,
     noreply = BMod:index(Index, Field, Term, Value, Props, BState),
     {reply, ok, VState}.
 

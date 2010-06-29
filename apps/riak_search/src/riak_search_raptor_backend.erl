@@ -174,12 +174,13 @@ fold(Folder, Acc, State) ->
                            {ok, StreamRef} = raptor_conn:catalog_query(
                                                Conn,
                                                ["partition_id:\"", Partition , "\""]),
-                           Sender = {pid, FoldCatRef, CatalogResultsPid},
+                           Sender = {raw, FoldCatRef, CatalogResultsPid},
                            receive_catalog_query_results(StreamRef, Sender)
                        after
                            raptor_conn_pool:checkin(Conn)
                        end end),
-    receive_fold_results(Acc, 0).
+    receive_fold_results(Acc, 0),
+    {reply, Acc, State}.
 
 is_empty(State) ->
     Partition = to_binary(State#state.partition),

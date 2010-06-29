@@ -41,10 +41,10 @@ catalog_query_done(Sender) ->
 collect_info_response(RepliesRemaining, Ref, Acc) ->
     receive
         {Ref, List} when RepliesRemaining > 1 ->
-            io:format("Received: Ref=~p List=~p\n", [Ref, List]),
+            %% io:format("Received: Ref=~p List=~p\n", [Ref, List]),
             collect_info_response(RepliesRemaining - 1, Ref, List ++ Acc);
         {Ref, List} when RepliesRemaining == 1 ->
-            io:format("Received: Ref=~p List=~p\n", [Ref, List]),
+            %% io:format("Received: Ref=~p List=~p\n", [Ref, List]),
             {ok, List ++ Acc}
     after 5000 ->
         error_logger:error_msg("range_loop timed out!"),
