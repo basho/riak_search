@@ -199,14 +199,10 @@ get_type({field, _, _, _}) ->
 get_type({term, _, _}) ->
     term.
 
-left_pad(integer, V) when is_binary(V) ->
-    list_to_binary(left_pad(integer, binary_to_list(V)));
-left_pad(integer, V) when length(V) >= 10 ->
-    V;
-left_pad(integer, V) ->
-    left_pad(integer, [$0|V]);
-left_pad(_, V) ->
-    V.
+left_pad(integer, Token) ->
+    riak_search_text:left_pad(Token, 10);
+left_pad(_, Token) ->
+    Token.
 
 determine_analyzer(_AnalyzerFactory, integer) ->
     ?WHITESPACE_ANALYZER;

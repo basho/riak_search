@@ -629,11 +629,7 @@ query_as_graph(OpList, Parent, C0, G) ->
     end.
 
 left_pad(integer, FV) when is_binary(FV) ->
-    list_to_binary(left_pad(integer, binary_to_list(FV)));
-left_pad(integer, FV) when length(FV) >= 10 ->
-    FV;
-left_pad(integer, FV) ->
-    left_pad(integer, [$0|FV]);
+    riak_search_text:left_pad(FV, 10).
 left_pad(_, FV) ->
     FV.
 

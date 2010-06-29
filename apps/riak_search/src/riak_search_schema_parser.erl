@@ -54,11 +54,9 @@ parse_fields([{field, FieldProps}=Field0|T], Accum) ->
 
 valid_type(string) ->
     ok;
-valid_type(boolean) ->
-    ok;
 valid_type(integer) ->
     ok;
-valid_type(float) ->
+valid_type(date) ->
     ok;
 valid_type(Type) ->
     {error, {bad_field_type, Type}}.
