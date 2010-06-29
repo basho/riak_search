@@ -158,10 +158,10 @@ catalog_query(CatalogQuery, Sender, _State) ->
 fold(Folder, Acc, State) ->
 %% spawn a process to kick off the catalog listing
 %%   for the this partition, e.g.,
-    io:format("fold(~p, ~p, ~p)~n", [State, Folder, Acc]),
-    io:format("fold/sync...~n"),
+    %% io:format("fold(~p, ~p, ~p)~n", [State, Folder, Acc]),
+    %% io:format("fold/sync...~n"),
     sync(),
-    io:format("fold/sync complete.~n"),
+    %% io:format("fold/sync complete.~n"),
     Partition = integer_to_list(State#state.partition),
     {ok, Conn} = raptor_conn_pool:checkout(),
     Me = self(),
@@ -182,7 +182,6 @@ fold(Folder, Acc, State) ->
     receive_fold_results(Acc, 0).
 
 is_empty(State) ->
-    io:format("is_empty(~p)~n", [State]),
     Partition = to_binary(State#state.partition),
     raptor_command(<<"partition_count">>, Partition, <<"">>, <<"">>) == "0".
 
@@ -213,7 +212,7 @@ receive_stream_results(StreamRef, Sender, FilterFun) ->
 receive_stream_results(StreamRef, Sender, FilterFun, Acc0) ->
     case length(Acc0) > 500 of
         true ->
-            io:format("chunk (~p) ~p~n", [length(Acc0), StreamRef]),
+            %% io:format("chunk (~p) ~p~n", [length(Acc0), StreamRef]),
             riak_search_backend:stream_response_results(Sender, Acc0),
             Acc = [];
         false ->
@@ -252,10 +251,10 @@ receive_stream_results(StreamRef, Sender, FilterFun, Acc0) ->
                     skip
             end,
             receive_stream_results(StreamRef, Sender, FilterFun, Acc2);
-        Msg ->
+        _Msg ->
             %% TODO: Should this throw - must be an error
-            io:format("receive_stream_results(~p, ~p, ~p) -> ~p~n",
-                [StreamRef, Sender, FilterFun, Msg]),
+            %% io:format("receive_stream_results(~p, ~p, ~p) -> ~p~n",
+            %%     [StreamRef, Sender, FilterFun, _Msg]),
             riak_search_backend:stream_response_done(Sender)
     end,
     ok.
@@ -346,8 +345,8 @@ fold_catalog_process(CatRef,
                                          StreamProcessCount, FinishedStreamProcessCount, true);
                 false ->
                     spawn_link(fun() ->
-                        io:format("fold_catalog_process: catalog_query_response: ~p: ~p.~p.~p (~p)~n",
-                            [Partition, Index, Field, Term, JSONProps]),
+                        %% io:format("fold_catalog_process: catalog_query_response: ~p: ~p.~p.~p (~p)~n",
+                        %%     [Partition, Index, Field, Term, JSONProps]),
                         {ok, Conn} = raptor_conn_pool:checkout(),
                         try
                           {ok, StreamRef} = raptor_conn:stream(
@@ -372,23 +371,25 @@ fold_catalog_process(CatRef,
                  CatalogDone == true andalso
                  DeferredTables == false of
                     true ->
-                        io:format("fold_catalog_process: streaming complete (~p of ~p)~n",
-                            [(FinishedStreamProcessCount+1), StreamProcessCount]),
+                        %% io:format("fold_catalog_process: streaming complete (~p of ~p)~n",
+                        %%     [(FinishedStreamProcessCount+1), StreamProcessCount]),
                         FoldResultPid ! {fold_result, done};
                     false ->
                         fold_catalog_process(CatRef, FoldResultPid, Fun0, Acc, CatalogDone,
                             StreamProcessCount, FinishedStreamProcessCount+1, false)
                 end;
-        Msg ->
-            io:format("fold_catalog_process: unknown message: ~p~n", [Msg]),
+        _Msg ->
+            %% io:format("fold_catalog_process: unknown message: ~p~n", [_Msg]),
             fold_catalog_process(CatRef, FoldResultPid, Fun0, Acc, CatalogDone,
                 StreamProcessCount, FinishedStreamProcessCount, DeferredTables)
         after ?FOLD_TIMEOUT ->
             case FinishedStreamProcessCount >= (StreamProcessCount) of
                 true -> ok;
                 false ->
-                    io:format("fold_catalog_process: timed out (~p of ~p), proceeding to {fold_result, done}~n",
-                        [FinishedStreamProcessCount, StreamProcessCount])
+                    %%TODO: How should we handle cleanup here?
+                    %% io:format("fold_catalog_process: timed out (~p of ~p), proceeding to {fold_result, done}~n",
+                    %%     [FinishedStreamProcessCount, StreamProcessCount])
+                    ok
             end,
             FoldResultPid ! {fold_result, done}
     end.
@@ -401,17 +402,17 @@ fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Inde
         {stream, StreamRef, timeout} ->
             CatalogProcessPid ! {fold_stream, done, StreamRef};
         {stream, StreamRef, "$end_of_table", _} ->
-            CatalogProcessPid ! {fold_stream, done, StreamRef},
-            io:format("fold_stream_process: table complete: ~p.~p.~p~n",
-                [Index, Field, Term]);
+            %% io:format("fold_stream_process: table complete: ~p.~p.~p~n",
+            %%     [Index, Field, Term]),
+            CatalogProcessPid ! {fold_stream, done, StreamRef};
         {stream, StreamRef, Value, Props} ->
             IndexBin = riak_search_utils:to_binary(Index),
             FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
             BObj = term_to_binary({Field, Term, Value, Props}),
             FoldResultPid ! {fold_result, Fun0({IndexBin, FieldTermBin}, BObj, Acc)},
             fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term);
-        Msg ->
-            io:format("fold_stream_process: unknown message: ~p~n", [Msg]),
+        _Msg ->
+            %% io:format("fold_stream_process: unknown message: ~p~n", [_Msg]),
             fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term)
         after ?FOLD_TIMEOUT ->
             CatalogProcessPid ! {fold_stream, done, StreamRef},
@@ -424,8 +425,8 @@ fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Inde
 receive_fold_results(Acc, Count) ->
     receive
         {fold_result, done} ->
-            io:format("receive_fold_results: fold complete [~p objects].~n",
-                [Count]),
+            %% io:format("receive_fold_results: fold complete [~p objects].~n",
+            %%           [Count]),
             Acc;
         {fold_result, _Obj} ->
             receive_fold_results(Acc, Count+1)
