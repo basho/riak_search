@@ -22,16 +22,15 @@
 -author("John Muellerleile <johnm@basho.com>").
 -behavior(riak_search_backend).
 
--export([start/2,stop/1,index/6,info/5,info_range/7,stream/6,catalog_query/3]).
--export([drop/1, is_empty/1, fold/3]).
-
--export([get/2,put/3,list/1,list_bucket/2,delete/2]).
+-export([start/2,stop/1,index/6,delete_entry/5,stream/6,info/5,info_range/7,catalog_query/3,
+        fold/3,is_empty/1,drop/1]).
 -export([toggle_raptor_debug/0, shutdown_raptor/0]).
 -export([sync/0, poke/1, raptor_status/0]).
-
--export([test_fold/0, test_is_empty/0, test_drop/0]).
-
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-export([test_fold/0, test_is_empty/0, test_drop/0]).
+-endif.
+
 -include("riak_search.hrl").
 
 % @type state() = term().
@@ -40,6 +39,11 @@
 -define(FOLD_TIMEOUT, 30000).
 -define(MAX_HANDOFF_STREAMS, 50).
 -define(INFO_TIMEOUT, 5000).
+
+
+%% ===================================================================
+%% Search Backend API
+%% ===================================================================
 
 %% @spec start(Partition :: integer(), Config :: proplist()) ->
 %%          {ok, state()} | {{error, Reason :: term()}, state()}
@@ -50,14 +54,6 @@ start(Partition, _Config) ->
 %% @spec stop(state()) -> ok | {error, Reason :: term()}
 stop(_State) ->
     ok.
-
-%% @spec put(state(), BKey :: riak_object:bkey(), Val :: binary()) ->
-%%         ok | {error, Reason :: term()}
-%% @doc Route all commands through the object's value.
-put(State, _BKey, ObjBin) ->
-    Obj = binary_to_term(ObjBin),
-    Command = riak_object:get_value(Obj),
-    handle_command(State, Command).
 
 index(Index, Field, Term, Value, Props, State) ->
     Partition = to_binary(State#state.partition),
@@ -70,6 +66,21 @@ index(Index, Field, Term, Value, Props, State) ->
                           to_binary(Value),
                           Partition,
                           term_to_binary(Props))
+    after
+        raptor_conn_pool:checkin(Conn)
+    end,
+    noreply.
+
+delete_entry(Index, Field, Term, DocId, State) ->
+    Partition = to_binary(State#state.partition),
+    {ok, Conn} = raptor_conn_pool:checkout(),
+    try
+        raptor_conn:delete_entry(Conn,
+                                 to_binary(Index),
+                                 to_binary(Field),
+                                 to_binary(Term),
+                                 to_binary(DocId),
+                                 Partition)
     after
         raptor_conn_pool:checkin(Conn)
     end,
@@ -91,7 +102,6 @@ info(Index, Field, Term, Sender, State) ->
                            raptor_conn_pool:checkin(Conn)
                        end
     end),
-
     noreply.
 
 info_range(Index, Field, StartTerm, EndTerm, _Size, Sender, State) ->
@@ -174,37 +184,18 @@ fold(Folder, Acc, State) ->
 is_empty(State) ->
     io:format("is_empty(~p)~n", [State]),
     Partition = to_binary(State#state.partition),
-    handle_command(no_state, {command,
-                              <<"partition_count">>,
-                              Partition,
-                              <<"">>,
-                              <<"">>}) == "0".
+    raptor_command(<<"partition_count">>, Partition, <<"">>, <<"">>) == "0".
 
 drop(State) ->
     Partition = to_binary(State#state.partition),
-    handle_command(no_state, {command,
-                              <<"drop_partition">>,
-                              Partition,
-                              <<"">>,
-                              <<"">>}),
+    raptor_command(<<"drop_partition">>, Partition, <<"">>, <<"">>),
     ok.
 
-handle_command(State, {delete_entry, Index, Field, Term, DocId}) ->
-    Partition = to_binary(State#state.partition),
-    {ok, Conn} = raptor_conn_pool:checkout(),
-    try
-        raptor_conn:delete_entry(Conn,
-                                 to_binary(Index),
-                                 to_binary(Field),
-                                 to_binary(Term),
-                                 to_binary(DocId),
-                                 Partition)
-    after
-        raptor_conn_pool:checkin(Conn)
-    end,
-    ok;
+%% ====================================================================
+%% Internal functions
+%% ====================================================================
 
-handle_command(_State, {command, Command, Arg1, Arg2, Arg3}) ->
+raptor_command(Command, Arg1, Arg2, Arg3) ->
     {ok, Conn} = raptor_conn_pool:checkout(),
     try
         {ok, _StreamRef} = raptor_conn:command(Conn, Command, Arg1, Arg2, Arg3),
@@ -214,10 +205,7 @@ handle_command(_State, {command, Command, Arg1, Arg2, Arg3}) ->
         end
     after
         raptor_conn_pool:checkin(Conn)
-    end;
-
-handle_command(_State, Other) ->
-    throw({unexpected_operation, Other}).
+    end.
 
 receive_stream_results(StreamRef, Sender, FilterFun) ->
     receive_stream_results(StreamRef, Sender, FilterFun, []).
@@ -272,24 +260,6 @@ receive_stream_results(StreamRef, Sender, FilterFun, Acc0) ->
     end,
     ok.
 
-%% receive_stream_results2(StreamRef, OutputPid, OutputRef, FilterFun) ->
-%%     receive
-%%         {stream, StreamRef, "$end_of_table", _} ->
-%%             OutputPid ! {result, '$end_of_table', OutputRef};
-%%         {stream, StreamRef, Value, Props} ->
-%%             Props2 = binary_to_term(Props),
-%%             case FilterFun(Value, Props2) of
-%%                 true -> OutputPid ! {result, {Value, Props2}, OutputRef};
-%%                 _ -> skip
-%%             end,
-%%             receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun);
-%%         Msg ->
-%%             io:format("receive_stream_results(~p, ~p, ~p, ~p) -> ~p~n",
-%%                 [StreamRef, OutputPid, OutputRef, FilterFun, Msg]),
-%%             OutputPid ! {result, '$end_of_table', OutputRef}
-%%     end,
-%%     ok.
-
 receive_info_range_results(StreamRef, Sender) ->
     receive_info_range_results(StreamRef, Sender, []).
 
@@ -336,35 +306,6 @@ receive_catalog_query_results(StreamRef, Sender) ->
             receive_catalog_query_results(StreamRef, Sender)
     end,
     ok.
-
-%% @spec get(state(), BKey :: riak_object:bkey()) ->
-%%         {ok, Val :: binary()} | {error, Reason :: term()}
-%% @doc Get the object stored at the given bucket/key pair. The merge
-%% backend does not support key-based lookups, so always return
-%% {error, notfound}.
-get(_State, _BKey) ->
-    {error, notfound}.
-
-
-%% @spec delete(state(), BKey :: riak_object:bkey()) ->
-%%          ok | {error, Reason :: term()}
-%% @doc Writes are not supported.
-delete(_State, _BKey) ->
-    {error, not_supported}.
-
-%% @spec list(state()) -> [{Bucket :: riak_object:bucket(),
-%%                          Key :: riak_object:key()}]
-%% @doc Get a list of all bucket/key pairs stored by this backend
-list(_State) ->
-    io:format("list(~p)~n", [_State]),
-    throw({error, not_supported}).
-
-%% @spec list_bucket(state(), riak_object:bucket()) ->
-%%           [riak_object:key()]
-%% @doc Get a list of the keys in a bucket
-list_bucket(_State, _Bucket) ->
-    io:format("list_bucket(~p, ~p)~n", [_State, _Bucket]),
-    throw({error, not_supported}).
 
 %% receive catalog entries for current partition & kick
 %%   off a stream process for each one in parallel
@@ -498,7 +439,7 @@ to_binary(I) when is_integer(I) -> to_binary(integer_to_list(I));
 to_binary(L) when is_list(L) -> list_to_binary(L).
 
 poke(Command) ->
-    handle_command(no_state, {command, Command, <<"">>, <<"">>, <<"">>}).
+    raptor_command(Command, <<"">>, <<"">>, <<"">>).
 
 sync() ->
     poke("sync").
@@ -507,14 +448,16 @@ toggle_raptor_debug() ->
     poke("toggle_debug").
 
 shutdown_raptor() ->
-    io:format("issuing raptor engine shutdown~n"),
+    error_logger:info_msg("issuing raptor engine shutdown~n"),
     poke("shutdown").
 
 raptor_status() ->
     Status = string:tokens(poke("status"), "`"),
-    io:format("~p~n", [Status]),
+    error_logger:info_msg("Raptor Status ~p~n", [Status]),
     Status.
 
+
+-ifdef(TEST).
 %% test fold
 test_fold() ->
     Fun0 = fun(_BKey, _Obj, Acc) ->
@@ -531,3 +474,4 @@ test_is_empty() ->
 test_drop() ->
     State = #state { partition=0 },
     drop(State).
+-endif.

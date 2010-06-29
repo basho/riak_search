@@ -9,9 +9,14 @@ behaviour_info(callbacks) ->
     [{start,2},
      {stop,1},
      {index,6},
+     {delete_entry,5},
      {stream,6},
      {info,5},
-     {info_range,7}];
+     {info_range,7},
+     {catalog_query,3},
+     {fold,3},
+     {is_empty,1},
+     {drop,1}];
 behaviour_info(_Other) ->
     undefined.
 
