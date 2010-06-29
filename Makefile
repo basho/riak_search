@@ -36,6 +36,10 @@ relclean:
 ##
 ## Developer targets
 ##
+stagedevrel: dev1 dev2 dev3
+	$(foreach dev,$^,\
+	  $(foreach app,$(wildcard apps/*), rm -rf dev/$(dev)/lib/$(shell basename $(app))-* && ln -sf $(abspath $(app)) dev/$(dev)/lib;)\
+	  $(foreach dep,$(wildcard deps/*), rm -rf dev/$(dev)/lib/$(shell basename $(dep))-* && ln -sf $(abspath $(dep)) dev/$(dev)/lib;))
 
 stagedevrel: dev1 dev2 dev3
 	$(foreach dev,$^,\
