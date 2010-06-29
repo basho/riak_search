@@ -31,7 +31,7 @@ analyze(Pid, Text) when is_binary(Text) ->
 analyze(Pid, Text, AnalyzerFactory) when is_list(Text) ->
     analyze(Pid, list_to_binary(Text), AnalyzerFactory);
 analyze(Pid, Text, AnalyzerFactory) ->
-    case gen_server:call(Pid, {analyze, Text, AnalyzerFactory}) of
+    case gen_server:call(Pid, {analyze, Text, AnalyzerFactory}, 10000) of
         ignore ->
             analyze(Pid, Text, AnalyzerFactory);
         R ->
