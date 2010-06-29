@@ -1,6 +1,6 @@
 -module(riak_search_vnode).
 -export([index/6,
-         delete_term/6,
+         delete_term/5,
          stream/6,
          info/5,
          info_range/7,
@@ -12,6 +12,7 @@
 
 -record(vstate, {idx, bmod, bstate}).
 -record(index_v1, {index, field, term, value, props}).
+-record(delete_v1, {index, field, term, doc_id}).
 -record(info_v1, {index, field, term}).
 -record(info_range_v1, {index, field, start_term, end_term, size}).
 -record(stream_v1, {index, field, term, filter_fun}).
@@ -27,15 +28,14 @@ index(Preflist, Index, Field, Term, Value, Props) ->
      },
     command(Preflist, Req).
 
-delete_term(_Partition, _Nval, Index, Field, Term, DocId) ->
-    io:format("info: Index=~p, Field=~p, Term=~p\n", [Index, Field, Term]),
-    IndexBin = riak_search_utils:to_binary(Index),
-    FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-    Payload = {delete_entry, Index, Field, Term, DocId},
-    Obj = riak_object:new(IndexBin, FieldTermBin, Payload),
-    {ok, RiakClient} = riak:local_client(),
-    RiakClient:put(Obj, 0).
-
+delete_term(Preflist, Index, Field, Term, DocId) ->
+    Req = #delete_v1{
+      index = Index,
+      field = Field,
+      term = Term,
+      doc_id = DocId
+     },
+    command(Preflist, Req).
 
 stream(Preflist, Index, Field, Term, FilterFun, ReplyTo) ->
     io:format("stream Index=~p, Field=~p, Term=~p, FilterFun=~p, ReplyTo=~p\n", 
@@ -138,6 +138,12 @@ handle_command(#index_v1{index = Index,
                          props = Props},
                _Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
     bmod_response(BMod:index(Index, Field, Term, Value, Props, BState), VState);
+handle_command(#delete_v1{index = Index,
+                          field = Field,
+                          term = Term,
+                          doc_id = DocId},
+               _Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
+    bmod_response(BMod:delete_entry(Index, Field, Term, DocId, BState), VState);
 handle_command(#info_v1{index = Index,
                         field = Field,
                         term = Term},
