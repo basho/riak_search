@@ -26,21 +26,10 @@
 %% ===================================================================
 %% gen_event callbacks
 %% ===================================================================
-%% dbghstart() ->
-%%   dbg:tracer(),
-%%   dbg:p(all,[c,sos,sol]).
-
-%% dbghtrace(ModuleName) ->
-%%   dbg:tpl(ModuleName,[{'_',[],[{message,{return_trace}}]}]).
-
-%% dbghtrace(ModuleName,Function) ->
-%%   dbg:tpl(ModuleName,Function,[{'_',[],[{message,{return_trace}}]}]).
 
 init([]) ->
     %% Pull the initial ring and make sure all vnodes are started
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
-    %% dbghstart(),
-    %% dbghtrace(?MODULE),
     ensure_vnodes_started(Ring),
     {ok, #state{}}.
 
@@ -71,7 +60,6 @@ ensure_vnodes_started(Ring) ->
     case riak_core:vnode_modules() of
         [] -> ok;
         Mods ->
-            error_logger:info_msg("Ring handler starting ~p\n", [Mods]),
             case ensure_vnodes_started(Mods, Ring, []) of
                 [] -> riak_core:stop("node removal completed, exiting.");
                 _ -> ok
@@ -85,19 +73,15 @@ ensure_vnodes_started([H|T], Ring, Acc) ->
 
 ensure_vnodes_started(Mod, Ring) ->
     Startable = startable_vnodes(Mod, Ring),
-    error_logger:info_msg("Starting ~p vnodes: ~p\n", [Mod, Startable]),
     [Mod:start_vnode(I) || I <- Startable],
-    error_logger:info_msg("~p node started\n", [Mod]),
     Startable.
 
 startable_vnodes(Mod, Ring) ->
     AllMembers = riak_core_ring:all_members(Ring),
-    error_logger:info_msg("startable_vnodes - mod=~p all_members=~p", [Mod, AllMembers]),
     case {length(AllMembers), hd(AllMembers) =:= node()} of
         {1, true} ->
             riak_core_ring:my_indices(Ring);
         _ ->
-            error_logger:info_msg("checkign exclusions\n"),    
             {ok, Excl} = riak_core_handoff_manager:get_exclusions(Mod),
             case riak_core_ring:random_other_index(Ring, Excl) of
                 no_indices ->
