@@ -406,10 +406,16 @@ fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Inde
             %% io:format("fold_stream_process: table complete: ~p.~p.~p~n",
             %%     [Index, Field, Term]),
             CatalogProcessPid ! {fold_stream, done, StreamRef};
-        {stream, StreamRef, Value, Props} ->
+        {stream, StreamRef, Value, Props}=_Msg2 ->
+            case Props of
+                <<"">> ->
+                    Props2 = [];
+                _ ->
+                    Props2 = binary_to_term(Props)
+            end,
             IndexBin = riak_search_utils:to_binary(Index),
             FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-            BObj = term_to_binary({Field, Term, Value, Props}),
+            BObj = term_to_binary({Field, Term, Value, Props2}),
             FoldResultPid ! {fold_result, Fun0({IndexBin, FieldTermBin}, BObj, Acc)},
             fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term);
         _Msg ->
