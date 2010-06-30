@@ -44,3 +44,4 @@ apps/raptor/java_src/raptor/bin/.*
 apps/raptor/java_src/raptor/build/.*
 apps/raptor/java_src/raptor/raptor.jar
 apps/raptor/priv/raptor_server/.*
+apps/riak_search_core/ebin/riak_search_core.app
