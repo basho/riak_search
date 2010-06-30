@@ -1,7 +1,8 @@
--module(riak_search_schema, [Name, Version, DefaultField, FieldsAndFacets, DefaultOp, AnalyzerFactory]).
+-module(riak_search_schema, [Name, Version, DefaultField, FieldsAndFacets, DynamicFields, DefaultOp, AnalyzerFactory]).
 -export([
     %% Properties...
     name/0,
+    set_name/1,
     version/0,
     fields_and_facets/0,
     facets/0,
@@ -33,6 +34,9 @@
 name() ->
     Name.
 
+set_name(NewName) ->
+    ?MODULE:new(NewName, Version, DefaultField, FieldsAndFacets, DynamicFields, DefaultOp, AnalyzerFactory).
+
 version() ->
     Version.
 
@@ -54,13 +58,13 @@ analyzer_factory() ->
     AnalyzerFactory.
 
 set_default_field(NewDefaultField) ->
-    ?MODULE:new(Name, Version, NewDefaultField, FieldsAndFacets, DefaultOp, AnalyzerFactory).
+    ?MODULE:new(Name, Version, NewDefaultField, FieldsAndFacets, DynamicFields, DefaultOp, AnalyzerFactory).
 
 default_op() ->
     DefaultOp.
 
 set_default_op(NewDefaultOp) ->
-    ?MODULE:new(Name, Version, DefaultField, FieldsAndFacets, NewDefaultOp, AnalyzerFactory).
+    ?MODULE:new(Name, Version, DefaultField, FieldsAndFacets, DynamicFields, NewDefaultOp, AnalyzerFactory).
 
 field_name(Field) ->
     Field#riak_search_field.name.
@@ -97,10 +101,19 @@ find_field_or_facet(FName) ->
 
 %% Return the field matching the specified name, or 'undefined'
 find_field(FName) ->
-    Field = find_field_or_facet(FName),
-    case Field#riak_search_field.facet /= true of
-        true  -> Field;
-        false -> undefiend
+    case find_field_or_facet(FName) of
+        undefined ->
+            case find_dynamic_field(FName) of
+                undefined ->
+                    undefined;
+                Field ->
+                    Field
+            end;
+        Field ->
+            case Field#riak_search_field.facet /= true of
+                true  -> Field;
+                false -> undefiend
+            end
     end.
 
 %% Return the facet matching the specified name, or 'undefined'
@@ -142,4 +155,27 @@ validate_required_fields_1(Doc, [Field|Rest]) ->
             validate_required_fields_1(Doc, Rest);
         error ->
             {error, {reqd_field_missing, FieldName}}
+    end.
+
+%% @private
+%% Finds a dynamic field based on name and
+%% pattern matching
+find_dynamic_field(FName) ->
+    case locate_match(FName, DynamicFields) of
+        {ok, Field} ->
+            Field#riak_search_field{name=FName};
+        undefined ->
+            undefined
+    end.
+
+%% @private
+%% Loops thru dynamic fields looking for a match
+locate_match(_FName, []) ->
+    undefined;
+locate_match(FName, [H|T]) ->
+    case re:run(FName, H#riak_search_field.name) of
+        {match, _} ->
+            {ok, H};
+        nomatch ->
+            locate_match(FName, T)
     end.

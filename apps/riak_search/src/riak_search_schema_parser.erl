@@ -23,18 +23,42 @@ from_eterm({schema, SchemaProps, FieldDefs}) ->
                 true ->
                     {error, {malformed_schema, {schema, SchemaProps}}};
                 false ->
-                    Fields = parse_fields(FieldDefs, []),
+                    {DynFields, Fields} = parse_fields(FieldDefs, [], []),
                     {ok, riak_search_schema:new(Name, Version, DefaultField, Fields,
-                                                DefaultOp, AnalyzerFactory)}
+                                                DynFields, DefaultOp, AnalyzerFactory)}
             end
     end.
 
 
-parse_fields([], Accum) ->
-    Accum;
-parse_fields({fields, Fields}, Accum) ->
-    parse_fields(Fields, Accum);
-parse_fields([{field, FieldProps}=Field0|T], Accum) ->
+parse_fields([], DynAccum, Accum) ->
+    {DynAccum, Accum};
+parse_fields({fields, Fields}, DynAccum, Accum) ->
+    parse_fields(Fields, DynAccum, Accum);
+parse_fields([{dynamic_field, FieldProps}=Field0|T], DynAccum, Accum) ->
+    Name = proplists:get_value(name, FieldProps),
+    Type = proplists:get_value(type, FieldProps),
+    case valid_type(Type) of
+        ok ->
+            if
+                Name =:= undefined ->
+                    {error, {missing_field_name, Field0}};
+                true ->
+                    NamePattern = case name_type(Name) of
+                                      all ->
+                                          ".*";
+                                      suffix ->
+                                          [$.|Name];
+                                      prefix ->
+                                          [N] = string:tokens(Name, "*"),
+                                          N ++ ".*"
+                                  end,
+                    F = #riak_search_field{name=NamePattern, type=Type, required=false, dynamic=true, facet=false},
+                    parse_fields(T, [F|DynAccum], Accum)
+            end;
+        Error ->
+            Error
+    end;
+parse_fields([{field, FieldProps}=Field0|T], DynAccum, Accum) ->
     Name = proplists:get_value(name, FieldProps),
     Type = proplists:get_value(type, FieldProps, string),
     Reqd = proplists:get_value(required, FieldProps, false) /= false,
@@ -46,7 +70,7 @@ parse_fields([{field, FieldProps}=Field0|T], Accum) ->
                     {error, {missing_field_name, Field0}};
                 true ->
                     F = #riak_search_field{name=Name, type=Type, required=Reqd, facet=Facet },
-                    parse_fields(T, [F|Accum])
+                    parse_fields(T, DynAccum, [F|Accum])
             end;
         Error ->
             Error
@@ -60,3 +84,16 @@ valid_type(date) ->
     ok;
 valid_type(Type) ->
     {error, {bad_field_type, Type}}.
+
+name_type("*") ->
+    all;
+name_type(Name) ->
+    EndOfName = length(Name),
+    case string:chr(Name, $*) of
+        1 ->
+            suffix;
+        EndOfName ->
+            prefix;
+        _ ->
+            throw({error, {bad_dynamic_name, Name}})
+    end.

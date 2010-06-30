@@ -1,6 +1,6 @@
 -module(riak_search_config).
 
--include_lib("eunit/include/eunit.hrl").
+-include("riak_search.hrl").
 
 -behaviour(gen_server).
 
@@ -15,6 +15,11 @@
 
 -record(state, {schema_dir,
                 schemas}).
+
+-define(DEFAULT_FIELD, #riak_search_field{name="value",
+                                          type=string,
+                                          required=false,
+                                          facet=false}).
 
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
@@ -85,10 +90,22 @@ load_schema(SchemaName, SchemaDir) ->
             %% Parse from file...
             riak_search_schema_parser:from_eterm(RawSchema);
         {error, enoent} ->
-            %% Not found, use default...
-            error_logger:warning_msg("Could not find schema '~s', using defaults.~n", [SchemaName]),
-            Schema = riak_search_schema:new(SchemaName, 0, "value", [], 'or', undefined),
-            {ok, Schema};
+            case SchemaName of
+                %% Couldn't find default so use hard-coded failsafe
+                "default" ->
+                    error_logger:warning_msg("Could not find default schema. Using failsafe schema.~n"),
+                    {ok, riak_search_schema:new("default", "1.1", "value", [],
+                                                [#riak_search_field{name=".*",
+                                                                    type=string,
+                                                                    dynamic=true}],
+                                                "or", undefined)};
+                _ ->
+                    %% Not found, use default...
+                    error_logger:warning_msg("Could not find schema '~s', using defaults.~n", [SchemaName]),
+                    {ok, Schema0} = load_schema("default", SchemaDir),
+                    Schema = Schema0:set_name(SchemaName),
+                    {ok, Schema}
+            end;
         Error ->
             %% Some other error, so return...
             Error

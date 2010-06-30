@@ -28,13 +28,13 @@ malformed_request(Req, State) ->
                 {ok, Command, Entries} = SolrClient:parse_solr_xml(Schema, Body),
                 {false, Req, State#state { schema=Schema, command=Command, entries=Entries }}
             catch _ : Error ->
-                error_logger:error_msg("Could not parse docs '~s'.~n~p~n", [Index, Error]),
-                error_logger:error_msg("Stacktrace: ~p~n", [erlang:get_stacktrace()]),
+                error_logger:error_msg("Could not parse docs for index'~s'.~n~p~n~p~n",
+                                       [Index, Error, erlang:get_stacktrace()]),
                 {true, Req, State}
             end;
         Error ->
-            error_logger:error_msg("Could not parse schema '~s'.~n~p~n", [Index, Error]),
-            error_logger:error_msg("Stacktrace: ~p~n", [erlang:get_stacktrace()]),
+            error_logger:error_msg("Could not parse schema for index'~s'.~n~p~n~p~n",
+                                   [Index, Error, erlang:get_stacktrace()]),
             {true, Req, State}
     end.
 

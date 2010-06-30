@@ -1,0 +1,15 @@
+{schema, [{name, "default"},
+          {version, "1.1"},
+          {default_field, "value"}],
+ {fields,
+    %% Field names ending in "_num" are indexed as
+    %% integers
+  [{dynamic_field, [{name, "*_num"},
+                    {type, integer}]},
+   %% Field names ending in "_dt" are indexed as
+   %% dates
+   {dynamic_field, [{name, "*_dt"},
+                    {type, date}]},
+   %% Everything else is a string
+  {dynamic_field, [{name, "*"},
+                   {type, string}]}]}}.
