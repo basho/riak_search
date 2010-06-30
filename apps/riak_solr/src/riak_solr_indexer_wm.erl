@@ -29,10 +29,12 @@ malformed_request(Req, State) ->
                 {false, Req, State#state { schema=Schema, command=Command, entries=Entries }}
             catch _ : Error ->
                 error_logger:error_msg("Could not parse docs '~s'.~n~p~n", [Index, Error]),
+                error_logger:error_msg("Stacktrace: ~p~n", [erlang:get_stacktrace()]),
                 {true, Req, State}
             end;
         Error ->
             error_logger:error_msg("Could not parse schema '~s'.~n~p~n", [Index, Error]),
+            error_logger:error_msg("Stacktrace: ~p~n", [erlang:get_stacktrace()]),
             {true, Req, State}
     end.
 

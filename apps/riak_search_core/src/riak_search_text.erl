@@ -6,6 +6,8 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+left_pad(Value, Count) when is_binary(Value) ->
+    list_to_binary(left_pad(binary_to_list(Value), Count));
 left_pad([F|T]=Value, Count) ->
     [F|T] = Value,
     case F of
@@ -22,6 +24,7 @@ left_pad1(V, Count) ->
 
 -ifdef(TEST).
 padding_test() ->
+    ?assertEqual(<<"0000000500">>, left_pad(<<"500">>, 10)),
     ?assertEqual("0000000001", left_pad("1", 10)),
     ?assertEqual("-0000000001", left_pad("-1", 10)),
     ?assertEqual("0000001.89", left_pad("1.89", 10)),

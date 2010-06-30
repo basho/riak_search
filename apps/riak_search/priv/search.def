@@ -13,7 +13,4 @@
             {required, true}]},
    {field, [{name, "paygrade"},
             {type, integer},
-            {required, true}]},
-   {field, [{name, "likes_cookies"},
-            {type, boolean},
-            {required, false}]}]}}.
+            {required, true}]}]}}.
