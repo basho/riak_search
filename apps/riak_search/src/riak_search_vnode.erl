@@ -8,7 +8,7 @@
 -export([start_vnode/1, init/1, handle_command/3,
          handle_handoff_command/3, handle_handoff_data/3,
          handoff_starting/2, handoff_cancelled/1, handoff_finished/2,
-         is_empty/1, delete_and_exit/1]).
+         is_empty/1, delete/1, terminate/2]).
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 
 -record(vstate, {idx, bmod, bstate}).
@@ -204,9 +204,13 @@ handle_handoff_data({Index,_FieldTerm}, Obj, #vstate{bmod=BMod,bstate=BState}=VS
 is_empty(VState=#vstate{bmod=BMod, bstate=BState}) ->
     {BMod:is_empty(BState), VState}.
 
-delete_and_exit(VState=#vstate{bmod=BMod, bstate=BState}) ->
+delete(VState=#vstate{bmod=BMod, bstate=BState}) ->
     ok = BMod:drop(BState),
-    {stop, normal, VState}.
+    {ok, VState}.
+
+terminate(_Reason, #vstate{bmod=BMod, bstate=BState}) ->
+    BMod:stop(BState),
+    ok.
 
 bmod_response(noreply, VState) ->
     {noreply, VState};
