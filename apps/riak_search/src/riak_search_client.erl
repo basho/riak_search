@@ -521,7 +521,6 @@ optimize_junction(G, OrNode) ->
                 _ -> []
             end
         end, Terms0)),
-    error_logger:info_msg("Terms: ~p\n", [Terms]),
     L = lists:foldl(fun(T, Acc) ->
         lists:map(fun(Node_N) ->
             case Node_N of
@@ -536,13 +535,11 @@ optimize_junction(G, OrNode) ->
             end
         end, digraph:out_neighbours(G, T))
     end, [], Terms),
-    error_logger:info_msg("L: ~p\n", [L]),
     TCD = lists:sort(fun(A,B) ->
         {_Na, La} = A,
         {_Nb, Lb} = B,
         length(La) >= length(Lb)
     end, L),
-    error_logger:info_msg("TCD: ~p\n", [TCD]),
     lists:foreach(fun(N_NTerms) ->
         {Node, NodeTerms} = N_NTerms,
         GOutNeighbors = digraph:out_neighbours(G, OrNode),
