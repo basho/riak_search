@@ -2,7 +2,7 @@
 
 -include("riak_search.hrl").
 
--export([new/2, fields/1, add_field/3, set_fields/2, clear_fields/1,
+-export([new/2, id/1, fields/1, add_field/3, set_fields/2, clear_fields/1,
          props/1, add_prop/3, set_props/2, clear_props/1, to_json/1,
          from_json/1, to_mochijson2/1, to_mochijson2/2]).
 
@@ -11,6 +11,9 @@ new(Id, Index) ->
 
 fields(#riak_idx_doc{fields=Fields}) ->
     Fields.
+
+id(#riak_idx_doc{id=Id}) ->
+    Id.
 
 add_field(Name, Value, #riak_idx_doc{fields=Fields}=Doc) ->
     Doc#riak_idx_doc{fields=[{Name, Value}|Fields]}.

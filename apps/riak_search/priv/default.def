@@ -2,7 +2,7 @@
           {version, "1.1"},
           {default_field, "value"}],
  {fields,
-    %% Field names ending in "_num" are indexed as
+%% Field names ending in "_num" are indexed as
     %% integers
   [{dynamic_field, [{name, "*_num"},
                     {type, integer}]},
