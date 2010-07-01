@@ -13,7 +13,7 @@
     to_float/1,
     from_binary/1,
     index_recursive/2,
-    calc_n_partition/3
+    calc_n_partition/2, calc_n_partition/3
 ]).
 
 -include("riak_search.hrl").
@@ -208,12 +208,17 @@ index_recursive_file(Callback, File) ->
 %% @private
 %% Calculate N and a partition number for an index/field/term combination
 calc_n_partition(Index, Field, Term) ->
-    %% Lookup N for the index
-    IndexBin = riak_search_utils:to_binary(Index),
-    Bucket = riak_core_bucket:get_bucket(IndexBin),
-    {value, {n_val, N}} = lists:keysearch(n_val, 1, Bucket),
-
     %% Work out which partition to use
     FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-    Partition = riak_core_util:chash_key({FieldTermBin, IndexBin}),
+    calc_n_partition(Index, FieldTermBin).
+
+%% @private
+%% Calculate N and a partition number for an index/field/term combination
+calc_n_partition(Index, FieldTermBin) ->
+    %% Lookup N for the index
+    N = app_helper:get_env(riak_search, n_val, 2),
+
+    %% Work out which partition to use
+    IndexBin = riak_search_utils:to_binary(Index),
+    Partition = riak_core_util:chash_key({IndexBin, FieldTermBin}),
     {N, Partition}.

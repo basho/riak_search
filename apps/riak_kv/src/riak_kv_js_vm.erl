@@ -52,15 +52,12 @@ reload(VMPid) ->
     gen_server:cast(VMPid, reload).
 
 init([Manager]) ->
-    HeapSize = case app_helper:get_env(riak_kv, js_max_vm_mem, 8) of
-                   N when is_integer(N) ->
-                       N;
-                   _ ->
-                       8
-               end,
-    case new_context(HeapSize) of
+    HeapSize = read_config(js_max_vm_mem, 8),
+    StackSize = read_config(js_thread_stack, 8),
+    case new_context(StackSize, HeapSize) of
         {ok, Ctx} ->
-            error_logger:info_msg("Spidermonkey VM (max heap: ~pMB) host starting (~p)~n", [HeapSize, self()]),
+            error_logger:info_msg("Spidermonkey VM (thread stack: ~pMB, max heap: ~pMB) host starting (~p)~n",
+                                  [StackSize, HeapSize, self()]),
             riak_kv_js_manager:add_to_manager(),
             erlang:monitor(process, Manager),
             {ok, #state{manager=Manager, ctx=Ctx}};
@@ -97,7 +94,7 @@ handle_cast(reload, #state{ctx=Ctx}=State) ->
     {noreply, State};
 
 %% Map phase with anonymous function
-handle_cast({dispatch, Requestor, _JobId, {FsmPid, {map, {jsanon, JS}, Arg, _Acc},
+handle_cast({dispatch, Requestor, _JobId, {Sender, {map, {jsanon, JS}, Arg, _Acc},
                                             Value,
                                             KeyData, _BKey}}, #state{ctx=Ctx}=State) ->
     {Result, UpdatedState} = case define_anon_js(JS, State) of
@@ -115,15 +112,15 @@ handle_cast({dispatch, Requestor, _JobId, {FsmPid, {map, {jsanon, JS}, Arg, _Acc
                             end,
     case Result of
         {ok, ReturnValue} ->
-            gen_fsm:send_event(FsmPid, {mapexec_reply, ReturnValue, Requestor}),
+            riak_core_vnode:reply(Sender, {mapexec_reply, ReturnValue, Requestor}),
             {noreply, UpdatedState};
         ErrorResult ->
-            gen_fsm:send_event(FsmPid, {mapexec_error_noretry, Requestor, ErrorResult}),
+            riak_core_vnode:reply(Sender, {mapexec_error_noretry, Requestor, ErrorResult}),
             {noreply, State}
     end;
 
 %% Map phase with named function
-handle_cast({dispatch, Requestor, _JobId, {FsmPid, {map, {jsfun, JS}, Arg, _Acc},
+handle_cast({dispatch, Requestor, _JobId, {Sender, {map, {jsfun, JS}, Arg, _Acc},
                                             Value,
                                             KeyData, BKey}}, #state{ctx=Ctx}=State) ->
     JsonValue = riak_object:to_json(Value),
@@ -131,10 +128,10 @@ handle_cast({dispatch, Requestor, _JobId, {FsmPid, {map, {jsfun, JS}, Arg, _Acc}
     case invoke_js(Ctx, JS, [JsonValue, KeyData, JsonArg]) of
         {ok, R} ->
             %% Requestor should be the dispatching vnode
-            gen_fsm:send_event(Requestor, {mapcache, BKey, {JS, Arg, KeyData}, R}),
-            gen_fsm:send_event(FsmPid, {mapexec_reply, R, Requestor});
+            riak_kv_vnode:mapcache(Requestor, BKey, {JS, Arg, KeyData}, R),
+            riak_core_vnode:reply(Sender, {mapexec_reply, R, Requestor});
         Error ->
-            gen_fsm:send_event(FsmPid, {mapexec_error_noretry, Requestor, Error})
+            riak_core_vnode:reply(Sender, {mapexec_error_noretry, Requestor, Error})
     end,
     {noreply, State};
 handle_cast(_Msg, State) ->
@@ -199,9 +196,9 @@ define_anon_js(JS, #state{ctx=Ctx, anon_funs=AnonFuns, next_funid=NextFunId}=Sta
             {ok, FunName, State}
     end.
 
-new_context(HeapSize) ->
+new_context(ThreadStack, HeapSize) ->
     InitFun = fun(Ctx) -> init_context(Ctx) end,
-    js_driver:new(HeapSize, InitFun).
+    js_driver:new(ThreadStack, HeapSize, InitFun).
 
 init_context(Ctx) ->
     load_user_builtins(Ctx),
@@ -242,3 +239,11 @@ jsonify_arg([H|_]=Other) when is_tuple(H);
     {struct, Other};
 jsonify_arg(Other) ->
     Other.
+
+read_config(Param, Default) ->
+    case app_helper:get_env(riak_kv, Param, 8) of
+        N when is_integer(N) ->
+            N;
+        _ ->
+            Default
+    end.

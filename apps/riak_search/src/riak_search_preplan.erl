@@ -204,7 +204,7 @@ pass3(#term{q={Index, Field, Term0},
             Op;
         V ->
             Term = Term0 ++ "~" ++ V,
-            {ok, Ref} = riak_search_vnode:term(Index, Term, self()),
+            {ok, Ref} = riak_search:term(Index, Term),
             FuzzyTerms = receive_matched_terms(Ref, Field, proplists:delete(fuzzy, Options), []),
             case length(FuzzyTerms) < 2 of
                 true ->

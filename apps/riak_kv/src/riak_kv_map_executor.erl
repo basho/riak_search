@@ -84,13 +84,12 @@ try_vnode(#state{vnodes=[], keydata=KD, bkey=BKey, phase_pid=PhasePid}) ->
     riak_kv_phase_proto:mapexec_result(PhasePid, [{not_found, BKey, KD}]),
     {error, {no_vnodes, BKey}};
 try_vnode(#state{qterm=QTerm, bkey=BKey, keydata=KeyData, vnodes=[{P, VN}|VNs]}=StateData) ->
-    case lists:member(VN, nodes() ++ [node()]) of
+    UpNodes = riak_core_node_watcher:nodes(riak_kv),
+    case lists:member(VN, UpNodes) of
         false ->
             try_vnode(StateData#state{vnodes=VNs});
         true ->
-            gen_server:cast({riak_kv_vnode_master, VN},
-                            {vnode_map, {P,node()},
-                             {self(),QTerm,BKey,KeyData}}),
+            riak_kv_vnode:map({P,VN},self(),QTerm,BKey,KeyData),
             {ok, TRef} = timer:send_after(?VNODE_TIMEOUT, self(), timeout),
             StateData#state{vnodes=VNs, vnode_timer=TRef}
     end.

@@ -8,6 +8,7 @@
              riak_indexed_doc,
              riak_search,
              riak_search_app,
+             riak_search_backend,
              riak_search_config,
              riak_search_client,
              riak_search_sup,
@@ -26,14 +27,15 @@
              riak_search_op_node,
              riak_search_op_multi_term,
              riak_search_phase,
+             riak_search_raptor_backend,
              riak_search_schema,
              riak_search_schema_parser,
              riak_search_shell,
              riak_search_test,
              riak_search_utils,
              riak_search_vnode,
+             riak_search_vnode_sup,
              merge_index_backend,
-             raptor_index_backend,
              riak_search_basic_qc,
              riak_search_operators_qc,
              riak_search_op_mockterm
@@ -49,5 +51,7 @@
                   raptor
                  ]},
   {mod, { riak_search_app, []}},
-  {env, []}
+  {env, [{riak_search_backend, riak_search_raptor_backend},
+         %% N value to use for indices
+         {n_val, 2}]}
  ]}.

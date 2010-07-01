@@ -1,306 +1,846 @@
 #+SETUPFILE: "basho-search-doc-style.iorg"
-#+TITLE: Riak Search Getting Started Guide - DRAFT
+#+TITLE: Riak Search Manual - DRAFT
 
-* Getting Started
+* Introduction
+
+  Basho Search is a distributed index and full-text search engine
+  built on top of (and complementary to) Basho Riak. Just like Riak,
+  Search allows you to store your data in a distributed fashion
+  designed for easy operations. You can add physical servers to gain
+  capacity and performance, and if a node fails the cluster continues
+  to function.
 
 ** Requirements
 
-   Raptor requires:
+   The following components are required:
 
-   - Java 1.6.x
-   - Ant
-   - gcc toolchain
-   - BDB 5.0.21
+   + Erlang R13B04 (or later)
+   + Java 1.6.x
+   + Ant
+   + gcc toolchain
+   + BDB 5.0.21 - (Installation instructions below.)
 
-   Riak Search requires:
-   
-   - Erlang R13B04 (or later)
-   
 ** Installation
    
-   1. *Download and build BDB*
+*** Install BerkeleyDB
    
-      Download v. 5.0.21: http://download.oracle.com/berkeley-db/db-5.0.21.NC.tar.gz
+    Download the source code for v. 5.0.21:
+    http://download.oracle.com/berkeley-db/db-5.0.21.NC.tar.gz
 
-      *IMPORTANT:* If you are installing on a Mac, follow the instructions "How do I build Raptor for Mac OSX below?"
- 
-      : tar -zxvf db-5.0.21.NC.tar.gz
-      : cd db-5.0.21.NC
-      : cd build_unix
-      : ../dist/configure --enable-java
-      : make
-      : sudo make install
+    If you are running on a Mac, set build flags and copy header
+    files to necessary locations:
 
-   2. *Unzip and install Raptor* 
-      
-      Enter the raptor directory and run:
+    : export CC=gcc
+    : export CFLAGS="-arch x86_64 -m64"
+    : export CXXFLAGS="-arch x86_64 -m64"
+    : export LDFLAGS="-arch x86_64 -m64"
+    : sudo cp /System/Library/Frameworks/JavaVM.framework/Versions/1.6.0/Headers/*.h /usr/include/.
+
+    Finally, extract, build, and install BerkeleyDB:
+
+    : tar -zxvf db-5.0.21.NC.tar.gz
+    : cd db-5.0.21.NC
+    : cd build_unix
+    : ../dist/configure --enable-java
+    : make
+    : sudo make install
+
+*** Unzip and install Riak Search*
+
+    Enter the riak\_search directory and run:
+
+    : make
+    : make rel
     
-      : ant clean
-      : ant
+    Change to the rel/riak directory
 
-   3. *Unzip and install Riak Search*
+    : cd rel/riak
 
-      Enter the riak\_search directory and run:
+*** Start Riak
 
-      : make
-      : make rel
+    If you are running on a Mac, set JAVA\_HOME and increase your
+    filehandle limit:
+    
+    : export JAVA_HOME=/System/Library/Frameworks/JavaVM.framework/Versions/1.6/Home
+    : ulimit -n 1024
+    
+    From within the rel/riak directory, start Riak:
+    
+    : bin/riak console
+    
+    Or, use =bin/riak start= to start riak\_search in the background.
 
-   4. *Start Raptor*
 
-      Enter the raptor directory and run:
+** Major Components
+   
+   Basho Search is comprised of:
 
-      : ./start.sh
+   + *Riak Core* -  Dynamo-inspired 
+   + *Riak KV* - Distributed Key/Value store inspired by Amazon's Dynamo.
+   + *Bitcask* -  Storage backend used by Riak KV.
+   + *Riak Search* - Distributed index and full-text search engine.
+   + *Raptor* - Storage backend used by Riak Search.
+   + *Qilr* - Library for parsing queries into execution plans and
+             documents into terms.
+   + *Riak Solr* - Adds a subset of Solr HTTP interface capabilities to
+                  Basho Search.
 
-   5. *Start Riak*
+   Note that even though Riak KV is included in Basho Search, it
+   *SHOULD NOT* be used to store application data. It is used intenally
+   by Search to store document data, schema definitions, and other
+   configuration data. Specifically, documents are stored in
+   "INDEX\_doc" where INDEX is the name of the search schema. 
 
-      Enter the riak\_search directory, and run:
+   *NOTE:* Don't yet know the bucket name for schema data. That work
+   is currently in progress. Covered in bug #289.
 
-      : cd rel/riak
-      : bin/riak console
 
-      You can later use =bin/riak start= to start riak\_search in the background.
-       
-** Test Data
+** Replication
 
-   Add data to the system using Curl:
+   Search data is replicated in a manner similar to Riak KV
+   data: A search index has an =n_val= setting that determines how
+   many copies of the data exist. Copies are written across different
+   partitions located on different physical nodes.
+
+   In contrast to Riak KV:
+
+   + Search uses timestamps, rather than vector clocks, to resolve
+     version conflicts. This leads to fewer guarantees about your data
+     (as depending on wall-clock time can cause problems if the clock is
+     wrong) but was a necessary tradeoff for performance reasons.
+
+   + Search does not use quorum values when writing (indexing)
+     data. The data is written in a fire and forget model. Search
+     *does* use hinted-handoff to remain write available when a node
+     goes offline.
+
+   + Search does not use quorum values when reading (querying)
+     data. Only one copy of the data is read, and the partition is
+     chosen based on what will create the most efficient query plan
+     overall.
+
+* Schema
+
+  Basho Search was designed to work seamlessly with Riak. As a
+  result, it retains many of the same properties as Riak, including
+  a schema-free design. In other words, you can start adding data
+  to a new index without having to explicitly define the index
+  fields.
+
+  That said, Search does provide the ability to define a schema,
+  this is useful to set required fields and data types. This section
+  describes how to define an index schema.
+   
+** Defining an Index Schema
+
+   *NOTE:* Basho Search currently stores schema definition files in
+   the lib/riak\_search/priv/ directory. This is covered in #289.
+
+   *NOTE:* The commands below are not yet implemented. This is covered
+   in #318.
+
+
+   Schema definitions are stored in Basho Search under a =schema=
+   bucket. To create a new schema, write a new Riak object to the
+   =schema= with a key equal to the schema name, and a value as the
+   Erlang formatted schema definition file.
+
+   : # Set an index schema.
+   : bin/basho_search set_schema Index SchemaFile
+   : 
+   : # View the schema for an Index.
+   : bin/basho_search view_schema Index
+
+   There is currently no way to list all defined schemas.
+
+   Below is an example schema file. This is an Erlang formatted
+   term. Spacing does not matter, but it is important to matching
+   opening and closing brackets or braces, and to include commas
+   between all list items:
+
+   : TODO - 
+   : Put in example schema file. 
+   : This is currently changing. Covered in #315.
+
+** Changing the Schema File
+
+   Changes to the Schema File *will not* affect previously indexed
+   data. It is recommended that if you change field definitions,
+   especially settings such as /inline/ or /type/, that you re-index
+   your documents. The schema file can be changed using the same
+   steps described above for setting the schema.
+
+** Schema Properties
+   
+   A Schema definition consists of the following properties:
+   
+   + *version* - /Atom/, currently unused by Basho Search.
+
+   + *default\_field* - /String/, the default field to use for
+                      searching, if no other field is specified in
+                      the query.
+
+   + *default\_op* - /String/, either "and" or "or". Defaults to "or".
+
+   + *analyzer\_factory* - Determines the Java class used to analyze the
+        data. Defaults to
+        *com.basho.search.analysis.DefaultAnalyzerFactory*, which is a
+        StandardAnalyzer with a minimum length of 3 letters, lower
+        cased, with stop words filtered using
+        StopAnalyzer.ENGLISH\_STOP\_WORDS\_SET.
+
+   + *fields* - See /Schema Field Properties/ section below.
+
+** Schema Field Properties
+
+   Each field consists of a field name string and the following
+   properties:
+
+   + *type* - /Atom/. Either 'string', 'boolean', 'integer', or
+             # 'float'. Defaults to 'string'. See /Data Types/ section
+             # below.
+
+   + *required* - /Boolean/. Either 'true' or 'false'. Defaults to
+                 # 'false'. 
+
+   + *inline* - /Boolean/. Either 'true' or 'false'. Defaults to
+               # 'false'. See /Inline Fields/ section below. 
+
+** Inline Fields
+
+   *NOTE:* These are called "facet" fields in the latest version of
+   code. The name may or may not change to "inline" fields. This is
+   covered in #314.
+
+   Inline fields take their name from inline code. Just like inline
+   code, the value of an inline field is repeated. The value of an
+   inline field is transformed to a key/value property and stored
+   along with each term of the document. For this reason, inline
+   fields should be used carefully (and sparingly), as they
+   substantially increase the amount of space used in an index.
+
+   A typical use case might be to store the color of a
+   product. Picture a product catalog with millions of products. A
+   good portion of those products might be the color /red/, and so a
+   query for =title:spatula AND color:red= would need to scan the
+   entire /color:red/ section of the index to execute the query.
+
+   If /color/ were made inline field, then /color/ would instead be
+   stored as a property inline with every other value associated with
+   the item. A query for =title:spatula AND color:red= would just
+   read the /title:spatula/ section of the index, and then the
+   =color:red= part of the query is applied as a second step in query
+   execution, leading to less data transfer among query nodes and
+   therefore faster queries.
+
+   Note that both the field name and value are serialized, so if you
+   are creating an inline field for color, you should consider using
+   an abbreviated field name, such as /c/, and a small field value,
+   such as /r/, rather than spelling out the entire word.
+
+
+** Data Types
+   
+   Basho Search supports the following data types:
+
+   * *string* - A field of type =string= is parsed using the
+               # analyzer\_factory class set in the index's schema
+               # file. 
+
+   * *integer* - A field of type =integer= is always parsed
+                # using the whitespace parser and padded to 10
+                # digits. (In other words, the integer is converted
+                # to a sortable string.) This allows for range
+                # searches on integer fields and proper sorting.
+
+   *NOTE:* The 10 digit padding is currently hard coded, but is due to
+   change in issue #312.
+
+* Indexing
+  
+  Indexing a document is the act of:
+  
+  1. Reading a document.
+  2. Splitting the document into one or more fields.
+  3. Splitting the fields into one or more terms.
+  4. Normalizing the terms in each field.
+  5. Writing the ={Field, Term, DocumentID}= postings to an index.
+
+  There are numerous ways to index a document in Basho Search.
+
+** Indexing via the Command Line
+
+   *NOTE:* This command line tool does not yet exist. It is covered in
+   issue #318.
+
+   The easiest way to index documents stored on the filesystem is to
+   use the =basho_search= command line tool:
+
+   : bin/basho_search index <INDEX> <PATH>
+
+   Parameters:
+   
+   + *<INDEX>* - The name of an index.
+                
+   + *<PATH>* - Relative or absolute path to the files or directories
+               to recursively index. Wildcards are permitted.
+   
+   For example:
+
+   : bin/basho_search index my_index files/to/index/*.txt
+
+   The documents will be indexed into the default field defined by the
+   Index's schema, using the base filename plus extension as the
+   document ID.
+
+
+** Deleting via the Command Line
+   
+   *NOTE:* This command line tool does not yet exist. It is covered in issue #318.
+
+   To remove previously indexed files from the command line, use the
+   =basho_search= command line tool:
+
+   : bin/basho_search delete <INDEX> <PATH>
+
+   Parameters:
+   
+   + *<INDEX>* - The name of an index.
+                
+   + *<PATH>* - Relative or absolute path to the files or directories
+               to recursively index. Wildcards are permitted.
+   
+   For example:
+
+   : bin/basho_search delete my_index files/to/index/*.txt
+
+   Any documents matching the base filename plus extension of the
+   files found will be removed from the index. The actual contents of
+   the files are ignored during this operation.
+
+** Indexing via the Erlang API
+
+   The following Erlang functions will index documents stored on the
+   filesystem:
+
+   : search:index_dir(Path).
+   : search:index_dir(Index, Path).
+
+   + *Index* - The name of the index.
+   
+   + *Path* - Relative or absolute path to the files or directories to
+             recursively index. Wildcards are 
+
+   For example:
+
+   : search:index_dir("my_index", "files/to/index/*.txt").
+
+   The documents will be indexed into the default field defined by the
+   Index's schema, using the base filename plus extension as the
+   document ID.
+
+   Alternatively, you can provide the fields of the document to index:
+
+   : search:index_doc(Index, Fields)
+
+   *NOTE:* This function is not yet supported. It is covered in issue #320.
+
+   Parameters:
+
+   + *Index* - The name of the index.
+
+   + *Fields* - A Key/Value list of fields to index. One of these
+               fields must be either the atom 'id' or the string
+               "id".
+
+   For example:
+
+   : search:index_doc(Index, [{id, ID}, {title, "The Title"}, {content, "The Content"}])
+
+
+** Deleting via the Erlang API
+
+   The following Erlang functions will remove documents from the index:
+
+   : search:delete_dir(Path).
+   : search:delete_dir(Index, Path).
+
+   + *Index* - The name of the index.
+   
+   + *Path* - Relative or absolute path to the files or directories to
+             recursively index. Wildcards are 
+
+   For example:
+
+   : search:delete_dir("my_index", "files/to/index/*.txt").
+
+   *NOTE:* This function is not yet supported. It is covered in issue #329.
+
+   Any documents matching the base filename plus extension of the
+   files found will be removed from the index. The actual contents of
+   the files are ignored during this operation.
+
+   Alternatively, you can provide the fields of the document to index:
+
+   : search:delete_doc(Index, DocID)
+
+   *NOTE:* This function is not yet supported. It is covered in issue #320.
+
+   Parameters:
+
+   + *Index* - The name of the index.
+
+   + *DocID* - The document ID of the document to delete.
+
+
+** Indexing via the Solr Interface
+
+   Basho Search supports a Solr-compatible interface for indexing
+   documents via HTTP. Documents must be formatted as simple Solr XML
+   documents, for example:
+
+   : <add>
+   :   <doc>
+   :     <field name="id">DocID</field>
+   :     <field name="title">Zen and the Art of Motorcycle Maintenance</field>
+   :     <field name="author">Robert Pirsig</field>
+   :     ...
+   :   </doc>
+   :   ...
+   : </add>
+
+   Additionally, the Content-Type header must be set to 'text/xml'.
+
+   Search currently requires that the field determining the document
+   ID be named =id=, and does not support any additional attributes on
+   the =add=, =doc=, or =field= elements. (In other words, things like
+   =overwrite=, =commitWithin=, and =boost= are not yet supported.)
+
+   The Solr interface does NOT support the =<commit />= nor =<optimize
+   />= commands. All data is committed automatically in the following
+   stages:
+
+   + Incoming Solr XML document is parsed. If XML is invalid, an error
+     is returned.
+
+   + Documents fields are analyzed and broken into terms. If there are
+     any problems, an error is returned.
+
+   + Documents terms are indexed in parallel. Their availability in
+     future queries is determined by the storage backend.
+
+   By default, the update endpoint is located at
+   "http://hostname:8098/solr/update?index=INDEX". 
+
+   Alternatively, the index can be included in the URL, for example
+   "http://hostname:8098/solr/INDEX/update".
+
+   To add data to the system with Curl:
 
    : curl -X POST -H text/xml --data-binary @tests/books.xml http://localhost:8098/solr/books/update
 
-   Run a simple select query:
+
+** Deleting via the Solr Interface
+
+   Documents can also be deleted through the Solr interface via two methods, either by Document ID or by Query.
+
+   To delete documents by document ID, post the following XML to the update endpoint:
+
+   : <delete>
+   :   <id>docid1</id>
+   :   <id>docid2</id>
+   :   ...
+   : </delete>
+
+   *NOTE:* Search does not yet support deleting documents from a
+   specific index via "index:docid" format. The index name must be
+   specified in either the endpoint URL or query parameters. (See /Indexing via
+   the Solr Interface/ section above.) This is covered in #330.
+
+   To delete documents by Query, post the following XML to the update endpoint:
+
+   : <delete>
+   :   <query>QUERY1</query>
+   :   <query>QUERY2</query>
+   :   ...
+   : </delete>
+
+   Any documents that match the provided queries will be deleted.
+
+** Indexing via Riak Post-Commit Hook
+
+   *NOTE:* Search is not yet integrated with Riak. This is scheduled
+   for a future release. 
+
+   Basho Riak (a distributed Key/Value store) can be configured to
+   index new data automatically using Basho Search. Indexing is
+   configured at a bucket level using a post-commit hook written in
+   Erlang. (See [[https://wiki.basho.com/display/RIAK/Pre-+and+Post-Commit+Hooks][Pre and Post Commit Hooks]] for instructions on
+   configuring Post-Commit hooks.)
+
+   The following post-commit hook provides integration with Basho Search:
+   
+   : {"mod": "riak_search", "fun": "index"}
+
+   Pending Questions:
+   
+   + How does Riak know /where/ Basho Search is located?
+   + How does it know which index?
+   + How does it break the value into fields.
+   + Handle insert, update, and delete.
+   + Handle case where the hook fails? Maybe do some preliminary work
+     during pre-commit hook to make sure things parse correctly and
+     can contact the index server.
+
+* Querying
+
+** Query Syntax
+
+   Basho Search follows the same query syntax as Lucene, detailed
+   here:  http://lucene.apache.org/java/2_4_0/queryparsersyntax.html
+
+*** Terms and Phrases
+    
+    A query can be as simple as a single term (ie: "red") or a series
+    of terms surrounded by quotes called a phrase ("See spot
+    run"). The term (or phrase) is analyzed using the default
+    analyzer for the index.
+
+    The index schema contains a =default_operator= setting that
+    determines whether a phrase is treated as an AND operation or an
+    OR operation. By default, a phrase is treated as an OR
+    operation. In other words, a document is returned if it matches
+    any one of the terms in the phrase.
+
+    *NOTE:* In the future, there will be different analyzers for each
+    field. During a query, the terms will be parsed using the analyzer
+    for that field. This is covered in #317.
+
+*** Fields
+
+    You can specify a field to search by putting it in front of the
+    term or phrase to search. For example: 
+
+    : color:red
+
+    Or:
+
+    : title:"See spot run"
+
+    You can further specify an index by prefixing the field with the
+    index name. For example:
+
+    : products.color:red
+
+    Or:
+
+    : books.title:"See spot run"
+
+*** Wildcard Searches
+
+    Terms can include wildcards in the form of an asterisk (*) to
+    allow prefix matching, or a question mark (?) to match a single
+    character.
+
+    Currently, the wildcard must come at the end of the term in both
+    cases.
+
+    For example:
+    
+    + "bus*" will match "busy", "business", "busted", etc.
+
+    + "bus?" will match "busy", "bust", "busk", etc.
+
+*** Fuzzy Searches
+    
+    Fuzzy searching allows you to find terms with similar
+    spelling. To specify a fuzzy search, use the tilde operator on a
+    single term with an optional fuzziness argument. (If no fuzziness
+    argument is specified, then 0.5 is used by default.)
+
+    For example:
+    
+    : bass~
+
+    Is equivalent to:
+
+    : bass~0.5
+
+    And will match "bass" as well as "bask", "bats", "bars", etc. The
+    fuzziness argument is a number between 0.0 and 1.0. Values close
+    to 0.0 result in more fuzziness, values close to 1.0 result in
+    less fuzziness.
+
+*** Proximity Searches
+
+    Proximity searching allows you to find terms that are within a
+    certain number of words from each other. To specify a proximity
+    seach, use the tilde argument on a phrase.
+
+    For example:
+
+    : "See spot run"~20
+
+    Will find documents that have the words "see", "spot", and "run"
+    all within the same block of 20 words.
+
+*** Range Searches
+    
+    Range searches allow you to find documents with terms in between
+    a specific range. Ranges are calculated lexicographically.  Use
+    brackets to specify an inclusive range, and brackes (mustaches)
+    to specify an exclusive range.
+
+    The following example will return documents with words containing "red" and
+    "rum", plus any words in between.
+
+    : "[red TO rum]" 
+    
+    The following example will return documents with words in between "red" and
+    "rum":
+
+    : "{red TO rum}"
+
+*** Boosting a Term
+
+    A term (or phrase) can have its score boosted using the caret
+    operator along with an integer boost factor.
+
+    In the following example, documents with the term "red" will have their score
+    boosted:
+
+    : red^5 OR blue
+
+*** Boolean Operators - AND, OR, NOT
+
+    Queries can use the boolean operators AND, OR, and NOT. The
+    boolean operators must be capitalized.
+
+    The following example return documents containing the words "red"
+    and "blue" but not "yellow".
+
+    : red AND blue AND NOT yellow
+
+    The required (+) operator can be used in place of "AND", and the
+    prohibited (-) operator can be used in place of "AND NOT". For
+    example, the query above can be rewritten as:
+
+    : +red +blue -yellow
+
+*** Grouping
+
+    Clauses in a query can be grouped using parentheses. The following query
+    returns documents that contain the terms "red" or "blue", but not "yellow":
+
+    : (red OR blue) AND NOT yellow
+
+** Querying via the Search Shell
+
+   *NOTE:* For now, you need to start the shell from Erlang using
+   =riak_search_shell:start()= or
+   =riak_search_shell:start(Index)=. Starting via command line is
+   covered in #318.
+
+   The Search Shell is the easiest way to run interactive queries
+   against Search. To start the shell, run:
+
+   : bin/basho_search shell [INDEX]
+
+   This launches an interactive console into which you can type search
+   commands. For help, type =h()=. 
+
+
+** Querying via the Command Line
+
+   To run a single query from the command line, use:
+
+   : bin/basho_search search [INDEX] QUERY
+
+   For example:
+
+   : bin/basho_search search "books" "title:\"See spot run\""
+
+   This will display a list of Document ID values matching the
+   query. To conduct a document search, use the *search\_doc*
+   command. For example:
+
+   : bin/basho_search search_doc "books" "title:\"See spot run\""
+
+** Querying via the Erlang Command Line
+
+   To run a query from the Erlang shell, use =search:search(Query)=
+   or =search:search(Index, Query)=. For example:
+   
+   : search:search("books", "author:joyce").
+   
+   This will display a list of Document ID values matching the
+   query. To conduct a document search, use
+   =search:search_doc(Query)= or =search:search_doc(Index,
+   Query)=. For example:
+   
+   : search:search_doc("books", "author:joyce").
+
+** Querying via the Solr Interface
+
+   Basho Search supports a Solr-compatible interface for searching
+   documents via HTTP. By default, the select endpoint is located at
+   "http://hostname:8098/solr/select".
+
+   Alternatively, the index can be included in the URL, for example
+   "http://hostname:8098/solr/INDEX/select".
+
+   The following parameters are supported:
+
+   + *index=INDEX* - Specifies the default index name.
+
+   + *q=QUERY* - Run the provided query.
+
+   + *df=FIELDNAME* - Use the provided field as the default. Overrides
+     the /default_field/ setting in the schema file.
+
+   + *q.op=OPERATION* - Allowed settings are either "and" or
+     "or". Overrides the /default_op/ setting in the schema file. Default is "or".
+
+   + *start=N* - Specify the starting result of the query. Useful for
+     paging. Default is 0.
+
+   + *rows=N* - Specify the maximum number of results to return. Default is 10.
+
+   + *sort=FIELDNAME* - Sort on the specified field name. Default is
+     "none", which causes the results to be sorted in descending order
+     by score.
+
+   To query data in the system with Curl:
 
    : curl "http://localhost:8098/solr/books/select?start=0&rows=10000&q=prog*"
 
-* Riak Search (riak\_search)
+   *NOTE:* Currently, all query output will be served in JSON. This is
+   analogous to specifying =wt=json= on a regular Solr
+   query. Outputting as XML is covered in #189.
+
+** Faceted Queries via the Solr Interfae
    
-** Configuring Search Buckets
+   *NOTE:* The facet features listed below do not yet exist. These are covered in #326.
 
-   Riak Search indices are exposed as Riak buckets. To configure additional search
-   indices, edit the search\_bucket entry in the riak\_search section of app.config:
+   Faceted search allows you to generate keywords (plus counts) to
+   display to a user to drill down into search results.
 
-   : {riak_search, [{search_buckets, ["search"]}]}
+   Search accepts the following faceting parameters on the Solr
+   interface:
 
-   Additional indices should be added to the list of bucket names. All nodes should
-   have the same set of search buckets.
+   + *facet=BOOLEAN* - If BOOLEAN is set to "true" enable faceting. If
+     set to "false", disable faceting. Default is "false".
 
-** Configuring Textual Analyzers
+   + *facet.field=FIELDNAME* - Tells Search to calculate and return
+     count associated with unique terms in this fieldname. To specify
+     multiple facet fields, include the /facet.field/ setting multiple
+     times in the query parameters.
 
-   Riak Search uses Lucene's excellent text analysis capabilities for indexing and
-   querying. The communication between Riak Search and the Lucene text analysis
-   code is performed over a TCP socket on localhost. The port number for this
-   connection is controlled by the analysis\_port entry in the qilr section of
-   app.config:
+   + *facet.prefix=PREFIX* / *f.FIELD.facet.prefix=PREFIX* - Limit faceting to a
+     subset of terms on a field.
 
-   : {qilr, [{analysis_port, 6095}]}
+   + *facet.sort=MODE* / *f.FIELD.facet.sort=MODE*- If MODE is set to
+     "count", sort the facets counts by count. If set to "index", sort
+     the facet counts lexicographically. Defaults to "count".
 
-   The analysis interface actually uses two ports for communication. The configured
-   port, in this case 6095, is used for textual analysis processing. An additional
-   port, one above analysis\_port, is used to insure Java and Erlang processes are
-   started and stopped in lockstep. In short, make sure you have analysis\_port and
-   analysis\_port + 1 available when you pick a value for analysis\_port.
+   + *facet.offset=N* / *f.FIELDNAME.facet.offset=N* - Set the offset
+     at which to start listing facet entries. Used for paging.
 
-** Creating a Riak Search Cluster
+   + *facet.limit=N* / *f.FIELDNAME.facet.limit=N* - Limit the number
+     of facet entries to N. Used for paging.
 
-   Riak Search has all of the same operational properties as
-   Riak. Refer to the Riak wiki
-   [[https://wiki.basho.com/display/RIAK/Home]] for more information on
-   running Riak in a clustered environment.
+   Use the longer syntax if multiple fields are defined.
 
-* Riak Search: Solr Interface (riak\_solr)
+   Note that when faceting on a field, only terms that are present in
+   the result set are listed in the facet results (in other words, you will
+   never see a facet count entry of zero.) Faceted fields are analyzed
+   using the analyzer associated with the field.
 
-** Configuring riak\_solr
 
-   riak\_solr's configuration consists of two parts: schema definition and the
-   matching search bucket.
-
-*** Schema Definitions
-
-    riak\_solr's schema definition language is similar in spirit to Solr's but
-    differs substantially in syntax. Schema defintions are written in Erlang using
-    lists, strings, and tuples. Several sample schemas are included in riak\_solr/priv
-    for use as reference.
-
-**** Schema headers
-
-     Schema defintions consist of two sections: header and fields. The schema header
-     section contains information about the schema name, Solr API version, default
-     boolean operator for queries, and the default query field. An example header
-     looks like this: 
-
-     : [{name, "books"},
-     :  {version, "1.1"},
-     :  {default_field, "title"},
-     :  {default_op, "and"}]
-
-     All fields must be present and all values must be strings. Also, the only supported
-     Solr API version is 1.1 so the version field must be "1.1".
-
-**** Schema fields
-
-     Schema field definitions describe the field's name, data type, and whether or not
-     a field is required. A field definition for a rating field of type integer might look
-     like this: 
-
-     : {field, [{name, "rating"},
-     :          {type, integer},
-     :          {required, true}]}
-
-     Field names must be strings. Supported field types are integer, boolean, and string.
-     Field types must appear without quotes in the field definition. The required attribute
-     is a boolean on/off flag which must appear without quotes.
-
-     NOTE: Each schema definition MUST contain a field named "id".
-
-*** Example schema
-
-    A complete schema for a Solr index storing book information could look like
-    this: 
-
-    : {schema, [{name, "books"},
-    :           {version, "1.1"},
-    :           {default_field, "title"},
-    :           {default_op, "and"}],
-    :           {fields,
-    :               [{field, [{name, "id"},
-    :                         {type, string},
-    :                         {required, true}]},
-    :                {field, [{name, "title"},
-    :                         {type, string},
-    :                         {required, true}]},
-    :                {field, [{name, "author_last_name"},
-    :                         {type, string},
-    :                         {required, true}]},
-    :                {field, [{name, "author_first_name"},
-    :                         {type, string},
-    :                         {required, true}]},
-    :                {field, [{name, "rating"},
-    :                         {type, integer},
-    :                         {required, true}]},
-    :                {field, [{name, "summary"},
-    :                         {type, string},
-    :                         {required, false}]}]}}.
-
-*** Schemas & Buckets
-
-    Each schema should be backed by a corresponding search bucket. In other words,
-    each Solr schema should correspond to a search bucket with the same name as
-    the schema.
-
-** Using riak\_solr
-
-   Clients will interact with riak\_solr over HTTP. The next several sections will
-   describe how to connect to riak\_solr, write to a configured schema, and query
-   a configured schema.
-
-*** Connecting
-
-    riak\_solr shares a webmachine instance with the Riak Key/Value HTTP API. Clients
-    should use the same port number to connect to both APIs. riak\_solr uses the base
-    URL '/solr' for all requests.
-
-*** Updating an Index
-
-    Writing to a schema is handled via POST requests to riak\_solr. The URL for a
-    given schema follows this pattern: =/solr/<index_name>/update= where =<index_name>=
-    is the name of the schema you wish to update.
-
-    The request's Content-Type header must be 'text/xml'. The body of the request must be
-    valid XML which follows Solr's add syntax.
-
-*** Deleting Documents
-
-    Document deletion is not supported at this time.
-
-*** Querying
-
-    Clients can submit index queries to riak\_solr via GET requests. riak\_solr
-    understands two URL formats for queries. The first allows the requestor to
-    specify the index name in the URL similar to the update URL. The format
-    looks like this: =/solr/<index_name>/select=.
-
-    Requestors can also specify the index name via the query string parameter
-    'index'. URLs using this format will look like this: =/solr/select?index=<index_name>=.
-
-    In all other respects querying riak_solr behaves like Solr with the following list
-    of restrictions.
-
-    - All query output will be served in JSON. This is analogous to specifying
-      =wt=json= on a regular Solr query.
-
-    - riak\_solr understands the following Solr query parameters only: =q=, =q_op=,
-      =start=, and =rows=.
-
-* The Raptor Backend   
-
-** How do I build Raptor for Mac OSX?
-
-   To build Raptor on Mac OS X, perform the following steps:
-
-   1. Update your =$JAVA_HOME= environment variable to point to Java version 1.6:
-
-      : export JAVA_HOME=/System/Library/Frameworks/JavaVM.framework/Versions/1.6/Home
-
-   2. Build a 64-bit version of BDB. Run the following commands before building BDB:
-
-      : export CC=gcc
-      : export CFLAGS="-arch x86_64 -m64"
-      : export CXXFLAGS="-arch x86_64 -m64"
-      : export LDFLAGS="-arch x86_64 -m64"
-       
-      If you have already installed it as 32-bit, type "make realclean" in the 
-      build\_unix directory and start the configuration and installation process 
-      again.
-
-   3. Additionally, the JNI portion of BDB expects to find Java headers
-      in a certain place, so run the following command:
-
-      : sudo cp /System/Library/Frameworks/JavaVM.framework/Versions/1.6.0/Headers/*.h /usr/include/.
-
-** How do I change Raptor Logging?
-
-   1. You can edit log4j.properties to change the logging characteristics
-
-   2. From the riak search console you can significantly decrease logging output 
-      (though not turn it off entirely) by using the command:
-       
-      : raptor_index_backend:poke("toggle_debug").
-
-** How do I delete all data from Raptor?
+** Querying via Riak Map/Reduce
    
-   If you want to delete the data stored in Raptor, delete the
-   directories "raptor-db" and "raptor-catalog".
+   /This functionality is planned for a future release./
 
-** Notes
+** Query Scoring
+   
+   Documents are scored using roughly the same formulas described here: 
 
-   1. MMap and Cache memory use for both BDB and Lucene are currently hard 
-      coded while a good configuration system is being worked on.  In the 
-      meantime it is recommended you run Raptor on server with a MINIMUM 
-      of 2G ram.
+   http://lucene.apache.org/java/3_0_2/api/core/org/apache/lucene/search/Similarity.html
 
-   2. You may use Raptor on 32-bit systems; change the command line option in 
-      start.sh from "-d64" to "-d32"
+   The key difference is in how Basho Search calculates the Inverse
+   Document Frequency. The equations described on the /Similarity/
+   page require knowledge of the total number of documents in a
+   collection. Basho Search does not maintain this information for a
+   collection, so instead uses the count of the total number of
+   documents associated with each term in the query.
 
-   3. 32-bit operation is not available on Mac OS X systems (Java 1.6 has no 
-      32 bit mode on OS X)
+* Operations and Troubleshooting
 
-   4. If you wish to keep the BDB native library in somewhere other than it's 
-      installed location, change the following command line option in start.sh 
-      to reflect the new location:
+  Riak Search has all of the same operational properties as
+  Riak. Refer to the Riak wiki
+  [[https://wiki.basho.com/display/RIAK/Home]] for more information on
+  running Riak in a clustered environment.
 
-      : -Djava.library.path=/usr/local/lib:java.library.path=/usr/local/lib:/usr/local/BerkeleyDB.4.8/lib
+** Default Ports
 
-   5. By default, start.sh reserves 4G of memory for execution.  You may change 
-      this by editing this command line option in start.sh:
+   By default, Search uses the following ports:
 
-      : -Xmx4096m
+   + 8098 - Solr Interface
 
-   6. Raptor has only been tested on Mac OS X and Linux.
+   + 8099 - Riak Handoff
 
-   7. If you see this, upgrade to Java 1.6:
+   + 8087 - Protocol Buffers interface
 
-      : [javac] bad class file: ...snip.../db.jar(com/sleepycat/db/Environment.class)
-      : [javac] class file has wrong version 50.0, should be 49.0
-      : [javac] Please remove or make sure it appears in the correct subdirectory of the classpath.
-      : [javac]     private Environment env;
-      : [javac]             ^
-      : [javac] 1 error
+   + 5099 - Raptor Backend
+
+   + 6095 - Analyzer Port
+
+   Be sure to take the necessary security precautions to prevent
+   exposing these ports to the outside world.
+
+** The Raptor Backend
+
+*** How do I change Raptor Logging?
+
+    1. You can edit log4j.properties to change the logging characteristics
+
+    2. From the riak search console you can significantly decrease logging output 
+       (though not turn it off entirely) by using the command:
         
+       : raptor_index_backend:poke("toggle_debug").
+
+*** How do I delete all data from Raptor?
+    
+    If you want to delete the data stored in Raptor, delete the
+    "./data/raptor" directory.
+
+*** Notes
+
+    1. MMap and Cache memory use for both BDB and Lucene are currently hard 
+       coded while a good configuration system is being worked on.  In the 
+       meantime it is recommended you run Raptor on server with a MINIMUM 
+       of 2G ram.
+
+    2. You may use Raptor on 32-bit systems; change the command line option in 
+       start.sh from "-d64" to "-d32"
+
+    3. 32-bit operation is not available on Mac OS X systems (Java 1.6 has no 
+       32 bit mode on OS X)
+
+    4. If you wish to keep the BDB native library in somewhere other than it's 
+       installed location, change the following command line option in start.sh 
+       to reflect the new location:
+
+       : -Djava.library.path=/usr/local/lib:java.library.path=/usr/local/lib:/usr/local/BerkeleyDB.4.8/lib
+
+    5. Raptor has only been tested on Mac OS X and Linux.
+
+    6. If you see this, upgrade to Java 1.6:
+
+       : [javac] bad class file: ...snip.../db.jar(com/sleepycat/db/Environment.class)
+       : [javac] class file has wrong version 50.0, should be 49.0
+       : [javac] Please remove or make sure it appears in the correct subdirectory of the classpath.
+       : [javac]     private Environment env;
+       : [javac]             ^
+       : [javac] 1 error
+         

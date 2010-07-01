@@ -31,24 +31,12 @@
 start(_StartType, _StartArgs) ->
     case riak_search_sup:start_link() of
         {ok, Pid} ->
-            case application:get_env(riak_search, search_buckets) of
-                undefined ->
-            error_logger:info_msg("No search buckets defined");
-                {ok, Buckets} ->
-                    F = fun(Bucket) ->
-                                error_logger:info_msg("Configuring search index ~p~n", [Bucket]),
-                                ok = riak_core_bucket:set_bucket(list_to_binary(Bucket), ?SEARCH_BUCKET_PROPS)
-                        end,
-                    [F(Bucket) || Bucket <- Buckets]
-            end,
+            %% Register the search vnode with core and mark the node
+            %% as available for search requests.
+            riak_core:register_vnode_module(riak_search_vnode),
+            riak_core_node_watcher:service_up(riak_search, self()),
 
-            %% Set up the search_broadcast bucket. Any operations on
-            %% this bucket will broadcast to all search_backend
-            %% partitions.
-            RingSize = app_helper:get_env(riak_core, ring_creation_size),
-            riak_core_bucket:set_bucket(<<"search_broadcast">>, [{n_val, RingSize},
-                                                                 {backend, search_backend}]),
-            {ok, Pid};
+           {ok, Pid};
         Error ->
             Error
     end.
