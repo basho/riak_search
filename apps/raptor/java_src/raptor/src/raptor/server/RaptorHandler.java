@@ -38,6 +38,7 @@ import org.jboss.netty.channel.ChannelPipelineCoverage;
 import org.jboss.netty.channel.ChannelState;
 import org.jboss.netty.channel.ChannelStateEvent;
 import org.jboss.netty.channel.MessageEvent;
+import org.jboss.netty.channel.ExceptionEvent;
 import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
 import org.json.JSONObject;
 import org.json.JSONArray;
@@ -462,6 +463,16 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
     } catch (Exception ex) {
         ex.printStackTrace();
     }
+   }
+   
+   public void exceptionCaught(ChannelHandlerContext ctx,
+                               ExceptionEvent e) throws Exception {
+      Throwable ex = e.getCause();
+      if (ex instanceof java.io.IOException) return;
+      log.info("exceptionCaught: " + ex.toString());
+      log.info("ExceptionEvent e = " + e.toString());
+      ex.printStackTrace();
+      log.info("----");
    }
 }
 

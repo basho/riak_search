@@ -10,6 +10,9 @@
    %% dates
    {dynamic_field, [{name, "*_dt"},
                     {type, date}]},
+
+   {field, [{name, "facet"}, {type, string}, {required, false}, {facet, true}]},
+
    %% Everything else is a string
   {dynamic_field, [{name, "*"},
                    {type, string}]}]}}.

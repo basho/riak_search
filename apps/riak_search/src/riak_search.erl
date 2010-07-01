@@ -33,7 +33,7 @@ multi_stream(IFTList, FilterFun) ->
     %% in the system it is likely that not all terms will be located.
     %% For now, emulate something similar to what the k/v encapsulated
     %% version did.
-    {term, {Index, Field, Term}} = hd(IFTList),
+    {term, {Index, Field, Term}, _TermProps} = hd(IFTList),
     {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
     Preflist = riak_core_apl:get_apl(Partition, N),
     riak_search_vnode:multi_stream(hd(Preflist), IFTList, FilterFun, self()).

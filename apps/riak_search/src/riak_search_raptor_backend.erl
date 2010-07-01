@@ -146,7 +146,7 @@ multi_stream(IFTList, FilterFun, Sender, _State) ->
     {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
 
     %% Encode ~ delimited index/field/term list delimited by ` chars
-    Terms1 = lists:map(fun({term, {I, F, T}}) ->
+    Terms1 = lists:map(fun({term, {I, F, T}, _Props}) ->
                                string:join([I, F, T], "~")
                        end, IFTList),
     TermArg = string:join(Terms1, "`"),

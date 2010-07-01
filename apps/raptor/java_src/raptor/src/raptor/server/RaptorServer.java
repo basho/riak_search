@@ -142,6 +142,6 @@ public class RaptorServer {
          bootstrap.setOption("child.tcpNoDelay", true);
          bootstrap.setPipelineFactory(new HeartbeatPipelineFactory());
          bootstrap.bind(new InetSocketAddress(port));
-    }
+    }    
 }
 
