@@ -2348,6 +2348,337 @@ public final class Messages {
     // @@protoc_insertion_point(class_scope:CatalogQuery)
   }
   
+  public static final class MultiStream extends
+      com.google.protobuf.GeneratedMessage {
+    // Use MultiStream.newBuilder() to construct.
+    private MultiStream() {
+      initFields();
+    }
+    private MultiStream(boolean noInit) {}
+    
+    private static final MultiStream defaultInstance;
+    public static MultiStream getDefaultInstance() {
+      return defaultInstance;
+    }
+    
+    public MultiStream getDefaultInstanceForType() {
+      return defaultInstance;
+    }
+    
+    public static final com.google.protobuf.Descriptors.Descriptor
+        getDescriptor() {
+      return raptor.protobuf.Messages.internal_static_MultiStream_descriptor;
+    }
+    
+    protected com.google.protobuf.GeneratedMessage.FieldAccessorTable
+        internalGetFieldAccessorTable() {
+      return raptor.protobuf.Messages.internal_static_MultiStream_fieldAccessorTable;
+    }
+    
+    // required string term_list = 1;
+    public static final int TERM_LIST_FIELD_NUMBER = 1;
+    private boolean hasTermList;
+    private java.lang.String termList_ = "";
+    public boolean hasTermList() { return hasTermList; }
+    public java.lang.String getTermList() { return termList_; }
+    
+    // required string message_type = 2;
+    public static final int MESSAGE_TYPE_FIELD_NUMBER = 2;
+    private boolean hasMessageType;
+    private java.lang.String messageType_ = "";
+    public boolean hasMessageType() { return hasMessageType; }
+    public java.lang.String getMessageType() { return messageType_; }
+    
+    private void initFields() {
+    }
+    public final boolean isInitialized() {
+      if (!hasTermList) return false;
+      if (!hasMessageType) return false;
+      return true;
+    }
+    
+    public void writeTo(com.google.protobuf.CodedOutputStream output)
+                        throws java.io.IOException {
+      getSerializedSize();
+      if (hasTermList()) {
+        output.writeString(1, getTermList());
+      }
+      if (hasMessageType()) {
+        output.writeString(2, getMessageType());
+      }
+      getUnknownFields().writeTo(output);
+    }
+    
+    private int memoizedSerializedSize = -1;
+    public int getSerializedSize() {
+      int size = memoizedSerializedSize;
+      if (size != -1) return size;
+    
+      size = 0;
+      if (hasTermList()) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeStringSize(1, getTermList());
+      }
+      if (hasMessageType()) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeStringSize(2, getMessageType());
+      }
+      size += getUnknownFields().getSerializedSize();
+      memoizedSerializedSize = size;
+      return size;
+    }
+    
+    public static raptor.protobuf.Messages.MultiStream parseFrom(
+        com.google.protobuf.ByteString data)
+        throws com.google.protobuf.InvalidProtocolBufferException {
+      return newBuilder().mergeFrom(data).buildParsed();
+    }
+    public static raptor.protobuf.Messages.MultiStream parseFrom(
+        com.google.protobuf.ByteString data,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws com.google.protobuf.InvalidProtocolBufferException {
+      return newBuilder().mergeFrom(data, extensionRegistry)
+               .buildParsed();
+    }
+    public static raptor.protobuf.Messages.MultiStream parseFrom(byte[] data)
+        throws com.google.protobuf.InvalidProtocolBufferException {
+      return newBuilder().mergeFrom(data).buildParsed();
+    }
+    public static raptor.protobuf.Messages.MultiStream parseFrom(
+        byte[] data,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws com.google.protobuf.InvalidProtocolBufferException {
+      return newBuilder().mergeFrom(data, extensionRegistry)
+               .buildParsed();
+    }
+    public static raptor.protobuf.Messages.MultiStream parseFrom(java.io.InputStream input)
+        throws java.io.IOException {
+      return newBuilder().mergeFrom(input).buildParsed();
+    }
+    public static raptor.protobuf.Messages.MultiStream parseFrom(
+        java.io.InputStream input,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws java.io.IOException {
+      return newBuilder().mergeFrom(input, extensionRegistry)
+               .buildParsed();
+    }
+    public static raptor.protobuf.Messages.MultiStream parseDelimitedFrom(java.io.InputStream input)
+        throws java.io.IOException {
+      Builder builder = newBuilder();
+      if (builder.mergeDelimitedFrom(input)) {
+        return builder.buildParsed();
+      } else {
+        return null;
+      }
+    }
+    public static raptor.protobuf.Messages.MultiStream parseDelimitedFrom(
+        java.io.InputStream input,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws java.io.IOException {
+      Builder builder = newBuilder();
+      if (builder.mergeDelimitedFrom(input, extensionRegistry)) {
+        return builder.buildParsed();
+      } else {
+        return null;
+      }
+    }
+    public static raptor.protobuf.Messages.MultiStream parseFrom(
+        com.google.protobuf.CodedInputStream input)
+        throws java.io.IOException {
+      return newBuilder().mergeFrom(input).buildParsed();
+    }
+    public static raptor.protobuf.Messages.MultiStream parseFrom(
+        com.google.protobuf.CodedInputStream input,
+        com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+        throws java.io.IOException {
+      return newBuilder().mergeFrom(input, extensionRegistry)
+               .buildParsed();
+    }
+    
+    public static Builder newBuilder() { return Builder.create(); }
+    public Builder newBuilderForType() { return newBuilder(); }
+    public static Builder newBuilder(raptor.protobuf.Messages.MultiStream prototype) {
+      return newBuilder().mergeFrom(prototype);
+    }
+    public Builder toBuilder() { return newBuilder(this); }
+    
+    public static final class Builder extends
+        com.google.protobuf.GeneratedMessage.Builder<Builder> {
+      private raptor.protobuf.Messages.MultiStream result;
+      
+      // Construct using raptor.protobuf.Messages.MultiStream.newBuilder()
+      private Builder() {}
+      
+      private static Builder create() {
+        Builder builder = new Builder();
+        builder.result = new raptor.protobuf.Messages.MultiStream();
+        return builder;
+      }
+      
+      protected raptor.protobuf.Messages.MultiStream internalGetResult() {
+        return result;
+      }
+      
+      public Builder clear() {
+        if (result == null) {
+          throw new IllegalStateException(
+            "Cannot call clear() after build().");
+        }
+        result = new raptor.protobuf.Messages.MultiStream();
+        return this;
+      }
+      
+      public Builder clone() {
+        return create().mergeFrom(result);
+      }
+      
+      public com.google.protobuf.Descriptors.Descriptor
+          getDescriptorForType() {
+        return raptor.protobuf.Messages.MultiStream.getDescriptor();
+      }
+      
+      public raptor.protobuf.Messages.MultiStream getDefaultInstanceForType() {
+        return raptor.protobuf.Messages.MultiStream.getDefaultInstance();
+      }
+      
+      public boolean isInitialized() {
+        return result.isInitialized();
+      }
+      public raptor.protobuf.Messages.MultiStream build() {
+        if (result != null && !isInitialized()) {
+          throw newUninitializedMessageException(result);
+        }
+        return buildPartial();
+      }
+      
+      private raptor.protobuf.Messages.MultiStream buildParsed()
+          throws com.google.protobuf.InvalidProtocolBufferException {
+        if (!isInitialized()) {
+          throw newUninitializedMessageException(
+            result).asInvalidProtocolBufferException();
+        }
+        return buildPartial();
+      }
+      
+      public raptor.protobuf.Messages.MultiStream buildPartial() {
+        if (result == null) {
+          throw new IllegalStateException(
+            "build() has already been called on this Builder.");
+        }
+        raptor.protobuf.Messages.MultiStream returnMe = result;
+        result = null;
+        return returnMe;
+      }
+      
+      public Builder mergeFrom(com.google.protobuf.Message other) {
+        if (other instanceof raptor.protobuf.Messages.MultiStream) {
+          return mergeFrom((raptor.protobuf.Messages.MultiStream)other);
+        } else {
+          super.mergeFrom(other);
+          return this;
+        }
+      }
+      
+      public Builder mergeFrom(raptor.protobuf.Messages.MultiStream other) {
+        if (other == raptor.protobuf.Messages.MultiStream.getDefaultInstance()) return this;
+        if (other.hasTermList()) {
+          setTermList(other.getTermList());
+        }
+        if (other.hasMessageType()) {
+          setMessageType(other.getMessageType());
+        }
+        this.mergeUnknownFields(other.getUnknownFields());
+        return this;
+      }
+      
+      public Builder mergeFrom(
+          com.google.protobuf.CodedInputStream input,
+          com.google.protobuf.ExtensionRegistryLite extensionRegistry)
+          throws java.io.IOException {
+        com.google.protobuf.UnknownFieldSet.Builder unknownFields =
+          com.google.protobuf.UnknownFieldSet.newBuilder(
+            this.getUnknownFields());
+        while (true) {
+          int tag = input.readTag();
+          switch (tag) {
+            case 0:
+              this.setUnknownFields(unknownFields.build());
+              return this;
+            default: {
+              if (!parseUnknownField(input, unknownFields,
+                                     extensionRegistry, tag)) {
+                this.setUnknownFields(unknownFields.build());
+                return this;
+              }
+              break;
+            }
+            case 10: {
+              setTermList(input.readString());
+              break;
+            }
+            case 18: {
+              setMessageType(input.readString());
+              break;
+            }
+          }
+        }
+      }
+      
+      
+      // required string term_list = 1;
+      public boolean hasTermList() {
+        return result.hasTermList();
+      }
+      public java.lang.String getTermList() {
+        return result.getTermList();
+      }
+      public Builder setTermList(java.lang.String value) {
+        if (value == null) {
+    throw new NullPointerException();
+  }
+  result.hasTermList = true;
+        result.termList_ = value;
+        return this;
+      }
+      public Builder clearTermList() {
+        result.hasTermList = false;
+        result.termList_ = getDefaultInstance().getTermList();
+        return this;
+      }
+      
+      // required string message_type = 2;
+      public boolean hasMessageType() {
+        return result.hasMessageType();
+      }
+      public java.lang.String getMessageType() {
+        return result.getMessageType();
+      }
+      public Builder setMessageType(java.lang.String value) {
+        if (value == null) {
+    throw new NullPointerException();
+  }
+  result.hasMessageType = true;
+        result.messageType_ = value;
+        return this;
+      }
+      public Builder clearMessageType() {
+        result.hasMessageType = false;
+        result.messageType_ = getDefaultInstance().getMessageType();
+        return this;
+      }
+      
+      // @@protoc_insertion_point(builder_scope:MultiStream)
+    }
+    
+    static {
+      defaultInstance = new MultiStream(true);
+      raptor.protobuf.Messages.internalForceInit();
+      defaultInstance.initFields();
+    }
+    
+    // @@protoc_insertion_point(class_scope:MultiStream)
+  }
+  
   public static final class Command extends
       com.google.protobuf.GeneratedMessage {
     // Use Command.newBuilder() to construct.
@@ -4741,6 +5072,11 @@ public final class Messages {
     com.google.protobuf.GeneratedMessage.FieldAccessorTable
       internal_static_CatalogQuery_fieldAccessorTable;
   private static com.google.protobuf.Descriptors.Descriptor
+    internal_static_MultiStream_descriptor;
+  private static
+    com.google.protobuf.GeneratedMessage.FieldAccessorTable
+      internal_static_MultiStream_fieldAccessorTable;
+  private static com.google.protobuf.Descriptors.Descriptor
     internal_static_Command_descriptor;
   private static
     com.google.protobuf.GeneratedMessage.FieldAccessorTable
@@ -4792,19 +5128,20 @@ public final class Messages {
       "m\030\004 \002(\t\022\021\n\tpartition\030\005 \002(\t\022\024\n\014message_ty" +
       "pe\030\006 \002(\t\"O\n\014CatalogQuery\022\024\n\014search_query" +
       "\030\001 \002(\t\022\023\n\013max_results\030\002 \002(\003\022\024\n\014message_t" +
-      "ype\030\003 \002(\t\"Z\n\007Command\022\024\n\014message_type\030\001 \002" +
-      "(\t\022\017\n\007command\030\002 \002(\t\022\014\n\004arg1\030\003 \001(\t\022\014\n\004arg" +
-      "2\030\004 \001(\t\022\014\n\004arg3\030\005 \001(\t\"r\n\013DeleteEntry\022\r\n\005" +
-      "index\030\001 \002(\t\022\r\n\005field\030\002 \002(\t\022\014\n\004term\030\003 \002(\t" +
-      "\022\016\n\006doc_id\030\004 \002(\t\022\021\n\tpartition\030\005 \002(\t\022\024\n\014m" +
-      "essage_type\030\006 \002(\t\".\n\016StreamResponse\022\r\n\005v" +
-      "alue\030\001 \002(\t\022\r\n\005props\030\002 \002(\014\"+\n\014InfoRespons",
-      "e\022\014\n\004term\030\001 \002(\t\022\r\n\005count\030\002 \002(\003\"i\n\024Catalo" +
-      "gQueryResponse\022\021\n\tpartition\030\001 \002(\t\022\r\n\005ind" +
-      "ex\030\002 \002(\t\022\r\n\005field\030\003 \002(\t\022\014\n\004term\030\004 \002(\t\022\022\n" +
-      "\njson_props\030\005 \002(\t\"#\n\017CommandResponse\022\020\n\010" +
-      "response\030\001 \002(\tB\033\n\017raptor.protobufB\010Messa" +
-      "ges"
+      "ype\030\003 \002(\t\"6\n\013MultiStream\022\021\n\tterm_list\030\001 " +
+      "\002(\t\022\024\n\014message_type\030\002 \002(\t\"Z\n\007Command\022\024\n\014" +
+      "message_type\030\001 \002(\t\022\017\n\007command\030\002 \002(\t\022\014\n\004a" +
+      "rg1\030\003 \001(\t\022\014\n\004arg2\030\004 \001(\t\022\014\n\004arg3\030\005 \001(\t\"r\n" +
+      "\013DeleteEntry\022\r\n\005index\030\001 \002(\t\022\r\n\005field\030\002 \002" +
+      "(\t\022\014\n\004term\030\003 \002(\t\022\016\n\006doc_id\030\004 \002(\t\022\021\n\tpart" +
+      "ition\030\005 \002(\t\022\024\n\014message_type\030\006 \002(\t\".\n\016Str",
+      "eamResponse\022\r\n\005value\030\001 \002(\t\022\r\n\005props\030\002 \002(" +
+      "\014\"+\n\014InfoResponse\022\014\n\004term\030\001 \002(\t\022\r\n\005count" +
+      "\030\002 \002(\003\"i\n\024CatalogQueryResponse\022\021\n\tpartit" +
+      "ion\030\001 \002(\t\022\r\n\005index\030\002 \002(\t\022\r\n\005field\030\003 \002(\t\022" +
+      "\014\n\004term\030\004 \002(\t\022\022\n\njson_props\030\005 \002(\t\"#\n\017Com" +
+      "mandResponse\022\020\n\010response\030\001 \002(\tB\033\n\017raptor" +
+      ".protobufB\010Messages"
     };
     com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner assigner =
       new com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner() {
@@ -4851,8 +5188,16 @@ public final class Messages {
               new java.lang.String[] { "SearchQuery", "MaxResults", "MessageType", },
               raptor.protobuf.Messages.CatalogQuery.class,
               raptor.protobuf.Messages.CatalogQuery.Builder.class);
-          internal_static_Command_descriptor =
+          internal_static_MultiStream_descriptor =
             getDescriptor().getMessageTypes().get(5);
+          internal_static_MultiStream_fieldAccessorTable = new
+            com.google.protobuf.GeneratedMessage.FieldAccessorTable(
+              internal_static_MultiStream_descriptor,
+              new java.lang.String[] { "TermList", "MessageType", },
+              raptor.protobuf.Messages.MultiStream.class,
+              raptor.protobuf.Messages.MultiStream.Builder.class);
+          internal_static_Command_descriptor =
+            getDescriptor().getMessageTypes().get(6);
           internal_static_Command_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_Command_descriptor,
@@ -4860,7 +5205,7 @@ public final class Messages {
               raptor.protobuf.Messages.Command.class,
               raptor.protobuf.Messages.Command.Builder.class);
           internal_static_DeleteEntry_descriptor =
-            getDescriptor().getMessageTypes().get(6);
+            getDescriptor().getMessageTypes().get(7);
           internal_static_DeleteEntry_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_DeleteEntry_descriptor,
@@ -4868,7 +5213,7 @@ public final class Messages {
               raptor.protobuf.Messages.DeleteEntry.class,
               raptor.protobuf.Messages.DeleteEntry.Builder.class);
           internal_static_StreamResponse_descriptor =
-            getDescriptor().getMessageTypes().get(7);
+            getDescriptor().getMessageTypes().get(8);
           internal_static_StreamResponse_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_StreamResponse_descriptor,
@@ -4876,7 +5221,7 @@ public final class Messages {
               raptor.protobuf.Messages.StreamResponse.class,
               raptor.protobuf.Messages.StreamResponse.Builder.class);
           internal_static_InfoResponse_descriptor =
-            getDescriptor().getMessageTypes().get(8);
+            getDescriptor().getMessageTypes().get(9);
           internal_static_InfoResponse_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_InfoResponse_descriptor,
@@ -4884,7 +5229,7 @@ public final class Messages {
               raptor.protobuf.Messages.InfoResponse.class,
               raptor.protobuf.Messages.InfoResponse.Builder.class);
           internal_static_CatalogQueryResponse_descriptor =
-            getDescriptor().getMessageTypes().get(9);
+            getDescriptor().getMessageTypes().get(10);
           internal_static_CatalogQueryResponse_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_CatalogQueryResponse_descriptor,
@@ -4892,7 +5237,7 @@ public final class Messages {
               raptor.protobuf.Messages.CatalogQueryResponse.class,
               raptor.protobuf.Messages.CatalogQueryResponse.Builder.class);
           internal_static_CommandResponse_descriptor =
-            getDescriptor().getMessageTypes().get(10);
+            getDescriptor().getMessageTypes().get(11);
           internal_static_CommandResponse_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_CommandResponse_descriptor,

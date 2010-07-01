@@ -25,6 +25,7 @@
              riak_search_op_exclusive_range,
              riak_search_op_proximity,
              riak_search_op_node,
+             riak_search_op_multi_term,
              riak_search_phase,
              riak_search_raptor_backend,
              riak_search_schema,
@@ -35,7 +36,6 @@
              riak_search_vnode,
              riak_search_vnode_sup,
              merge_index_backend,
-             raptor_index_backend,
              riak_search_basic_qc,
              riak_search_operators_qc,
              riak_search_op_mockterm
@@ -46,6 +46,8 @@
                   stdlib,
                   riak_core,
                   riak_kv,
+                  riak_search_core,
+                  qilr,
                   raptor
                  ]},
   {mod, { riak_search_app, []}},

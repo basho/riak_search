@@ -45,5 +45,6 @@
 
 -record(riak_search_field, {name,
                             type,
-                            required,
-                            facet}).
+                            required=false,
+                            dynamic=false,
+                            facet=false}).

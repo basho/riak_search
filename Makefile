@@ -30,6 +30,10 @@ rel: deps
 	make -C apps/raptor/java_src
 	./rebar compile generate
 
+rellink:
+	$(foreach app,$(wildcard apps/*), rm -rf rel/riak/lib/$(shell basename $(app))* && ln -sf $(abspath $(app)) rel/riak/lib;)
+	$(foreach dep,$(wildcard deps/*), rm -rf rel/riak/lib/$(shell basename $(dep))* && ln -sf $(abspath $(dep)) rel/riak/lib;)
+
 relclean:
 	rm -rf rel/riak
 

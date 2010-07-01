@@ -22,8 +22,8 @@
 -author("John Muellerleile <johnm@basho.com>").
 -behavior(riak_search_backend).
 
--export([start/2,stop/1,index/6,delete_entry/5,stream/6,info/5,info_range/7,catalog_query/3,
-        fold/3,is_empty/1,drop/1]).
+-export([start/2,stop/1,index/6,delete_entry/5,stream/6,multi_stream/4,
+         info/5,info_range/7,catalog_query/3,fold/3,is_empty/1,drop/1]).
 -export([toggle_raptor_debug/0, shutdown_raptor/0]).
 -export([sync/0, poke/1, raptor_status/0]).
 -ifdef(TEST).
@@ -31,6 +31,7 @@
 -export([test_fold/0, test_is_empty/0, test_drop/0]).
 -endif.
 
+-include_lib("raptor/include/raptor.hrl").
 -include("riak_search.hrl").
 
 % @type state() = term().
@@ -57,7 +58,7 @@ stop(_State) ->
 
 index(Index, Field, Term, Value, Props, State) ->
     Partition = to_binary(State#state.partition),
-    {ok, Conn} = raptor_conn_pool:checkout(),
+    {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
     try
         raptor_conn:index(Conn,
                           to_binary(Index),
@@ -73,7 +74,7 @@ index(Index, Field, Term, Value, Props, State) ->
 
 delete_entry(Index, Field, Term, DocId, State) ->
     Partition = to_binary(State#state.partition),
-    {ok, Conn} = raptor_conn_pool:checkout(),
+    {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
     try
         raptor_conn:delete_entry(Conn,
                                  to_binary(Index),
@@ -82,13 +83,13 @@ delete_entry(Index, Field, Term, DocId, State) ->
                                  to_binary(DocId),
                                  Partition)
     after
-        raptor_conn_pool:checkin(Conn)
+        riak_sock_pool:checkin(?CONN_POOL, Conn)
     end,
     noreply.
 
 info(Index, Field, Term, Sender, State) ->
     Partition = to_binary(State#state.partition),
-    {ok, Conn} = raptor_conn_pool:checkout(),
+    {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
     spawn_link(fun() ->
                        try
                            {ok, StreamRef} = raptor_conn:info(
@@ -99,14 +100,14 @@ info(Index, Field, Term, Sender, State) ->
                                                Partition),
                            receive_info_results(StreamRef, Sender)
                        after
-                           raptor_conn_pool:checkin(Conn)
+                           riak_sock_pool:checkin(?CONN_POOL, Conn)
                        end
     end),
     noreply.
 
 info_range(Index, Field, StartTerm, EndTerm, _Size, Sender, State) ->
     Partition = to_binary(State#state.partition),
-    {ok, Conn} = raptor_conn_pool:checkout(),
+    {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
     spawn_link(fun() ->
                        try
                            {ok, StreamRef} = raptor_conn:info_range(
@@ -118,31 +119,51 @@ info_range(Index, Field, StartTerm, EndTerm, _Size, Sender, State) ->
                                                Partition),
                            receive_info_range_results(StreamRef, Sender)
                        after
-                           raptor_conn_pool:checkin(Conn)
+                           riak_sock_pool:checkin(?CONN_POOL, Conn)
                        end
     end),
     noreply.
 
 stream(Index, Field, Term, FilterFun, Sender, State) ->
     Partition = to_binary(State#state.partition),
-    {ok, Conn} = raptor_conn_pool:checkout(),
+    {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
     spawn_link(fun() ->
-                                    try
-                                       {ok, StreamRef} = raptor_conn:stream(
-                                                           Conn,
-                                                           to_binary(Index),
-                                                           to_binary(Field),
-                                                           to_binary(Term),
-                                                           Partition),
-                                       receive_stream_results(StreamRef, Sender, FilterFun)
-                                   after
-                                       raptor_conn_pool:checkin(Conn)
-                                   end
+                       try
+                           {ok, StreamRef} = raptor_conn:stream(
+                                               Conn,
+                                               to_binary(Index),
+                                               to_binary(Field),
+                                               to_binary(Term),
+                                               Partition),
+                           receive_stream_results(StreamRef, Sender, FilterFun)
+                       after
+                           riak_sock_pool:checkin(?CONN_POOL, Conn)
+                       end
+               end),
+    noreply.
+
+multi_stream(IFTList, FilterFun, Sender, _State) ->
+    {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
+
+    %% Encode ~ delimited index/field/term list delimited by ` chars
+    Terms1 = lists:map(fun({term, {I, F, T}}) ->
+                               string:join([I, F, T], "~")
+                       end, IFTList),
+    TermArg = string:join(Terms1, "`"),
+    spawn_link(fun() ->
+                       try
+                           {ok, StreamRef} = raptor_conn:multi_stream(
+                                               Conn,
+                                               list_to_binary(TermArg)),
+                           receive_stream_results(StreamRef, Sender, FilterFun)
+                       after
+                           riak_sock_pool:checkin(?CONN_POOL, Conn)
+                       end
                end),
     noreply.
 
 catalog_query(CatalogQuery, Sender, _State) ->
-    {ok, Conn} = raptor_conn_pool:checkout(),
+    {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
     spawn_link(fun() ->
                        try
                            {ok, StreamRef} = raptor_conn:catalog_query(
@@ -150,7 +171,7 @@ catalog_query(CatalogQuery, Sender, _State) ->
                                                CatalogQuery),
                            receive_catalog_query_results(StreamRef, Sender)
                        after
-                           raptor_conn_pool:checkin(Conn)
+                           riak_sock_pool:checkin(?CONN_POOL, Conn)
                        end
                end),
     noreply.
@@ -163,7 +184,7 @@ fold(Folder, Acc, State) ->
     sync(),
     %% io:format("fold/sync complete.~n"),
     Partition = integer_to_list(State#state.partition),
-    {ok, Conn} = raptor_conn_pool:checkout(),
+    {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
     Me = self(),
     FoldCatRef = {fold_catalog, erlang:make_ref()},
     CatalogResultsPid = spawn_link(fun() ->
@@ -177,7 +198,7 @@ fold(Folder, Acc, State) ->
                            Sender = {raw, FoldCatRef, CatalogResultsPid},
                            receive_catalog_query_results(StreamRef, Sender)
                        after
-                           raptor_conn_pool:checkin(Conn)
+                           riak_sock_pool:checkin(?CONN_POOL, Conn)
                        end end),
     receive_fold_results(Acc, 0),
     {reply, Acc, State}.
@@ -196,7 +217,7 @@ drop(State) ->
 %% ====================================================================
 
 raptor_command(Command, Arg1, Arg2, Arg3) ->
-    {ok, Conn} = raptor_conn_pool:checkout(),
+    {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
     try
         {ok, _StreamRef} = raptor_conn:command(Conn, Command, Arg1, Arg2, Arg3),
         receive
@@ -204,7 +225,7 @@ raptor_command(Command, Arg1, Arg2, Arg3) ->
                 Response
         end
     after
-        raptor_conn_pool:checkin(Conn)
+        riak_sock_pool:checkin(?CONN_POOL, Conn)
     end.
 
 receive_stream_results(StreamRef, Sender, FilterFun) ->
@@ -348,7 +369,7 @@ fold_catalog_process(CatRef,
                     spawn_link(fun() ->
                         %% io:format("fold_catalog_process: catalog_query_response: ~p: ~p.~p.~p (~p)~n",
                         %%     [Partition, Index, Field, Term, JSONProps]),
-                        {ok, Conn} = raptor_conn_pool:checkout(),
+                        {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
                         try
                           {ok, StreamRef} = raptor_conn:stream(
                               Conn,
@@ -359,7 +380,7 @@ fold_catalog_process(CatRef,
                           fold_stream_process(Me, FoldResultPid, StreamRef, Fun0, Acc, 
                                               Index, Field, Term)
                         after 
-                            raptor_conn_pool:checkin(Conn)
+                            riak_sock_pool:checkin(?CONN_POOL, Conn)
                         end end),
                     fold_catalog_process(CatRef, FoldResultPid, Fun0, Acc, CatalogDone,
                                          StreamProcessCount+1, FinishedStreamProcessCount, false)

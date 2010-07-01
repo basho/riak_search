@@ -10,7 +10,9 @@
              riak_solr_xml_xform,
              riak_solr_search_client,
              solr_search,
-             riak_solr_qc
+             riak_solr_qc,
+             riak_solr_sort,
+             solr_search
             ]},
   {registered, []},
   {applications, [

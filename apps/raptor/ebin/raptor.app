@@ -11,5 +11,5 @@
                   raptor_util,
                   raptor_app]},
   {registered,   [raptor_conn_sup]},
-  {applications, [kernel, stdlib, sasl]},
+  {applications, [kernel, stdlib, sasl, riak_search_core]},
   {mod, {raptor_app, []}}]}.

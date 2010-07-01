@@ -2,6 +2,7 @@
 -export([client_connect/1,
          local_client/0,
          stream/4,
+         multi_stream/2,
          info/3,
          info_range/5,
          term/2]).
@@ -25,6 +26,17 @@ stream(Index, Field, Term, FilterFun) ->
     [FirstEntry|_] = riak_core_apl:get_apl(Partition, N),
     Preflist = [FirstEntry],
     riak_search_vnode:stream(Preflist, Index, Field, Term, FilterFun, self()).
+
+multi_stream(IFTList, FilterFun) ->
+    %% TODO: Establish the correct preference list for this operation
+    %% If the I/F/T is chosen at random and there are multiple nodes
+    %% in the system it is likely that not all terms will be located.
+    %% For now, emulate something similar to what the k/v encapsulated
+    %% version did.
+    {term, {Index, Field, Term}} = hd(IFTList),
+    {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
+    Preflist = riak_core_apl:get_apl(Partition, N),
+    riak_search_vnode:multi_stream(hd(Preflist), IFTList, FilterFun, self()).
 
 info(Index, Field, Term) ->
     {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),

@@ -71,21 +71,21 @@ index_dir(IndexOrSchema, Directory) ->
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
     Index = Schema:name(),
     Field = Schema:default_field(),
-    {ok, AnalyzerPid} = qilr_analyzer_sup:new_analyzer(),
+    {ok, AnalyzerPid} = qilr:new_analyzer(),
     F = fun(BaseName, Body) ->
-        Fields = [{Field, binary_to_list(Body)}],
-        IdxDoc = riak_indexed_doc:new(BaseName, Index),
-        IdxDoc2 = riak_indexed_doc:set_fields(Fields, IdxDoc),
-        Terms = Client:parse_idx_doc(IdxDoc2),
-        [begin
-            {Index, Field, Term, Value, Props} = X,
-            Client:index_term(Index, Field, Term, Value, Props)
-        end || X <- Terms],
-        Client:store_idx_doc(IdxDoc2)
-    end,
+                Fields = [{Field, binary_to_list(Body)}],
+                IdxDoc = riak_indexed_doc:new(BaseName, Index),
+                IdxDoc2 = riak_indexed_doc:set_fields(Fields, IdxDoc),
+                Terms = Client:parse_idx_doc(IdxDoc2),
+                [begin
+                     {Index, Field, Term, Value, Props} = X,
+                     Client:index_term(Index, Field, Term, Value, Props)
+                 end || X <- Terms],
+                Client:store_idx_doc(IdxDoc2)
+        end,
     try
         riak_search_utils:index_recursive(F, Directory)
     after
-        qilr_analyzer:close(AnalyzerPid)
+        qilr:close_analyzer(AnalyzerPid)
     end,
     ok.

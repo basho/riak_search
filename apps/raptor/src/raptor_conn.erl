@@ -12,6 +12,7 @@
          index/7,
          delete_entry/6,
          stream/5,
+         multi_stream/2,
          info/5,
          command/5,
          info_range/6,
@@ -54,6 +55,15 @@ stream(ConnPid, IndexName, FieldName, Term, Partition) ->
                         message_type=MessageType},
     Ref = erlang:make_ref(),
     gen_server:call(ConnPid, {stream, self(), Ref, StreamRec}, ?TIMEOUT).
+
+multi_stream(ConnPid, TermArg) ->
+    %io:format("raptor_conn: multi_stream: ConnPid = ~p, TermArg = ~p~n",
+    %    [ConnPid, TermArg]),
+    MessageType = <<"MultiStream">>,
+    MultiStreamRec = #multistream{term_list=TermArg,
+                                  message_type=MessageType},
+    Ref = erlang:make_ref(),
+    gen_server:call(ConnPid, {multistream, self(), Ref, MultiStreamRec}, ?TIMEOUT).
 
 info(ConnPid, IndexName, FieldName, Term, Partition) ->
     MessageType = <<"Info">>,
@@ -136,6 +146,12 @@ handle_call({stream, Caller, ReqId, StreamRec}, _From, #state{sock=Sock}=State) 
     inet:setopts(Sock, [{active, once}]),
     {reply, {ok, ReqId}, State#state{req_type=stream, reqid=ReqId, dest=Caller}, ?RECV_TIMEOUT};
 
+handle_call({multistream, Caller, ReqId, MultiStreamRec}, _From, #state{sock=Sock}=State) ->
+    Data = raptor_pb:encode_multistream(MultiStreamRec),
+    gen_tcp:send(Sock, Data),
+    inet:setopts(Sock, [{active, once}]),
+    {reply, {ok, ReqId}, State#state{req_type=multistream, reqid=ReqId, dest=Caller}};
+
 handle_call({info, Caller, ReqId, InfoRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_info(InfoRec),
     gen_tcp:send(Sock, Data),
@@ -172,6 +188,24 @@ handle_info(timeout, #state{req_type=ReqType, reqid=ReqId, dest=Dest}=State) ->
     {noreply, State#state{req_type=undefined, reqid=undefined, dest=undefined}};
 
 handle_info({tcp, Sock, Data}, #state{req_type=stream, reqid=ReqId, dest=Dest}=State) ->
+    StreamResponse = raptor_pb:decode_streamresponse(Data),
+    Dest ! {stream, ReqId, StreamResponse#streamresponse.value, StreamResponse#streamresponse.props},
+    NewState = if
+                   StreamResponse#streamresponse.value =:= "$end_of_table" ->
+                       State#state{req_type=undefined,
+                                   reqid=undefined,
+                                   dest=undefined};
+                   true ->
+                       inet:setopts(Sock, [{active, once}]),
+                       State
+               end,
+    {noreply, NewState};
+
+%%
+%% for now, multistream returns protobuf messages exactly the same as stream
+%%  (i.e., StreamResponse messages)
+%%
+handle_info({tcp, Sock, Data}, #state{req_type=multistream, reqid=ReqId, dest=Dest}=State) ->
     StreamResponse = raptor_pb:decode_streamresponse(Data),
     Dest ! {stream, ReqId, StreamResponse#streamresponse.value, StreamResponse#streamresponse.props},
     NewState = if

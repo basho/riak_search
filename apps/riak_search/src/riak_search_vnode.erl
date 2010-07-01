@@ -2,6 +2,7 @@
 -export([index/6,
          delete_term/5,
          stream/6,
+         multi_stream/4,
          info/5,
          info_range/7,
          catalog_query/3]).
@@ -17,6 +18,7 @@
 -record(info_v1, {index, field, term}).
 -record(info_range_v1, {index, field, start_term, end_term, size}).
 -record(stream_v1, {index, field, term, filter_fun}).
+-record(multi_stream_v1, {ift_list, filter_fun}).
 -record(catalog_query_v1, {index, catalog_query}).
 
 index(Preflist, Index, Field, Term, Value, Props) ->
@@ -47,7 +49,16 @@ stream(Preflist, Index, Field, Term, FilterFun, ReplyTo) ->
       term = Term,
       filter_fun = FilterFun
      },
-    Ref = {info_response, make_ref()},
+    Ref = {stream_response, make_ref()},
+    command(Preflist, Req, {raw, Ref, ReplyTo}),
+    {ok, Ref}.
+
+multi_stream(Preflist, IFTList, FilterFun, ReplyTo) ->
+    Req = #multi_stream_v1{
+      ift_list = IFTList,
+      filter_fun = FilterFun
+     },
+    Ref = {multi_stream_response, make_ref()},
     command(Preflist, Req, {raw, Ref, ReplyTo}),
     {ok, Ref}.
 
@@ -164,6 +175,11 @@ handle_command(#stream_v1{index = Index,
                           filter_fun = FilterFun},
                Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
     bmod_response(BMod:stream(Index, Field, Term, FilterFun, Sender, BState), VState);
+
+handle_command(#multi_stream_v1{ift_list = IFTList,
+                                filter_fun = FilterFun},
+               Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
+    bmod_response(BMod:multi_stream(IFTList, FilterFun, Sender, BState), VState);
 
 handle_command(#catalog_query_v1{catalog_query = CatalogQuery},
                Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
