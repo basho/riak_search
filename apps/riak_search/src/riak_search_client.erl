@@ -219,7 +219,9 @@ stream_search(IndexOrSchema, OpList) ->
     OpList1 = riak_search_preplan:preplan(OpList, DefaultIndex, DefaultField, Facets),
 
     %% Query optimization pass
+    %%io:format("OpList1 = ~p~n", [OpList1]),
     OpList2 = optimize_query(OpList1),
+    %%io:format("OpList2 = ~p~n", [OpList2]),
 
     %% Get the total number of terms and weight in query...
     {NumTerms, NumDocs, QueryNorm} = get_scoring_info(OpList1),
@@ -427,7 +429,8 @@ graph_as_query(G, Node, Acc) ->
             case is_atom(Node) of
                 true -> io:format("graph_as_query: unknown atom: ~p~n", [Node]),
                         Out = [];
-                _ -> Out = Out0
+                _ -> 
+                    Out = Out0
             end
     end,
     case length(Out) of
@@ -441,31 +444,23 @@ graph_as_query(G, Node, Acc) ->
                 _ ->
                     case is_list(Node) of
                         true -> graph_as_query(G, hd(Node), Acc);
-                        _ ->
-                            io:format("graph_as_query: 0/Node = ~p~n", [Node]),
-                            []
+                        _ -> []
                     end
             end;
         _ ->
-            %io:format("~p: n/Out = ~p~n", [Node, Out]),
-
             case Node of
                 {lnot, _N} ->
-                    %%io:format("lor: ~p: ~p~n", [Node, Out]),
                     Terms = lists:reverse(lists:map(fun(OutNode) ->
                         graph_as_query(G, OutNode, Acc)
                     end, Out)),
                     {lnot, Terms};
                 {land, _N} ->
-                    %%io:format("lor: ~p: ~p~n", [Node, Out]),
                     Terms = lists:reverse(lists:map(fun(OutNode) ->
                         graph_as_query(G, OutNode, Acc)
                     end, Out)),
                     {node, {land, Terms}, node()}; %% todo: real node?
                 {lor, _N} ->
-                    %%io:format("lor: ~p: ~p~n", [Node, Out]),
                     Terms = lists:reverse(lists:map(fun(OutNode) ->
-                        %io:format("lor: outnode = ~p~n", [OutNode]),
                         graph_as_query(G, OutNode, Acc)
                     end, Out)),
                     {node, {lor, Terms}, node()}; %% todo: real node?
@@ -495,7 +490,7 @@ graph_as_query(G, Node, Acc) ->
                         end
                     end, [], Out);
                 _ ->
-                    io:format("X? ~p: ~p~n", [Node, Out]),
+                    io:format("graph_as_query: unknown_node_type: ~p: ~p~n", [Node, Out]),
                     {unknown_node_type, Node}
             end
     end.
@@ -593,25 +588,37 @@ query_as_graph(OpList, Parent, C0, G) ->
                         C+1;
                     {node, {lor, N}, _Node} ->
                         %%io:format("[~p] lor: ~p~n", [Node, N]),
-                        V = {lor, C},
-                        digraph:add_vertex(G, V, "or"),
-                        digraph:add_edge(G, Parent, V, "has-or"),
-                        digraph:add_edge(G, or_ops, V, "has-member"),
-                        query_as_graph(N, V, C+1, G)+1;
+                        case N of
+                            [] -> C;
+                            _ ->
+                                V = {lor, C},
+                                digraph:add_vertex(G, V, "or"),
+                                digraph:add_edge(G, Parent, V, "has-or"),
+                                digraph:add_edge(G, or_ops, V, "has-member"),
+                                query_as_graph(N, V, C+1, G)+1
+                        end;
                     {node, {land, N}, _Node} ->
                         %%io:format("[~p] land: ~p~n", [Node, N]),
-                        V = {land, C},
-                        digraph:add_vertex(G, V, "and"),
-                        digraph:add_edge(G, Parent, V, "has-and"),
-                        digraph:add_edge(G, and_ops, V, "has-member"),
-                        query_as_graph(N, V, C+1, G)+1;
+                        case N of
+                            [] -> C;
+                            _ ->
+                                V = {land, C},
+                                digraph:add_vertex(G, V, "and"),
+                                digraph:add_edge(G, Parent, V, "has-and"),
+                                digraph:add_edge(G, and_ops, V, "has-member"),
+                                query_as_graph(N, V, C+1, G)+1
+                        end;
                     {lnot, N} ->
                         %%io:format("lnot: ~p~n", [N]),
-                        V = {lnot, C},
-                        digraph:add_vertex(G, V, "not"),
-                        digraph:add_edge(G, Parent, V, "has-not"),
-                        digraph:add_edge(G, not_ops, V, "has-member"),
-                        query_as_graph(N, V, C+1, G)+1;
+                        case N of
+                            [] -> C;
+                            _ ->
+                                V = {lnot, C},
+                                digraph:add_vertex(G, V, "not"),
+                                digraph:add_edge(G, Parent, V, "has-not"),
+                                digraph:add_edge(G, not_ops, V, "has-member"),
+                                query_as_graph(N, V, C+1, G)+1
+                        end;
                     {term, IFT, Props} ->
                         %%io:format("term, IFT = ~p, Props = ~p~n",
                         %%    [IFT, Props]),
