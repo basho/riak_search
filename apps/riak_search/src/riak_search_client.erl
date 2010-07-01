@@ -629,6 +629,9 @@ query_as_graph(OpList, Parent, C0, G) ->
                     {facets, _Facets} ->
                         %% ignore facets at this level (already accounted for)
                         C;
+                    {fuzzy, _StrDistance} ->
+                        %% ignore fuzzy prop (already accounted for)
+                        C;
                     {node_weight, N, _NodeCount} ->
                         %%io:format("~p: ~p (~p)~n", [Parent, N, NodeCount]),
                         V = {node, N},
