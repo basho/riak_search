@@ -124,12 +124,14 @@ handle_command(State, {stream, Index, Field, Term, OutputPid, OutputRef, DestPar
         end end),
     ok;
 
-handle_command(State, {multi_stream, Terms, OutputPid, OutputRef, Partition, Node, FilterFun}) ->
-    case Partition == State#state.partition andalso Node == node() of
+handle_command(_State, {multi_stream, Terms, OutputPid, OutputRef, _Partition, Node, FilterFun, _TermProps}) ->
+    %%case Partition == State#state.partition andalso Node == node() of
+    case Node == node() of
         true ->
-            %io:format("raptor_index_backend: multi_stream: ~p~n~n~p ~p ~p ~p ~p~n",
-            %    [Terms, OutputPid, OutputRef, Partition, Node, FilterFun]),
-            Terms1 = lists:map(fun({term, {I, F, T}}) ->
+            %io:format("raptor_index_backend: multi_stream: ~p~n~n~p ~p ~p ~p ~p~nTermProps = ~p~n",
+            %    [Terms, OutputPid, OutputRef, _Partition, Node, FilterFun, TermProps]),
+            Terms1 = lists:map(fun({term, {I, F, T}, _Props}) ->
+                %_Facets = proplists:get_value(facets, _Props, {facets, []}),
                 string:join([I, F, T], "~")
             end, Terms),
             TermArg = string:join(Terms1, "`"),
@@ -247,7 +249,7 @@ receive_stream_results(StreamRef, OutputPid, OutputRef, FilterFun, Acc0) ->
                 true ->
                     Acc2 = Acc ++ [{Value, Props2}];
                     %OutputPid ! {result, {Value, Props2}, OutputRef};
-                _ ->
+                _V ->
                     Acc2 = Acc,
                     skip
             end,

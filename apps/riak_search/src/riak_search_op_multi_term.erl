@@ -14,30 +14,32 @@ chain_op(Op, OutputPid, OutputRef, QueryProps) ->
     {ok, 1}.
 
 start_loop(Op, OutputPid, OutputRef, _QueryProps) ->
-
     %%%% TODO: SCORING
+    %%%%  ^update: punt, map dependencies?
     ScoringVars = #scoring_vars {
         term_boost = 1,
         doc_frequency = 1,
         num_docs = 1
     },
 
-    %%%% TODO: facet filtering
-    %% Create filter function...
-    %%%Facets = proplists:get_all_values(facets, Op#term.options),
-    Facets = [], %% todo: temporary stand-in
+    %% first element in term list holds facets
+    {multi_term, EL, _OpN} = Op,
+    {term, _IFT, T1_Props} = hd(EL),
+    Facets = proplists:get_all_values(facets, T1_Props),
+
+    %% create FilterFun    
     Fun = fun(_Value, Props) ->
         riak_search_facets:passes_facets(Props, Facets)
     end,
-
+    
     %io:format("riak_search_op_multi_term: start_loop(~p, ~p, ~p, ~p)~n",
     %    [Op, OutputPid, OutputRef, QueryProps]),
 
     %%
     %% riak_search_op_multi_term: start_loop(
     %% Op:                     {multi_term,
-    %%                          [{term,{"search","payload","garbage"}},
-    %%                          {term,{"search","payload","truck"}}], 'dev1@127.0.0.1'},
+    %%                          [{term,{"search","payload","garbage"}, Props},
+    %%                          {term,{"search","payload","truck"}, Props}], 'dev1@127.0.0.1'},
     %% OutputPid:              <0.299.0>,
     %% OutputRef:              #Ref<0.0.0.781>,
     %% QueryProps:             [{num_docs, 231}])

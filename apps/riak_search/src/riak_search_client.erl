@@ -215,16 +215,15 @@ stream_search(IndexOrSchema, OpList) ->
     DefaultIndex = Schema:name(),
     DefaultField = Schema:default_field(),
     Facets = [{DefaultIndex, Schema:field_name(X)} || X <- Schema:facets()],
-
     %% Normalize, Optimize, and Expand Buckets.
     OpList1 = riak_search_preplan:preplan(OpList, DefaultIndex, DefaultField, Facets),
 
     %% Query optimization pass
-    %OpList2 = optimize_query(OpList1),
+    OpList2 = optimize_query(OpList1),
 
     %% Get the total number of terms and weight in query...
     {NumTerms, NumDocs, QueryNorm} = get_scoring_info(OpList1),
-
+    
     %% Set up the operators. They automatically start when created...
     Ref = make_ref(),
     QueryProps = [{num_docs, NumDocs},
@@ -232,7 +231,7 @@ stream_search(IndexOrSchema, OpList) ->
                   {index_name, IndexOrSchema}],
 
     %% Start the query process ...
-    {ok, NumInputs} = riak_search_op:chain_op(OpList1, self(), Ref, QueryProps),
+    {ok, NumInputs} = riak_search_op:chain_op(OpList2, self(), Ref, QueryProps),
     #riak_search_ref {
         id=Ref, termcount=NumTerms,
         inputcount=NumInputs, querynorm=QueryNorm }.
@@ -470,13 +469,23 @@ graph_as_query(G, Node, Acc) ->
                         graph_as_query(G, OutNode, Acc)
                     end, Out)),
                     {node, {lor, Terms}, node()}; %% todo: real node?
-                {term, {I, F, T}} ->
+                {term, {I, F, T}, Props} ->
                     % todo: fix counts (until then, everyone has a 1 count)
-                    % todo: fix faceting
-                    NodeWeights = lists:reverse(lists:usort(lists:map(fun({node, N1}) ->
-                        {node_weight, N1, 1}
-                    end, Out))),
-                    R = {term, {I, F, T}, [{facets, []}] ++ NodeWeights},
+                    %  ^update: remove all count dependencies (and ultimately, the call
+                    %           to get them, and maybe the metadata itself from the store)
+                    % io:format("term, IFT, Out = ~p~n", [Out]),
+                    NodeWeights = 
+                        lists:reverse(
+                            lists:usort(
+                                lists:map(
+                                    fun({node, N1}) ->
+                                            {node_weight, N1, 1}
+                                    end, 
+                                Out)
+                            )
+                        ),
+                    R = {term, {I, F, T}, 
+                         proplists:delete(node_weight, Props) ++ NodeWeights},
                     R;
                 root ->
                     lists:foldl(fun(N, RAcc) ->
@@ -508,6 +517,8 @@ optimize_junction(G, OrNode) ->
         end
     end, lists:map(fun(T0) ->
             case T0 of
+                {term, _, _} ->
+                    T0;
                 {term, _} ->
                     T0;
                 _ -> []
@@ -604,11 +615,12 @@ query_as_graph(OpList, Parent, C0, G) ->
                     {term, IFT, Props} ->
                         %%io:format("term, IFT = ~p, Props = ~p~n",
                         %%    [IFT, Props]),
-                        V = {term, IFT},
+                        V = {term, IFT, Props},
                         digraph:add_vertex(G, V, "term"),
                         digraph:add_edge(G, Parent, V, "has-term"),
                         query_as_graph(Props, V, C+1, G)+1;
-                    {facets, _} -> %% ignore facets for now
+                    {facets, _Facets} ->
+                        %% ignore facets at this level (already accounted for)
                         C;
                     {node_weight, N, _NodeCount} ->
                         %%io:format("~p: ~p (~p)~n", [Parent, N, NodeCount]),

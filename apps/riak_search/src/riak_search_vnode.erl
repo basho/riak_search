@@ -54,7 +54,7 @@ multi_stream(IFTList, FilterFun, ReplyTo) ->
     %%  (since the backend operation will ask raptor for
     %%   many terms regardless of partition (and unique them),
     %%   we can ask for just one)
-    {term, {Index, Field, Term}} = hd(IFTList),
+    {term, {Index, Field, Term}, TermProps} = hd(IFTList),
     IndexBin = riak_search_utils:to_binary(Index),
     FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
     {ok, RiakClient} = riak:local_client(),
@@ -71,7 +71,7 @@ multi_stream(IFTList, FilterFun, ReplyTo) ->
     {ok, Partition, Node} = wait_for_ready(NVal, Ref, undefined, undefined),
 
     %% Run the operation...
-    Payload2 = {multi_stream, IFTList, ReplyTo, Ref, Partition, Node, FilterFun},
+    Payload2 = {multi_stream, IFTList, ReplyTo, Ref, Partition, Node, FilterFun, TermProps},
     Obj2 = riak_object:new(IndexBin, FieldTermBin, Payload2),
     RiakClient:put(Obj2, 0, 0),
     {ok, Ref}.
