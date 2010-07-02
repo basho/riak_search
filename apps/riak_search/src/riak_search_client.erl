@@ -137,8 +137,7 @@ analyze_field(AnalyzerPid, FieldName, FieldValue, Schema) ->
     {ok, [left_pad(Type, Token) || Token <- Tokens]}.
 
 get_idx_doc(DocIndex, DocID) ->
-    DocBucket = to_binary(from_binary(DocIndex) ++ "_docs"),
-    case RiakClient:get(DocBucket, to_binary(DocID), 1) of
+    case RiakClient:get(to_binary(DocIndex), to_binary(DocID)) of
         {error, notfound} ->
             {error, notfound};
         {ok, Obj} ->
@@ -148,10 +147,10 @@ get_idx_doc(DocIndex, DocID) ->
 store_idx_doc(IdxDoc) ->
     %% Store the document...
     #riak_idx_doc { id=DocID, index=DocIndex } = IdxDoc,
-    DocBucket = riak_search_utils:to_binary(DocIndex ++ "_docs"),
+    DocBucket = riak_search_utils:to_binary(DocIndex),
     DocKey = riak_search_utils:to_binary(DocID),
     DocObj = riak_object:new(DocBucket, DocKey, IdxDoc),
-    ok = RiakClient:put(DocObj, 1).
+    ok = RiakClient:put(DocObj).
 
 
 %% @private Given a list of tokens, build a gb_tree mapping words to a
@@ -227,7 +226,7 @@ stream_search(IndexOrSchema, OpList) ->
 
     %% Get the total number of terms and weight in query...
     {NumTerms, NumDocs, QueryNorm} = get_scoring_info(OpList1),
-    
+
     %% Set up the operators. They automatically start when created...
     Ref = make_ref(),
     QueryProps = [{num_docs, NumDocs},
@@ -431,7 +430,7 @@ graph_as_query(G, Node, Acc) ->
             case is_atom(Node) of
                 true -> io:format("graph_as_query: unknown atom: ~p~n", [Node]),
                         Out = [];
-                _ -> 
+                _ ->
                     Out = Out0
             end
     end,
@@ -471,17 +470,17 @@ graph_as_query(G, Node, Acc) ->
                     %  ^update: remove all count dependencies (and ultimately, the call
                     %           to get them, and maybe the metadata itself from the store)
                     % io:format("term, IFT, Out = ~p~n", [Out]),
-                    NodeWeights = 
+                    NodeWeights =
                         lists:reverse(
                             lists:usort(
                                 lists:map(
                                     fun({node, N1}) ->
                                             {node_weight, N1, 1}
-                                    end, 
+                                    end,
                                 Out)
                             )
                         ),
-                    R = {term, {I, F, T}, 
+                    R = {term, {I, F, T},
                          proplists:delete(node_weight, Props) ++ NodeWeights},
                     R;
                 root ->
