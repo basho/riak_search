@@ -69,32 +69,44 @@ term(Index, Term) ->
     ReplyTo = self(),
     FwdRef = make_ref(),
     spawn(fun() ->
-                  {ok, RecvRef} = do_catalog_query(Index, Query, self()),
-                  filter_unique_terms(dict:new(), ReplyTo, RecvRef, FwdRef)
+                  {ok, RecvRef, NumReqsSent} = do_catalog_query(Index, Query, self()),
+                  filter_unique_terms(NumReqsSent, dict:new(), ReplyTo, RecvRef, FwdRef)
           end),
     {ok, FwdRef}.
     
-do_catalog_query(Index, Query, ReplyTo) ->
-    {N, Partition} = riak_search_utils:calc_n_partition(Index, <<"unused">>),
-    Preflist = riak_core_apl:get_apl(Partition, N),
-    riak_search_vnode:catalog_query(Preflist, Query, ReplyTo).
+do_catalog_query(_Index, Query, ReplyTo) ->
+    %% Catalog queries are currently node-wide, so only need to send one
+    %% per node.  Reduce the preference list to just be one per node.
+    %% TODO: This will end up sending all traffic to the first vnode. Catalog
+    %% queries should probably be changed to be per-partition.
+    Preflist0 = riak_core_apl:active_owners(),
+    Nodes = lists:usort([N || {_P,N} <- Preflist0]),
+    Preflist = [begin {value,E} = lists:keysearch(N, 2, Preflist0), E end || 
+                   N <- Nodes],
+    {ok, RecvRef} = riak_search_vnode:catalog_query(Preflist, Query, ReplyTo),
+    {ok, RecvRef, length(Preflist)}.
     
    
 %% Receive the terms from the catalog process and forward on
-%% the first time 
-filter_unique_terms(Terms, ReplyTo, RecvRef, FwdRef) ->
+%% the first time a term is received
+filter_unique_terms(0, _Terms, ReplyTo, _RecvRef, FwdRef) ->
+    ReplyTo ! {term, done, FwdRef};
+filter_unique_terms(StreamsLeft, Terms, ReplyTo, RecvRef, FwdRef) ->
     receive
         {RecvRef, {_Partition, Index, Field, Term, _}} ->
             case dict:find(Term, Terms) of
                 error ->
                     ReplyTo ! {term, Index, Field, Term, FwdRef},
-                    filter_unique_terms(dict:store(Term, true, Terms),
+                    filter_unique_terms(StreamsLeft, 
+                                        dict:store(Term, true, Terms),
                                         ReplyTo, RecvRef, FwdRef);
                 _ ->
-                    filter_unique_terms(Terms, ReplyTo, RecvRef, FwdRef)
+                    filter_unique_terms(StreamsLeft, Terms, ReplyTo,
+                                        RecvRef, FwdRef)
             end;
         {RecvRef, done} ->
-            ReplyTo ! {term, done, FwdRef}
+            filter_unique_terms(StreamsLeft-1, Terms, ReplyTo, 
+                                RecvRef, FwdRef)
     after 750 ->
             ReplyTo ! {term, done, FwdRef}
     end.
