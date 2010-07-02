@@ -48,27 +48,29 @@ start_loop(Op, OutputPid, OutputRef, _QueryProps) ->
     %%
 
     {multi_term, Terms, _TNode} = Op,
-    {ok, Ref} = riak_search:multi_stream(Terms, Fun),
-    loop(ScoringVars, Ref, OutputPid, OutputRef).
+    {ok, Ref, ReqsSent} = riak_search:multi_stream(Terms, Fun),
+    loop(ReqsSent, ScoringVars, Ref, OutputPid, OutputRef).
 
-loop(ScoringVars, Ref, OutputPid, OutputRef) ->
+loop(0, _ScoringVars, _Ref, OutputPid, OutputRef) ->
+    OutputPid!{disconnect, OutputRef};
+loop(RepsLeft, ScoringVars, Ref, OutputPid, OutputRef) ->
     receive
         {Ref, done} ->
-            %io:format("riak_search_op_multi_term: $end_of_table: Ref = ~p~n", [Ref]),
-            OutputPid!{disconnect, OutputRef};
-
+            %%io:format("riak_search_op_multi_term: $end_of_table: Ref = ~p~n", [Ref]),
+            loop(RepsLeft-1, ScoringVars, Ref, OutputPid, OutputRef);
+        
         {Ref, {result_vec, ResultVec}} ->
             ResultVec2 = lists:map(fun({Key, Props}) ->
                 NewProps = calculate_score(ScoringVars, Props),
                 {Key, NewProps} end, ResultVec),
             OutputPid!{results, ResultVec2, OutputRef},
-            loop(ScoringVars, Ref, OutputPid, OutputRef);
+            loop(RepsLeft, ScoringVars, Ref, OutputPid, OutputRef)
 
-        %% TODO: Check if this is dead code
-        {result, {Key, Props}, Ref} ->
-            NewProps = calculate_score(ScoringVars, Props),
-            OutputPid!{results, [{Key, NewProps}], OutputRef},
-            loop(ScoringVars, Ref, OutputPid, OutputRef)
+        %% %% TODO: Check if this is dead code
+        %% {result, {Key, Props}, Ref} ->
+        %%     NewProps = calculate_score(ScoringVars, Props),
+        %%     OutputPid!{results, [{Key, NewProps}], OutputRef},
+        %%     loop(RepsLeft, ScoringVars, Ref, OutputPid, OutputRef)
     after
         ?STREAM_TIMEOUT ->
             throw(stream_timeout)

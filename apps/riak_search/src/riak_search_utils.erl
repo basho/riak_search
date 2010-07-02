@@ -13,7 +13,9 @@
     to_float/1,
     from_binary/1,
     index_recursive/2,
-    calc_n_partition/2, calc_n_partition/3
+    n_val/0,
+    calc_partition/3,
+    calc_n_partition/3
 ]).
 
 -include("riak_search.hrl").
@@ -206,19 +208,22 @@ index_recursive_file(Callback, File) ->
     end.
 
 %% @private
-%% Calculate N and a partition number for an index/field/term combination
-calc_n_partition(Index, Field, Term) ->
+%% N val for search replication - currently fixed size for all buckets
+n_val() ->
+    app_helper:get_env(riak_search, n_val, 2).
+
+%% @private
+%% Calculate the hash key for the index, field and term. NB. This is not
+%% the same as the partition index to send in preflists.
+calc_partition(Index, Field, Term) ->
     %% Work out which partition to use
+    IndexBin = riak_search_utils:to_binary(Index),
     FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-    calc_n_partition(Index, FieldTermBin).
+    riak_core_util:chash_key({IndexBin, FieldTermBin}).
 
 %% @private
 %% Calculate N and a partition number for an index/field/term combination
-calc_n_partition(Index, FieldTermBin) ->
-    %% Lookup N for the index
-    N = app_helper:get_env(riak_search, n_val, 2),
-
-    %% Work out which partition to use
-    IndexBin = riak_search_utils:to_binary(Index),
-    Partition = riak_core_util:chash_key({IndexBin, FieldTermBin}),
+calc_n_partition(Index, Field, Term) ->
+    N = n_val(),
+    Partition = calc_partition(Index, Field, Term),
     {N, Partition}.

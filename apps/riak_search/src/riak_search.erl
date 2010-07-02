@@ -28,16 +28,26 @@ stream(Index, Field, Term, FilterFun) ->
     riak_search_vnode:stream(Preflist, Index, Field, Term, FilterFun, self()).
 
 multi_stream(IFTList, FilterFun) ->
-    %% TODO: Establish the correct preference list for this operation
-    %% If the I/F/T is chosen at random and there are multiple nodes
-    %% in the system it is likely that not all terms will be located.
-    %% For now, emulate something similar to what the k/v encapsulated
-    %% version did.
-    {term, {Index, Field, Term}, _TermProps} = hd(IFTList),
-    {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
-    Preflist = riak_core_apl:get_apl(Partition, N),
-    riak_search_vnode:multi_stream(hd(Preflist), IFTList, FilterFun, self()).
-
+    %% Split the IFTlist into a dictionary keyed by pref lists.
+    %% TODO: Improve this to calculate the Vnode indexes from the IFT hash
+    %%       value and use those for the dictionary insted.  Less preflist
+    %%       lookups.
+    N = riak_search_utils:n_val(),
+    PlIFTList = lists:foldl(fun({term,{I,F,T},_TP}=IFT, PartIFT) ->
+                                    P = riak_search_utils:calc_partition(I, F, T),
+                                    Preflist = riak_core_apl:get_apl(P, N),
+                                    orddict:append_list(Preflist, [IFT], PartIFT)
+                            end, orddict:new(), IFTList),
+    Ref = {multi_stream_response, make_ref()},
+    Sender = {raw, Ref, self()},
+    Sent = orddict:fold(fun(Preflist,IFTs,Acc) ->
+                                SendTo = hd(Preflist),
+                                riak_search_vnode:multi_stream(SendTo, IFTs, 
+                                                               FilterFun, Sender),
+                                [SendTo|Acc]
+                        end, [], PlIFTList),
+    {ok, Ref, length(Sent)}.
+        
 info(Index, Field, Term) ->
     {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
     Preflist = riak_core_apl:get_apl(Partition, N),

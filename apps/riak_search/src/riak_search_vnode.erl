@@ -53,14 +53,12 @@ stream(Preflist, Index, Field, Term, FilterFun, ReplyTo) ->
     command(Preflist, Req, {raw, Ref, ReplyTo}),
     {ok, Ref}.
 
-multi_stream(Preflist, IFTList, FilterFun, ReplyTo) ->
+multi_stream(Preflist, IFTList, FilterFun, Sender) ->
     Req = #multi_stream_v1{
       ift_list = IFTList,
       filter_fun = FilterFun
      },
-    Ref = {multi_stream_response, make_ref()},
-    command(Preflist, Req, {raw, Ref, ReplyTo}),
-    {ok, Ref}.
+    command(Preflist, Req, Sender).
 
 info(Preflist, Index, Field, Term, ReplyTo) ->
     %% io:format("info: Index=~p, Field=~p, Term=~p, ReplyTo=~p\n", [Index, Field, Term, ReplyTo]),
