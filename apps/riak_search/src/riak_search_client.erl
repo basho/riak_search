@@ -69,7 +69,13 @@ search(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
 search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
     %% Get results...
     {Length, Results} = search(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout),
-
+    MaxScore = case Results of
+                   [] ->
+                       "0.0";
+                   [{_, Attrs}|_] ->
+                       [MS] = io_lib:format("~g", [proplists:get_value(score, Attrs)]),
+                       MS
+               end,
     %% Fetch the documents in parallel.
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
     Index = Schema:name(),
@@ -77,7 +83,7 @@ search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
         get_idx_doc(Index, DocID)
     end,
     Documents = plists:map(F, Results, {processes, 4}),
-    {Length, [X || X <- Documents, X /= {error, notfound}]}.
+    {Length, MaxScore, [X || X <- Documents, X /= {error, notfound}]}.
 
 %% Run the query through preplanning, return the result.
 explain(IndexOrSchema, QueryOps) ->

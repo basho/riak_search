@@ -72,16 +72,16 @@ content_types_provided(Req, #state{wt=WT}=State) ->
 to_json(Req, #state{sort=SortBy}=State) ->
     #state{schema=Schema, squery=SQuery}=State,
     %% Run the query...
-    {ElapsedTime, NumFound, Docs} = run_query(State),
+    {ElapsedTime, NumFound, MaxScore, Docs} = run_query(State),
     %% Generate output
-    {riak_solr_output:json_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, Docs), Req, State}.
+    {riak_solr_output:json_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, Docs), Req, State}.
 
 to_xml(Req, #state{sort=SortBy}=State) ->
     #state{schema=Schema, squery=SQuery}=State,
     %% Run the query...
-    {ElapsedTime, NumFound, Docs} = run_query(State),
+    {ElapsedTime, NumFound, MaxScore, Docs} = run_query(State),
     %% Generate output
-    {riak_solr_output:xml_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, Docs), Req, State}.
+    {riak_solr_output:xml_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, Docs), Req, State}.
 
 run_query(State) ->
     #state{client=Client, schema=Schema, squery=SQuery, query_ops=QueryOps}=State,
@@ -89,9 +89,9 @@ run_query(State) ->
 
     %% Run the query...
     StartTime = erlang:now(),
-    {NumFound, Docs} = Client:search_doc(Schema:name(), QueryOps, QStart, QRows, ?DEFAULT_TIMEOUT),
+    {NumFound, MaxScore, Docs} = Client:search_doc(Schema:name(), QueryOps, QStart, QRows, ?DEFAULT_TIMEOUT),
     ElapsedTime = erlang:round(timer:now_diff(erlang:now(), StartTime) / 1000),
-    {ElapsedTime, NumFound, Docs}.
+    {ElapsedTime, NumFound, MaxScore, Docs}.
 
 %% @private
 %% Pull the index name from the request. If not found, then use the
