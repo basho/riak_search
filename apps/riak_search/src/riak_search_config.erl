@@ -4,6 +4,9 @@
 
 -behaviour(gen_server).
 
+-define(SCHEMA_KEY, <<"_rs_schema">>).
+-define(DEFAULT_SCHEMA, filename:join([code:priv_dir(riak_search), "default.def"])).
+
 %% API
 -export([start_link/0, clear/0, get_schema/1]).
 
@@ -13,7 +16,7 @@
 
 -define(SERVER, ?MODULE).
 
--record(state, {schema_dir,
+-record(state, {client,
                 schemas}).
 
 -define(DEFAULT_FIELD, #riak_search_field{name="value",
@@ -27,28 +30,25 @@ start_link() ->
 clear() ->
     gen_server:call(?SERVER, clear).
 
-get_schema(IndexOrSchema) ->
-    case is_tuple(IndexOrSchema) andalso element(1, IndexOrSchema) == riak_search_schema of
-        true  ->
-            {ok, IndexOrSchema};
-        false ->
-            Index = riak_search_utils:to_list(IndexOrSchema),
-            gen_server:call(?SERVER, {get_schema, Index})
-    end.
+get_schema(Schema) when is_tuple(Schema) ->
+    case element(1, Schema) of
+        riak_search_schema ->
+            {ok, Schema};
+        _ ->
+            {error, badarg}
+    end;
+get_schema(Schema) ->
+    gen_server:call(?SERVER, {get_schema, riak_search_utils:to_binary(Schema)}).
 
 init([]) ->
-    SchemaDir = case application:get_env(riak_search, schema_dir) of
-                    undefined ->
-                        code:priv_dir(riak_search);
-                    {ok, Dir} ->
-                        Dir
-                end,
-    {ok, #state{schema_dir=SchemaDir,
+    {ok, Client} = riak:local_client(),
+    {ok, #state{client=Client,
                 schemas=dict:new()}}.
 
 handle_call(clear, _From, State) ->
     {reply, ok, State#state{schemas=dict:new()}};
-handle_call({get_schema, SchemaName}, _From, #state{schemas=Schemas}=State) ->
+handle_call({get_schema, SchemaName}, _From, #state{client=Client,
+                                                    schemas=Schemas}=State) ->
     %% Look up the schema in cache...
     case dict:find(SchemaName, Schemas) of
         {ok, Schema} ->
@@ -56,7 +56,7 @@ handle_call({get_schema, SchemaName}, _From, #state{schemas=Schemas}=State) ->
             {reply, {ok, Schema}, State};
         _ ->
             %% Load schema from file...
-            case load_schema(SchemaName, State#state.schema_dir) of
+            case load_schema(Client, SchemaName) of
                 {ok, Schema} ->
                     NewSchemas = dict:store(SchemaName, Schema, Schemas),
                     NewState = State#state { schemas=NewSchemas },
@@ -82,31 +82,55 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% Internal functions
-load_schema(SchemaName, SchemaDir) ->
-    SchemaFile = io_lib:format("~s.def", [SchemaName]),
-    Result = file:consult(filename:join([SchemaDir, SchemaFile])),
-    case Result of
-        {ok, [RawSchema]} ->
-            %% Parse from file...
-            riak_search_schema_parser:from_eterm(RawSchema);
-        {error, enoent} ->
-            case SchemaName of
-                %% Couldn't find default so use hard-coded failsafe
-                "default" ->
-                    error_logger:warning_msg("Could not find default schema. Using failsafe schema.~n"),
-                    {ok, riak_search_schema:new("default", "1.1", "value", [],
-                                                [#riak_search_field{name=".*",
-                                                                    type=string,
-                                                                    dynamic=true}],
-                                                "or", undefined)};
-                _ ->
-                    %% Not found, use default...
-                    error_logger:warning_msg("Could not find schema '~s', using defaults.~n", [SchemaName]),
-                    {ok, Schema0} = load_schema("default", SchemaDir),
-                    Schema = Schema0:set_name(SchemaName),
-                    {ok, Schema}
+load_schema(Client, SchemaName) ->
+    case Client:get(SchemaName, ?SCHEMA_KEY) of
+        {ok, Entry} ->
+            case parse_entry(Entry) of
+                {ok, RawSchema} ->
+                    riak_search_schema_parser:from_eterm(RawSchema);
+                Error ->
+                    error_logger:error_msg("Error parsing schema ~p: ~p~n", [SchemaName, Error]),
+                    %% Error in schema definition, so let's return
+                    %% the error instead of loading the default
+                    Error
+            end;
+        {error, notfound} ->
+            %% Schema entry not found so let's load the
+            %% default schema and use it
+            error_logger:error_msg("Schema entry \"_rs_schema\" not found in bucket ~p. Using default schema.~n",
+                                   [riak_search_utils:to_list(SchemaName)]),
+            load_default_schema(SchemaName)
+    end.
+
+parse_entry(Entry) ->
+    EntryBody = riak_object:get_value(Entry),
+    case erl_scan:string(riak_search_utils:to_list(EntryBody)) of
+        {ok, Tokens, _} ->
+            case erl_parse:parse_exprs(Tokens) of
+                {ok, AST} ->
+                    case erl_eval:exprs(AST, []) of
+                        {value, Schema, _} ->
+                            {ok, Schema};
+                        Error ->
+                            Error
+                    end;
+                Error ->
+                    Error
             end;
         Error ->
-            %% Some other error, so return...
+            Error
+    end.
+
+load_default_schema(SchemaName) ->
+    case file:consult(?DEFAULT_SCHEMA) of
+        {ok, [RawSchema]} ->
+            case riak_search_schema_parser:from_eterm(RawSchema) of
+                {ok, Schema} ->
+                    {ok, Schema:set_name(riak_search_utils:to_list(SchemaName))};
+                Error ->
+                    Error
+            end;
+        Error ->
+            error_logger:error_msg("Error loading default schema: ~p~n", [Error]),
             Error
     end.

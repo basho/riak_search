@@ -37,6 +37,7 @@ parse_fields({fields, Fields}, DynAccum, Accum) ->
 parse_fields([{dynamic_field, FieldProps}=Field0|T], DynAccum, Accum) ->
     Name = proplists:get_value(name, FieldProps),
     Type = proplists:get_value(type, FieldProps),
+    Facet = proplists:get_value(facet, FieldProps, false),
     case valid_type(Type) of
         ok ->
             if
@@ -52,7 +53,7 @@ parse_fields([{dynamic_field, FieldProps}=Field0|T], DynAccum, Accum) ->
                                           [N] = string:tokens(Name, "*"),
                                           N ++ ".*"
                                   end,
-                    F = #riak_search_field{name=NamePattern, type=Type, required=false, dynamic=true, facet=false},
+                    F = #riak_search_field{name=NamePattern, type=Type, required=false, dynamic=true, facet=Facet},
                     parse_fields(T, [F|DynAccum], Accum)
             end;
         Error ->
@@ -61,8 +62,8 @@ parse_fields([{dynamic_field, FieldProps}=Field0|T], DynAccum, Accum) ->
 parse_fields([{field, FieldProps}=Field0|T], DynAccum, Accum) ->
     Name = proplists:get_value(name, FieldProps),
     Type = proplists:get_value(type, FieldProps, string),
-    Reqd = proplists:get_value(required, FieldProps, false) /= false,
-    Facet = proplists:get_value(facet, FieldProps, false) /= false,
+    Reqd = proplists:get_value(required, FieldProps, false),
+    Facet = proplists:get_value(facet, FieldProps, false),
     case valid_type(Type) of
         ok ->
             if

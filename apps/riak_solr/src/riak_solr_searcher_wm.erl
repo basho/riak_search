@@ -1,28 +1,20 @@
 -module(riak_solr_searcher_wm).
 -export([init/1, allowed_methods/2, malformed_request/2]).
--export([content_types_provided/2, to_json/2]).
+-export([content_types_provided/2, to_json/2, to_xml/2]).
 
 -import(riak_search_utils, [
     to_atom/1, to_integer/1, to_binary/1, to_boolean/1, to_float/1]).
 
+-include("riak_solr.hrl").
 -include_lib("riak_search/include/riak_search.hrl").
 -include_lib("webmachine/include/webmachine.hrl").
 
--record(state, {
-    client,
-    schema,
-    squery,
-    query_ops,
-    sort
-}).
-
--record(squery, {
-    q,
-    default_op,
-    default_field,
-    query_start,
-    query_rows
-}).
+-record(state, {client,
+                wt,
+                schema,
+                squery,
+                query_ops,
+                sort}).
 
 -define(DEFAULT_INDEX, "search").
 -define(DEFAULT_RESULT_SIZE, 10).
@@ -50,7 +42,8 @@ malformed_request(Req, State) ->
                     try
                         {ok, QueryOps} = Client:parse_query(Schema:name(), SQuery#squery.q),
                         {false, Req, State#state{schema=Schema1, squery=SQuery, query_ops=QueryOps,
-                                                 sort=wrq:get_qs_value("sort", "none", Req)}}
+                                                 sort=wrq:get_qs_value("sort", "none", Req),
+                                                 wt=wrq:get_qs_value("wt", "standard", Req)}}
                     catch _ : Error ->
                         error_logger:error_msg("Could not parse query '~s'.~n~p~n", [SQuery#squery.q, Error]),
                         {true, Req, State}
@@ -63,57 +56,42 @@ malformed_request(Req, State) ->
             {true, Req, State}
     end.
 
-content_types_provided(Req, State) ->
-    {[{"application/json", to_json}], Req, State}.
+content_types_provided(Req, #state{wt=WT}=State) ->
+    Types = case WT of
+                "standard" ->
+                    [{"text/xml", to_xml}];
+                "xml" ->
+                    [{"text/xml", to_xml}];
+                "json" ->
+                    [{"application/json", to_json}];
+                _ ->
+                    []
+            end,
+    {Types, Req, State}.
 
 to_json(Req, #state{sort=SortBy}=State) ->
-    %% Pull out values...
+    #state{schema=Schema, squery=SQuery}=State,
+    %% Run the query...
+    {ElapsedTime, NumFound, MaxScore, Docs} = run_query(State),
+    %% Generate output
+    {riak_solr_output:json_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, Docs), Req, State}.
+
+to_xml(Req, #state{sort=SortBy}=State) ->
+    #state{schema=Schema, squery=SQuery}=State,
+    %% Run the query...
+    {ElapsedTime, NumFound, MaxScore, Docs} = run_query(State),
+    %% Generate output
+    {riak_solr_output:xml_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, Docs), Req, State}.
+
+run_query(State) ->
     #state{client=Client, schema=Schema, squery=SQuery, query_ops=QueryOps}=State,
     #squery{query_start=QStart, query_rows=QRows}=SQuery,
 
     %% Run the query...
     StartTime = erlang:now(),
-    {NumFound, Docs} = Client:search_doc(Schema:name(), QueryOps, QStart, QRows, ?DEFAULT_TIMEOUT),
-    ElapsedTime = erlang:trunc(timer:now_diff(erlang:now(), StartTime) / 1000),
-    {build_json_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, Docs), Req, State}.
-
-%% @private
-build_json_response(Schema, _SortBy, ElapsedTime, SQuery, NumFound, []) ->
-    Response = [{<<"responseHeader">>,
-                 {struct, [{<<"status">>, 0},
-                           {<<"QTime">>, ElapsedTime},
-                           {<<"params">>,
-                             {struct, [{<<"q">>, to_binary(SQuery#squery.q)},
-                                       {<<"q.op">>, to_binary(Schema:default_op())},
-                                       {<<"wt">>, <<"json">>}]}}]}},
-                 {<<"response">>,
-                  {struct, [
-                            {<<"numFound">>, NumFound},
-                            {<<"start">>, SQuery#squery.query_start}]}}],
-    mochijson2:encode({struct, Response});
-build_json_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, Docs0) ->
-    F = fun({Name, Value}) ->
-        case Schema:find_field_or_facet(Name) of
-            Field when is_record(Field, riak_search_field) ->
-                Type = Field#riak_search_field.type;
-            undefined ->
-                Type = unknown
-        end,
-        convert_type(Value, Type)
-    end,
-    Docs = riak_solr_sort:sort(Docs0, SortBy),
-    Response = [{<<"responseHeader">>,
-                 {struct, [{<<"status">>, 0},
-                           {<<"QTime">>, ElapsedTime},
-                           {<<"params">>,
-                             {struct, [{<<"q">>, to_binary(SQuery#squery.q)},
-                                       {<<"q.op">>, to_binary(Schema:default_op())},
-                                       {<<"wt">>, <<"json">>}]}}]}},
-                 {<<"response">>,
-                  {struct, [{<<"numFound">>, NumFound},
-                            {<<"start">>, SQuery#squery.query_start},
-                            {<<"docs">>, [riak_indexed_doc:to_mochijson2(F, Doc) || Doc <- Docs]}]}}],
-    mochijson2:encode({struct, Response}).
+    {NumFound, MaxScore, Docs} = Client:search_doc(Schema:name(), QueryOps, QStart, QRows, ?DEFAULT_TIMEOUT),
+    ElapsedTime = erlang:round(timer:now_diff(erlang:now(), StartTime) / 1000),
+    {ElapsedTime, NumFound, MaxScore, Docs}.
 
 %% @private
 %% Pull the index name from the request. If not found, then use the
@@ -177,18 +155,3 @@ replace_schema_defaults(SQuery, Schema) ->
     Schema1 = Schema:set_default_op(DefaultOp),
     Schema2 = Schema1:set_default_field(DefaultField),
     Schema2.
-
-
-%% @private
-convert_type(FieldValue, unknown) ->
-    convert_type(FieldValue, string);
-convert_type(FieldValue, string) ->
-    to_binary(FieldValue);
-convert_type(FieldValue, integer) ->
-    to_integer(FieldValue);
-convert_type(FieldValue, float) ->
-    to_float(FieldValue);
-convert_type(FieldValue, boolean) ->
-    to_boolean(FieldValue);
-convert_type(_FieldValue, Other) ->
-    throw({unhandled_type, Other}).
