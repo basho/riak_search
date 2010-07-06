@@ -68,7 +68,7 @@ pass1(Op = #term {}, Config) ->
         IsProximity ->
             Proximity = proplists:get_value(proximity, Op#term.options),
             NewOptions = Op#term.options -- [{proximity, Proximity}],
-            Tokens = string:tokens(Op#term.q, " "),
+            Tokens = string:tokens(binary_to_list(Op#term.q), " "),
             NewOps = [#term { q=X, options=NewOptions }|| X <- Tokens],
             pass1(#proximity { ops=NewOps, proximity=Proximity }, Config);
         true ->

@@ -29,9 +29,13 @@ preplan_op(#phrase{phrase=Phrase0, base_query=BQ}=Op, F) ->
     %%  to:
     %%   {land, [{term, "problem", []}]}
     %%
+    %% Update: added another similar case for single-term decomps with proximity searches.
+    %%
     
     case BQ of
         [{base_query, {term, Term, Props}}] ->
+            BQ1 = {land, [{term, Term, Props}]};
+        [{base_query, {term, Term, Props}}, {proximity, _}] ->
             BQ1 = {land, [{term, Term, Props}]};
         _ -> BQ1 = BQ
     end,    
