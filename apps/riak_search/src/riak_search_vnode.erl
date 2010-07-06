@@ -7,10 +7,12 @@
          info_range/7,
          catalog_query/3]).
 -export([start_vnode/1, init/1, handle_command/3,
-         handle_handoff_command/3, handle_handoff_data/3,
+         handle_handoff_command/3, handle_handoff_data/2,
          handoff_starting/2, handoff_cancelled/1, handoff_finished/2,
-         is_empty/1, delete/1, terminate/2]).
+         is_empty/1, delete/1, terminate/2, encode_handoff_item/2]).
+
 -include_lib("riak_core/include/riak_core_vnode.hrl").
+-include_lib("riak_core/include/riak_core_pb.hrl").
 
 -record(vstate, {idx, bmod, bstate}).
 -record(index_v1, {index, field, term, value, props}).
@@ -206,12 +208,19 @@ handoff_cancelled(VState) ->
 handoff_finished(_TargetNode, State) ->
     {ok, State}.
 
-handle_handoff_data({Index,_FieldTerm}, Obj, #vstate{bmod=BMod,bstate=BState}=VState) ->
+encode_handoff_item({B,K}, V) ->
+    zlib:zip(riak_core_pb:encode_riakobject_pb(
+               #riakobject_pb{bucket=B, key=K, val=V})).
+
+handle_handoff_data(BinObj, #vstate{bmod=BMod,bstate=BState}=VState) ->
     %% The previous k/v backend wrapper for Raptor always returned
     %% {error, not_found} on a get request, so it would always
     %% overwrite with handoff data.  Keep this behavior until 
     %% we get a chance to fix.
-    {Field, Term, Value, Props} = Obj,
+    PBObj = riak_core_pb:decode_riakobject_pb(zlib:unzip(BinObj)),   
+    Index = PBObj#riakobject_pb.bucket,
+    RObj = binary_to_term(PBObj#riakobject_pb.val),
+    {Field, Term, Value, Props} = RObj,
     noreply = BMod:index(Index, Field, Term, Value, Props, BState),
     {reply, ok, VState}.
 
