@@ -257,7 +257,7 @@ delete_doc(Index, DocId) ->
             plists:map(F, Postings, {processes, 4}),
 
             %% Delete the indexed doc.
-            riak_indexed_doc:delete(RiakClient, IdxDoc)
+            riak_indexed_doc:delete(RiakClient, Index, DocId)
     end.
 
 query_as_graph(OpList) ->

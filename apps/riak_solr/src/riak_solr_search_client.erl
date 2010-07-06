@@ -28,8 +28,15 @@ parse_solr_entry(Index, add, {"doc", Entry}) ->
     {IdxDoc, Postings};
  
 %% Deletion by ID or Query. If query, then parse...
-parse_solr_entry(_Index, delete, {"id", ID}) ->
-    {'id', ID};
+parse_solr_entry(Index, delete, {"id", ID}) ->
+    case string:tokens(binary_to_list(ID), ":") of
+        [] ->
+            throw({?MODULE, empty_id_on_solr_delete});
+        [H] -> 
+            {'id', Index, H};
+        [H|T] -> 
+            {'id', H, string:join(T, ":")}
+    end;
 parse_solr_entry(Index, delete, {"query", Query}) ->
     case SearchClient:parse_query(Index, Query) of
         {ok, QueryOps} ->
@@ -79,8 +86,7 @@ run_solr_command(Schema, add, [{IdxDoc, Terms}|Docs]) ->
     run_solr_command(Schema, add, Docs);
 
 %% Delete a document by ID...
-run_solr_command(Schema, delete, [{'id', ID}|IDs]) ->
-    Index = Schema:name(),
+run_solr_command(Schema, delete, [{'id', Index, ID}|IDs]) ->
     SearchClient:delete_doc(Index, ID),
     run_solr_command(Schema, delete, IDs);
 

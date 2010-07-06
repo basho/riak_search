@@ -179,5 +179,5 @@ delete(Index, Path) ->
     search:delete_dir(Index, Path).
 
 solr(Index, Path) -> 
-    io:format("~n :: Indexing Solr document(s) '~s' in ~s...~n~n", [Path, Index]),
+    io:format("~n :: Running Solr document(s) '~s' in ~s...~n", [Path, Index]),
     solr_search:index_dir(Index, Path).
