@@ -11,16 +11,17 @@
 
 
 usage() ->
-    Usage = "Usage:
+    Usage = "~nUsage:
+
     search-cmd set_schema [INDEX] SCHEMAFILE : Set schema for an index.
     search-cmd show_schema [INDEX]           : Display the schema for an index.
-    search-cmd shell [INDEX]               : Start the interactive Search shell.
-    search-cmd search [INDEX] QUERY        : Perform a search.
-    search-cmd search_doc [INDEX] QUERY    : Perform a document search.
-    search-cmd explain [INDEX] QUERY       : Display an execution plan.
-    search-cmd index [INDEX] PATH          : Index files in a path.
-    search-cmd delete [INDEX] PATH         : De-index files in a path.
-    search-cmd solr [INDEX] PATH           : Run the Solr file.
+    search-cmd shell [INDEX]                 : Start the interactive Search shell.
+    search-cmd search [INDEX] QUERY          : Perform a search.
+    search-cmd search_doc [INDEX] QUERY      : Perform a document search.
+    search-cmd explain [INDEX] QUERY         : Display an execution plan.
+    search-cmd index [INDEX] PATH            : Index files in a path.
+    search-cmd delete [INDEX] PATH           : De-index files in a path.
+    search-cmd solr [INDEX] PATH             : Run the Solr file.
     ",
     io:format(Usage).
 
@@ -79,11 +80,39 @@ command(["solr", Index, Path]) ->
 command(_) ->
     usage().
 
-set_schema(_Index, _SchemaFile) -> 
-    ok.
+set_schema(Index, SchemaFile) -> 
+    IndexB = list_to_binary(Index),
+    io:format("~n :: Updating schema for '~s'...~n", [IndexB]),
+    case file:read_file(SchemaFile) of
+        {ok, B} ->
+            case riak_search_config:parse_raw_schema(B) of
+                {ok, _Schema} ->
+                    {ok, Client} = riak:local_client(),
+                    riak_search_config:put_raw_schema(Client, IndexB, B),
+                    riak_search_config:clear(),
+                    io:format(" :: Done.~n");
 
-show_schema(_Index) -> 
-    ok.
+                Error ->
+                    io:format(" :: PARSING ERROR: ~p~n", [Error])
+            end;
+        _Error ->
+            io:format(" :: ERROR: Could not read '~s'.~n", [SchemaFile])
+    end.
+
+show_schema(Index) -> 
+    IndexB = list_to_binary(Index),
+    io:format("~n :: Fetching schema for '~s'...~n", [Index]),
+    {ok, Client} = riak:local_client(),
+    case riak_search_config:get_raw_schema(Client, IndexB) of
+        {ok, B} -> 
+            RawSchemaBinary = B;
+        undefined ->
+            io:format(" :: Using default schema.~n"),
+            {ok, B} = riak_search_config:get_raw_schema_default(),
+            RawSchemaBinary = B
+    end,
+    io:format("~n~s~n", [RawSchemaBinary]).
+    
 
 shell(Index) -> 
     riak_search_shell:start(Index).

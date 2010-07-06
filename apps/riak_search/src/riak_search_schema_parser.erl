@@ -1,10 +1,9 @@
 -module(riak_search_schema_parser).
--export([from_eterm/1]).
+-export([from_eterm/2]).
 
 -include("riak_search.hrl").
 
-from_eterm({schema, SchemaProps, FieldDefs}) ->
-    Name = proplists:get_value(name, SchemaProps),
+from_eterm(SchemaName, {schema, SchemaProps, FieldDefs}) ->
     Version = proplists:get_value(version, SchemaProps),
     DefaultField = proplists:get_value(default_field, SchemaProps),
     AnalyzerFactory = proplists:get_value(analyzer_factory, SchemaProps),
@@ -18,13 +17,12 @@ from_eterm({schema, SchemaProps, FieldDefs}) ->
         {error, _} ->
             DefaultOp;
         _ ->
-            case Name =:= undefined orelse Version =:= undefined orelse
-                DefaultField =:= undefined of
+            case Version =:= undefined orelse DefaultField =:= undefined of
                 true ->
                     {error, {malformed_schema, {schema, SchemaProps}}};
                 false ->
                     {DynFields, Fields} = parse_fields(FieldDefs, [], []),
-                    {ok, riak_search_schema:new(Name, Version, DefaultField, Fields,
+                    {ok, riak_search_schema:new(SchemaName, Version, DefaultField, Fields,
                                                 DynFields, DefaultOp, AnalyzerFactory)}
             end
     end.

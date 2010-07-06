@@ -8,7 +8,17 @@
 -define(DEFAULT_SCHEMA, filename:join([code:priv_dir(riak_search), "default.def"])).
 
 %% API
--export([start_link/0, clear/0, get_schema/1]).
+-export([
+    start_link/0, 
+    clear/0, 
+    get_schema/1,
+
+    %% Used by riak_search_cmd
+    parse_raw_schema/1,
+    get_raw_schema/2, 
+    put_raw_schema/3,
+    get_raw_schema_default/0
+]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -27,9 +37,12 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
+%% Clear cached schemas.
 clear() ->
     gen_server:call(?SERVER, clear).
 
+%% Get schema information for the provided index name.
+%% @param Schema - Either the name of an index, or a schema record.
 get_schema(Schema) when is_tuple(Schema) ->
     case element(1, Schema) of
         riak_search_schema ->
@@ -39,6 +52,7 @@ get_schema(Schema) when is_tuple(Schema) ->
     end;
 get_schema(Schema) ->
     gen_server:call(?SERVER, {get_schema, riak_search_utils:to_binary(Schema)}).
+
 
 init([]) ->
     {ok, Client} = riak:local_client(),
@@ -83,18 +97,18 @@ code_change(_OldVsn, State, _Extra) ->
 
 %% Internal functions
 load_schema(Client, SchemaName) ->
-    case Client:get(SchemaName, ?SCHEMA_KEY) of
-        {ok, Entry} ->
-            case parse_entry(Entry) of
+    case get_raw_schema(Client, SchemaName) of
+        {ok, RawSchemaBinary} ->
+            case parse_raw_schema(RawSchemaBinary) of
                 {ok, RawSchema} ->
-                    riak_search_schema_parser:from_eterm(RawSchema);
+                    riak_search_schema_parser:from_eterm(SchemaName, RawSchema);
                 Error ->
                     error_logger:error_msg("Error parsing schema ~p: ~p~n", [SchemaName, Error]),
                     %% Error in schema definition, so let's return
                     %% the error instead of loading the default
                     Error
             end;
-        {error, notfound} ->
+        undefined ->
             %% Schema entry not found so let's load the
             %% default schema and use it
             error_logger:error_msg("Schema entry \"_rs_schema\" not found in bucket ~p. Using default schema.~n",
@@ -102,9 +116,8 @@ load_schema(Client, SchemaName) ->
             load_default_schema(SchemaName)
     end.
 
-parse_entry(Entry) ->
-    EntryBody = riak_object:get_value(Entry),
-    case erl_scan:string(riak_search_utils:to_list(EntryBody)) of
+parse_raw_schema(RawSchemaBinary) ->
+    case erl_scan:string(riak_search_utils:to_list(RawSchemaBinary)) of
         {ok, Tokens, _} ->
             case erl_parse:parse_exprs(Tokens) of
                 {ok, AST} ->
@@ -122,15 +135,52 @@ parse_entry(Entry) ->
     end.
 
 load_default_schema(SchemaName) ->
-    case file:consult(?DEFAULT_SCHEMA) of
-        {ok, [RawSchema]} ->
-            case riak_search_schema_parser:from_eterm(RawSchema) of
-                {ok, Schema} ->
-                    {ok, Schema:set_name(riak_search_utils:to_list(SchemaName))};
+    case get_raw_schema_default() of
+        {ok, RawSchemaBinary} ->
+            case parse_raw_schema(RawSchemaBinary) of
+                {ok, RawSchema} ->
+                    case riak_search_schema_parser:from_eterm(SchemaName, RawSchema) of
+                        {ok, Schema} ->
+                            {ok, Schema:set_name(riak_search_utils:to_list(SchemaName))};
+                        Error ->
+                            Error
+                    end;
                 Error ->
+                    error_logger:error_msg("Error parsing default schema.~n", []),
+                    %% Error in schema definition, so let's return
+                    %% the error instead of loading the default
                     Error
             end;
         Error ->
             error_logger:error_msg("Error loading default schema: ~p~n", [Error]),
             Error
     end.
+
+%% Set the schema for an index.
+%% @param Index - the name of an index.
+%% @param RawSchemaBinary - Binary representing the RawSchema file.
+put_raw_schema(Client, SchemaName, RawSchemaBinary) ->
+    case Client:get(SchemaName, ?SCHEMA_KEY) of
+        {ok, Obj} ->
+            NewObj = riak_object:update_value(Obj, RawSchemaBinary);
+        {error, notfound} ->
+            NewObj = riak_object:new(SchemaName, ?SCHEMA_KEY, RawSchemaBinary)
+    end,
+    Client:put(NewObj).
+
+%% Return the schema for an index.
+%% @param Index - the name of an index.
+%% @return {ok, RawSchemaBinary}, or 'undefined' if not found.
+get_raw_schema(Client, SchemaName) ->
+    case Client:get(SchemaName, ?SCHEMA_KEY) of
+        {ok, Entry} ->
+            {ok, riak_object:get_value(Entry)};
+        {error, notfound} ->
+            undefined
+    end.
+
+get_raw_schema_default() ->
+    file:read_file(?DEFAULT_SCHEMA).
+
+
+
