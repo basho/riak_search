@@ -164,8 +164,17 @@ rewrite_term(Q, Options, Config) ->
             [#term { q=Q, options=[facet|Options] }];
         false ->
             {Index, Field, Term} = Q,
-            {ok, {_, Node, Count}} = riak_search:info(Index, Field, Term),
-            Weights = [{node_weight, Node, Count}],
+            
+            %%{ok, {_, Node, Count}} = riak_search:info(Index, Field, Term),
+            %%Weights = [{node_weight, Node, Count}],
+            
+            TermPreflist = riak_search:term_preflist(Index, Field, Term),
+            %% [ {Partition, Node} ... ]
+            
+            Weights = lists:map(fun({Partition, Node}) ->
+                [{node_weight, Node, 1}, {preflist_entry, Partition, Node}]
+            end, TermPreflist),
+            
             [#term { q=Q, options=Weights ++ Options }]
     end.
 
@@ -309,31 +318,16 @@ pass5(Op, Config) ->
     riak_search_op:preplan_op(Op, F).
 
 range_to_lor(Start, End, Inclusive, Facets, _Config) ->
-    {Index, Field, StartTerm, EndTerm, Size} = normalize_range(Start, End, Inclusive),
+    {Index, Field, StartTerm, EndTerm, _Size} = normalize_range(Start, End, Inclusive),
 
-    %% Results are of form {node, Index.Field.Term, Count}
-    {ok, Results} = riak_search:info_range(Index, Field, StartTerm, EndTerm, Size),
-
-    %% Collapse results into a gb_tree to combine...
-    F1 = fun({Term, Node, Count}, Acc) ->
-        NewOption = {node_weight, Node, Count},
-        case gb_trees:lookup(Term, Acc) of
-            {value, Options} ->
-                gb_trees:update(Term, [NewOption|Options], Acc);
-            none ->
-                gb_trees:insert(Term, [NewOption], Acc)
-        end
-    end,
-    Results1 = lists:foldl(F1, gb_trees:empty(), lists:flatten(Results)),
-    Results2 = gb_trees:to_list(Results1),
-
-    %% Create the lor operation.
-    F2 = fun({Term, Options}) ->
-        Q = {Index, Field, Term},
-        #term { q=Q, options=[{facets, Facets}|Options] }
-    end,
-    Ops = [F2(X) || X <- Results2],
-    #lor { ops=Ops }.
+    %% Results are of form {"term", 'node@1.1.1.1', Count}
+    %% {ok, Results} = riak_search:info_range(Index, Field, StartTerm, EndTerm, Size),
+    {ok, Results} = riak_search:info_range_no_count(Index, Field, StartTerm, EndTerm),
+    
+    %% Collapse or terms into multi_stream operation
+    TermProps = [{facets, Facets}],
+    Optimized_Or = riak_search_optimizer:optimize_or(Results, Index, Field, TermProps),
+    #lor { ops=Optimized_Or }.
 
 normalize_range({Index, Field, StartTerm}, {Index, Field, EndTerm}, Inclusive) ->
     {StartTerm1, EndTerm1} = case Inclusive of

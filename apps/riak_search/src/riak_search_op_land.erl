@@ -27,6 +27,7 @@ chain_op(Op, OutputPid, OutputRef, QueryProps, Type) ->
     {ok, 1}.
 
 gather_results(OutputPid, OutputRef, TermFilter, {Term, Op, Iterator}) ->
+    
     NotFlag = (is_tuple(Op) andalso is_record(Op, lnot)) orelse Op == true,
     case NotFlag of
         true  -> 

@@ -54,8 +54,6 @@ delete_term(Preflist, Index, Field, Term, DocId) ->
     command(Preflist, Req).
 
 stream(Preflist, Index, Field, Term, FilterFun, ReplyTo) ->
-    %% io:format("stream Index=~p, Field=~p, Term=~p, FilterFun=~p, ReplyTo=~p\n", 
-    %%           [Index, Field, Term, FilterFun, ReplyTo]),
     Req = #stream_v1{
       index = Index,
       field = Field,
@@ -66,15 +64,16 @@ stream(Preflist, Index, Field, Term, FilterFun, ReplyTo) ->
     command(Preflist, Req, {raw, Ref, ReplyTo}),
     {ok, Ref}.
 
-multi_stream(Preflist, IFTList, FilterFun, Sender) ->
+multi_stream(Preflist, IFTList, FilterFun, ReplyTo) ->
     Req = #multi_stream_v1{
       ift_list = IFTList,
       filter_fun = FilterFun
      },
-    command(Preflist, Req, Sender).
+    Ref = {stream_response, make_ref()},
+    command(Preflist, Req, {raw, Ref, ReplyTo}),
+    {ok, Ref}.
 
 info(Preflist, Index, Field, Term, ReplyTo) ->
-    %% io:format("info: Index=~p, Field=~p, Term=~p, ReplyTo=~p\n", [Index, Field, Term, ReplyTo]),
     Req = #info_v1{
       index = Index,
       field = Field,
@@ -86,8 +85,6 @@ info(Preflist, Index, Field, Term, ReplyTo) ->
 
 
 info_range(Preflist, Index, Field, StartTerm, EndTerm, Size, ReplyTo) ->
-    %% io:format("info_range: Index=~p, Field=~p, StartTerm=~p, EndTerm=~p, Size=~p, ReplyTo=~p\n",
-    %%           [Index, Field, StartTerm, EndTerm, Size, ReplyTo]),
     Req = #info_range_v1{
       index = Index,
       field = Field,
@@ -100,8 +97,6 @@ info_range(Preflist, Index, Field, StartTerm, EndTerm, Size, ReplyTo) ->
     {ok, Ref}.
 
 catalog_query(Preflist, CatalogQuery, ReplyTo) ->
-    %% io:format("catalog_query: CatalogQuery: ~p, ReplyTo=~p\n",
-    %%           [CatalogQuery, ReplyTo]),
     Req = #catalog_query_v1{
       catalog_query = CatalogQuery
      },

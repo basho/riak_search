@@ -15,7 +15,7 @@
 -define(XML_PROLOG, {prolog, ["<?xml version=\"1.0\" encoding=\"UTF-8\">"]}).
 
 
-xml_response(Schema, _SortBy, _ElapsedTime, SQuery, NumFound, MaxScore, Docs) ->
+xml_response(Schema, _SortBy, ElapsedTime, SQuery, NumFound, MaxScore, Docs) ->
     RenderedParams = render_xml_params(NumFound, SQuery),
     RenderedDocs = lists:flatten([render_xml_doc(Schema, Doc) || Doc <- Docs]),
     XML = [xml_nl(),
@@ -25,7 +25,7 @@ xml_response(Schema, _SortBy, _ElapsedTime, SQuery, NumFound, MaxScore, Docs) ->
               [xml_nl(),
                xml_indent(4), {int, [{name, "status"}], [#xmlText{value="0"}]},
                xml_nl(),
-               xml_indent(4), {int, [{name, "QTime"}], [#xmlText{value="ElapsedTime"}]}] ++
+               xml_indent(4), {int, [{name, "QTime"}], [#xmlText{value=ElapsedTime}]}] ++
                              RenderedParams ++ [xml_nl(), xml_indent(2)]},
              xml_nl(),
              xml_indent(2), {result, [{name, "response"},

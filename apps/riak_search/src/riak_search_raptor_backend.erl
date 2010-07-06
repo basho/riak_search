@@ -41,6 +41,7 @@
 -define(FOLD_TIMEOUT, 30000).
 -define(MAX_HANDOFF_STREAMS, 50).
 -define(INFO_TIMEOUT, 5000).
+-define(RESULT_VEC_SZ, 1000).
 
 
 %% ===================================================================
@@ -155,7 +156,7 @@ stream(Index, Field, Term, FilterFun, Sender, State) ->
                                                to_binary(Field),
                                                to_binary(Term),
                                                Partition),
-                           receive_stream_results(StreamRef, Sender, FilterFun)
+                           receive_stream_results({Index, Field, Term}, StreamRef, Sender, FilterFun)
                        after
                            riak_sock_pool:checkin(?CONN_POOL, Conn)
                        end
@@ -175,7 +176,7 @@ multi_stream(IFTList, FilterFun, Sender, _State) ->
                            {ok, StreamRef} = raptor_conn:multi_stream(
                                                Conn,
                                                list_to_binary(TermArg)),
-                           receive_stream_results(StreamRef, Sender, FilterFun)
+                           receive_stream_results(IFTList, StreamRef, Sender, FilterFun)
                        after
                            riak_sock_pool:checkin(?CONN_POOL, Conn)
                        end
@@ -248,13 +249,13 @@ raptor_command(Command, Arg1, Arg2, Arg3) ->
         riak_sock_pool:checkin(?CONN_POOL, Conn)
     end.
 
-receive_stream_results(StreamRef, Sender, FilterFun) ->
-    receive_stream_results(StreamRef, Sender, FilterFun, []).
+receive_stream_results(IFT, StreamRef, Sender, FilterFun) ->
+    receive_stream_results(IFT, StreamRef, Sender, FilterFun, []).
 
-receive_stream_results(StreamRef, Sender, FilterFun, Acc0) ->
-    case length(Acc0) > 500 of
+receive_stream_results(IFT, StreamRef, Sender, FilterFun, Acc0) ->
+    case length(Acc0) > ?RESULT_VEC_SZ of
         true ->
-            %% io:format("chunk (~p) ~p~n", [length(Acc0), StreamRef]),
+            %%io:format("[~p] chunk (~p) ~p~n", [IFT, length(Acc0), StreamRef]),
             riak_search_backend:stream_response_results(Sender, Acc0),
             Acc = [];
         false ->
@@ -276,6 +277,7 @@ receive_stream_results(StreamRef, Sender, FilterFun, Acc0) ->
                 
                 false -> skip
             end,
+            %%io:format("[~p] stream complete~n", [IFT]),
             riak_search_backend:stream_response_done(Sender);
         {stream, StreamRef, Value, Props} ->
             case Props of
@@ -292,7 +294,7 @@ receive_stream_results(StreamRef, Sender, FilterFun, Acc0) ->
                     Acc2 = Acc,
                     skip
             end,
-            receive_stream_results(StreamRef, Sender, FilterFun, Acc2);
+            receive_stream_results(IFT, StreamRef, Sender, FilterFun, Acc2);
         _Msg ->
             %% TODO: Should this throw - must be an error
             %% io:format("receive_stream_results(~p, ~p, ~p) -> ~p~n",
@@ -343,7 +345,9 @@ receive_catalog_query_results(StreamRef, Sender) ->
         {catalog_query, StreamRef, Partition, Index,
                         Field, Term, JSONProps} ->
             riak_search_backend:catalog_query_response(Sender, Partition, Index,
-                                                       Field, Term, JSONProps),
+                                                       Field, Term, 
+                                                       [{json_props, JSONProps},
+                                                        {node, node()}]),
             receive_catalog_query_results(StreamRef, Sender)
     end,
     ok.

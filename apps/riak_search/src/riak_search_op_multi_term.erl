@@ -25,7 +25,7 @@ start_loop(Op, OutputPid, OutputRef, _QueryProps) ->
     },
 
     %% first element in term list holds facets
-    {multi_term, EL, _OpN} = Op,
+    {multi_term, EL, OpN} = Op,
     {term, _IFT, T1_Props} = hd(EL),
     Facets = proplists:get_all_values(facets, T1_Props),
 
@@ -34,9 +34,6 @@ start_loop(Op, OutputPid, OutputRef, _QueryProps) ->
         riak_search_facets:passes_facets(Props, Facets)
     end,
     
-    %io:format("riak_search_op_multi_term: start_loop(~p, ~p, ~p, ~p)~n",
-    %    [Op, OutputPid, OutputRef, QueryProps]),
-
     %%
     %% riak_search_op_multi_term: start_loop(
     %% Op:                     {multi_term,
@@ -48,29 +45,27 @@ start_loop(Op, OutputPid, OutputRef, _QueryProps) ->
     %%
 
     {multi_term, Terms, _TNode} = Op,
-    {ok, Ref, ReqsSent} = riak_search:multi_stream(Terms, Fun),
-    loop(ReqsSent, ScoringVars, Ref, OutputPid, OutputRef).
+    {ok, Ref} = riak_search:multi_stream(OpN, Terms, Fun),
+    loop(ScoringVars, Ref, OutputPid, OutputRef).
 
-loop(0, _ScoringVars, _Ref, OutputPid, OutputRef) ->
-    OutputPid!{disconnect, OutputRef};
-loop(RepsLeft, ScoringVars, Ref, OutputPid, OutputRef) ->
+loop(ScoringVars, Ref, OutputPid, OutputRef) ->
     receive
         {Ref, done} ->
-            %%io:format("riak_search_op_multi_term: $end_of_table: Ref = ~p~n", [Ref]),
-            loop(RepsLeft-1, ScoringVars, Ref, OutputPid, OutputRef);
-        
+            OutputPid!{disconnect, OutputRef};
+
         {Ref, {result_vec, ResultVec}} ->
             ResultVec2 = lists:map(fun({Key, Props}) ->
                 NewProps = calculate_score(ScoringVars, Props),
                 {Key, NewProps} end, ResultVec),
             OutputPid!{results, ResultVec2, OutputRef},
-            loop(RepsLeft, ScoringVars, Ref, OutputPid, OutputRef)
+            loop(ScoringVars, Ref, OutputPid, OutputRef);
 
-        %% %% TODO: Check if this is dead code
-        %% {result, {Key, Props}, Ref} ->
-        %%     NewProps = calculate_score(ScoringVars, Props),
-        %%     OutputPid!{results, [{Key, NewProps}], OutputRef},
-        %%     loop(RepsLeft, ScoringVars, Ref, OutputPid, OutputRef)
+        %% TODO: Check if this is dead code
+        {result, {Key, Props}, Ref} ->
+            NewProps = calculate_score(ScoringVars, Props),
+            OutputPid!{results, [{Key, NewProps}], OutputRef},
+            loop(ScoringVars, Ref, OutputPid, OutputRef)
+            
     after
         ?STREAM_TIMEOUT ->
             throw(stream_timeout)
