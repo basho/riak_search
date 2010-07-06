@@ -113,13 +113,11 @@ receiving({Ref, {indexed, _Node}}, #state{ref = Ref}=State) ->
 receiving({Ref, recv_timeout}, #state{ref=Ref} = State) ->    
     %% Receive timeout for current batch - for now just continue
     %% on to the next batch
-    io:format("RECV timeout\n"),
     {StateName, NewState} = send_batch(State#state{timer=undefined}),
     {next_state, StateName, NewState};
 
 receiving({_Ref, {indexed, _Node}}, State) ->
     %% Ignore stale reply from previous batch
-    io:format("stale reply\n"),
     {next_state, waiting, State}.
 
 %% @private
