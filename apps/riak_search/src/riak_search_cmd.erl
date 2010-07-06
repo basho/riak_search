@@ -76,14 +76,13 @@ command(["solr", Path]) ->
 command(["solr", Index, Path]) ->
     solr(Index, Path);
 
-command(Other) ->
-    usage(),
-    io:format("Invalid Command: ~p~n", [Other]).
+command(_) ->
+    usage().
 
-set_schema(Index, SchemaFile) -> 
+set_schema(_Index, _SchemaFile) -> 
     ok.
 
-show_schema(Index) -> 
+show_schema(_Index) -> 
     ok.
 
 shell(Index) -> 
