@@ -1,7 +1,6 @@
 -module(riak_search_client, [RiakClient]).
 
 -include("riak_search.hrl").
--include_lib("qilr/include/qilr.hrl").
 
 -define(MAX_MULTI_TERM_SZ, 250).
 -define(OPTIMIZER_PROC_CT, 32).
@@ -21,13 +20,11 @@
     query_as_graph/1,
 
     %% Indexing...
-    parse_idx_doc/1,
-    get_idx_doc/2,
-    store_idx_doc/1,
+    index_doc/2,
     index_term/5,
 
     %% Delete
-    delete_document/2,
+    delete_doc/2,
     delete_term/4,
 
     %% utility
@@ -80,7 +77,7 @@ search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
     Index = Schema:name(),
     F = fun({DocID, _}) ->
-        get_idx_doc(Index, DocID)
+        riak_indexed_doc:get(RiakClient, Index, DocID)
     end,
     Documents = plists:map(F, Results, {processes, 4}),
     {Length, MaxScore, [X || X <- Documents, X /= {error, notfound}]}.
@@ -96,98 +93,15 @@ explain(IndexOrSchema, QueryOps) ->
     %% Run the query through preplanning.
     optimize_query(riak_search_preplan:preplan(QueryOps, DefaultIndex, DefaultField, Facets)).
 
-%% Parse a #riak_idx_doc{} record using the provided analyzer pid.
-parse_idx_doc(IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
-    {ok, AnalyzerPid} = qilr:new_analyzer(),
-    try
-        %% Extract fields, get schema...
-        #riak_idx_doc{id=DocID, index=Index, fields=DocFields}=IdxDoc,
-        {ok, Schema} = riak_search_config:get_schema(Index),
-
-        %% Put together a list of Facet properties...
-        F1 = fun(Facet, Acc) ->
-                     FName = Schema:field_name(Facet),
-                     case lists:keyfind(FName, 1, DocFields) of
-                         {FName, Value} ->
-                             [{FName, Value}|Acc];
-                         false ->
-                             Acc
-                     end
-             end,
-        FacetProps = lists:foldl(F1, [], Schema:facets()),
-        %% For each Field = {FieldName, FieldValue}, split the FieldValue
-        %% into terms. Build a list of positions for those terms, then get
-        %% a de-duped list of the terms. For each, index the FieldName /
-        %% Term / DocID / Props.
-        F2 = fun({FieldName, FieldValue}, Acc2) ->
-                     {ok, Terms} = analyze_field(AnalyzerPid, FieldName, FieldValue, Schema),
-                     PositionTree = get_term_positions(Terms),
-                     Terms1 = gb_trees:keys(PositionTree),
-                     F3 = fun(Term, Acc3) ->
-                                  Props = build_props(Term, PositionTree),
-                                  [{Index, FieldName, Term, DocID, Props ++ FacetProps}|Acc3]
-                          end,
-                     lists:foldl(F3, Acc2, Terms1)
-             end,
-        DocFields1 = DocFields -- FacetProps,
-        lists:foldl(F2, [], DocFields1)
-    after
-        qilr:close_analyzer(AnalyzerPid)
-    end.
-
-analyze_field(AnalyzerPid, FieldName, FieldValue, Schema) ->
-    Field = Schema:find_field(FieldName),
-    #riak_search_field{type=Type} = Field,
-    AnalyzerFactory = determine_analyzer(Schema, Type),
-    {ok, Tokens} = qilr_analyzer:analyze(AnalyzerPid, FieldValue, AnalyzerFactory),
-    {ok, [left_pad(Type, Token) || Token <- Tokens]}.
-
-get_idx_doc(DocIndex, DocID) ->
-    case RiakClient:get(to_binary(DocIndex), to_binary(DocID)) of
-        {error, notfound} ->
-            {error, notfound};
-        {ok, Obj} ->
-            riak_object:get_value(Obj)
-    end.
-
-store_idx_doc(IdxDoc) ->
-    %% Store the document...
-    #riak_idx_doc { id=DocID, index=DocIndex } = IdxDoc,
-    DocBucket = riak_search_utils:to_binary(DocIndex),
-    DocKey = riak_search_utils:to_binary(DocID),
-    DocObj = riak_object:new(DocBucket, DocKey, IdxDoc),
-    ok = RiakClient:put(DocObj).
-
-
-%% @private Given a list of tokens, build a gb_tree mapping words to a
-%% list of word positions.
-get_term_positions(Terms) ->
-    F = fun(Term, {Pos, Acc}) ->
-        case gb_trees:lookup(Term, Acc) of
-            {value, Positions} ->
-                {Pos + 1, gb_trees:update(Term, [Pos|Positions], Acc)};
-            none ->
-                {Pos + 1, gb_trees:insert(Term, [Pos], Acc)}
-        end
+%% Index a specified #riak_idx_doc
+index_doc(IdxDoc, AnalyzerPid) ->
+    {ok, Postings} = riak_indexed_doc:analyze(IdxDoc, AnalyzerPid),
+    F = fun(X) ->
+        {Index, Field, Term, Value, Props} = X,
+        index_term(Index, Field, Term, Value, Props)
     end,
-    {_, Tree} = lists:foldl(F, {1, gb_trees:empty()}, Terms),
-    Tree.
-
-%% @private
-%% Given a term and a list of positions, generate a list of
-%% properties.
-build_props(Term, PositionTree) ->
-    case gb_trees:lookup(Term, PositionTree) of
-        none ->
-            [];
-        {value, Positions} ->
-            [
-                {word_pos, Positions},
-                {freq, length(Positions)}
-            ]
-    end.
-
-
+    plists:map(F, Postings, {processes, 4}),
+    riak_indexed_doc:put(RiakClient, IdxDoc).
 
 %% Index the specified term.
 index_term(Index, Field, Term, Value, Props) ->
@@ -327,35 +241,23 @@ calculate_scores(QueryNorm, NumTerms, [{Value, Props}|Results]) ->
 calculate_scores(_, _, []) ->
     [].
 
-delete_document(Index, DocId) ->
-    case get_idx_doc(Index, DocId) of
+delete_doc(Index, DocId) ->
+    case riak_indexed_doc:get(RiakClient, Index, DocId) of
         {error, notfound} ->
             {error, notfound};
         IdxDoc ->
-            #riak_idx_doc{id=DocID, index=Index, fields=DocFields}=IdxDoc,
-            {ok, AnalyzerPid} = qilr:new_analyzer(),
-            try
-                F2 = fun({FieldName, FieldValue}, Acc2) ->
-                    {ok, Terms} = qilr_analyzer:analyze(AnalyzerPid, FieldValue),
-                    PositionTree = get_term_positions(Terms),
-                    Terms1 = gb_trees:keys(PositionTree),
-                    F3 = fun(Term, Acc3) ->
-                        Props = build_props(Term, PositionTree),
-                        [{Index, FieldName, Term, DocID, Props}|Acc3]
-                    end,
-                    lists:foldl(F3, Acc2, Terms1)
-                end,
-                DocFields1 = DocFields,
-                FieldTerms = lists:foldl(F2, [], DocFields1),
-                lists:foreach(fun({_Index, Field, Term, _DocId, _Props}) ->
-                    delete_term(Index, Field, Term, DocId)
-                end, FieldTerms),
-                DocBucket = riak_search_utils:to_binary(Index ++ "_docs"),
-                DocKey = riak_search_utils:to_binary(DocId),
-                RiakClient:delete(DocBucket, DocKey, 1)
-            after
-                qilr:close_analyzer(AnalyzerPid)
-            end
+            %% Get the postings...
+            {ok, Postings} = riak_indexed_doc:analyze(IdxDoc),
+
+            %% Delete the postings...
+            F = fun(X) ->
+                {Index, Field, Term, Value, _Props} = X,
+                delete_term(Index, Field, Term, Value)
+            end,
+            plists:map(F, Postings, {processes, 4}),
+
+            %% Delete the indexed doc.
+            riak_indexed_doc:delete(RiakClient, IdxDoc)
     end.
 
 query_as_graph(OpList) ->
@@ -656,15 +558,3 @@ query_as_graph(OpList, Parent, C0, G) ->
         false ->
             query_as_graph([OpList], Parent, C0, G)
     end.
-
-left_pad(integer, FV) when is_binary(FV) ->
-    riak_search_text:left_pad(FV, 10);
-left_pad(_, FV) ->
-    FV.
-
-determine_analyzer(_Schema, integer) ->
-    ?WHITESPACE_ANALYZER;
-determine_analyzer(_Schema, date) ->
-    ?WHITESPACE_ANALYZER;
-determine_analyzer(Schema, _) ->
-    Schema:analyzer_factory().

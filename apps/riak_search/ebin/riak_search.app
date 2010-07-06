@@ -7,6 +7,7 @@
              plists,
              riak_indexed_doc,
              riak_search,
+             riak_search_cmd,
              riak_search_app,
              riak_search_backend,
              riak_search_config,

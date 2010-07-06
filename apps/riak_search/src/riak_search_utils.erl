@@ -98,6 +98,7 @@ combine_terms(Other1, Other2) ->
 to_list(A) when is_atom(A) -> atom_to_list(A);
 to_list(B) when is_binary(B) -> binary_to_list(B);
 to_list(I) when is_integer(I) -> integer_to_list(I);
+to_list(F) when is_float(F) -> float_to_list(F);
 to_list(L) when is_list(L) -> L.
 
 to_atom(A) when is_atom(A) -> A;
@@ -184,7 +185,7 @@ month("Dec") -> 12.
 %% Recursively index the provided file or directory, running
 %% the specified function on the body of any files.
 index_recursive(Callback, Directory) ->
-    io:format(" :: Indexing directory: ~s~n", [Directory]),
+    io:format(" :: Traversing directory: ~s~n", [Directory]),
     Files = filelib:wildcard(Directory),
     io:format(" :: Found ~p files...~n", [length(Files)]),
 
@@ -196,12 +197,12 @@ index_recursive(Callback, Directory) ->
 %% Full-text index the specified file.
 index_recursive_file(Callback, File) ->
     Basename = filename:basename(File),
-    io:format(" :: Indexing file: ~s~n", [Basename]),
+    io:format(" :: Processing file: ~s~n", [Basename]),
     case file:read_file(File) of
         {ok, Bytes} ->
             Callback(Basename, Bytes);
         {error, eisdir} ->
-            io:format("following directory: ~p~n", [File]),
+            io:format(" :: Traversing directory: ~p~n", [File]),
             index_recursive(Callback, filename:join(File, "*"));
         Err ->
             io:format("index_file(~p): error: ~p~n", [File, Err])

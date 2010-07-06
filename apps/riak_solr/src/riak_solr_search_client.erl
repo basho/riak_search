@@ -1,4 +1,4 @@
--module(riak_solr_search_client, [Client]).
+-module(riak_solr_search_client, [RiakClient, SearchClient]).
 -export([parse_solr_xml/2,
          run_solr_command/3
 ]).
@@ -24,13 +24,14 @@ parse_solr_xml(IndexOrSchema, Body) when is_binary(Body) ->
 %% Parse a document to add...
 parse_solr_entry(Index, add, {"doc", Entry}) ->
     IdxDoc = to_riak_idx_doc(Index, Entry),
-    {IdxDoc, Client:parse_idx_doc(IdxDoc)};
-
+    {ok, Postings} = riak_indexed_doc:analyze(IdxDoc),
+    {IdxDoc, Postings};
+ 
 %% Deletion by ID or Query. If query, then parse...
 parse_solr_entry(_Index, delete, {"id", ID}) ->
     {'id', ID};
 parse_solr_entry(Index, delete, {"query", Query}) ->
-    case Client:parse_query(Index, Query) of
+    case SearchClient:parse_query(Index, Query) of
         {ok, QueryOps} ->
             {'query', QueryOps};
         {error, Error} ->
@@ -69,25 +70,25 @@ run_solr_command(Schema, add, [{IdxDoc, Terms}|Docs]) ->
     %% Store the terms...
     F = fun(X) ->
         {Index, Field, Term, DocID, Props} = X,
-        Client:index_term(Index, Field, Term, DocID, Props)
+        SearchClient:index_term(Index, Field, Term, DocID, Props)
     end,
     plists:map(F, Terms, {processes, 4}),
 
     %% Store the document.
-    Client:store_idx_doc(IdxDoc),
+    riak_indexed_doc:put(RiakClient, IdxDoc),
     run_solr_command(Schema, add, Docs);
 
 %% Delete a document by ID...
 run_solr_command(Schema, delete, [{'id', ID}|IDs]) ->
     Index = Schema:name(),
-    Client:delete_document(Index, ID),
+    SearchClient:delete_doc(Index, ID),
     run_solr_command(Schema, delete, IDs);
 
 %% Delete documents by query...
 run_solr_command(Schema, delete, [{'query', QueryOps}|Queries]) ->
     Index = Schema:name(),
-    {_NumFound, Docs} = Client:search_doc(Schema, QueryOps, 0, infinity, ?DEFAULT_TIMEOUT),
-    [Client:delete_document(Index, X#riak_idx_doc.id) || X <- Docs, X /= {error, notfound}],
+    {_NumFound, Docs} = SearchClient:search_doc(Schema, QueryOps, 0, infinity, ?DEFAULT_TIMEOUT),
+    [SearchClient:delete_doc(Index, X#riak_idx_doc.id) || X <- Docs, X /= {error, notfound}],
     run_solr_command(Schema, delete, Queries);
 
 %% Unknown command, so error...
@@ -97,11 +98,11 @@ run_solr_command(_Schema, Command, _Docs) ->
 
 
 ensure_deleted(Index, DocID) ->
-    case Client:get_idx_doc(Index, DocID) of
+    case riak_indexed_doc:get(RiakClient, Index, DocID) of
         {error, notfound} -> 
             ok;
         _ ->
-            Client:delete_document(Index, DocID),
+            riak_indexed_doc:delete(RiakClient, Index, DocID),
             timer:sleep(10),
             ensure_deleted(Index, DocID)
     end.
