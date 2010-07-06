@@ -71,7 +71,7 @@ index(Index, Field, Term, Value, Props, State) ->
     after
         raptor_conn_pool:checkin(Conn)
     end,
-    {reply, ok, State}.
+    noreply.
 
 multi_index(IFTVPList, State) ->
     Partition = to_binary(State#state.partition),
@@ -90,8 +90,7 @@ multi_index(IFTVPList, State) ->
     after
         raptor_conn_pool:checkin(Conn)
     end,
-    noreply.
-
+    {reply, {indexed, node()}, State}.
 
 delete_entry(Index, Field, Term, DocId, State) ->
     Partition = to_binary(State#state.partition),
