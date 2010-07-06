@@ -30,8 +30,9 @@
 -export([idle/2, idle/3,
          receiving/2, receiving/3]).
 
--define(BATCH_SIZE, 200).
+-define(BATCH_SIZE, 20).
 -define(RECV_TIMEOUT_USECS, 5000).
+-define(INDEX_TIMEOUT_USECS, 5000).
 
 -record(state, {terms=[],          % Terms left to index
                 ref,               % Reference for current batch of terms sent out
@@ -57,7 +58,7 @@ start_link() ->
 %% Index the list of index/field/term/value/props
 -spec index_terms(pid(), [{index(),field(),idxterm(),idxvalue(),props()}]) -> ok.
 index_terms(Pid, Terms) ->
-    gen_fsm:sync_send_event(Pid, {index, Terms}).
+    gen_fsm:sync_send_event(Pid, {index, Terms}, ?INDEX_TIMEOUT_USECS).
 
 %% Signal we are done and wait for the FSM to complete and exit
 -spec done(pid()) -> ok.
@@ -112,17 +113,19 @@ receiving({Ref, {indexed, _Node}}, #state{ref = Ref}=State) ->
 receiving({Ref, recv_timeout}, #state{ref=Ref} = State) ->    
     %% Receive timeout for current batch - for now just continue
     %% on to the next batch
+    io:format("RECV timeout\n"),
     {StateName, NewState} = send_batch(State#state{timer=undefined}),
     {next_state, StateName, NewState};
 
 receiving({_Ref, {indexed, _Node}}, State) ->
     %% Ignore stale reply from previous batch
+    io:format("stale reply\n"),
     {next_state, waiting, State}.
 
 %% @private
 %% Handle sync_send_event
 receiving({index, Terms}, _From, State) ->
-    {next_state, receiving, State#state{terms = State#state.terms ++ Terms}};
+    {reply, ok, receiving, State#state{terms = State#state.terms ++ Terms}};
 
 receiving(done, From, State) ->
     {next_state, receiving, 
