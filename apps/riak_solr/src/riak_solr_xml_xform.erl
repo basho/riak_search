@@ -1,6 +1,11 @@
 -module(riak_solr_xml_xform).
 
--export([xform/1, sax_cb/3]).
+-export([xform/1, sax_cb/3, test/0]).
+
+-ifndef(PRINT).
+-define(PRINT(Var), io:format("DEBUG: ~p:~p - ~p~n~n ~p~n~n", [?MODULE, ?LINE, ??Var, Var])).
+-endif.
+
 
 -record(state, {
     result,
@@ -12,6 +17,22 @@
     attrs,
     value=[]
 }).
+
+test() ->
+    Data = [
+        {add, [
+            {doc, [{id, ["1"]}, {title, ["Title1"]}, {body, ["Body1"]}]},
+            {doc, [{id, ["2"]}, {title, ["Title2"]}, {body, ["Body2"]}]},
+            {doc, [{id, ["3"]}, {title, ["Title3"]}, {body, ["Body3"]}]}
+        ]},
+        {add, [
+            {doc, [{id, ["4"]}, {title, ["Title4"]}, {body, ["Body4"]}]},
+            {doc, [{id, ["5"]}, {title, ["Title5"]}, {body, ["Body5"]}]},
+            {doc, [{id, ["6"]}, {title, ["Title6"]}, {body, ["Body6"]}]}
+        ]}
+    ],
+    XML = lists:flatten(xmerl:export_simple(Data, xmerl_xml)),
+    xform(XML).
 
 xform(Data) ->
     Options = [{event_fun, fun sax_cb/3}, {event_state, #state{}}],

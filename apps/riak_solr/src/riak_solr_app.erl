@@ -26,5 +26,6 @@ stop(_State) ->
     ok.
 
 local_client() ->
-    {ok, Client} = riak_search:local_client(),
-    {ok, riak_solr_search_client:new(Client)}.
+    {ok, RiakClient} = riak:local_client(),
+    {ok, SearchClient} = riak_search:local_client(),
+    {ok, riak_solr_search_client:new(RiakClient, SearchClient)}.

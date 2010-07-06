@@ -20,10 +20,23 @@
 -include_lib("eunit/include/eunit.hrl").
 -include("riak_search.hrl").
 
+-define(TEST_EUNIT_NODE, 'eunit@127.0.0.1').
+
+maybe_start_network() ->
+    os:cmd("epmd -daemon"),
+    case net_kernel:start([?TEST_EUNIT_NODE]) of
+        {ok, _} ->
+            ok;
+        {error, {already_started, _}} ->
+            ok;
+        X ->
+            X
+    end.
 
 test() -> 
     test(100).
 test(N) ->
+    maybe_start_network(),
     eqc:quickcheck(numtests(N, prop_operator_test())),
     ok.
 
@@ -67,6 +80,7 @@ scorelist() ->
 %% Properties...
 
 prop_operator_test() ->
+    maybe_start_network(),
     {ok, Client} = get_client(),
     ?FORALL(QilrOps, qilr_ops(), 
         ?WHENFAIL(?PRINT(QilrOps), begin

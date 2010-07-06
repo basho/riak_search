@@ -1,13 +1,26 @@
 -module(riak_indexed_doc).
 
+-include_lib("qilr/include/qilr.hrl").
 -include("riak_search.hrl").
 
--export([new/2, id/1, fields/1, add_field/3, set_fields/2, clear_fields/1,
-         props/1, add_prop/3, set_props/2, clear_props/1, to_json/1,
-         from_json/1, to_mochijson2/1, to_mochijson2/2]).
+-export([
+    new/2, new/4,
+    id/1, 
+    fields/1, add_field/3, set_fields/2, clear_fields/1,
+    props/1, add_prop/3, set_props/2, clear_props/1, 
+    to_json/1, from_json/1, 
+    to_mochijson2/1, to_mochijson2/2,
+    analyze/1, analyze/2,
+    get_obj/3, get/3, put/2, delete/3
+]).
+
+-import(riak_search_utils, [to_binary/1]).
 
 new(Id, Index) ->
     #riak_idx_doc{id=Id, index=Index}.
+
+new(Id, Fields, Props, Index) ->
+    #riak_idx_doc{id=Id, fields=Fields, props=Props, index=Index}.
 
 fields(#riak_idx_doc{fields=Fields}) ->
     Fields.
@@ -63,6 +76,7 @@ from_json(Json) ->
             {error, bad_json_format}
     end.
 
+%% @private
 build_doc(Id, Index, _Data) when Id =:= undefined orelse
                                  Index =:= undefined ->
     {error, missing_id_or_index};
@@ -71,6 +85,7 @@ build_doc(Id, Index, Data) ->
                   fields=read_json_fields(<<"fields">>, Data),
                   props=read_json_fields(<<"props">>, Data)}.
 
+%% @private
 read_json_fields(Key, Data) ->
     case proplists:get_value(Key, Data) of
         {struct, Fields} ->
@@ -79,3 +94,134 @@ read_json_fields(Key, Data) ->
         _ ->
             []
     end.
+
+%% Parse a #riak_idx_doc{} record.
+%% Return {ok, [{Index, FieldName, Term, DocID, Props}]}.
+analyze(IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
+    {ok, AnalyzerPid} = qilr:new_analyzer(),
+    try
+        analyze(IdxDoc, AnalyzerPid)
+    after
+        qilr:close_analyzer(AnalyzerPid)
+    end.
+
+
+%% Parse a #riak_idx_doc{} record using the provided analyzer pid.
+%% Return {ok, [{Index, FieldName, Term, DocID, Props}]}.
+analyze(IdxDoc, AnalyzerPid) when is_record(IdxDoc, riak_idx_doc) ->
+    %% Extract fields, get schema...
+    #riak_idx_doc{id=DocID, index=Index, fields=DocFields}=IdxDoc,
+    {ok, Schema} = riak_search_config:get_schema(Index),
+
+    %% Put together a list of Facet properties...
+    F1 = fun(Facet, Acc) ->
+                 FName = Schema:field_name(Facet),
+                 case lists:keyfind(FName, 1, DocFields) of
+                     {FName, Value} ->
+                         [{FName, Value}|Acc];
+                     false ->
+                         Acc
+                 end
+         end,
+    FacetProps = lists:foldl(F1, [], Schema:facets()),
+    %% For each Field = {FieldName, FieldValue}, split the FieldValue
+    %% into terms. Build a list of positions for those terms, then get
+    %% a de-duped list of the terms. For each, index the FieldName /
+    %% Term / DocID / Props.
+    F2 = fun({FieldName, FieldValue}, Acc2) ->
+                 {ok, Terms} = analyze_field(FieldName, FieldValue, Schema, AnalyzerPid),
+                 PositionTree = get_term_positions(Terms),
+                 Terms1 = gb_trees:keys(PositionTree),
+                 F3 = fun(Term, Acc3) ->
+                              Props = build_props(Term, PositionTree),
+                              [{Index, FieldName, Term, DocID, Props ++ FacetProps}|Acc3]
+                      end,
+                 lists:foldl(F3, Acc2, Terms1)
+         end,
+    DocFields1 = DocFields -- FacetProps,
+    {ok, lists:foldl(F2, [], DocFields1)}.
+
+%% @private
+%% Parse a FieldValue into a list of terms.
+%% Return {ok, [Terms}}.
+analyze_field(FieldName, FieldValue, Schema, AnalyzerPid) ->
+    Field = Schema:find_field(FieldName),
+    #riak_search_field{type=Type} = Field,
+    AnalyzerFactory = determine_analyzer(Schema, Type),
+    {ok, Tokens} = qilr_analyzer:analyze(AnalyzerPid, FieldValue, AnalyzerFactory),
+    {ok, [left_pad(Type, Token) || Token <- Tokens]}.
+
+%% @private
+left_pad(integer, FV) when is_binary(FV) ->
+    riak_search_text:left_pad(FV, 10);
+left_pad(_, FV) ->
+    FV.
+
+%% @private
+determine_analyzer(_Schema, integer) ->
+    ?WHITESPACE_ANALYZER;
+determine_analyzer(_Schema, date) ->
+    ?WHITESPACE_ANALYZER;
+determine_analyzer(Schema, _) ->
+    Schema:analyzer_factory().
+
+%% @private Given a list of tokens, build a gb_tree mapping words to a
+%% list of word positions.
+get_term_positions(Terms) ->
+    F = fun(Term, {Pos, Acc}) ->
+        case gb_trees:lookup(Term, Acc) of
+            {value, Positions} ->
+                {Pos + 1, gb_trees:update(Term, [Pos|Positions], Acc)};
+            none ->
+                {Pos + 1, gb_trees:insert(Term, [Pos], Acc)}
+        end
+    end,
+    {_, Tree} = lists:foldl(F, {1, gb_trees:empty()}, Terms),
+    Tree.
+
+%% @private
+%% Given a term and a list of positions, generate a list of
+%% properties.
+build_props(Term, PositionTree) ->
+    case gb_trees:lookup(Term, PositionTree) of
+        none ->
+            [];
+        {value, Positions} ->
+            [
+                {word_pos, Positions},
+                {freq, length(Positions)}
+            ]
+    end.
+
+%% Returns a Riak object.
+get_obj(RiakClient, DocIndex, DocID) ->
+    Bucket = to_binary(DocIndex),
+    Key = to_binary(DocID),
+    RiakClient:get(Bucket, Key).
+
+%% Returns a #riak_idx_doc record.
+get(RiakClient, DocIndex, DocID) ->
+    case get_obj(RiakClient, DocIndex, DocID) of
+        {ok, Obj} -> 
+            riak_object:get_value(Obj);
+        Other ->
+            Other
+    end.
+
+%% Write the object to Riak.
+put(RiakClient, IdxDoc) ->
+    #riak_idx_doc { id=DocID, index=DocIndex } = IdxDoc,
+    DocBucket = to_binary(DocIndex),
+    DocKey = to_binary(DocID),
+    case RiakClient:get(DocBucket, DocKey) of
+        {ok, Obj} -> 
+            DocObj = riak_object:update_value(Obj, IdxDoc);
+        {error, notfound} ->
+            DocObj = riak_object:new(DocBucket, DocKey, IdxDoc)
+    end,
+    RiakClient:put(DocObj).
+
+delete(RiakClient, DocIndex, DocID) ->
+    DocBucket = to_binary(DocIndex),
+    DocKey = to_binary(DocID),
+    RiakClient:delete(DocBucket, DocKey).

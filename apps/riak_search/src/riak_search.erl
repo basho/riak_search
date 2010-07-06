@@ -1,9 +1,6 @@
 -module(riak_search).
 -export([client_connect/1,
          local_client/0,
-         index_terms/1, index_terms/2,
-         get_index_fsm/0,
-         stop_index_fsm/1,
          stream/4,
          multi_stream/2,
          info/3,
@@ -20,24 +17,6 @@ client_connect(Node) when is_atom(Node) ->
 local_client() ->
     {ok, Client} = riak:local_client(),
     {ok, riak_search_client:new(Client)}.
-
-%% Create an index FSM, send the terms and shut it down
-index_terms(Terms) ->
-    {ok, Pid} = get_index_fsm(),
-    ok = index_terms(Pid, Terms),
-    stop_index_fsm(Pid).
-
-%% Index terms against an index FSM
-index_terms(Pid, Terms) ->
-    riak_search_index_fsm:index_terms(Pid, Terms).
-
-%% Get an index FSM
-get_index_fsm() ->
-    riak_search_index_fsm_sup:start_child().
-
-%% Tell an index FSM indexing is complete and wait for it to shut down
-stop_index_fsm(Pid) ->
-    riak_search_index_fsm:done(Pid).
 
 
 stream(Index, Field, Term, FilterFun) ->

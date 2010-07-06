@@ -1,10 +1,36 @@
+%%% Convenience module for interacting with Search from the Erlang
+%%% command line. Allows the user to search for keys and docs, explain
+%%% queries, index documents in a directory, index a set of fields,
+%%% de-index (delete) documents in a directory, and delete a specific
+%%% document.
+%%%
+%%% It provides convenience in three main ways: 
+%%%
+%%% 1. Takes care of instantiating the riak_search_client
+%%%    parameterized module.
+%%%
+%%% 2. Wraps arguments into structures such as the #riak_idx_doc.
+%%%
+%%% 3. Supplies reasonable defaults when calling functions in
+%%%    riak_search_client.
+
 -module(search).
 -export([
+    %% Querying.
     search/1, search/2,
     search_doc/1, search_doc/2,
-    explain/1, explain/2,
+
+    %% Inspection.
+    explain/1, explain/2, 
+    graph/1, graph/2,
+
+    %% Indexing.
+    index_doc/2, index_doc/3, index_doc/4,
     index_dir/1, index_dir/2,
-    graph/1
+
+    %% Deletion.
+    delete_doc/1, delete_doc/2,
+    delete_dir/1, delete_dir/2
 ]).
 
 -define(IS_CHAR(C), ((C >= $A andalso C =< $Z) orelse (C >= $a andalso C =< $z))).
@@ -58,7 +84,29 @@ graph(Q) ->
 
 graph(Index, Q) ->
     {ok, Client} = riak_search:local_client(),
-    Client:query_as_graph(explain(Index, Q)),
+    Client:query_as_graph(explain(Index, Q)).
+
+%% See index_doc/4.
+index_doc(ID, Fields) ->
+    index_doc(?DEFAULT_INDEX, ID, Fields, []).
+
+%% See index_doc/4.
+index_doc(Index, ID, Fields) ->
+    index_doc(Index, ID, Fields, []).
+
+%% Index a document.
+%% @param Index - The index.
+%% @param Fields - A list of {Key, Value} fields.
+%% @param Props - A list of {Key, Value} props.
+index_doc(Index, ID, Fields, Props) ->
+    {ok, Client} = riak_search:local_client(),
+    {ok, AnalyzerPid} = qilr:new_analyzer(),
+    IdxDoc = riak_indexed_doc:new(ID, Fields, Props, Index),
+    try
+        Client:index_doc(IdxDoc, AnalyzerPid)
+    after
+        qilr:close_analyzer(AnalyzerPid)
+    end,
     ok.
 
 %% Full text index the specified directory of plain text files.
@@ -66,25 +114,39 @@ index_dir(Directory) ->
     index_dir(?DEFAULT_INDEX, Directory).
 
 %% Full text index the specified directory of plain text files.
-index_dir(IndexOrSchema, Directory) ->
+index_dir(Index, Directory) ->
     {ok, Client} = riak_search:local_client(),
-    {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
-    Index = Schema:name(),
-    Field = Schema:default_field(),
+    {ok, Schema} = riak_search_config:get_schema(Index),
+    DefaultField = Schema:default_field(),
     {ok, AnalyzerPid} = qilr:new_analyzer(),
-    {ok, IndexPid} = riak_search:get_index_fsm(),
-    F = fun(BaseName, Body) ->
-                Fields = [{Field, binary_to_list(Body)}],
-                IdxDoc = riak_indexed_doc:new(BaseName, Index),
-                IdxDoc2 = riak_indexed_doc:set_fields(Fields, IdxDoc),
-                Terms = Client:parse_idx_doc(IdxDoc2),
-                riak_search:index_terms(IndexPid, Terms),
-                Client:store_idx_doc(IdxDoc2)
+    {ok, IndexPid} = Client:get_index_fsm(),
+    F = fun(DocID, Body) ->
+                Fields = [{DefaultField, binary_to_list(Body)}],
+                IdxDoc = riak_indexed_doc:new(DocID, Fields, [], Index),
+                Client:index_doc(IdxDoc, AnalyzerPid, IndexPid)
         end,
     try
         riak_search_utils:index_recursive(F, Directory)
     after
-        riak_search:stop_index_fsm(IndexPid),
+        Client:stop_index_fsm(IndexPid),
         qilr:close_analyzer(AnalyzerPid)
     end,
     ok.
+
+delete_dir(Directory) ->
+    delete_dir(?DEFAULT_INDEX, Directory).
+
+delete_dir(Index, Directory) ->
+    {ok, Client} = riak_search:local_client(),
+    F = fun(DocID, _Body) ->
+                Client:delete_doc(Index, DocID)
+        end,
+    riak_search_utils:index_recursive(F, Directory),
+    ok.
+    
+delete_doc(DocID) ->
+    delete_doc(?DEFAULT_INDEX, DocID).
+
+delete_doc(Index, DocID) ->
+    {ok, Client} = riak_search:local_client(),
+    Client:delete_doc(Index, DocID).
