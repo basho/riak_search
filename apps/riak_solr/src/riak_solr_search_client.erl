@@ -66,12 +66,13 @@ run_solr_command(Schema, add, [{IdxDoc, Terms}|Docs]) ->
     %% If there is an old document, then delete it.
     ensure_deleted(Schema:name(), IdxDoc#riak_idx_doc.id),
 
-    %% Store the terms...
-    F = fun(X) ->
-        {Index, Field, Term, DocID, Props} = X,
-        Client:index_term(Index, Field, Term, DocID, Props)
-    end,
-    plists:map(F, Terms, {processes, 4}),
+    riak_search:index_terms(Terms),
+    %% %% Store the terms...
+    %% F = fun(X) ->
+    %%     {Index, Field, Term, DocID, Props} = X,
+    %%     Client:index_term(Index, Field, Term, DocID, Props)
+    %% end,
+    %% plists:map(F, Terms, {processes, 4}),
 
     %% Store the document.
     Client:store_idx_doc(IdxDoc),

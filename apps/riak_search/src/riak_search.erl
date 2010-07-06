@@ -1,6 +1,7 @@
 -module(riak_search).
 -export([client_connect/1,
          local_client/0,
+         index_terms/1,
          stream/4,
          multi_stream/2,
          info/3,
@@ -17,6 +18,15 @@ client_connect(Node) when is_atom(Node) ->
 local_client() ->
     {ok, Client} = riak:local_client(),
     {ok, riak_search_client:new(Client)}.
+
+%% Index the specified term.
+index_terms(Terms) ->
+    {ok, Pid} = riak_search_index_fsm_sup:start_child(),
+    ok = riak_search_index_fsm:index_terms(Pid, Terms),
+    riak_search_index_fsm:done(Pid).
+    %% {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
+    %% Preflist = riak_core_apl:get_apl(Partition, N),
+    %% riak_search_vnode:index(Preflist, Index, Field, Term, Value, Props).
 
 stream(Index, Field, Term, FilterFun) ->
     {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),

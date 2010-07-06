@@ -1,5 +1,6 @@
 -module(riak_search_vnode).
--export([index/6,
+-export([index/6,index/7,
+         multi_index/3,
          delete_term/5,
          stream/6,
          multi_stream/4,
@@ -14,6 +15,7 @@
 
 -record(vstate, {idx, bmod, bstate}).
 -record(index_v1, {index, field, term, value, props}).
+-record(multi_index_v1, {iftvp_list}).
 -record(delete_v1, {index, field, term, doc_id}).
 -record(info_v1, {index, field, term}).
 -record(info_range_v1, {index, field, start_term, end_term, size}).
@@ -22,6 +24,9 @@
 -record(catalog_query_v1, {index, catalog_query}).
 
 index(Preflist, Index, Field, Term, Value, Props) ->
+    index(Preflist, Index, Field, Term, Value, Props, noreply).
+
+index(Preflist, Index, Field, Term, Value, Props, Sender) ->
     Req = #index_v1{
       index = Index,
       field = Field,
@@ -29,7 +34,13 @@ index(Preflist, Index, Field, Term, Value, Props) ->
       value = Value,
       props = Props
      },
-    command(Preflist, Req).
+    command(Preflist, Req, Sender).
+
+multi_index(Preflist, IFTVPList, Sender) ->
+    Req = #multi_index_v1{
+      iftvp_list = IFTVPList
+     },
+    command(Preflist, Req, Sender).    
 
 delete_term(Preflist, Index, Field, Term, DocId) ->
     Req = #delete_v1{
@@ -148,6 +159,9 @@ handle_command(#index_v1{index = Index,
                          props = Props},
                _Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
     bmod_response(BMod:index(Index, Field, Term, Value, Props, BState), VState);
+handle_command(#multi_index_v1{iftvp_list = IFTVPList},
+               _Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
+    bmod_response(BMod:multi_index(IFTVPList, BState), VState);
 handle_command(#delete_v1{index = Index,
                           field = Field,
                           term = Term,

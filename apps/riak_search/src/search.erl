@@ -77,10 +77,11 @@ index_dir(IndexOrSchema, Directory) ->
                 IdxDoc = riak_indexed_doc:new(BaseName, Index),
                 IdxDoc2 = riak_indexed_doc:set_fields(Fields, IdxDoc),
                 Terms = Client:parse_idx_doc(IdxDoc2),
-                [begin
-                     {Index, Field, Term, Value, Props} = X,
-                     Client:index_term(Index, Field, Term, Value, Props)
-                 end || X <- Terms],
+                riak_search:index_terms(Terms),
+                %% [begin
+                %%      {Index, Field, Term, Value, Props} = X,
+                %%      Client:index_term(Index, Field, Term, Value, Props)
+                %%  end || X <- Terms],
                 Client:store_idx_doc(IdxDoc2)
         end,
     try

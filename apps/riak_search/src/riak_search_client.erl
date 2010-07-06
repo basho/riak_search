@@ -193,7 +193,7 @@ build_props(Term, PositionTree) ->
 index_term(Index, Field, Term, Value, Props) ->
     {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
     Preflist = riak_core_apl:get_apl(Partition, N),
-    riak_search_vnode:index(Preflist, Index, Field, Term, Value, Props).
+    riak_search_vnode:index(Preflist, Index, Field, Term, Value, Props, ignore).
 
 delete_term(Index, Field, Term, DocId) ->
     {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),

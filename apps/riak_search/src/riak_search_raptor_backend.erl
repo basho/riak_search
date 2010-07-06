@@ -22,7 +22,8 @@
 -author("John Muellerleile <johnm@basho.com>").
 -behavior(riak_search_backend).
 
--export([start/2,stop/1,index/6,delete_entry/5,stream/6,multi_stream/4,
+-export([start/2,stop/1,index/6,multi_index/2,delete_entry/5,
+         stream/6,multi_stream/4,
          info/5,info_range/7,catalog_query/3,fold/3,is_empty/1,drop/1]).
 -export([toggle_raptor_debug/0, shutdown_raptor/0]).
 -export([sync/0, poke/1, raptor_status/0]).
@@ -70,7 +71,27 @@ index(Index, Field, Term, Value, Props, State) ->
     after
         raptor_conn_pool:checkin(Conn)
     end,
+    {reply, ok, State}.
+
+multi_index(IFTVPList, State) ->
+    Partition = to_binary(State#state.partition),
+    {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
+    try
+        %% Index for raptor is fire and forget - no point checking
+        %% return value
+        [raptor_conn:index(Conn,
+                           to_binary(Index),
+                           to_binary(Field),
+                           to_binary(Term),
+                           to_binary(Value),
+                           Partition,
+                           term_to_binary(Props)) || 
+            {Index, Field, Term, Value, Props} <- IFTVPList]
+    after
+        raptor_conn_pool:checkin(Conn)
+    end,
     noreply.
+
 
 delete_entry(Index, Field, Term, DocId, State) ->
     Partition = to_binary(State#state.partition),
