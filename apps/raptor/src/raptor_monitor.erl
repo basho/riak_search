@@ -59,7 +59,7 @@ handle_info({_Port, {data, {eol, Msg}}}, State) ->
     error_logger:info_msg("~p~n", [Msg]),
     {noreply, State};
 handle_info({_Port, {data, {noeol, Msg}}}, State) ->
-    error_logger:info_msg("~p", [Msg]),
+    error_logger:info_msg("~p~n", [Msg]),
     {noreply, State};
 handle_info(_Info, State) ->
     {noreply, State}.

@@ -41,6 +41,7 @@
 -define(FOLD_TIMEOUT, 30000).
 -define(MAX_HANDOFF_STREAMS, 50).
 -define(INFO_TIMEOUT, 5000).
+-define(RESULT_VEC_SZ, 1000).
 
 
 %% ===================================================================
@@ -252,9 +253,8 @@ receive_stream_results(StreamRef, Sender, FilterFun) ->
     receive_stream_results(StreamRef, Sender, FilterFun, []).
 
 receive_stream_results(StreamRef, Sender, FilterFun, Acc0) ->
-    case length(Acc0) > 500 of
+    case length(Acc0) > ?RESULT_VEC_SZ of
         true ->
-            %% io:format("chunk (~p) ~p~n", [length(Acc0), StreamRef]),
             riak_search_backend:stream_response_results(Sender, Acc0),
             Acc = [];
         false ->
@@ -343,7 +343,9 @@ receive_catalog_query_results(StreamRef, Sender) ->
         {catalog_query, StreamRef, Partition, Index,
                         Field, Term, JSONProps} ->
             riak_search_backend:catalog_query_response(Sender, Partition, Index,
-                                                       Field, Term, JSONProps),
+                                                       Field, Term, 
+                                                       [{json_props, JSONProps},
+                                                        {node, node()}]),
             receive_catalog_query_results(StreamRef, Sender)
     end,
     ok.

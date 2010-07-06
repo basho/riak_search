@@ -2,9 +2,12 @@
 -export([client_connect/1,
          local_client/0,
          stream/4,
-         multi_stream/2,
+         multi_stream/3,
          info/3,
+         term_preflist/3,
          info_range/5,
+         info_range_no_count/4,
+         catalog_query/1,
          term/2]).
 -include("riak_search.hrl").
 
@@ -28,27 +31,27 @@ stream(Index, Field, Term, FilterFun) ->
     Preflist = [FirstEntry],
     riak_search_vnode:stream(Preflist, Index, Field, Term, FilterFun, self()).
 
-multi_stream(IFTList, FilterFun) ->
-    %% Split the IFTlist into a dictionary keyed by pref lists.
-    %% TODO: Improve this to calculate the Vnode indexes from the IFT hash
-    %%       value and use those for the dictionary insted.  Less preflist
-    %%       lookups.
-    N = riak_search_utils:n_val(),
-    PlIFTList = lists:foldl(fun({term,{I,F,T},_TP}=IFT, PartIFT) ->
-                                    P = riak_search_utils:calc_partition(I, F, T),
-                                    Preflist = riak_core_apl:get_apl(P, N),
-                                    orddict:append_list(Preflist, [IFT], PartIFT)
-                            end, orddict:new(), IFTList),
-    Ref = {multi_stream_response, make_ref()},
-    Sender = {raw, Ref, self()},
-    Sent = orddict:fold(fun(Preflist,IFTs,Acc) ->
-                                SendTo = hd(Preflist),
-                                riak_search_vnode:multi_stream(SendTo, IFTs, 
-                                                               FilterFun, Sender),
-                                [SendTo|Acc]
-                        end, [], PlIFTList),
-    {ok, Ref, length(Sent)}.
-        
+multi_stream(OpNode, IFTList, FilterFun) ->
+    %% TODO: Establish the correct preference list for this operation
+    %% If the I/F/T is chosen at random and there are multiple nodes
+    %% in the system it is likely that not all terms will be located.
+    %% For now, emulate something similar to what the k/v encapsulated
+    %% version did.
+    %% UPDATE: By the time we get to this point with a multi_stream, it's
+    %% guaranteed that all the terms in the multi_stream call reside on
+    %% the same target node (passed in via OpNode); we'll establish a
+    %% viable partition by getting the preflist for the first term and
+    %% finding the first partition that maps to the specified OpNode
+    %% and using that.  The vnode itself does not discriminate by Partition
+    %% when processing an multi_stream request, so any partition will work
+    %% as long as it maps to that node.
+    {term, {Index, Field, Term}, _TermProps} = hd(IFTList),
+    {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
+    Preflist = riak_core_apl:get_apl(Partition, N),
+    P1 = hd(lists:filter(fun({_Partition, Node}) ->
+        Node == OpNode end, Preflist)),
+    riak_search_vnode:multi_stream(P1, IFTList, FilterFun, self()).
+
 info(Index, Field, Term) ->
     {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
     Preflist = riak_core_apl:get_apl(Partition, N),
@@ -57,6 +60,10 @@ info(Index, Field, Term) ->
     %% TODO: Replace this with a middleman process that returns after 
     %% the first response.
     {ok, hd(Results)}.
+
+term_preflist(Index, Field, Term) ->
+    {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
+    riak_core_apl:get_apl(Partition, N).
 
 info_range(Index, Field, StartTerm, EndTerm, Size) ->
     %% TODO: Duplicating current behavior for now - a PUT against a preflist with
@@ -69,6 +76,51 @@ info_range(Index, Field, StartTerm, EndTerm, Size) ->
                                              Size, self()),
     {ok, _Results} = riak_search_backend:collect_info_response(length(Preflist), Ref, []).
 
+info_range_no_count(Index, Field, StartTerm, EndTerm) ->
+    %% Results are of form {"term", 'node@1.1.1.1', Count}
+    CatalogQuery = lists:flatten(["index:", Index, " AND field:", Field, " AND term:[",
+        StartTerm, " TO ", EndTerm, "]"]),
+    {ok, CatalogResults} = catalog_query(CatalogQuery),
+    Results = lists:map(fun(CatalogEntry) ->
+        %% TODO: use this partition information (as opposed to computing the
+        %%       preflist for every term again later...
+        {_Partition, Index, Field, Term, Props} = CatalogEntry,
+        Node = proplists:get_value(node, Props),
+        %%{Node, lists:flatten([Index, ".", Field, ".", Term]), 1}
+        {Term, Node, 1}
+    end, CatalogResults),
+    {ok, Results}.
+
+catalog_query(Query) ->
+    ReplyTo = self(),
+    FwdRef = make_ref(),
+    spawn(fun() ->
+                  {ok, RecvRef, NumReqsSent} = do_catalog_query(Query, self()),
+                  Results = receive_catalog_query_results(NumReqsSent, ReplyTo, RecvRef, FwdRef, []),
+                  ReplyTo ! {catalog_query_results, FwdRef, Results}
+          end),
+    receive
+        {catalog_query_results, FwdRef, Results} ->
+            {ok, Results}
+        after ?TIMEOUT ->
+            {error, timeout}
+    end.
+
+receive_catalog_query_results(0, _ReplyTo, _RecvRef, _FwdRef, Acc) ->
+    Acc;
+receive_catalog_query_results(StreamsLeft, ReplyTo, RecvRef, FwdRef, Acc) ->
+    receive
+        {RecvRef, {Partition, Index, Field, Term, Props}} ->
+            receive_catalog_query_results(StreamsLeft, ReplyTo, RecvRef, FwdRef,
+                Acc ++ [{Partition, Index, Field, Term, Props}]);
+        {RecvRef, done} ->
+            receive_catalog_query_results(StreamsLeft-1, ReplyTo, RecvRef, FwdRef,
+                Acc);
+        Msg ->
+            receive_catalog_query_results(StreamsLeft, ReplyTo, RecvRef, FwdRef,
+                Acc ++ [{error, Msg}])
+    end.
+
 %%
 %% This code has issues at the moment - as discussed with Kevin.
 %% It will probably return incomplete lists in a multi-node setup.
@@ -76,6 +128,7 @@ info_range(Index, Field, StartTerm, EndTerm, Size) ->
 %% Making do for now.
 %% 
 term(Index, Term) ->
+    %% TODO: this query also needs to specify index: and partition_id: !!
     Query = lists:flatten(["term:", riak_search_utils:to_list(Term)]),
     ReplyTo = self(),
     FwdRef = make_ref(),
@@ -84,7 +137,9 @@ term(Index, Term) ->
                   filter_unique_terms(NumReqsSent, dict:new(), ReplyTo, RecvRef, FwdRef)
           end),
     {ok, FwdRef}.
-    
+
+do_catalog_query(Query, ReplyTo) ->
+    do_catalog_query("", Query, ReplyTo).
 do_catalog_query(_Index, Query, ReplyTo) ->
     %% Catalog queries are currently node-wide, so only need to send one
     %% per node.  Reduce the preference list to just be one per node.
@@ -118,6 +173,7 @@ filter_unique_terms(StreamsLeft, Terms, ReplyTo, RecvRef, FwdRef) ->
         {RecvRef, done} ->
             filter_unique_terms(StreamsLeft-1, Terms, ReplyTo, 
                                 RecvRef, FwdRef)
+    %% TODO: should this be 750 ms?  why is this here?
     after 750 ->
             ReplyTo ! {term, done, FwdRef}
     end.

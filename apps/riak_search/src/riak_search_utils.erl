@@ -190,7 +190,7 @@ index_recursive(Callback, Directory) ->
     io:format(" :: Found ~p files...~n", [length(Files)]),
 
     F = fun(File) -> index_recursive_file(Callback, File) end,
-    plists:map(F, Files, {processes, 4}),
+    plists:map(F, Files, {processes, 8}),
     ok.
 
 %% @private
