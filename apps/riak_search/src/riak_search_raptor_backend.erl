@@ -461,8 +461,9 @@ fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Inde
             IndexBin = riak_search_utils:to_binary(Index),
             FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
             BObj = term_to_binary({Field, Term, Value, Props2}),
-            FoldResultPid ! {fold_result, Fun0({IndexBin, FieldTermBin}, BObj, Acc)},
-            fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term);
+            NewAcc = Fun0({IndexBin, FieldTermBin}, BObj, Acc),
+            FoldResultPid ! {fold_result, NewAcc},
+            fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, NewAcc, Index, Field, Term);
         _Msg ->
             %% io:format("fold_stream_process: unknown message: ~p~n", [_Msg]),
             fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, Fun0, Acc, Index, Field, Term)
@@ -480,8 +481,8 @@ receive_fold_results(Acc, Count) ->
             %% io:format("receive_fold_results: fold complete [~p objects].~n",
             %%           [Count]),
             Acc;
-        {fold_result, _Obj} ->
-            receive_fold_results(Acc, Count+1)
+        {fold_result, NewAcc} ->
+            receive_fold_results(NewAcc, Count+1)
     end.
 
 %%%
