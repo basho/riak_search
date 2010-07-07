@@ -118,7 +118,10 @@ receiving({Ref, recv_timeout}, #state{ref=Ref} = State) ->
 
 receiving({_Ref, {indexed, _Node}}, State) ->
     %% Ignore stale reply from previous batch
-    {next_state, waiting, State}.
+    {next_state, waiting, State};
+receiving(empty, State) ->
+    %% Got given some more work after the terms list was empty - ignore
+    {next_state, receiving, State}.
 
 %% @private
 %% Handle sync_send_event
