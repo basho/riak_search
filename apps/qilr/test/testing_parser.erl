@@ -9,6 +9,7 @@
 
 multiple_terms_test_() ->
     [fun() ->
+             application:start(qilr),
              {ok, AnalyzerPid} = qilr_analyzer_sup:new_conn(),
              ?assertMatch({ok,[{lor,[{term,<<"planes">>,[]},
                                      {term,<<"trains">>,[]},
@@ -17,6 +18,7 @@ multiple_terms_test_() ->
 
 field_test_() ->
     [fun() ->
+             application:start(qilr),             
              {ok, AnalyzerPid} = qilr_analyzer_sup:new_conn(),
              ?assertMatch({ok,[{field,"title",<<"peace">>,[required]}]},
                           ?PARSE(AnalyzerPid, "+title:peace")),
@@ -25,6 +27,7 @@ field_test_() ->
 
 prefix_test_() ->
     [fun() ->
+             application:start(qilr),
              {ok, AnalyzerPid} = qilr_analyzer_sup:new_conn(),
              ?assertMatch({ok, [{term, <<"planes">>, [required]}]}, ?PARSE(AnalyzerPid, "+planes")),
              ?assertMatch({ok, [{term, <<"planes">>, [prohibited]}]}, ?PARSE(AnalyzerPid, "-planes")),
@@ -39,6 +42,7 @@ prefix_test_() ->
 
 suffix_test_() ->
     [fun() ->
+             application:start(qilr),             
              {ok, AnalyzerPid} = qilr_analyzer_sup:new_conn(),
              ?assertMatch({ok,[{term,<<"solar">>,[{fuzzy,"0.5"}]}]}, ?PARSE(AnalyzerPid, "solar~")),
              ?assertMatch({ok,[{term,<<"solar">>,[{proximity,5}]}]}, ?PARSE(AnalyzerPid, "solar~5")),
@@ -68,6 +72,7 @@ suffix_test_() ->
 
 bool_test_() ->
     [fun() ->
+             application:start(qilr),
              {ok, AnalyzerPid} = qilr_analyzer_sup:new_conn(),
              ?assertMatch({ok,[{land,[{term,<<"fish">>,[]},{term,<<"bicycle">>,[]}]}]},
                           ?PARSE(AnalyzerPid, "fish AND bicycle")),
@@ -90,6 +95,7 @@ bool_test_() ->
 
 grouping_test_() ->
     [fun() ->
+             application:start(qilr),
              {ok, AnalyzerPid} = qilr_analyzer_sup:new_conn(),
              ?assertMatch({ok,[{group,[{land,[{term,<<"erlang">>,[]},
                                               {term,<<"sweden">>,[]}]}]}]},
