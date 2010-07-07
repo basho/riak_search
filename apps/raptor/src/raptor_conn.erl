@@ -132,7 +132,7 @@ handle_call({index, IndexRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_index(IndexRec),
     gen_tcp:send(Sock, Data),
     inet:setopts(Sock, [{active, once}]),
-    {reply, ok, State};
+    {reply, {ok, indexed}, State#state{req_type=index}, ?RECV_TIMEOUT};
 
 handle_call({deleteentry, DeleteEntryRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_deleteentry(DeleteEntryRec),
@@ -185,6 +185,10 @@ handle_cast(_Msg, State) ->
 handle_info(timeout, #state{req_type=ReqType, reqid=ReqId, dest=Dest}=State) ->
     Message = build_timeout_message(ReqType, ReqId),
     Dest ! Message,
+    {noreply, State#state{req_type=undefined, reqid=undefined, dest=undefined}};
+
+handle_info({tcp, Sock, _Data}, #state{req_type=index}=State) ->
+    inet:setopts(Sock, [{active, once}]),
     {noreply, State#state{req_type=undefined, reqid=undefined, dest=undefined}};
 
 handle_info({tcp, Sock, Data}, #state{req_type=stream, reqid=ReqId, dest=Dest}=State) ->

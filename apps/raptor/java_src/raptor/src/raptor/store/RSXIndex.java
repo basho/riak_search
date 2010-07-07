@@ -46,9 +46,9 @@ public class RSXIndex implements Runnable {
     final private static String TABLE_SEP = "/";
     final private static String IFT_SEP = ".";
     final private static String CATALOG_TABLE = "__sys._catalog_";
-    final private static int STORE_COMMIT_INTERVAL = 30000; /* ms */
+    final private static int STORE_COMMIT_INTERVAL = 10000; /* ms */
     //final private static int STORE_SYNC_INTERVAL = 30000; /* ms */
-    final private static int LUCENE_COMMIT_INTERVAL = 30000; /* ms */
+    final private static int LUCENE_COMMIT_INTERVAL = 10000; /* ms */
     final private ColumnStore store;
     final private LuceneStore lucene;
     final private Map<String, List<JSONObject>> catalogCache;
@@ -57,11 +57,11 @@ public class RSXIndex implements Runnable {
     
     public RSXIndex(String dataDir) throws Exception {
         catalogCache = new Builder<String, List<JSONObject>>()
-            .initialCapacity(25000)
-            .maximumWeightedCapacity(25000)
-            .concurrencyLevel(Runtime.getRuntime().availableProcessors()*2)
+            .initialCapacity(150000)
+            .maximumWeightedCapacity(150000)
+            .concurrencyLevel(Runtime.getRuntime().availableProcessors()*4)
             .build();
-        store = new ColumnStore(dataDir + "/raptor-db", "log", 1);
+        store = new ColumnStore(dataDir + "/raptor-db", "log", 4);
         lucene = new LuceneStore(dataDir + "/raptor-catalog");
         RaptorServer.writeThread.start();
     }
@@ -88,6 +88,7 @@ public class RSXIndex implements Runnable {
                 log.info(">> " + stat_index_c + " index puts (" + 
                     queueSize + " queued)");
                 stat_index_c = 0;
+                log.info("writeQueue.size() = " + RaptorServer.writeQueue.size());
                 Thread.sleep(STORE_COMMIT_INTERVAL);
             } catch (Exception ex) {
                 ex.printStackTrace();

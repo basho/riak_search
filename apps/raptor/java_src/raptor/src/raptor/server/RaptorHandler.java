@@ -113,7 +113,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
          try {
             Index index = Index.newBuilder().mergeFrom(b_ar).build();
             if (index.getMessageType().equals(MSG_INDEX)) {
-               processIndexMessage(index);
+               processIndexMessage(e, index);
                return;
             }
          } catch (com.google.protobuf.UninitializedMessageException ex) { }
@@ -206,9 +206,15 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
       }
    }
 
-   private void processIndexMessage(Index msg) {
+   private void processIndexMessage(MessageEvent e, Index msg) {
       try {
+         CommandResponse.Builder response =
+            CommandResponse.newBuilder();
+         final Channel chan = e.getChannel();
          RaptorServer.writeQueue.offer(msg);
+         response.setResponse("");
+         CommandResponse r = response.build();
+         chan.write(r);
       } catch (Exception ex) {
          log.error("Error handling index request", ex);
       }

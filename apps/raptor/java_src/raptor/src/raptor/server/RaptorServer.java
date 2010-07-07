@@ -85,7 +85,8 @@ public class RaptorServer {
     }
     
     private static void configureStorage(String dataDir) {
-       writeQueue = new LinkedBlockingQueue<Index>(500);
+       // TODO: configurable writeQueue size?
+       writeQueue = new LinkedBlockingQueue<Index>(5000);
        writeThread = new Thread(new Runnable() {
            public void run() {
                try {
@@ -125,9 +126,9 @@ public class RaptorServer {
              new NioServerSocketChannelFactory(
                    Executors.newCachedThreadPool(),
                    Executors.newCachedThreadPool(),
-                   Runtime.getRuntime().availableProcessors() * 2));
+                   Runtime.getRuntime().availableProcessors()));
          bootstrap.setOption("reuseAddress", true);
-         bootstrap.setOption("child.tcpNoDelay", true);
+         bootstrap.setOption("child.tcpNoDelay", false);
          bootstrap.setPipelineFactory(new RaptorPipelineFactory());
          bootstrap.bind(new InetSocketAddress(port));
     }
@@ -136,10 +137,9 @@ public class RaptorServer {
        ServerBootstrap bootstrap = new ServerBootstrap(
              new NioServerSocketChannelFactory(
                    Executors.newCachedThreadPool(),
-                   Executors.newCachedThreadPool(),
-                   Runtime.getRuntime().availableProcessors() * 2));
+                   Executors.newCachedThreadPool()));
          bootstrap.setOption("reuseAddress", true);
-         bootstrap.setOption("child.tcpNoDelay", true);
+         bootstrap.setOption("child.tcpNoDelay", false);
          bootstrap.setPipelineFactory(new HeartbeatPipelineFactory());
          bootstrap.bind(new InetSocketAddress(port));
     }    
