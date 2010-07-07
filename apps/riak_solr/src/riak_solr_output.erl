@@ -53,9 +53,9 @@ json_response(Schema, _SortBy, ElapsedTime, SQuery, NumFound, MaxScore, []) ->
     mochijson2:encode({struct, Response});
 json_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, Docs0) ->
     F = fun({Name, Value}) ->
-        case Schema:find_field_or_facet(Name) of
+        case Schema:find_field(Name) of
             Field when is_record(Field, riak_search_field) ->
-                Type = Field#riak_search_field.type;
+                Type = Schema:field_type(Field);
             undefined ->
                 Type = unknown
         end,
