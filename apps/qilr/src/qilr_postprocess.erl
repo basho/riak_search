@@ -196,6 +196,8 @@ get_type({group, _}) ->
     group;
 get_type({field, _, _, _}) ->
     field;
+get_type({phrase, _Phrase, _Ops}) ->
+    phrase;
 get_type({term, _, _}) ->
     term.
 
