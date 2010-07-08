@@ -250,7 +250,7 @@ validate_results(Length, _Results, {length, ValidLength}) ->
         true -> 
             true;
         false ->
-            io:format(" :: - Expected length ~p, got ~p!~n", [Length, ValidLength]),
+            io:format(" :: - Expected length ~p, got ~p!~n", [ValidLength, Length]),
             false
     end;
 validate_results(_Length, _Results, Other) ->

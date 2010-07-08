@@ -24,16 +24,20 @@
         {field, [
             {name, "int2"},
             {type, integer},
-            {padding_size, 2},
-            {padding_char, "0"}
+            {padding_size, 2}
         ]},
 
         {field, [
-            {name, "int5"},
+            {name, "int4"},
             {type, integer},
-            {padding_size, 5},
-            {padding_char, "0"},
-            {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+            {padding_size, 4}
+            %{padding_char, "0"},
+            %{analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+        ]},
+
+        {field, [
+            {name, "integer"},
+            {type, integer}
         ]}
     ]
 }.

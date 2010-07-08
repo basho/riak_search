@@ -33,7 +33,7 @@
 -include("riak_search.hrl").
 
 name() ->
-    Name.
+    riak_search_utils:to_list(Name).
 
 set_name(NewName) ->
     ?MODULE:new(NewName, Version, DefaultField, FieldsAndFacets, DefaultOp, AnalyzerFactory).
@@ -104,8 +104,17 @@ find_field(FName) ->
     find_field_inner(FName, FieldsAndFacets).
 
 find_field_inner(FName, []) ->
-    error_logger:error_msg("Could not locate field ~s in Schema ~s!", [FName, Name]),
-    undefined;
+    error_logger:error_msg("Could not locate field ~s in Schema ~s! Using defaults.", [FName, Name]),
+    #riak_search_field {
+        name=FName, 
+        type=string, 
+        padding_size=0,
+        padding_char=$\s,
+        required=false, 
+        dynamic=false, 
+        analyzer_factory=AnalyzerFactory, 
+        facet=false
+    };
 find_field_inner(FName, [Field|Fields]) ->
     case Field#riak_search_field.dynamic of
         true -> 
