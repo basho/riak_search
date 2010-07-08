@@ -458,9 +458,9 @@ fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, IndexBin, Field
                 _ ->
                     Props2 = binary_to_term(Props)
             end,
-            FieldTermBin = <<FieldBin/binary, ".", TermBin/binary>>,
-            BObj = term_to_binary({FieldBin, TermBin, Value, Props2}),
-            FoldResultPid ! {fold_result, IndexBin, FieldTermBin, BObj},
+            Key = {IndexBin,{FieldBin,TermBin}},
+            Val = {Value, Props2},
+            FoldResultPid ! {fold_result, Key, Val},
             fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, 
                                 IndexBin, FieldBin, TermBin);
         _Msg ->
@@ -481,8 +481,8 @@ receive_fold_results(Fun, Acc) ->
             %% io:format("receive_fold_results: fold complete [~p objects].~n",
             %%           [Count]),
             Acc;
-        {fold_result, IndexBin, FieldTermBin, BObj} ->
-            receive_fold_results(Fun, Fun({IndexBin,FieldTermBin},BObj,Acc))
+        {fold_result, Key, Val} ->
+            receive_fold_results(Fun, Fun(Key,Val,Acc))
     after ?FOLD_TIMEOUT ->
             throw({timeout,Acc})
     end.
