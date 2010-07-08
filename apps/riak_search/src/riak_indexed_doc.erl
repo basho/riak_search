@@ -147,14 +147,14 @@ analyze_field(FieldName, FieldValue, Schema, AnalyzerPid) ->
     %% Get the field...
     Field = Schema:find_field(FieldName),
     AnalyzerFactory = Schema:analyzer_factory(Field),
-    PaddingSize = Schema:padding_size(Field),
-    PaddingChar = Schema:padding_char(Field),
+    PadSize = Schema:padding_size(Field),
+    PadChar = Schema:padding_char(Field),
 
     %% Analyze the field...
     {ok, Tokens} = qilr_analyzer:analyze(AnalyzerPid, FieldValue, AnalyzerFactory),
 
     %% Do left padding.
-    Tokens1 = [riak_search_text:left_pad(X, PaddingSize, PaddingChar) || X <- Tokens],
+    Tokens1 = [riak_search_text:left_pad(X, PadSize, PadChar) || X <- Tokens],
     
     %% Return.
     {ok, Tokens1}.

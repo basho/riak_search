@@ -17,10 +17,10 @@ left_pad([F|T]=Value, Count, Char) ->
             left_pad1(Value, Count, Char)
     end.
 
-left_pad1(V, Count, Char) when length(V) >= Count ->
+left_pad1(V, Count, _Char) when length(V) >= Count ->
     V;
 left_pad1(V, Count, Char) ->
-    left_pad1([Char|V], Count).
+    left_pad1([Char|V], Count, Char).
 
 -ifdef(TEST).
 padding_test() ->
