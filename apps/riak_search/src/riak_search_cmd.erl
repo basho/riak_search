@@ -22,6 +22,7 @@ usage() ->
     search-cmd index [INDEX] PATH            : Index files in a path.
     search-cmd delete [INDEX] PATH           : De-index files in a path.
     search-cmd solr [INDEX] PATH             : Run the Solr file.
+    search-cmd test PATH                     : Run a test package
     ",
     io:format(Usage).
 
@@ -76,6 +77,9 @@ command(["solr", Path]) ->
     solr(?DEFAULT_INDEX, Path);
 command(["solr", Index, Path]) ->
     solr(Index, Path);
+
+command(["test", Path]) ->
+    test(Path);
 
 command(_) ->
     usage().
@@ -181,3 +185,74 @@ delete(Index, Path) ->
 solr(Index, Path) -> 
     io:format("~n :: Running Solr document(s) '~s' in ~s...~n", [Path, Index]),
     solr_search:index_dir(Index, Path).
+
+test(Path) ->
+    io:format("~n :: Running Test Package '~s'...~n", [filename:basename(Path)]),
+    Path1 = filename:join(Path, "script.def"),
+    case file:consult(Path1) of
+        {ok, Terms} -> 
+            test_inner(Terms, Path);
+        {error, Error} ->
+            io:format(" :: ERROR - Could not read '~s' : ~p~n", [Path1, Error])
+    end.
+        
+
+-define(TEST_INDEX, "test").
+test_inner([], _Root) -> 
+    ok;
+
+test_inner([Op|Ops], Root) ->
+    test_inner(Op, Root),
+    test_inner(Ops, Root);
+
+test_inner({echo, Text}, _) ->
+    Tokens = string:tokens(Text, "\n"),
+    Tokens1 = [string:strip(X, both) || X <- Tokens],
+    io:format("~n"),
+    [io:format(" :: ~s~n", [X]) || X <- Tokens1, X /= ""];
+
+test_inner({schema, Schema}, Root) ->
+    set_schema(?TEST_INDEX, filename:join(Root, Schema));
+
+test_inner({solr, Path}, Root) ->
+    solr(?TEST_INDEX, filename:join(Root, Path));
+
+test_inner({index, Path}, Root) ->
+    index(?TEST_INDEX, filename:join(Root, Path));
+
+test_inner({delete, Path}, Root) ->
+    delete(?TEST_INDEX, filename:join(Root, Path));
+
+test_inner({search, Query, Validators}, _Root) ->
+    io:format("~n :: QUERY '~s'~n", [Query]),
+    case search:search(?TEST_INDEX, Query) of
+        {Length, Results} ->
+            case validate_results(Length, Results, Validators) of
+                true -> 
+                    io:format(" :: PASS.~n");
+                false ->
+                    io:format(" :: FAIL!~n")
+            end;
+        Other ->
+            io:format(" :: ERROR RUNNING QUERY: ~p~n", [Other])
+    end;
+
+test_inner(Other, _Root) ->
+    throw({unexpected_test_step, Other}).
+
+validate_results(_Length, _Results, []) -> 
+    true;
+validate_results(Length, Results, [Validator|Validators]) ->
+    validate_results(Length, Results, Validator) andalso
+    validate_results(Length, Results, Validators);
+validate_results(Length, _Results, {length, ValidLength}) ->
+    case Length == ValidLength of
+        true -> 
+            true;
+        false ->
+            io:format(" :: - Expected length ~p, got ~p!~n", [Length, ValidLength]),
+            false
+    end;
+validate_results(_Length, _Results, Other) ->
+    throw({unexpected_test_validator, Other}).
+

@@ -1,0 +1,36 @@
+[
+ %% Set the schema...
+ {schema, "schema.def"},
+
+ %% Index the solr in "0"...
+ {echo,   "Indexing documents..."}, 
+ {solr, "./1/*"},
+
+ {echo,   "Verify that we find all five documents containing 'one'."},
+ {search, "one", [{length, 5}]},
+ {search, "value:one", [{length, 5}]},
+ {search, "whitespace:one", [{length, 5}]},
+
+ {echo,   "Verify that the whitespace field is using the whitespace analyzer."},
+ {search, "value:million", [{length, 1}]},
+ {search, "whitespace:million", [{length, 0}]},
+ {search, "whitespace:a,million", [{length, 1}]},
+
+ {echo,   "Verify integer search."},
+ {search, "int2:1", [{length, 1}]},
+ {search, "int2:02", [{length, 1}]},
+ {search, "int5:1", [{length, 1}]},
+ {search, "int5:00002", [{length, 1}]},
+
+ {echo,   "Verify integer search with ranges."},
+ {search, "int2:[1 TO 20]", [{length, 3}]},
+ {search, "int5:[1 TO 20]", [{length, 3}]},
+ {search, "int5:[1 TO 100]", [{length, 4}]},
+
+ {echo,   "See what happens when we exceed padding size."}, 
+ {search, "int2:[1 TO 100]", [{length, 2}]},
+
+ %% Cleanup.
+ {echo,   "De-indexing documents..."}, 
+ {solr, "./2/*"}
+].

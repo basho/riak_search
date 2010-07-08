@@ -202,7 +202,6 @@ index_recursive_file(Callback, File) ->
         {ok, Bytes} ->
             Callback(Basename, Bytes);
         {error, eisdir} ->
-            io:format(" :: Traversing directory: ~p~n", [File]),
             index_recursive(Callback, filename:join(File, "*"));
         Err ->
             io:format("index_file(~p): error: ~p~n", [File, Err])
