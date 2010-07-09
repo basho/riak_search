@@ -1,7 +1,0 @@
-<add>
-<doc>
-<field name="id">zzz_unique_id</field>
-<field name="pay_load">zzz_unique_load</field>
-<field name="timesaved">20100121</field>
-</doc>
-</add>

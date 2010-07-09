@@ -38,7 +38,7 @@ parse_solr_entry(Index, delete, {"id", ID}) ->
             {'id', H, string:join(T, ":")}
     end;
 parse_solr_entry(Index, delete, {"query", Query}) ->
-    case SearchClient:parse_query(Index, Query) of
+    case SearchClient:parse_query(Index, binary_to_list(Query)) of
         {ok, QueryOps} ->
             {'query', QueryOps};
         {error, Error} ->
@@ -89,7 +89,7 @@ run_solr_command(Schema, delete, [{'id', Index, ID}|IDs]) ->
 %% Delete documents by query...
 run_solr_command(Schema, delete, [{'query', QueryOps}|Queries]) ->
     Index = Schema:name(),
-    {_NumFound, Docs} = SearchClient:search_doc(Schema, QueryOps, 0, infinity, ?DEFAULT_TIMEOUT),
+    {_NumFound, _MaxScore, Docs} = SearchClient:search_doc(Schema, QueryOps, 0, infinity, ?DEFAULT_TIMEOUT),
     [SearchClient:delete_doc(Index, X#riak_idx_doc.id) || X <- Docs, X /= {error, notfound}],
     run_solr_command(Schema, delete, Queries);
 

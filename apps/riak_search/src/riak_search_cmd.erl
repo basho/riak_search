@@ -211,6 +211,10 @@ test_inner({echo, Text}, _) ->
     io:format("~n"),
     [io:format(" :: ~s~n", [X]) || X <- Tokens1, X /= ""];
 
+test_inner({sleep, Seconds}, _) ->
+    io:format("~n :: Sleeping ~p second(s)...~n", [Seconds]),
+    timer:sleep(Seconds * 1000);
+
 test_inner({schema, Schema}, Root) ->
     set_schema(?TEST_INDEX, filename:join(Root, Schema));
 
@@ -224,14 +228,14 @@ test_inner({delete, Path}, Root) ->
     delete(?TEST_INDEX, filename:join(Root, Path));
 
 test_inner({search, Query, Validators}, _Root) ->
-    io:format("~n :: QUERY '~s'~n", [Query]),
     case search:search(?TEST_INDEX, Query) of
         {Length, Results} ->
             case validate_results(Length, Results, Validators) of
-                true -> 
-                    io:format(" :: PASS.~n");
-                false ->
-                    io:format(" :: FAIL!~n")
+                pass -> 
+                    io:format("~n    [√] PASS » ~s~n", [Query]);
+                {fail, Errors} ->
+                    io:format("~n    [ ] FAIL » ~s~n", [Query]),
+                    [io:format("        - ~s", [X]) || X <- Errors]
             end;
         Other ->
             io:format(" :: ERROR RUNNING QUERY: ~p~n", [Other])
@@ -240,19 +244,24 @@ test_inner({search, Query, Validators}, _Root) ->
 test_inner(Other, _Root) ->
     throw({unexpected_test_step, Other}).
 
-validate_results(_Length, _Results, []) -> 
-    true;
-validate_results(Length, Results, [Validator|Validators]) ->
-    validate_results(Length, Results, Validator) andalso
-    validate_results(Length, Results, Validators);
-validate_results(Length, _Results, {length, ValidLength}) ->
+validate_results(Length, Results, Validators) ->
+    L = validate_results_inner(Length, Results, Validators),
+    case [X || X <- lists:flatten(L), X /= pass] of
+        []      -> pass;
+        Errors  -> {fail, [X || {fail, X} <- Errors]}
+    end.
+validate_results_inner(_Length, _Results, []) -> 
+    [];
+validate_results_inner(Length, Results, [Validator|Validators]) ->
+    [validate_results_inner(Length, Results, Validator)|
+        validate_results_inner(Length, Results, Validators)];
+validate_results_inner(Length, _Results, {length, ValidLength}) ->
     case Length == ValidLength of
         true -> 
-            true;
+            [pass];
         false ->
-            io:format(" :: - Expected length ~p, got ~p!~n", [ValidLength, Length]),
-            false
+            [{fail, io_lib:format("Expected length ~p, got ~p!~n", [ValidLength, Length])}]
     end;
-validate_results(_Length, _Results, Other) ->
+validate_results_inner(_Length, _Results, Other) ->
     throw({unexpected_test_validator, Other}).
 

@@ -4,7 +4,10 @@
 
  %% Index the solr in "0"...
  {echo,   "Indexing documents..."}, 
- {solr, "./1/*"},
+ {solr,   "./solr_add.xml"},
+
+ %% Let the database catch up.
+ {sleep,  1},
 
  {echo,   "Verify that we find all five documents containing 'one'."},
  {search, "one", [{length, 5}]},
@@ -40,6 +43,6 @@
  {search, "int4:[0001 TO 0100]", [{length, 4}]},
 
  %% Cleanup.
- {echo,   "De-indexing documents..."}
- %%{solr, "./2/*"}
+ {echo,   "De-indexing documents..."},
+ {solr,   "./solr_delete.xml"}
 ].
