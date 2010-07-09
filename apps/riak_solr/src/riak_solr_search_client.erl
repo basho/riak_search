@@ -104,7 +104,7 @@ ensure_deleted(Index, DocID) ->
         {error, notfound} -> 
             ok;
         _ ->
-            riak_indexed_doc:delete(RiakClient, Index, DocID),
+            SearchClient:delete_doc(Index, DocID),
             timer:sleep(10),
             ensure_deleted(Index, DocID)
     end.

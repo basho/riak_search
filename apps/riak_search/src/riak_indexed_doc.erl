@@ -112,17 +112,14 @@ analyze(IdxDoc, AnalyzerPid) when is_record(IdxDoc, riak_idx_doc) ->
     #riak_idx_doc{id=DocID, index=Index, fields=DocFields}=IdxDoc,
     {ok, Schema} = riak_search_config:get_schema(Index),
 
-    %% Put together a list of Facet properties...
-    F1 = fun(Facet, Acc) ->
-                 FName = Schema:field_name(Facet),
-                 case lists:keyfind(FName, 1, DocFields) of
-                     {FName, Value} ->
-                         [{FName, Value}|Acc];
-                     false ->
-                         Acc
-                 end
-         end,
-    FacetProps = lists:foldl(F1, [], Schema:facets()),
+    %% Pull out the facet properties...
+    F1 = fun({FieldName, _FieldValue}) ->
+                 Field = Schema:find_field(FieldName),
+                 Schema:is_field_facet(Field)
+    end,
+    FacetFields = lists:filter(F1, DocFields),
+    RegularFields = DocFields -- FacetFields,
+            
     %% For each Field = {FieldName, FieldValue}, split the FieldValue
     %% into terms. Build a list of positions for those terms, then get
     %% a de-duped list of the terms. For each, index the FieldName /
@@ -133,12 +130,12 @@ analyze(IdxDoc, AnalyzerPid) when is_record(IdxDoc, riak_idx_doc) ->
                  Terms1 = gb_trees:keys(PositionTree),
                  F3 = fun(Term, Acc3) ->
                               Props = build_props(Term, PositionTree),
-                              [{Index, FieldName, Term, DocID, Props ++ FacetProps}|Acc3]
+                              [{Index, FieldName, Term, DocID, Props ++ FacetFields}|Acc3]
                       end,
                  lists:foldl(F3, Acc2, Terms1)
          end,
-    DocFields1 = DocFields -- FacetProps,
-    {ok, lists:foldl(F2, [], DocFields1)}.
+    Postings = lists:foldl(F2, [], RegularFields),
+    {ok, Postings}.
 
 %% @private
 %% Parse a FieldValue into a list of terms.

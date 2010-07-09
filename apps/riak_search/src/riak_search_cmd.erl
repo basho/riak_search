@@ -97,7 +97,8 @@ set_schema(Index, SchemaFile) ->
                     io:format(" :: Done.~n");
 
                 Error ->
-                    io:format(" :: PARSING ERROR: ~p~n", [Error])
+                    io:format(" :: PARSING ERROR: ~p~n", [Error]),
+                    erlang:exit(-1)
             end;
         _Error ->
             io:format(" :: ERROR: Could not read '~s'.~n", [SchemaFile])
@@ -246,6 +247,7 @@ test_inner({search, Query, Validators}, _Root) ->
     end;
 
 test_inner(Other, _Root) ->
+    io:format("Unexpected test step: ~p~n", [Other]),
     throw({unexpected_test_step, Other}).
 
 validate_results(Length, Results, Validators) ->
@@ -262,10 +264,23 @@ validate_results_inner(Length, Results, [Validator|Validators]) ->
 validate_results_inner(Length, _Results, {length, ValidLength}) ->
     case Length == ValidLength of
         true -> 
-            [pass];
+            pass;
         false ->
-            [{fail, io_lib:format("Expected length ~p, got ~p!", [ValidLength, Length])}]
+            {fail, io_lib:format("Expected ~p result(s), got ~p!", [ValidLength, Length])}
+    end;
+validate_results_inner(_Length, Results, {property, Key, Value}) ->
+    KeyL = riak_search_utils:to_list(Key),
+    ValueB = riak_search_utils:to_binary(Value),
+    F = fun({_, Props}) ->
+        lists:member({KeyL, ValueB}, Props)
+    end,
+    case lists:all(F, Results) of
+        true -> 
+            pass;
+        false ->
+            {fail, io_lib:format("Missing property: ~s -> ~s", [Key, Value])}
     end;
 validate_results_inner(_Length, _Results, Other) ->
+    io:format("Unexpected test validator: ~p~n", [Other]),
     throw({unexpected_test_validator, Other}).
 

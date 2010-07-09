@@ -36,7 +36,9 @@ init([]) ->
         {'EXIT', Error} ->
             {stop, Error};
         Port when is_port(Port) ->
-            case connect({127,0,0,1}, PortNum + 1, [], 10) of
+            %% Try to connect 80 times. This gives us a 20 second
+            %% timeout. (Each attempt is 250 ms.)
+            case connect({127,0,0,1}, PortNum + 1, [], 80) of
                 {ok, Sock} ->
                     erlang:link(Port),
                     {ok, #state{port=Port, portnum=PortNum, sock=Sock}};
