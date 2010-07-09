@@ -9,6 +9,7 @@ message Index {
     required string partition = 5;
     required string message_type = 6;
     required bytes  props = 7;
+    required string key_clock = 8;
 }
 
 message Stream {

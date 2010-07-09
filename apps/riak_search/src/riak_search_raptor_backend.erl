@@ -26,7 +26,7 @@
          stream/6,multi_stream/4,
          info/5,info_range/7,catalog_query/3,fold/3,is_empty/1,drop/1]).
 -export([toggle_raptor_debug/0, shutdown_raptor/0]).
--export([sync/0, poke/1, raptor_status/0]).
+-export([sync/0, poke/1, raptor_status/0, get_entry_keyclock/5]).
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -export([test_fold/0, test_is_empty/0, test_drop/0]).
@@ -38,8 +38,8 @@
 % @type state() = term().
 -record(state, {partition}).
 
--define(FOLD_TIMEOUT, 30000).
 -define(MAX_HANDOFF_STREAMS, 50).
+-define(FOLD_TIMEOUT,         30000).
 -define(INFO_TIMEOUT,          5000).
 -define(INFO_RANGE_TIMEOUT,    5000).
 -define(STREAM_TIMEOUT,        5000).
@@ -55,25 +55,43 @@
 %%          {ok, state()} | {{error, Reason :: term()}, state()}
 %% @doc Start this backend.
 start(Partition, _Config) ->
+    io:format("starting partition ~p~n", [Partition]),
     {ok, #state { partition=Partition }}.
 
 %% @spec stop(state()) -> ok | {error, Reason :: term()}
 stop(_State) ->
     ok.
 
-index(Index, Field, Term, Value, Props, State) ->
+index(Index, Field, Term, DocId, Props, State) ->
     Partition = to_binary(State#state.partition),
+    case proplists:get_value(if_newer_keyclock, Props, undefined) of
+        undefined ->
+            do_index(Partition, Index, Field, term, DocId, Props);
+        ObjKeyClock ->
+            CurrentKeyClock = get_entry_keyclock(Partition, Index, Field, Term, DocId),
+            {ObjKeyClockInt,_} = string:to_integer(ObjKeyClock),
+            {CurrentKeyClockInt,_} = string:to_integer(CurrentKeyClock),
+            case ObjKeyClockInt > CurrentKeyClockInt of
+                true ->
+                    Props1 = proplists:delete(if_newer_keyclock, Props),
+                    do_index(Partition, Index, Field, Term, DocId, Props1);
+                _ -> noreply
+            end
+    end.
+
+do_index(Partition, Index, Field, Term, DocId, Props) ->
     {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
     try
         raptor_conn:index(Conn,
                           to_binary(Index),
                           to_binary(Field),
                           to_binary(Term),
-                          to_binary(Value),
+                          to_binary(DocId),
                           Partition,
-                          term_to_binary(Props))
+                          term_to_binary(Props),
+                          current_key_clock())
     after
-        riak_sock_pool:checkin(Conn)
+        riak_sock_pool:checkin(?CONN_POOL, Conn)
     end,
     noreply.
 
@@ -89,10 +107,11 @@ multi_index(IFTVPList, State) ->
                            to_binary(Term),
                            to_binary(Value),
                            Partition,
-                           term_to_binary(Props)) || 
+                           term_to_binary(Props),
+                           current_key_clock()) || 
             {Index, Field, Term, Value, Props} <- IFTVPList]
     after
-        raptor_conn_pool:checkin(Conn)
+        riak_sock_pool:checkin(?CONN_POOL, Conn)
     end,
     {reply, {indexed, node()}, State}.
 
@@ -567,6 +586,15 @@ raptor_status() ->
     error_logger:info_msg("Raptor Status ~p~n", [Status]),
     Status.
 
+get_entry_keyclock(Partition, Index, Field, Term, DocId) ->
+    IFT = string:join([Index, Field, Term], "~"),
+    raptor_command("get_entry_keyclock", IFT, Partition, DocId).
+
+%%%
+
+current_key_clock() ->
+    {MegaSeconds,Seconds,_}=erlang:now(),
+    to_binary(integer_to_list(MegaSeconds*1000000+Seconds)).
 
 -ifdef(TEST).
 %% test fold
@@ -585,5 +613,4 @@ test_is_empty() ->
 test_drop() ->
     State = #state { partition=0 },
     drop(State).
-
 -endif.

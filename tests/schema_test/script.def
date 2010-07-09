@@ -1,0 +1,48 @@
+[
+ %% Set the schema...
+ {schema, "schema.def"},
+
+ %% Index the solr in "0"...
+ {echo,   "Indexing documents..."}, 
+ {solr,   "./solr_add.xml"},
+
+ %% Let the database catch up.
+ {sleep,  1},
+
+ {echo,   "Verify that we find all five documents containing 'one'."},
+ {search, "one", [{length, 5}]},
+ {search, "value:one", [{length, 5}]},
+ {search, "whitespace:one", [{length, 5}]},
+
+ {echo,   "Verify that the whitespace field is using the whitespace analyzer."},
+ {search, "value:million", [{length, 1}]},
+ {search, "whitespace:million", [{length, 0}]},
+ {search, "whitespace:million,a", [{length, 1}]},
+
+ {echo,   "Verify integer search."},
+ {search, "int2:1", [{length, 1}]},
+ {search, "int2:01", [{length, 1}]},
+ {search, "int2:2", [{length, 1}]},
+ {search, "int2:02", [{length, 1}]},
+ {search, "int2:20", [{length, 1}]},
+ {search, "int4:1", [{length, 1}]},
+ {search, "int4:0001", [{length, 1}]},
+ {search, "int4:2", [{length, 1}]},
+ {search, "int4:0002", [{length, 1}]},
+ {search, "int4:20", [{length, 1}]},
+ {search, "int4:0020", [{length, 1}]},
+
+ {echo,   "Verify integer search with ranges."},
+ {search, "int2:[1 TO 2]", [{length, 2}]},
+ {search, "int2:[01 TO 02]", [{length, 2}]},
+ {search, "int2:[2 TO 20]", [{length, 2}]},
+ {search, "int2:[02 TO 20]", [{length, 2}]},
+ {search, "int4:[1 TO 20]", [{length, 3}]},
+ {search, "int4:[0001 TO 0020]", [{length, 3}]},
+ {search, "int4:[1 TO 100]", [{length, 4}]},
+ {search, "int4:[0001 TO 0100]", [{length, 4}]},
+
+ %% Cleanup.
+ {echo,   "De-indexing documents..."},
+ {solr,   "./solr_delete.xml"}
+].

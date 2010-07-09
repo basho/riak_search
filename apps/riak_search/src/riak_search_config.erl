@@ -29,11 +29,6 @@
 -record(state, {client,
                 schemas}).
 
--define(DEFAULT_FIELD, #riak_search_field{name="value",
-                                          type=string,
-                                          required=false,
-                                          facet=false}).
-
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 

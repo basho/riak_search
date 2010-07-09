@@ -211,7 +211,16 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
          CommandResponse.Builder response =
             CommandResponse.newBuilder();
          final Channel chan = e.getChannel();
-         RaptorServer.writeQueue.offer(msg);
+         
+         //RaptorServer.writeQueue.put(msg);
+         RaptorServer.idx.index(msg.getIndex(),
+             msg.getField(),
+             msg.getTerm(),
+             msg.getValue(),
+             msg.getPartition(),
+             msg.getProps().toByteArray(),
+             msg.getKeyClock());
+         
          response.setResponse("");
          CommandResponse r = response.build();
          chan.write(r);
@@ -222,11 +231,12 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
    
    private void processDeleteEntryMessage(DeleteEntry msg) {
       try {
+         //RaptorServer.writeQueue.put(msg);
          RaptorServer.idx.deleteEntry(msg.getIndex(),
-                                      msg.getField(),
-                                      msg.getTerm(),
-                                      msg.getDocId(),
-                                      msg.getPartition());
+                            msg.getField(),
+                            msg.getTerm(),
+                            msg.getDocId(),
+                            msg.getPartition());
       } catch (Exception ex) {
          log.error("Error handling delete", ex);
       }
@@ -244,10 +254,14 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
                                             try {
                                                StreamResponse.Builder response = 
                                                    StreamResponse.newBuilder();
+                                               if (value == null) {
+                                                  throw new Exception("processStreamMessage: value == null for key '" +
+                                                    new String(key, "UTF-8"));
+                                               }
                                                response.setValue(new String(key, "UTF-8"))
                                                        .setProps(ByteString.copyFrom(value));
                                                chan.write(response.build());
-                                            } catch (java.io.UnsupportedEncodingException ex) {
+                                            } catch (Exception ex) {
                                                ex.printStackTrace();
                                             }
                                         }
@@ -255,11 +269,15 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
                                             try {
                                                 StreamResponse.Builder response = 
                                                     StreamResponse.newBuilder();
+                                                if (value == null) {
+                                                  throw new Exception("processStreamMessage: value == null for key '" +
+                                                    key);
+                                                }
                                                 response.setValue(key)
                                                         .setProps(ByteString.copyFrom(
                                                             value.getBytes("UTF-8")));
                                                 chan.write(response.build());
-                                            } catch (java.io.UnsupportedEncodingException ex) {
+                                            } catch (Exception ex) {
                                                ex.printStackTrace();
                                             }
                                         }
@@ -281,7 +299,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
             jo.put("field", ift[1]);
             jo.put("term", ift[2]);
             
-            log.info("processMultiStreamMessage: jo = " + jo.toString(4));
+            //log.info("processMultiStreamMessage: jo = " + jo.toString(4));
                 
             terms.put(jo);
          }
@@ -295,7 +313,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
                                                response.setValue(new String(key, "UTF-8"))
                                                        .setProps(ByteString.copyFrom(value));
                                                chan.write(response.build());
-                                            } catch (java.io.UnsupportedEncodingException ex) {
+                                            } catch (Exception ex) {
                                                ex.printStackTrace();
                                             }
                                         }
@@ -307,7 +325,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
                                                         .setProps(ByteString.copyFrom(
                                                             value.getBytes("UTF-8")));
                                                 chan.write(response.build());
-                                            } catch (java.io.UnsupportedEncodingException ex) {
+                                            } catch (Exception ex) {
                                                ex.printStackTrace();
                                             }
                                         }
@@ -421,6 +439,22 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
         } else if (cmd.equals("partition_count")) {
             response.setResponse("" +
                 RaptorServer.idx.partitionCount(msg.getArg1()));
+        
+        } else if (cmd.equals("get_entry_keyclock")) {
+            String iftStr = msg.getArg1();
+            String partition = msg.getArg2();
+            String docId = msg.getArg3();
+            String[] ift = iftStr.split("~");
+            String index = ift[0];
+            String field = ift[1];
+            String term = ift[2];
+            String keyClock = 
+                RaptorServer.idx.getEntryKeyClock(index,
+                                                  field,
+                                                  term,
+                                                  docId,
+                                                  partition);
+            response.setResponse(keyClock);
         
         } else if (cmd.equals("toggle_debug")) {
             if (RaptorServer.debugging) {

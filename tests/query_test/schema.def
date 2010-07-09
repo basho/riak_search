@@ -1,0 +1,29 @@
+{
+    schema, 
+    [
+        {version, "1.1"},
+        {default_field, "acc"}
+    ],
+    [
+        {field, [
+            {name, "id"},
+            {type, string}
+        ]},
+        {field, [
+            {name, "key"},
+            {type, string}
+        ]},
+        {field, [
+            {name, "acc"},
+            {type, string}
+        ]},
+        {field, [
+            {name, "color"},
+            {type, string}
+        ]},
+        {field, [
+            {name, "parity"},
+            {type, string}
+        ]}
+    ]
+}.

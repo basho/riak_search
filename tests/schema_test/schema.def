@@ -1,0 +1,43 @@
+{
+    schema, 
+    [
+        {version, "1.1"},
+        {default_field, "value"}
+    ],
+    [
+        {field, [
+            {name, "id"}
+        ]},
+
+        {field, [
+            {name, "value"},
+            {type, string},
+            {analyzer_factory, "com.basho.search.analysis.DefaultAnalyzerFactory"}
+        ]},
+
+        {field, [
+            {name, "whitespace"},
+            {type, string},
+            {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+        ]},
+
+        {field, [
+            {name, "int2"},
+            {type, integer},
+            {padding_size, 2}
+        ]},
+
+        {field, [
+            {name, "int4"},
+            {type, integer},
+            {padding_size, 4}
+            %{padding_char, "0"},
+            %{analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+        ]},
+
+        {field, [
+            {name, "integer"},
+            {type, integer}
+        ]}
+    ]
+}.

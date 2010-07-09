@@ -42,8 +42,7 @@ parse_query(IndexOrSchema, Query) ->
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
     {ok, AnalyzerPid} = qilr:new_analyzer(),
     try
-        qilr_parse:string(AnalyzerPid, Query, list_to_atom(Schema:default_op()),
-                          Schema:field_types(), Schema:analyzer_factory())
+        qilr_parse:string(AnalyzerPid, Query, Schema)
     after
         qilr:close_analyzer(AnalyzerPid)
     end.

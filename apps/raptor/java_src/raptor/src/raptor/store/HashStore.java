@@ -106,6 +106,10 @@ public class HashStore {
         return put(key.getBytes("UTF-8"), val.getBytes("UTF-8"));
     }
     
+    public boolean put(String key, byte[] val) throws Exception {
+        return put(key.getBytes("UTF-8"), val);
+    }
+    
     public boolean put(byte[] key, byte[] val) throws Exception {
         dbLock.lock();
         try {
@@ -127,7 +131,7 @@ public class HashStore {
     }
     
     public byte[] get(byte[] key) throws Exception {
-        dbLock.lock();
+        //dbLock.lock();
         try {
             DatabaseEntry dbKey = new DatabaseEntry(key);
             DatabaseEntry dbVal = new DatabaseEntry();
@@ -135,10 +139,11 @@ public class HashStore {
                 OperationStatus.SUCCESS) {
                 return dbVal.getData();
             } else {
+                //log.info("error: hashdb: [" + new String(key, "UTF-8") + "] not found");
                 return null;
             }
         } finally {
-            dbLock.unlock();
+            //dbLock.unlock();
         }
     }
     

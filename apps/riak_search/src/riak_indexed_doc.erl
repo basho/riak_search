@@ -1,6 +1,5 @@
 -module(riak_indexed_doc).
 
--include_lib("qilr/include/qilr.hrl").
 -include("riak_search.hrl").
 
 -export([
@@ -145,25 +144,20 @@ analyze(IdxDoc, AnalyzerPid) when is_record(IdxDoc, riak_idx_doc) ->
 %% Parse a FieldValue into a list of terms.
 %% Return {ok, [Terms}}.
 analyze_field(FieldName, FieldValue, Schema, AnalyzerPid) ->
+    %% Get the field...
     Field = Schema:find_field(FieldName),
-    #riak_search_field{type=Type} = Field,
-    AnalyzerFactory = determine_analyzer(Schema, Type),
+    AnalyzerFactory = Schema:analyzer_factory(Field),
+    PadSize = Schema:padding_size(Field),
+    PadChar = Schema:padding_char(Field),
+
+    %% Analyze the field...
     {ok, Tokens} = qilr_analyzer:analyze(AnalyzerPid, FieldValue, AnalyzerFactory),
-    {ok, [left_pad(Type, Token) || Token <- Tokens]}.
 
-%% @private
-left_pad(integer, FV) when is_binary(FV) ->
-    riak_search_text:left_pad(FV, 10);
-left_pad(_, FV) ->
-    FV.
-
-%% @private
-determine_analyzer(_Schema, integer) ->
-    ?WHITESPACE_ANALYZER;
-determine_analyzer(_Schema, date) ->
-    ?WHITESPACE_ANALYZER;
-determine_analyzer(Schema, _) ->
-    Schema:analyzer_factory().
+    %% Do left padding.
+    Tokens1 = [riak_search_text:left_pad(X, PadSize, PadChar) || X <- Tokens],
+    
+    %% Return.
+    {ok, Tokens1}.
 
 %% @private Given a list of tokens, build a gb_tree mapping words to a
 %% list of word positions.

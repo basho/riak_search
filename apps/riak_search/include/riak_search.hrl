@@ -45,6 +45,9 @@
 
 -record(riak_search_field, {name,
                             type,
+                            padding_size,
+                            padding_char,
                             required=false,
                             dynamic=false,
+                            analyzer_factory,
                             facet=false}).

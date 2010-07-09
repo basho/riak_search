@@ -34,6 +34,7 @@ import org.jboss.netty.bootstrap.ServerBootstrap;
 import org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory;
 
 import raptor.protobuf.Messages.Index;
+import raptor.protobuf.Messages.DeleteEntry;
 import raptor.store.RSXIndex;
 
 public class RaptorServer {
@@ -44,7 +45,7 @@ public class RaptorServer {
     public static Thread idxThread;
     
     public static Thread writeThread;
-    public static LinkedBlockingQueue<Index> writeQueue;
+    public static LinkedBlockingQueue<Object> writeQueue;
     
     public static boolean shuttingDown = false;
     public static boolean debugging = true;
@@ -86,25 +87,41 @@ public class RaptorServer {
     
     private static void configureStorage(String dataDir) {
        // TODO: configurable writeQueue size?
-       writeQueue = new LinkedBlockingQueue<Index>(5000);
+       writeQueue = new LinkedBlockingQueue<Object>();
        writeThread = new Thread(new Runnable() {
            public void run() {
                try {
                    log.info("writeThread: started");
                    while(true) {
                        try {
-                           Index msg = writeQueue.take();
-                           idx.index(msg.getIndex(),
-                                     msg.getField(),
-                                     msg.getTerm(),
-                                     msg.getValue(),
-                                     msg.getPartition(),
-                                     msg.getProps().toByteArray());
+                           Object msg0 = writeQueue.take();
+                           if (msg0 instanceof Index) {
+                               Index msg = (Index) msg0;
+                               idx.index(msg.getIndex(),
+                                         msg.getField(),
+                                         msg.getTerm(),
+                                         msg.getValue(),
+                                         msg.getPartition(),
+                                         msg.getProps().toByteArray(),
+                                         msg.getKeyClock());
+                           } else if (msg0 instanceof DeleteEntry) {
+                               DeleteEntry msg = (DeleteEntry) msg0;
+                               RaptorServer.idx.deleteEntry(msg.getIndex(),
+                                                            msg.getField(),
+                                                            msg.getTerm(),
+                                                            msg.getDocId(),
+                                                            msg.getPartition());
+                           } else {
+                               log.error("writeQueue: unknown message (discarding): " + 
+                                         msg0.toString());
+                           }
                        } catch (Exception iex) {
+                           log.error("Error handling message", iex);
                            iex.printStackTrace();
                        }
                    }
                } catch (Exception ex) {
+                   log.error("Error setting up writeQueue process", ex);
                    ex.printStackTrace();
                }
            }
@@ -128,7 +145,7 @@ public class RaptorServer {
                    Executors.newCachedThreadPool(),
                    Runtime.getRuntime().availableProcessors()));
          bootstrap.setOption("reuseAddress", true);
-         bootstrap.setOption("child.tcpNoDelay", false);
+         bootstrap.setOption("child.tcpNoDelay", true);
          bootstrap.setPipelineFactory(new RaptorPipelineFactory());
          bootstrap.bind(new InetSocketAddress(port));
     }
@@ -139,7 +156,7 @@ public class RaptorServer {
                    Executors.newCachedThreadPool(),
                    Executors.newCachedThreadPool()));
          bootstrap.setOption("reuseAddress", true);
-         bootstrap.setOption("child.tcpNoDelay", false);
+         bootstrap.setOption("child.tcpNoDelay", true);
          bootstrap.setPipelineFactory(new HeartbeatPipelineFactory());
          bootstrap.bind(new InetSocketAddress(port));
     }    
