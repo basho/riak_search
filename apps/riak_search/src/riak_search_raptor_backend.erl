@@ -286,12 +286,12 @@ receive_stream_results(StreamRef, Sender, FilterFun, Conn, Acc0) ->
         {stream, StreamRef, timeout} ->
             case length(Acc) > 0 of
                 true ->
-                    riak_search_backend:stream_response_results(Sender, Acc),
-                    raptor_conn:close(Conn),
-                    error_logger:warning_msg("Stream result Raptor socket timeout\n");
+                    riak_search_backend:stream_response_results(Sender, Acc);
                 false -> skip
             end,
-            riak_search_backend:stream_response_done(Sender);
+            riak_search_backend:stream_response_done(Sender),
+            raptor_conn:close(Conn),
+            error_logger:warning_msg("Stream result Raptor socket timeout\n");
         {stream, StreamRef, "$end_of_table", _} ->
             case length(Acc) > 0 of
                 true ->
@@ -613,4 +613,122 @@ test_is_empty() ->
 test_drop() ->
     State = #state { partition=0 },
     drop(State).
+
+conn_pool_pid() ->
+    {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
+    ?assertEqual(0, riak_sock_pool:current_count(?CONN_POOL)),
+    riak_sock_pool:checkin(?CONN_POOL, Conn),
+    Conn.
+
+info_socket_timeout_test() ->
+    run_timeout_test(
+      fun(State) ->
+              Index = <<"index">>,
+              Field = <<"field">>,
+              Term = <<"term">>,
+              Ref = make_ref(),
+              noreply = info(Index, Field, Term, {raw, Ref, self()}, State),
+              receive
+                  {Ref, []} ->
+                      ok
+              after
+                  100 ->
+                      ?assert(false)
+              end
+      end).
+
+info_range_socket_timeout_test() ->
+    run_timeout_test(
+      fun(State) ->
+              Index = <<"index">>,
+              Field = <<"field">>,
+              StartTerm = <<"startterm">>,
+              EndTerm = <<"endterm">>,
+              Size = undefined,
+              Ref = make_ref(),
+              noreply = info_range(Index, Field, StartTerm, EndTerm, Size,
+                                   {raw, Ref, self()}, State),
+              receive
+                  {Ref, []} ->
+                      ok
+              after
+                  100 ->
+                      ?assert(false)
+              end
+      end).
+             
+stream_socket_timeout_test() ->
+    run_timeout_test(
+      fun(State) ->
+              Index = <<"index">>,
+              Field = <<"field">>,
+              Term = <<"term">>,
+              FilterFun = fun(_,_) -> true end,
+              Ref = make_ref(),
+              noreply = stream(Index, Field, Term, FilterFun,
+                                   {raw, Ref, self()}, State),
+              receive
+                  Msg ->
+                      ?assertMatch({Ref, done}, Msg)
+              after
+                  100 ->
+                      ?assert(false)
+              end
+      end).
+              
+multi_stream_socket_timeout_test() ->
+    run_timeout_test(
+      fun(State) ->
+              Index = "index",
+              Field = "field",
+              Term =  "term",
+              FilterFun = fun(_,_) -> true end,
+              Ref = make_ref(),
+              noreply = multi_stream([{term, {Index, Field, Term},[]}], FilterFun,
+                                   {raw, Ref, self()}, State),
+              receive
+                  Msg ->
+                      ?assertMatch({Ref, done}, Msg)
+              after
+                  100 ->
+                      ?assert(false)
+              end
+      end).
+
+              
+catalog_query_socket_timeout_test() ->
+    run_timeout_test(
+      fun(State) ->
+              CatalogQuery = "query",
+              Ref = make_ref(),
+              noreply = catalog_query(CatalogQuery, 
+                                      {raw, Ref, self()}, State),
+              receive
+                  Msg ->
+                      ?assertMatch({Ref, done}, Msg)
+              after
+                  100 ->
+                      ?assert(false)
+              end
+      end).
+ 
+           
+run_timeout_test(TestFun) ->                  
+    {ok, Sup} = riak_sock_pool:start_link(?CONN_POOL, 
+                                          {mock_raptor_conn, mock_raptor_conn},
+                                          fun() -> 1 end),
+    try
+        Partition = 0,
+        Config = [],
+        {ok, State} = start(Partition, Config),
+        Pid1 = conn_pool_pid(),
+        TestFun(State),
+        Pid2 = conn_pool_pid(),
+        ?assertEqual(false, is_process_alive(Pid1)),
+        ?assert(Pid1 =/= Pid2)
+    after
+        unlink(Sup),
+        exit(Sup, kill)
+    end.
+    
 -endif.
