@@ -1,41 +1,58 @@
 <add>
   <doc>
     <field name="id">1</field>
+    <field name="key">one</field>
     <field name="value">one</field>
     <field name="whitespace">one</field>
     <field name="int2">1</field>
     <field name="int4">1</field>
     <field name="dyn_i">1</field>
     <field name="i_dyn">1</field>
+    <field name="facet">one</field>
+    <field name="dyn_facet">one</field>
+    <field name="facet_dyn">one</field>
   </doc>
   <doc>
     <field name="id">2</field>
+    <field name="key">two</field>
     <field name="value">one two</field>
     <field name="whitespace">one two</field>
     <field name="int2">2</field>
     <field name="int4">2</field>
     <field name="dyn_i">2</field>
     <field name="i_dyn">2</field>
+    <field name="facet">two</field>
+    <field name="dyn_facet">two</field>
+    <field name="facet_dyn">two</field>
   </doc>
   <doc>
     <field name="id">20</field>
+    <field name="key">twenty</field>
     <field name="value">one two twenty</field>
     <field name="whitespace">one two twenty</field>
     <field name="int2">20</field>
     <field name="int4">20</field>
     <field name="dyn_i">20</field>
     <field name="i_dyn">20</field>
+    <field name="facet">twenty</field>
+    <field name="dyn_facet">twenty</field>
+    <field name="facet_dyn">twenty</field>
   </doc>
   <doc>
     <field name="id">100</field>
+    <field name="key">hundred</field>
     <field name="value">one two twenty hundred,a</field>
     <field name="whitespace">one two twenty hundred,a</field>
     <field name="int4">100</field>
     <field name="dyn_i">100</field>
     <field name="i_dyn">100</field>
+    <field name="facet">hundred</field>
+    <field name="dyn_facet">hundred</field>
+    <field name="facet_dyn">hundred</field>
   </doc>
   <doc>
     <field name="id">1000000</field>
+    <field name="key">million</field>
     <field name="value">one two twenty hundred,a million,a</field>
     <field name="whitespace">one two twenty hundred,a million,a</field>
     <field name="dyn_i">1000000</field>
@@ -44,5 +61,8 @@
     <field name="i_dyn_i">1000000</field>
     <field name="sd_dyn">one two twenty hundred,a million,a</field>
     <field name="sw_dyn">one two twenty hundred,a million,a</field>
+    <field name="facet">million</field>
+    <field name="dyn_facet">million</field>
+    <field name="facet_dyn">million</field>
   </doc>
 </add>

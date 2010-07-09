@@ -10,6 +10,10 @@
         ]},
 
         {field, [
+            {name, "key"}
+        ]},
+
+        {field, [
             {name, "value"},
             {type, string},
             {analyzer_factory, "com.basho.search.analysis.DefaultAnalyzerFactory"}
@@ -35,6 +39,11 @@
             {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
         ]},
 
+        {field, [
+            {name, "facet"},
+            {facet, true}
+        ]},      
+
         {dynamic_field, [       
             {name, "*_i"},
             {type, integer},
@@ -53,6 +62,11 @@
             {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
         ]},
 
+        {dynamic_field, [
+            {name, "*_facet"},
+            {facet, true}
+        ]},
+
         {dynamic_field, [       
             {name, "i_*"},
             {type, integer},
@@ -69,6 +83,11 @@
             {name, "sw_*"},
             {type, string},
             {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+        ]},
+
+        {dynamic_field, [
+            {name, "facet_*"},
+            {facet, true}
         ]}
     ]
 }.

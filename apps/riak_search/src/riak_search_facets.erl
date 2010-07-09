@@ -2,6 +2,9 @@
 -export([passes_facets/2]).
 -include("riak_search.hrl").
 
+%% Convert all fields to list.
+-import(riak_search_utils, [to_list/1]).
+
 passes_facets(Props, Facets) when is_list(Facets) ->
     F = fun(X) -> passes_facets(Props, X) end,
     lists:all(F, Facets);
@@ -23,7 +26,7 @@ passes_facets(Props, Facet) when is_record(Facet, inclusive_range) ->
     {_Index, StartField, StartValue} = Start#term.q,
     {_Index, StartField, EndValue} = End#term.q,
     Value = proplists:get_value(StartField, Props),
-    StartValue =< Value andalso Value =< EndValue;
+    to_list(StartValue) =< to_list(Value) andalso to_list(Value) =< to_list(EndValue);
 
 passes_facets(Props, Facet) when is_record(Facet, exclusive_range) ->
     Start = hd(Facet#exclusive_range.start_op),
@@ -31,7 +34,7 @@ passes_facets(Props, Facet) when is_record(Facet, exclusive_range) ->
     {_Index, StartField, StartValue} = Start#term.q,
     {_Index, StartField, EndValue} = End#term.q,
     Value = proplists:get_value(StartField, Props),
-    StartValue < Value andalso Value < EndValue;
+    to_list(StartValue) < to_list(Value) andalso to_list(Value) < to_list(EndValue);
 
 passes_facets(Props, Facet) when is_record(Facet, term) ->
     {_Index, Field, FacetValue} = Facet#term.q,
@@ -39,9 +42,9 @@ passes_facets(Props, Facet) when is_record(Facet, term) ->
 
     IsWildcardAll = ?IS_TERM_WILDCARD_ALL(Facet),
     IsWildcardOne = ?IS_TERM_WILDCARD_ONE(Facet),
-    PrefixMatch = (PropValue /= undefined) andalso (string:str(PropValue, FacetValue) == 1),
+    PrefixMatch = (PropValue /= undefined) andalso (string:str(to_list(PropValue), to_list(FacetValue)) == 1),
     LengthDiff = case PropValue /= undefined of
-        true -> length(PropValue) - length(FacetValue);
+        true -> length(to_list(PropValue)) - length(to_list(FacetValue));
         false -> undefined
     end,
 
