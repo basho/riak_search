@@ -151,7 +151,7 @@ handle_call({multistream, Caller, ReqId, MultiStreamRec}, _From, #state{sock=Soc
     Data = raptor_pb:encode_multistream(MultiStreamRec),
     gen_tcp:send(Sock, Data),
     inet:setopts(Sock, [{active, once}]),
-    {reply, {ok, ReqId}, State#state{req_type=multistream, reqid=ReqId, dest=Caller}};
+    {reply, {ok, ReqId}, State#state{req_type=stream, reqid=ReqId, dest=Caller}};
 
 handle_call({info, Caller, ReqId, InfoRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_info(InfoRec),
@@ -192,25 +192,12 @@ handle_info({tcp, Sock, _Data}, #state{req_type=index}=State) ->
     inet:setopts(Sock, [{active, once}]),
     {noreply, State#state{req_type=undefined, reqid=undefined, dest=undefined}};
 
+%%
+%% for now, stream and multistream returns protobuf messages exactly the same as stream
+%%  (i.e., StreamResponse messages).  If they get split apart, make sure the code
+%% for handling timeouts in riak_search_raptor_backend is adjusted fro the new req_type.
+%%
 handle_info({tcp, Sock, Data}, #state{req_type=stream, reqid=ReqId, dest=Dest}=State) ->
-    StreamResponse = raptor_pb:decode_streamresponse(Data),
-    Dest ! {stream, ReqId, StreamResponse#streamresponse.value, StreamResponse#streamresponse.props},
-    NewState = if
-                   StreamResponse#streamresponse.value =:= "$end_of_table" ->
-                       State#state{req_type=undefined,
-                                   reqid=undefined,
-                                   dest=undefined};
-                   true ->
-                       inet:setopts(Sock, [{active, once}]),
-                       State
-               end,
-    {noreply, NewState};
-
-%%
-%% for now, multistream returns protobuf messages exactly the same as stream
-%%  (i.e., StreamResponse messages)
-%%
-handle_info({tcp, Sock, Data}, #state{req_type=multistream, reqid=ReqId, dest=Dest}=State) ->
     StreamResponse = raptor_pb:decode_streamresponse(Data),
     Dest ! {stream, ReqId, StreamResponse#streamresponse.value, StreamResponse#streamresponse.props},
     NewState = if
