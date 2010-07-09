@@ -40,7 +40,10 @@
 
 -define(FOLD_TIMEOUT, 30000).
 -define(MAX_HANDOFF_STREAMS, 50).
--define(INFO_TIMEOUT, 5000).
+-define(INFO_TIMEOUT,          5000).
+-define(INFO_RANGE_TIMEOUT,    5000).
+-define(STREAM_TIMEOUT,        5000).
+-define(CATALOG_QUERY_TIMEOUT, 5000).
 -define(RESULT_VEC_SZ, 1000).
 
 
@@ -70,7 +73,7 @@ index(Index, Field, Term, Value, Props, State) ->
                           Partition,
                           term_to_binary(Props))
     after
-        raptor_conn_pool:checkin(Conn)
+        riak_sock_pool:checkin(Conn)
     end,
     noreply.
 
@@ -119,7 +122,7 @@ info(Index, Field, Term, Sender, State) ->
                                                to_binary(Field),
                                                to_binary(Term),
                                                Partition),
-                           receive_info_results(StreamRef, Sender)
+                           receive_info_results(StreamRef, Sender, Conn)
                        after
                            riak_sock_pool:checkin(?CONN_POOL, Conn)
                        end
@@ -138,7 +141,7 @@ info_range(Index, Field, StartTerm, EndTerm, _Size, Sender, State) ->
                                                to_binary(StartTerm),
                                                to_binary(EndTerm),
                                                Partition),
-                           receive_info_range_results(StreamRef, Sender)
+                           receive_info_range_results(StreamRef, Sender, Conn)
                        after
                            riak_sock_pool:checkin(?CONN_POOL, Conn)
                        end
@@ -156,7 +159,7 @@ stream(Index, Field, Term, FilterFun, Sender, State) ->
                                                to_binary(Field),
                                                to_binary(Term),
                                                Partition),
-                           receive_stream_results(StreamRef, Sender, FilterFun)
+                           receive_stream_results(StreamRef, Sender, FilterFun, Conn)
                        after
                            riak_sock_pool:checkin(?CONN_POOL, Conn)
                        end
@@ -176,7 +179,7 @@ multi_stream(IFTList, FilterFun, Sender, _State) ->
                            {ok, StreamRef} = raptor_conn:multi_stream(
                                                Conn,
                                                list_to_binary(TermArg)),
-                           receive_stream_results(StreamRef, Sender, FilterFun)
+                           receive_stream_results(StreamRef, Sender, FilterFun, Conn)
                        after
                            riak_sock_pool:checkin(?CONN_POOL, Conn)
                        end
@@ -190,7 +193,7 @@ catalog_query(CatalogQuery, Sender, _State) ->
                            {ok, StreamRef} = raptor_conn:catalog_query(
                                                Conn,
                                                CatalogQuery),
-                           receive_catalog_query_results(StreamRef, Sender)
+                           receive_catalog_query_results(StreamRef, Sender, Conn)
                        after
                            riak_sock_pool:checkin(?CONN_POOL, Conn)
                        end
@@ -210,14 +213,14 @@ fold(Folder, Acc, State) ->
     FoldCatRef = {fold_catalog, erlang:make_ref()},
     CatalogResultsPid = spawn_link(fun() ->
                                            fold_catalog_process(FoldCatRef, Me, 
-                                                                false, 0, 0, false) end),
+                                                                false, 0, 0, false, Conn) end),
     spawn_link(fun() ->
                        try
                            {ok, StreamRef} = raptor_conn:catalog_query(
                                                Conn,
                                                ["partition_id:\"", Partition , "\""]),
                            Sender = {raw, FoldCatRef, CatalogResultsPid},
-                           receive_catalog_query_results(StreamRef, Sender)
+                           receive_catalog_query_results(StreamRef, Sender, Conn)
                        after
                            riak_sock_pool:checkin(?CONN_POOL, Conn)
                        end end),
@@ -249,10 +252,10 @@ raptor_command(Command, Arg1, Arg2, Arg3) ->
         riak_sock_pool:checkin(?CONN_POOL, Conn)
     end.
 
-receive_stream_results(StreamRef, Sender, FilterFun) ->
-    receive_stream_results(StreamRef, Sender, FilterFun, []).
+receive_stream_results(StreamRef, Sender, FilterFun, Conn) ->
+    receive_stream_results(StreamRef, Sender, FilterFun, Conn, []).
 
-receive_stream_results(StreamRef, Sender, FilterFun, Acc0) ->
+receive_stream_results(StreamRef, Sender, FilterFun, Conn, Acc0) ->
     case length(Acc0) > ?RESULT_VEC_SZ of
         true ->
             riak_search_backend:stream_response_results(Sender, Acc0),
@@ -264,8 +267,9 @@ receive_stream_results(StreamRef, Sender, FilterFun, Acc0) ->
         {stream, StreamRef, timeout} ->
             case length(Acc) > 0 of
                 true ->
-                    riak_search_backend:stream_response_results(Sender, Acc);
-                
+                    riak_search_backend:stream_response_results(Sender, Acc),
+                    raptor_conn:close(Conn),
+                    error_logger:warning_msg("Stream result Raptor socket timeout\n");
                 false -> skip
             end,
             riak_search_backend:stream_response_done(Sender);
@@ -292,52 +296,78 @@ receive_stream_results(StreamRef, Sender, FilterFun, Acc0) ->
                     Acc2 = Acc,
                     skip
             end,
-            receive_stream_results(StreamRef, Sender, FilterFun, Acc2);
-        _Msg ->
-            %% TODO: Should this throw - must be an error
-            %% io:format("receive_stream_results(~p, ~p, ~p) -> ~p~n",
-            %%     [StreamRef, Sender, FilterFun, _Msg]),
-            riak_search_backend:stream_response_done(Sender)
+            receive_stream_results(StreamRef, Sender, FilterFun, Conn, Acc2);
+        Msg ->
+            riak_search_backend:stream_response_done(Sender),
+            raptor_conn:close(Conn),
+            throw({unexpected_msg, Msg})
+    after
+        ?STREAM_TIMEOUT ->
+            riak_search_backend:stream_response_done(Sender),
+            raptor_conn:close(Conn),
+            error_logger:warning_msg("Stream result Raptor conn timeout\n")
     end,
     ok.
 
-receive_info_range_results(StreamRef, Sender) ->
-    receive_info_range_results(StreamRef, Sender, []).
+receive_info_range_results(StreamRef, Sender, Conn) ->
+    receive_info_range_results(StreamRef, Sender, Conn, []).
 
-receive_info_range_results(StreamRef, Sender, Results) ->
+receive_info_range_results(StreamRef, Sender, Conn, Results) ->
     receive
         {info, StreamRef, timeout} ->
-            riak_search_backend:info_response(Sender, Results);
+            riak_search_backend:info_response(Sender, Results),
+            raptor_conn:close(Conn),
+            error_logger:warning_msg("Info range result Raptor socket timeout\n");
+
         {info, StreamRef, "$end_of_info", 0} ->
             riak_search_backend:info_response(Sender, Results);
         
         %% TODO: Replace this with a [New | Acc] and lists:reverse
         {info, StreamRef, Term, Count} ->
-            receive_info_range_results(StreamRef, Sender,
-                Results ++ [{Term, node(), Count}])
-
+            receive_info_range_results(StreamRef, Sender, Conn,
+                Results ++ [{Term, node(), Count}]);
+        Msg ->
+            riak_search_backend:info_response(Sender, [Results]),
+            raptor_conn:close(Conn),
+            throw({unexpected_msg, Msg})
+    after
+        ?INFO_RANGE_TIMEOUT ->
+            riak_search_backend:info_response(Sender, Results),
+            raptor_conn:close(Conn),
+            error_logger:warning_msg("Info range result Raptor conn timeout\n")
     end,
     ok.
 
-receive_info_results(StreamRef, Sender) ->
+receive_info_results(StreamRef, Sender, Conn) ->
     receive
         {info, StreamRef, timeout} ->
+            riak_search_backend:info_response(Sender, []),
+            raptor_conn:close(Conn),
+            error_logger:warning_msg("Info result Raptor socket timeout\n"),
             ok;
         {info, StreamRef, "$end_of_info", _Count} ->
             ok;
         {info, StreamRef, Term, Count} ->
             riak_search_backend:info_response(Sender, [{Term, node(), Count}]),
-            receive_info_results(StreamRef, Sender)
+            receive_info_results(StreamRef, Sender, Conn);
+        Msg ->
+            riak_search_backend:info_response(Sender, []),
+            raptor_conn:close(Conn),
+            throw({unexpected_msg, Msg})
     after
-        ?INFO_TIMEOUT ->
-            ok
+        ?INFO_TIMEOUT ->           
+            riak_search_backend:info_response(Sender, []),
+            raptor_conn:close(Conn),
+            error_logger:warning_msg("Info result Raptor conn timeout\n")
     end,
     ok.
 
-receive_catalog_query_results(StreamRef, Sender) ->
+receive_catalog_query_results(StreamRef, Sender, Conn) ->
     receive
         {catalog_query, _ReqId, timeout} ->
-            riak_search_backend:catalog_query_done(Sender);
+            riak_search_backend:catalog_query_done(Sender),
+            raptor_conn:close(Conn),
+            error_logger:warning_msg("Catalog query result Raptor socket timeout\n");
         {catalog_query, _ReqId, "$end_of_results", _, _, _, _} ->
             riak_search_backend:catalog_query_done(Sender);
         {catalog_query, StreamRef, Partition, Index,
@@ -346,7 +376,16 @@ receive_catalog_query_results(StreamRef, Sender) ->
                                                        Field, Term, 
                                                        [{json_props, JSONProps},
                                                         {node, node()}]),
-            receive_catalog_query_results(StreamRef, Sender)
+            receive_catalog_query_results(StreamRef, Sender, Conn);
+        Msg ->
+            riak_search_backend:catalog_query_done(Sender),
+            raptor_conn:close(Conn),
+            throw({unexpected_msg, Msg})
+    after
+        ?CATALOG_QUERY_TIMEOUT ->   
+            riak_search_backend:catalog_query_done(Sender),
+            raptor_conn:close(Conn),
+            error_logger:warning_msg("Catalog query result Raptor conn timeout\n")
     end,
     ok.
 
@@ -357,7 +396,8 @@ fold_catalog_process(CatRef,
                      CatalogDone,
                      StreamProcessCount,
                      FinishedStreamProcessCount,
-                     DeferredTables) ->
+                     DeferredTables,
+                     Conn) ->
     %% kick off one fold_stream_process per catalog entry that comes back
     %%   increment StreamProcessCount
     %% when receive done from fold_stream_process processes, increment
@@ -373,7 +413,9 @@ fold_catalog_process(CatRef,
                     true;
                 _SPC ->
                     fold_catalog_process(CatRef, FoldResultPid, true,
-                        StreamProcessCount, FinishedStreamProcessCount, DeferredTables)
+                                         StreamProcessCount,
+                                         FinishedStreamProcessCount, 
+                                         DeferredTables, Conn)
             end;
 
         {CatRef, {Partition, Index, Field, Term, JSONProps}} ->
@@ -385,7 +427,9 @@ fold_catalog_process(CatRef,
                     %    [Index, Field, Term]),
                     self() ! {CatRef, {Partition, Index, Field, Term, JSONProps}},
                     fold_catalog_process(CatRef, FoldResultPid, CatalogDone,
-                                         StreamProcessCount, FinishedStreamProcessCount, true);
+                                         StreamProcessCount, 
+                                         FinishedStreamProcessCount,
+                                         true, Conn);
                 false ->
                     spawn_link(fun() ->
                         %% io:format("fold_catalog_process: catalog_query_response: ~p: ~p.~p.~p (~p)~n",
@@ -402,12 +446,14 @@ fold_catalog_process(CatRef,
                                                 TermBin,
                                                 to_binary(Partition)),
                           fold_stream_process(Me, FoldResultPid, StreamRef,
-                                              IndexBin, FieldBin, TermBin)
+                                              IndexBin, FieldBin, TermBin, Conn)
                         after 
                             riak_sock_pool:checkin(?CONN_POOL, Conn)
                         end end),
                     fold_catalog_process(CatRef, FoldResultPid, CatalogDone,
-                                         StreamProcessCount+1, FinishedStreamProcessCount, false)
+                                         StreamProcessCount+1, 
+                                         FinishedStreamProcessCount,
+                                         false, Conn)
                 end;
 
         {fold_stream, done, _StreamRef1} ->
@@ -422,13 +468,18 @@ fold_catalog_process(CatRef,
                         FoldResultPid ! {fold_result, done};
                     false ->
                         fold_catalog_process(CatRef, FoldResultPid, CatalogDone,
-                            StreamProcessCount, FinishedStreamProcessCount+1, false)
+                                             StreamProcessCount,
+                                             FinishedStreamProcessCount+1,
+                                             false, Conn)
                 end;
-        _Msg ->
-            %% io:format("fold_catalog_process: unknown message: ~p~n", [_Msg]),
-            fold_catalog_process(CatRef, FoldResultPid, CatalogDone,
-                StreamProcessCount, FinishedStreamProcessCount, DeferredTables)
+        Msg ->
+            FoldResultPid ! {fold_result, done},
+            raptor_conn:close(Conn),
+            throw({unexpected_msg, Msg})
+
         after ?FOLD_TIMEOUT ->
+            raptor_conn:close(Conn),
+            error_logger:warning_msg("Fold catalog Raptor conn timeout\n"),
             case FinishedStreamProcessCount >= (StreamProcessCount) of
                 true -> ok;
                 false ->
@@ -443,9 +494,12 @@ fold_catalog_process(CatRef,
 %% for each result of a stream process, package the entry in the
 %%   form of an infamously shady put-embedded command and forward
 %%   to receive_fold_results process
-fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, IndexBin, FieldBin, TermBin) ->
+fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, IndexBin,
+                    FieldBin, TermBin, Conn) ->
     receive
         {stream, StreamRef, timeout} ->
+            error_logger:warning_msg("fold_stream_process: raptor socket timed out: ~p.~p.~p~n",
+                                      [IndexBin, FieldBin, TermBin]),
             CatalogProcessPid ! {fold_stream, done, StreamRef};
         {stream, StreamRef, "$end_of_table", _} ->
             %% io:format("fold_stream_process: table complete: ~p.~p.~p~n",
@@ -462,14 +516,15 @@ fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, IndexBin, Field
             Val = {Value, Props2},
             FoldResultPid ! {fold_result, Key, Val},
             fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, 
-                                IndexBin, FieldBin, TermBin);
-        _Msg ->
-            %% io:format("fold_stream_process: unknown message: ~p~n", [_Msg]),
-            fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, 
-                                IndexBin, FieldBin, TermBin)
-        after ?FOLD_TIMEOUT ->
+                                IndexBin, FieldBin, TermBin, Conn);
+        Msg ->
+            FoldResultPid ! {fold_stream, done, StreamRef},
+            raptor_conn:close(Conn),
+            throw({unexpected_msg, Msg})
+    after ?FOLD_TIMEOUT ->
             CatalogProcessPid ! {fold_stream, done, StreamRef},
-            error_logger:warning_msg("fold_stream_process: table timed out: ~p.~p.~p~n",
+            raptor_conn:close(Conn),
+            error_logger:warning_msg("fold_stream_process: raptor conn timed out: ~p.~p.~p~n",
                                       [IndexBin, FieldBin, TermBin])
     end.
 
@@ -530,4 +585,5 @@ test_is_empty() ->
 test_drop() ->
     State = #state { partition=0 },
     drop(State).
+
 -endif.
