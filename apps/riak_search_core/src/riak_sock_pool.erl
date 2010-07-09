@@ -8,6 +8,10 @@
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-export([new_conn/0]). % for unit testing
+-endif.
 
 -define(MAX_RETRY_WAIT, 250).
 
@@ -62,15 +66,20 @@ handle_call(_Request, _From, State) ->
     {reply, ignore, State}.
 
 handle_cast({checkin, Conn}, #state{pool=Pool}=State) ->
-    {noreply, State#state{pool=Pool ++ [Conn]}};
+    case is_process_alive(Conn) of
+        true ->
+            {noreply, State#state{pool=Pool ++ [Conn]}};
+        false ->
+            %% Death of the process will have triggered handle_info(#'DOWN'{})
+            {noreply, State}
+    end;
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(#'DOWN'{id=DownPid}, #state{openmod=ConnMod, countfun=CountFun, pool=Pool0}=State) ->
-    Pool1 = lists:delete(DownPid, Pool0),
-    DesiredCount = CountFun(),
-    Pool2 = Pool1 ++ add_to_pool(ConnMod, DesiredCount - length(Pool1)),
-    {noreply, State#state{pool=Pool2}};
+handle_info(#'DOWN'{id=DownPid}, #state{openmod=ConnMod, pool=Pool}=State) ->
+    %% Create a new pid to replace the downed one
+    Pool1 = lists:delete(DownPid, Pool) ++ [init_conn(ConnMod)],
+    {noreply, State#state{pool=Pool1}};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -88,6 +97,78 @@ add_to_pool(ConnMod, Count) ->
 add_to_pool(_ConnMod, 0, Pool) ->
     Pool;
 add_to_pool(ConnMod, Count, Pool) ->
+    Pid = init_conn(ConnMod),
+    add_to_pool(ConnMod, Count - 1, [Pid|Pool]).
+
+init_conn(ConnMod) ->
     {ok, Pid} = ConnMod:new_conn(),
     erlang:monitor(process, Pid),
-    add_to_pool(ConnMod, Count - 1, [Pid|Pool]).
+    Pid.
+    
+   
+-ifdef(TEST).
+
+new_conn() ->
+    {ok, spawn(fun() -> receive done -> ok end end)}.
+
+close(Pid) ->
+    Pid ! done.
+
+
+exhausted_test() ->
+    ConnCount = 3,
+    {ok, Pool} = start_link(sock_pool_ut, {?MODULE, ?MODULE}, fun() -> ConnCount end),
+    try
+        %% Lazy evaluation - does not open pool until first use
+        ?assertEqual(0, ?MODULE:current_count(sock_pool_ut)),
+
+        %% Checkout connection - make sure pool size is smaller
+        {ok, Pid1} = checkout(sock_pool_ut),
+        ?assertEqual(2, ?MODULE:current_count(sock_pool_ut)),
+        {ok, _Pid2} = checkout(sock_pool_ut),
+        {ok, _Pid3} = checkout(sock_pool_ut),
+        ?assertEqual(0, ?MODULE:current_count(sock_pool_ut)),
+        
+        %% Pool is exhausted, delay checking in Pid1 and 
+        %% request a new connection - should get Pid1.
+        spawn(fun() -> timer:sleep(10), checkin(sock_pool_ut, Pid1) end),
+        {ok, Pid1} = checkout(sock_pool_ut)
+   after
+        unlink(Pool),
+        exit(Pool, kill)
+    end.
+
+exit_test() ->
+    ConnCount = 5,
+    {ok, Pool} = start_link(sock_pool_ut, {?MODULE, ?MODULE}, fun() -> ConnCount end),
+    try
+        %% Lazy evaluation - does not open pool until first use
+        ?assertEqual(0, ?MODULE:current_count(sock_pool_ut)),
+
+        %% Checkout connection - make sure pool size is smaller
+        {ok, Pid} = checkout(sock_pool_ut),
+        ?assertEqual(ConnCount-1, ?MODULE:current_count(sock_pool_ut)),
+
+        %% Close the connection and make sure the process has exited
+        erlang:monitor(process, Pid),
+        close(Pid),
+        receive
+            #'DOWN'{id = Pid} ->
+                ok
+        after
+            1000 ->
+                ?assert(false)
+        end,
+
+        %% Make sure the pool is back up to size again
+        ?assertEqual(ConnCount, ?MODULE:current_count(sock_pool_ut)),
+
+        %% Checkin the dead process and make sure current count stays the same
+        checkin(sock_pool_ut, Pid),
+        ?assertEqual(ConnCount, ?MODULE:current_count(sock_pool_ut))
+    after
+        unlink(Pool),
+        exit(Pool, kill)
+    end.
+
+-endif.
