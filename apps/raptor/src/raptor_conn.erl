@@ -9,7 +9,7 @@
 %% API
 -export([start_link/0,
          close/1,
-         index/7,
+         index/8,
          delete_entry/6,
          stream/5,
          multi_stream/2,
@@ -31,13 +31,14 @@
 close(ConnPid) ->
     gen_server:call(ConnPid, close_conn).
 
-index(ConnPid, IndexName, FieldName, Term, Value, Partition, Props) ->
+index(ConnPid, IndexName, FieldName, Term, Value, Partition, Props, KeyClock) ->
     MessageType = <<"Index">>,
     IndexRec = #index{index=IndexName, field=FieldName,
                       term=Term, value=Value,
                       partition=Partition,
                       message_type=MessageType,
-                      props=Props},
+                      props=Props,
+                      key_clock=KeyClock},
     gen_server:call(ConnPid, {index, IndexRec}, ?TIMEOUT).
 
 delete_entry(ConnPid, IndexName, FieldName, Term, DocId, Partition) ->

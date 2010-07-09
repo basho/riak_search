@@ -47,28 +47,33 @@ import raptor.store.handlers.*;
 public class ColumnStore implements Runnable {
     final private static Logger log = 
         Logger.getLogger(ColumnStore.class);
-    final private static int DEFAULT_PARTITIONS = 4;
+    final private static int DEFAULT_PARTITIONS = 2;
     final private static String DB_PFX = "db";
 
     private ConcurrentHashMap<String, BtreeStore>
         stores = new ConcurrentHashMap<String, BtreeStore>();
     private ConcurrentHashMap<String, String>
         metadataCache = new ConcurrentHashMap<String, String>();
+    private ConcurrentHashMap<byte[], byte[]>
+        entryMetadataCache = new ConcurrentHashMap<byte[], byte[]>();
     private ConsistentHash<String> tableHash;
     private int partitions;
     private HashStore metadata;
+    private HashStore entryMetadata;
     private Lock metadataLock = new ReentrantLock();
+    private Lock entryMetadataLock = new ReentrantLock();
     private Environment env;
     private String directory;
     private String logDirectory;
     
     final public static String METADATA_COUNT = "metadata.count";
     final public static String __TABLES__ = "__tables__";
+    final private static String __TABLE_DOCID_SEP__ = "`";
     
     public ColumnStore(String directory) throws Exception {
         this(directory, directory, DEFAULT_PARTITIONS);
     }
-
+    
     public ColumnStore(String directory, String logDirectory, int partitions) 
         throws Exception {
         open(directory, logDirectory, partitions);
@@ -88,10 +93,11 @@ public class ColumnStore implements Runnable {
         for (int i=0; i<partitions; i++) {
             BtreeStore store = new BtreeStore(
                 env,
-                DB_PFX + i + ".column", DB_PFX + i, 4096);
+                DB_PFX + i + ".column", DB_PFX + i, 8192);
             stores.put(DB_PFX + i, store);
         }
         metadata = new HashStore(env, "metadata.hash", "metadata");
+        entryMetadata = new HashStore(env, "entry_metadata.hash", "entry_metadata");
     }
     
     public void run() {
@@ -206,6 +212,15 @@ public class ColumnStore implements Runnable {
                 rval);
         }
         return true;
+    }
+    
+    protected void reportWriteQueueSizes() throws Exception {
+        for(String k: stores.keySet()) {
+            BtreeStore store = stores.get(k);
+            log.info("[" + k + "] writeQueue.size() = " +
+                store.writeQueue.size() + " (" + store.write_op_ct + " write_op_ct)");
+            store.write_op_ct = 0;
+        }
     }
     
     public boolean exists(String table, String key)
@@ -330,10 +345,10 @@ public class ColumnStore implements Runnable {
     }
     
     public Map<String,String> getRange(String table,
-                                             String keyStart, 
-                                             String keyEnd,
-                                             boolean startInclusive,
-                                             boolean endInclusive) throws Exception {
+                                       String keyStart, 
+                                       String keyEnd,
+                                       boolean startInclusive,
+                                       boolean endInclusive) throws Exception {
         BtreeStore store = stores.get(tableHash.get(table));
         byte[] ckStart = keyStart.getBytes("UTF-8");
         byte[] ckEnd = keyEnd.getBytes("UTF-8");
@@ -358,10 +373,10 @@ public class ColumnStore implements Runnable {
     }
     
     public List<byte[]> getRangeKeys(String table,
-                                             byte[] keyStart, 
-                                             byte[] keyEnd,
-                                             boolean startInclusive,
-                                             boolean endInclusive) throws Exception {
+                                     byte[] keyStart, 
+                                     byte[] keyEnd,
+                                     boolean startInclusive,
+                                     boolean endInclusive) throws Exception {
         List<byte[]> keys = new ArrayList<byte[]>();
         Set<String> keyhs = new HashSet<String>();
         Map<byte[],byte[]> results =
@@ -377,10 +392,10 @@ public class ColumnStore implements Runnable {
     }
 
     public List<String> getRangeKeys(String table,
-                                             String keyStart, 
-                                             String keyEnd,
-                                             boolean startInclusive,
-                                             boolean endInclusive) throws Exception {
+                                     String keyStart, 
+                                     String keyEnd,
+                                     boolean startInclusive,
+                                     boolean endInclusive) throws Exception {
         List<String> keys = new ArrayList<String>();
         Set<String> keyhs = new HashSet<String>();
         List<byte[]> r = getRangeKeys(table,
@@ -422,6 +437,13 @@ public class ColumnStore implements Runnable {
         } finally {
             metadataLock.unlock();
         }
+        entryMetadataLock.lock();
+        try {
+            log.info("<sync: entryMetadata>");
+            entryMetadata.sync();
+        } finally {
+            entryMetadataLock.unlock();
+        }
     }
     
     public void checkpoint() throws Exception {
@@ -430,25 +452,6 @@ public class ColumnStore implements Runnable {
         config.setKBytes(1000);
         config.setForce(true);
         env.checkpoint(config);
-        MutexStats mutexStats = env.getMutexStats(new StatsConfig());
-        /*
-            st_mutex_align=4
-            st_mutex_tas_spins=200
-            st_mutex_cnt=200277
-            st_mutex_free=9317
-            st_mutex_inuse=190960
-            st_mutex_inuse_max=190960
-            st_region_wait=0
-            st_region_nowait=191100
-            st_regsize=11223040
-        */
-        log.info(mutexStats.toString());
-        /*
-        if (mutexStats.getMutexFree() < 
-            (.10 * mutexStats.getMutexCount())) {
-            log.info("free mutexes < 10%");
-        }
-        */
     }
     
     public void close() throws Exception {
@@ -458,6 +461,7 @@ public class ColumnStore implements Runnable {
                 store.close();
             }
             metadata.close();
+            entryMetadata.close();
             env.close();
         } finally {
             metadataLock.unlock();
@@ -537,6 +541,102 @@ public class ColumnStore implements Runnable {
     private void decrementTableCount(String table)
         throws Exception {
         incrementTableCount(table, -1);
+    }
+    
+    /* entry metadata */
+    
+    public byte[] getTermEntryMetadata(String table,
+                                       byte[] docId,
+                                       String term,
+                                       String label) throws Exception {
+        String compositeTable = makeTermEntryMetadataKey(table, term);
+        return getEntryMetadata(compositeTable, docId, label);
+    }
+    
+    public byte[] getEntryMetadata(String table, 
+                                   byte[] docId, 
+                                   String label) throws Exception {
+        entryMetadataLock.lock();
+        try {
+            byte[] key = makeEntryMetadataKey(table, docId, label);
+            if (null == entryMetadataCache.get(key)) {
+                byte[] value = entryMetadata.get(key);
+                if (value == null) return null;
+                //entryMetadataCache.put(key, value);
+                return value;
+            }
+            return entryMetadataCache.get(key);
+        } finally {
+            entryMetadataLock.unlock();
+        }
+    }
+    
+    // set entry metadata for a specific docId + term
+    public boolean setTermEntryMetadata(String table,
+                                        byte[] docId,
+                                        String term,
+                                        String label,
+                                        byte[] value) throws Exception {
+        String compositeTable = makeTermEntryMetadataKey(table, term);
+        return setEntryMetadata(compositeTable, docId, label, value);
+    }
+
+    // set entry metadata for a specific docId
+    public boolean setEntryMetadata(String table, 
+                                    byte[] docId, 
+                                    String label, 
+                                    byte[] value) throws Exception {
+        entryMetadataLock.lock();
+        try {
+            byte[] key = makeEntryMetadataKey(table, docId, label);
+            if (entryMetadata.put(key, value)) {
+                //entryMetadataCache.put(key, value);
+                return true;
+            }
+            return false;
+        } finally {
+            entryMetadataLock.unlock();
+        }
+    }
+    
+    // delete entry metadata for a specific docId + term
+    public boolean deleteTermEntryMetadata(String table,
+                                           byte[] docId,
+                                           String term,
+                                           String label) throws Exception {
+        String compositeTable = makeTermEntryMetadataKey(table, term);
+        return deleteEntryMetadata(compositeTable, docId, label);
+    }
+    
+    public boolean deleteEntryMetadata(String table,
+                                       byte[] docId,
+                                       String label) throws Exception {
+        entryMetadataLock.lock();
+        try {
+            byte[] key = makeEntryMetadataKey(table, docId, label);
+            if (entryMetadata.delete(key)) {
+                entryMetadataCache.remove(key);
+                return true;
+            }
+            return false;
+        } finally {
+            entryMetadataLock.unlock();
+        }
+    }
+    
+    private byte[] makeEntryMetadataKey(String table, byte[] docId, String label) 
+        throws Exception {
+        String key1 = table + 
+                      __TABLE_DOCID_SEP__ +
+                      new String(docId, "UTF-8");
+        return getColumnKey(key1, label);
+    }
+    
+    private String makeTermEntryMetadataKey(String table,
+                                            String term) throws Exception {
+        return table + 
+               __TABLE_DOCID_SEP__ +
+               term;
     }
     
     /* sequences */

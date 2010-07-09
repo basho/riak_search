@@ -46,7 +46,7 @@ public class BtreeStore {
     final private static Logger log = 
         Logger.getLogger(BtreeStore.class);
     
-    private static final int DB_PAGE_SIZE = 512;
+    private static final int DB_PAGE_SIZE = 4096;
     private DatabaseConfig databaseConfig;
     private Database db;
     private Environment env;
@@ -55,6 +55,10 @@ public class BtreeStore {
     private String logDirectory;
     private String filename;
     private String name;
+    
+    private Thread writeThread;
+    protected LinkedBlockingQueue<Object> writeQueue;
+    protected long write_op_ct;
 
     private static DefaultBDBMessageHandler 
         defaultMessageHandler = new DefaultBDBMessageHandler();
@@ -101,6 +105,8 @@ public class BtreeStore {
         databaseConfig.setTransactional(false);
         databaseConfig.setReadUncommitted(true);
         db = this.env.openDatabase(null, filename, name, databaseConfig);
+        write_op_ct = 0;
+        startWriteThread();
     }
     
     @SuppressWarnings("deprecation")
@@ -117,7 +123,7 @@ public class BtreeStore {
         envConf.setMaxLogFileSize(10000000);
         //envConf.setInitializeLocking(false);
         envConf.setLogAutoRemove(true);
-        envConf.setDsyncLog(true);
+        envConf.setDsyncLog(false);
         envConf.setDsyncDatabases(false);
         envConf.setMessageHandler(defaultMessageHandler);
         envConf.setMessageStream(System.out);
@@ -149,11 +155,73 @@ public class BtreeStore {
         }
     }
     
+    /* * */
+    
+    private void startWriteThread() {
+       writeQueue = new LinkedBlockingQueue<Object>(10000);
+       writeThread = new Thread(new Runnable() {
+           public void run() {
+               try {
+                   log.info("writeThread: started");
+                   while(true) {
+                       try {
+                           //Object msg0 = writeQueue.take();
+                           while(writeQueue.size() == 0) {
+                               Thread.sleep(100);
+                           }
+                           List<Object> batch = new ArrayList<Object>();
+                           writeQueue.drainTo(batch, 5000); // todo: configurable batch size
+                           for(Object msg0: batch) {
+                               if (msg0 instanceof PutOp) {
+                                   PutOp msg = (PutOp) msg0;
+                                   do_put(msg.key, msg.val);
+                               } else if (msg0 instanceof DeleteOp) {
+                                   DeleteOp msg = (DeleteOp) msg0;
+                                   do_delete(msg.key);
+                               } else {
+                                   log.error("writeQueue: unknown message (discarding): " + 
+                                             msg0.toString());
+                               }
+                               write_op_ct++;
+                           }
+                       } catch (Exception iex) {
+                           log.error("Error handling message", iex);
+                           iex.printStackTrace();
+                       }
+                   }
+               } catch (Exception ex) {
+                   log.error("Error setting up writeQueue process", ex);
+                   ex.printStackTrace();
+               }
+           }
+       });
+       
+       try {
+           writeThread.start();
+       } catch (Exception ex) {
+           log.error("Error starting BtreeStore writeThread", ex);
+           System.exit(-1);
+       }
+    }
+    
+    /* * */
+    
+    private class PutOp { public byte[] key, val; }
+    private class DeleteOp { public byte[] key; }
+    
     public boolean put(String key, String val) throws Exception {
         return put(key.getBytes("UTF-8"), val.getBytes("UTF-8"));
     }
     
     public boolean put(byte[] key, byte[] val) throws Exception {
+        PutOp op = new PutOp();
+        op.key = key;
+        op.val = val;
+        writeQueue.put(op);
+        return true;
+    }
+    
+    private boolean do_put(byte[] key, byte[] val) throws Exception {
         dbLock.lock();
         try {
             if (db.put(null,
@@ -337,6 +405,13 @@ public class BtreeStore {
     }
     
     public boolean delete(byte[] key) throws Exception {
+        DeleteOp op = new DeleteOp();
+        op.key = key;
+        writeQueue.put(op);
+        return true;
+    }
+    
+    private boolean do_delete(byte[] key) throws Exception {
         dbLock.lock();
         try {
             if (db.delete(null, new DatabaseEntry(key)) ==

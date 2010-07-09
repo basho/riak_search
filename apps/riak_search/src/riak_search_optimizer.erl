@@ -9,40 +9,6 @@
 -define(MAX_MULTI_TERM_SZ, 250).
 -define(OPTIMIZER_PROC_CT, 32).
 
-terms_to_graph(Terms, Index, Field, Props) ->
-    %%
-    %% expects:
-    %%  [{"function",'dev2@127.0.0.1',1},
-    %%
-    G = digraph:new(),
-    digraph:add_vertex(G, terms, "terms"),
-    digraph:add_vertex(G, nodes, "nodes"),
-    
-    lists:foreach(fun({Term0, Node, _Count}) ->
-        Term = {term, {Index, Field, Term0}, Props},
-        case digraph:vertex(G, Term) of
-            false -> 
-                digraph:add_vertex(G, Term, "term"),
-                %% terms -> Term
-                digraph:add_edge(G, terms, Term, "has-term");
-            _ -> skip
-        end,
-        case digraph:vertex(G, Node) of
-            false -> 
-                digraph:add_vertex(G, Node, "node"),
-                %% nodes -> Node
-                digraph:add_edge(G, nodes, Node, "has-member");
-            _ -> skip
-        end,
-        
-        %% Term -> Node
-        digraph:add_edge(G, Term, Node, "has-location"),
-        
-        %% Node -> Term
-        digraph:add_edge(G, Node, Term, "location-for")
-    end, Terms),
-    G.
-
 optimize_or(Ops, Index, Field, Props) ->
     G = terms_to_graph(Ops, Index, Field, Props),
 
@@ -85,6 +51,40 @@ optimize_or(Ops, Index, Field, Props) ->
             end
         end, [], TCD),
     Optimized_Ops.
+
+terms_to_graph(Terms, Index, Field, Props) ->
+    %%
+    %% expects:
+    %%  [{"function",'dev2@127.0.0.1',1},
+    %%
+    G = digraph:new(),
+    digraph:add_vertex(G, terms, "terms"),
+    digraph:add_vertex(G, nodes, "nodes"),
+    
+    lists:foreach(fun({Term0, Node, _Count}) ->
+        Term = {term, {Index, Field, Term0}, Props},
+        case digraph:vertex(G, Term) of
+            false -> 
+                digraph:add_vertex(G, Term, "term"),
+                %% terms -> Term
+                digraph:add_edge(G, terms, Term, "has-term");
+            _ -> skip
+        end,
+        case digraph:vertex(G, Node) of
+            false -> 
+                digraph:add_vertex(G, Node, "node"),
+                %% nodes -> Node
+                digraph:add_edge(G, nodes, Node, "has-member");
+            _ -> skip
+        end,
+        
+        %% Term -> Node
+        digraph:add_edge(G, Term, Node, "has-location"),
+        
+        %% Node -> Term
+        digraph:add_edge(G, Node, Term, "location-for")
+    end, Terms),
+    G.
 
 partition_list(L, Sz, Acc) ->
     case length(L) =< Sz of

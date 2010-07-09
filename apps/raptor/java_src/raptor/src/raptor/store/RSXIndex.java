@@ -37,6 +37,7 @@ import org.json.JSONArray;
 
 import raptor.server.RaptorServer;
 import raptor.store.handlers.ResultHandler;
+import raptor.util.BloomFilter;
 
 import com.googlecode.concurrentlinkedhashmap.ConcurrentLinkedHashMap.Builder;
 
@@ -46,14 +47,20 @@ public class RSXIndex implements Runnable {
     final private static String TABLE_SEP = "/";
     final private static String IFT_SEP = ".";
     final private static String CATALOG_TABLE = "__sys._catalog_";
-    final private static int STORE_COMMIT_INTERVAL = 10000; /* ms */
-    //final private static int STORE_SYNC_INTERVAL = 30000; /* ms */
-    final private static int LUCENE_COMMIT_INTERVAL = 10000; /* ms */
+    final private static int STORE_COMMIT_INTERVAL = 60000; /* ms; todo: configurable? */
+    final private static int LUCENE_COMMIT_INTERVAL = 60000; /* ms; todo: configurable?  */
     final private ColumnStore store;
     final private LuceneStore lucene;
     final private Map<String, List<JSONObject>> catalogCache;
-
     public static long stat_index_c = 0;
+    
+    // entry metadata labels
+    final private static String ENTRY_METADATA__PROPS = "p";
+    
+    // stream markers
+    final private static String END_OF_RESULTS = "$end_of_results";
+    final private static String END_OF_TABLE = "$end_of_table";
+    final private static String END_OF_INFO = "$end_of_info";
     
     public RSXIndex(String dataDir) throws Exception {
         catalogCache = new Builder<String, List<JSONObject>>()
@@ -61,7 +68,7 @@ public class RSXIndex implements Runnable {
             .maximumWeightedCapacity(150000)
             .concurrencyLevel(Runtime.getRuntime().availableProcessors()*4)
             .build();
-        store = new ColumnStore(dataDir + "/raptor-db", "log", 4);
+        store = new ColumnStore(dataDir + "/raptor-db", "log", 8);
         lucene = new LuceneStore(dataDir + "/raptor-catalog");
         RaptorServer.writeThread.start();
     }
@@ -88,7 +95,8 @@ public class RSXIndex implements Runnable {
                 log.info(">> " + stat_index_c + " index puts (" + 
                     queueSize + " queued)");
                 stat_index_c = 0;
-                log.info("writeQueue.size() = " + RaptorServer.writeQueue.size());
+                //log.info("writeQueue.size() = " + RaptorServer.writeQueue.size());
+                store.reportWriteQueueSizes();
                 Thread.sleep(STORE_COMMIT_INTERVAL);
             } catch (Exception ex) {
                 ex.printStackTrace();
@@ -104,17 +112,34 @@ public class RSXIndex implements Runnable {
     public void index(String index,
                       String field,
                       String term,
-                      String value,
+                      String docId,
                       String partition,
-                      byte[] props) throws Exception {
+                      byte[] props,
+                      String keyClock) throws Exception {
         String table = makeTableKey(index, field, term, partition);
         if (!store.tableExists(table)) {
             addCatalogEntry(partition, index, field, term, null);
             String catalogTableKey = makeTableKey(index, field, term, partition);
             store.put(CATALOG_TABLE, catalogTableKey, term);
         }
-        store.put(table, value.getBytes("UTF-8"), props); // todo: props
+        store.put(table, docId.getBytes("UTF-8"), keyClock.getBytes("UTF-8"));
+        store.setTermEntryMetadata(table, 
+                                   docId.getBytes("UTF-8"), 
+                                   term, 
+                                   ENTRY_METADATA__PROPS, 
+                                   props);
         stat_index_c++;
+    }
+    
+    public String getEntryKeyClock(String index,
+                                   String field,
+                                   String term,
+                                   String docId,
+                                   String partition) throws Exception {
+        String table = makeTableKey(index, field, term, partition);
+        byte[] keyClockBytes = store.get(table, docId.getBytes("UTF-8"));
+        if (keyClockBytes == null) return "0";
+        return new String(keyClockBytes, "UTF-8");
     }
     
     public void deleteEntry(String index,
@@ -124,27 +149,53 @@ public class RSXIndex implements Runnable {
                             String partition) throws Exception {
         String table = makeTableKey(index, field, term, partition);
         boolean res = store.delete(table, docId);
+        boolean res1 = store.deleteTermEntryMetadata(table, 
+                                                     docId.getBytes("UTF-8"), 
+                                                     term, 
+                                                     ENTRY_METADATA__PROPS);
         log.info("delete(" + index+ ", " + field + ", " + term + ", " + docId + ", " +
-                 partition + "), res = " + res);
+                 partition + "), [index] res = " + res + ", [entry metadata] res1 = " + res1);
     }
-
-    public void stream(String index,
-                       String field,
-                       String term,
-                       String partition,
+    
+    public void stream(final String index,
+                       final String field,
+                       final String term,
+                       final String partition,
                        final ResultHandler resultHandler) throws Exception {
-        String table = makeTableKey(index, field, term, partition);
+        final String table = makeTableKey(index, field, term, partition);
         Map<byte[], byte[]> results = 
             store.getRange(table, 
                            ("").getBytes("UTF-8"), 
                            ("").getBytes("UTF-8"), 
                            true, 
                            true,
-                           resultHandler);
-        /*for(byte[] k: results.keySet()) {
-            resultHandler.handleResult(k, results.get(k));
-        }*/
-        resultHandler.handleResult("$end_of_table", "");
+                           new ResultHandler() {
+                               public void handleResult(byte[] key, byte[] value) {
+                                   try {
+                                       // value: KeyClock
+                                       byte[] props = store.getTermEntryMetadata(table,
+                                                                                 key,
+                                                                                 term,
+                                                                                 ENTRY_METADATA__PROPS);
+                                       if (props != null) resultHandler.handleResult(key, props);
+                                   } catch (Exception ex) {
+                                       ex.printStackTrace();
+                                   }
+                               }
+                               public void handleResult(String key, String value) { 
+                                   try {
+                                       // value: KeyClock
+                                       byte[] props = store.getTermEntryMetadata(table,
+                                                                                 key.getBytes("UTF-8"),
+                                                                                 term,
+                                                                                 ENTRY_METADATA__PROPS);
+                                       if (props != null) resultHandler.handleResult(key, new String(props, "UTF-8"));
+                                   } catch (Exception ex) {
+                                       ex.printStackTrace();
+                                   }
+                               }
+                           });
+        resultHandler.handleResult(END_OF_TABLE, "");
     }
     
     public void multistream(JSONArray terms,
@@ -179,33 +230,73 @@ public class RSXIndex implements Runnable {
         } else {
             catalogEntries = catalogCache.get(query);
         }
-
+        
+        final BloomFilter<String> filt = new BloomFilter<String>(64000, 2000); // 0.00000021167340 fp
         for (int j=0; j<catalogEntries.size(); j++) {
             long t1 = System.currentTimeMillis();
             JSONObject catalogEntry = catalogEntries.get(j);
-            String index = catalogEntry.getString("index");
-            String field = catalogEntry.getString("field");
-            String term = catalogEntry.getString("term");
-            String partition = catalogEntry.getString("partition_id");
-            String table = makeTableKey(index, field, term, partition);
+            final String index = catalogEntry.getString("index");
+            final String field = catalogEntry.getString("field");
+            final String term = catalogEntry.getString("term");
+            final String partition = catalogEntry.getString("partition_id");
+            final String table = makeTableKey(index, field, term, partition);
+            
             Map<byte[], byte[]> results =
                 store.getRange(table,
                                ("").getBytes("UTF-8"),
                                ("").getBytes("UTF-8"),
                                true,
                                true,
-                               resultHandler);
-                               
+                               new ResultHandler() {
+                                   public void handleResult(byte[] key, byte[] value) {
+                                       try {
+                                           // value: KeyClock
+                                           if (filt.contains(new String(key, "UTF-8"))) {
+                                               //log.info("filt/skip [" + new String(key, "UTF-8") + "]");
+                                           } else {
+                                               byte[] props = store.getTermEntryMetadata(table,
+                                                                                         key,
+                                                                                         term,
+                                                                                         ENTRY_METADATA__PROPS);
+                                               if (props != null) {
+                                                   filt.add(new String(key, "UTF-8"));
+                                                   resultHandler.handleResult(key, props);
+                                               }
+                                           }
+                                       } catch (Exception ex) {
+                                           ex.printStackTrace();
+                                       }
+                                   }
+                                   public void handleResult(String key, String value) {
+                                       try {
+                                           // value: KeyClock
+                                           if (filt.contains(key)) {
+                                               log.info("filt/skip [" + key + "]");
+                                           } else {
+                                               byte[] props = store.getTermEntryMetadata(table,
+                                                                                         key.getBytes("UTF-8"),
+                                                                                         term,
+                                                                                         ENTRY_METADATA__PROPS);
+                                               if (props != null) {
+                                                   filt.add(key);
+                                                   resultHandler.handleResult(key, new String(props, "UTF-8"));
+                                               }
+                                           }
+                                       } catch (Exception ex) {
+                                           ex.printStackTrace();
+                                       }
+                                   }
+                               });
+
             log.info("multistream: starting: " +
                 index + "." +
                 field + "." +
                 term + "/" +
                 partition + " <" + (System.currentTimeMillis() - t1) + "ms>");
-
         }
         long elapsed = System.currentTimeMillis() - ctime;
         log.info("<< multistream complete, " + elapsed + "ms elapsed >>");
-        resultHandler.handleResult("$end_of_table", "");
+        resultHandler.handleResult(END_OF_TABLE, "");
     }
     
     public void info(String index,
@@ -216,7 +307,7 @@ public class RSXIndex implements Runnable {
         String table = makeTableKey(index, field, term, partition);
         long n = store.count(table);
         resultHandler.handleInfoResult(table, n);
-        resultHandler.handleInfoResult("$end_of_info", 0);
+        resultHandler.handleInfoResult(END_OF_INFO, 0);
     }
 
     public void infoRange(String index,
@@ -237,7 +328,7 @@ public class RSXIndex implements Runnable {
             long c = store.count(k);
             resultHandler.handleInfoResult(v, c);
         }
-        resultHandler.handleInfoResult("$end_of_info", 0);
+        resultHandler.handleInfoResult(END_OF_INFO, 0);
     }
     
     public void catalogQuery(String query,
@@ -245,7 +336,7 @@ public class RSXIndex implements Runnable {
                              ResultHandler resultHandler) throws Exception {
         lucene.query(query, resultHandler);
         JSONObject jo = new JSONObject();
-        jo.put("partition_id", "$end_of_results");
+        jo.put("partition_id", END_OF_RESULTS);
         jo.put("index", "");
         jo.put("field", "");
         jo.put("term", "");
@@ -345,7 +436,7 @@ public class RSXIndex implements Runnable {
         
         lucene.addDocument(doc);
     }
-        
+    
     public static void main(String args[]) throws Exception {
         RSXIndex idx = new RSXIndex("");
         
@@ -362,23 +453,23 @@ public class RSXIndex implements Runnable {
                     }
             };
         
-        idx.index("search", "payload", "test", "docid_1", "1", new byte[0]);
-        idx.index("search", "payload", "test", "docid_2", "1", new byte[0]);
-        idx.index("search", "payload", "test", "docid_3", "1", new byte[0]);
-        idx.index("search", "payload", "test", "docid_4", "1", new byte[0]);
-        idx.index("search", "payload", "test", "docid_5", "1", new byte[0]);
+        idx.index("search", "payload", "test", "docid_1", "1", new byte[0], "1234");
+        idx.index("search", "payload", "test", "docid_2", "1", new byte[0], "1234");
+        idx.index("search", "payload", "test", "docid_3", "1", new byte[0], "1234");
+        idx.index("search", "payload", "test", "docid_4", "1", new byte[0], "1234");
+        idx.index("search", "payload", "test", "docid_5", "1", new byte[0], "1234");
         
-        idx.index("search", "payload", "funny", "docid_1", "1", new byte[0]);
-        idx.index("search", "payload", "funny", "docid_2", "1", new byte[0]);
-        idx.index("search", "payload", "funny", "docid_3", "1", new byte[0]);
-        idx.index("search", "payload", "funny", "docid_4", "1", new byte[0]);
-        idx.index("search", "payload", "funny", "docid_5", "1", new byte[0]);
+        idx.index("search", "payload", "funny", "docid_1", "1", new byte[0], "1234");
+        idx.index("search", "payload", "funny", "docid_2", "1", new byte[0], "1234");
+        idx.index("search", "payload", "funny", "docid_3", "1", new byte[0], "1234");
+        idx.index("search", "payload", "funny", "docid_4", "1", new byte[0], "1234");
+        idx.index("search", "payload", "funny", "docid_5", "1", new byte[0], "1234");
         
-        idx.index("search", "payload", "bananas", "docid_1", "1", new byte[0]);
-        idx.index("search", "payload", "bananas", "docid_2", "1", new byte[0]);
-        idx.index("search", "payload", "bananas", "docid_3", "1", new byte[0]);
-        idx.index("search", "payload", "bananas", "docid_4", "1", new byte[0]);
-        idx.index("search", "payload", "bananas", "docid_5", "1", new byte[0]);
+        idx.index("search", "payload", "bananas", "docid_1", "1", new byte[0], "1234");
+        idx.index("search", "payload", "bananas", "docid_2", "1", new byte[0], "1234");
+        idx.index("search", "payload", "bananas", "docid_3", "1", new byte[0], "1234");
+        idx.index("search", "payload", "bananas", "docid_4", "1", new byte[0], "1234");
+        idx.index("search", "payload", "bananas", "docid_5", "1", new byte[0], "1234");
         
         idx.stream("search", "payload", "funny", "1", handler);
         idx.info("search", "payload", "test", "1", handler);
