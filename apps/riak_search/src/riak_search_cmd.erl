@@ -195,7 +195,6 @@ test(Path) ->
         {error, Error} ->
             io:format(" :: ERROR - Could not read '~s' : ~p~n", [Path1, Error])
     end.
-        
 
 -define(TEST_INDEX, "test").
 test_inner([], _Root) -> 
@@ -228,17 +227,22 @@ test_inner({delete, Path}, Root) ->
     delete(?TEST_INDEX, filename:join(Root, Path));
 
 test_inner({search, Query, Validators}, _Root) ->
-    case search:search(?TEST_INDEX, Query) of
+    try search:search(?TEST_INDEX, Query) of
         {Length, Results} ->
             case validate_results(Length, Results, Validators) of
                 pass -> 
                     io:format("~n    [√] PASS » ~s~n", [Query]);
                 {fail, Errors} ->
                     io:format("~n    [ ] FAIL » ~s~n", [Query]),
-                    [io:format("        - ~s", [X]) || X <- Errors]
+                    [io:format("        - ~s~n", [X]) || X <- Errors]
             end;
-        Other ->
-            io:format(" :: ERROR RUNNING QUERY: ~p~n", [Other])
+        Error ->
+            io:format("~n    [ ] FAIL » ~s~n", [Query]),
+            io:format("        - ERROR: ~p~n", [Error])
+    catch 
+        _Type : Error ->
+            io:format("~n    [ ] FAIL » ~s~n", [Query]),
+            io:format("        - ERROR: ~p : ~p~n", [Error, erlang:get_stacktrace()])
     end;
 
 test_inner(Other, _Root) ->
@@ -260,7 +264,7 @@ validate_results_inner(Length, _Results, {length, ValidLength}) ->
         true -> 
             [pass];
         false ->
-            [{fail, io_lib:format("Expected length ~p, got ~p!~n", [ValidLength, Length])}]
+            [{fail, io_lib:format("Expected length ~p, got ~p!", [ValidLength, Length])}]
     end;
 validate_results_inner(_Length, _Results, Other) ->
     throw({unexpected_test_validator, Other}).

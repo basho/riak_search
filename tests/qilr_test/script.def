@@ -1,87 +1,60 @@
 [
- %% Set the schema...
- {schema, "schema.def"},
+    {echo,   "Parse some simple queries."},
+    {search, "acc:ABC", []},
+    {search, "color:red", []},
+    {search, "parity:even", []},
+    {search, "color:(red blue)", []},
 
- %% Index the solr in "0"...
- {echo,   "Indexing documents..."}, 
- {solr,   "./solr_add.xml"},
+    {echo,   "Test the 'AND' operator."},
+    {search, "acc:afa AND color:red", []},
+    {search, "acc:afa AND color:red AND parity:even", []},
 
- %% Let the database catch up.
- {sleep,  5},
+    {echo,   "Test the 'OR' operator."},
+    {search, "color:(red OR blue)", []},
+    {search, "color:red OR color:blue", []},
+    {search, "color:red OR parity:odd", []},
+    {search, "color:red OR parity:odd OR key:sample100_aab", []},
 
- {echo,   "Perform some simple queries."},
- {search, "acc:ABC", [{length, 88}]},
- {search, "color:red", [{length, 15}]},
- {search, "parity:even", [{length, 50}]},
- {search, "color:(red blue)", [{length, 29}]},
- 
- {echo,   "Test the 'AND' operator."},
- {search, "acc:afa AND color:red", [{length, 7}]},
- {search, "acc:afa AND color:red AND parity:even", [{length, 3}]},
+    {echo,    "'NOT' Operator"},
+    {search,  "acc:(aab AND NOT aac)", []},
+    {search,  "acc:(aab AND NOT aba)", []},
+    {search,  "acc:(aab AND (NOT aac))", []},
+    {search,  "acc:(aab AND (NOT aba))", []},
 
- {echo,   "Test the 'OR' operator."},
- {search, "color:(red OR blue)", [{length, 29}]},
- {search, "color:red OR color:blue", [{length, 29}]},
- {search, "color:red OR parity:odd", [{length, 57}]},
- {search, "color:red OR parity:odd OR key:sample100_aab", [{length, 58}]},
+    {echo,    "+/- Operators"},
+    {search,  "-acc:AAD", []},
+    {search,  "+acc:aab AND -acc:aac", []},
+    {search,  "+acc:aab AND -acc:aeb", []},
+    {search,  "acc:(aab AND -aac)", []},
+    {search,  "acc:(aab AND -aeb)", []},
+    {search,  "-acc:AEB -parity:even -color:red -color:orange -color:yellow", []},
 
-%% TODO - Finish adding tests for these.
-%% ### RUN 'NOT' TESTS
-%% start_tests "'NOT' Operator"
-%% run_test "acc:(aab AND NOT aac)" results/100/not_1.xml
-%% run_test "acc:(aab AND NOT aba)" results/100/not_2.xml
-%% run_test "acc:(aab AND (NOT aac))" results/100/not_1.xml
-%% run_test "acc:(aab AND (NOT aba))" results/100/not_2.xml
-%% end_tests
+    {echo,    "Grouping"},
+    {search,  "(color:red OR color:blue) AND (acc:aja)", []},
+    {search,  "(color:red AND parity:even) OR (color:blue AND parity:odd)", []},
+    {search,  "(color:red AND (parity:even OR key:sample100_abe)) OR ((color:blue OR key:sample100_abc) AND parity:odd)", []},
 
-%% ### RUN +/- TESTS
-%% start_tests "+/- Operators"
-%% run_test "-acc:AAD" results/100/plusminus_1.xml # TIMES OUT
-%% run_test "+acc:aab AND -acc:aac" results/100/plusminus_2.xml
-%% run_test "+acc:aab AND -acc:aeb" results/100/plusminus_3.xml
-%% run_test "acc:(aab AND -aac)" results/100/plusminus_2.xml
-%% run_test "acc:(aab AND -aeb)" results/100/plusminus_3.xml
-%% run_test "-acc:AEB -parity:even -color:red -color:orange -color:yellow" results/100/plusminus_4.xml
-%% end_tests
+    {echo,    "Ranges"},
+    {search,  "key:[sample100_aaa TO sample100_aaj]", []},
+    {search,  "color:[aaa TO ccc]", []},
+    {search,  "color:[blue TO yellow]", []},
+    {search,  "key:{sample100_aaa TO sample100_aaj}", []},
+    {search,  "color:{aaa TO ccc}", []},
+    {search,  "color:{blue TO yellow}", []},
 
-%% ### RUN GROUPING TESTS
-%% start_tests "Grouping"
-%% run_test "(color:red OR color:blue) AND (acc:aja)" results/100/grouping_1.xml
-%% run_test "(color:red AND parity:even) OR (color:blue AND parity:odd)" results/100/grouping_2.xml
-%% run_test "(color:red AND (parity:even OR key:sample100_abe)) OR ((color:blue OR key:sample100_abc) AND parity:odd)" results/100/grouping_3.xml
-%% end_tests
+    {echo,    "Prefixes and Wildcards"},
+    {search,  "color:re*", []},
+    {search,  "color:red*", []},
+    {search,  "color:re?", []},
 
-%% ### RUN RANGE TESTS
-%% start_tests "Ranges"
-%% run_test "key:{sample100_aaa TO sample100_aaj}" results/100/range_1.xml
-%% run_test "color:{aaa TO ccc}" results/100/range_2.xml
-%% run_test "color:{blue TO yellow}" results/100/range_3.xml
-%% end_tests
+    {echo,    "Fuzzy Matching"},
+    {search,  "color:rad~", []},
+    {search,  "color:blum~", []},
 
-%% ### RUN PREFIX TESTS
-%% start_tests "Prefixes and Wildcards"
-%% run_test "color:re*" results/100/wildcard_1.xml
-%% run_test "color:red*" results/100/wildcard_2.xml
-%% run_test "color:re?" results/100/wildcard_3.xml
-%% end_tests
-
-%% ### RUN FUZZY TESTS
-%% start_tests "Fuzzy Matching"
-%% run_test "color:rad~" results/100/fuzzy_1.xml
-%% run_test "color:blum~" results/100/fuzzy_2.xml
-%% end_tests
-
-%% ### RUN COMPLEX TESTS
-%% start_tests "Complex Queries"
-%% run_test "(color:re* OR color:blub~) AND (parity:{d TO f})" results/100/complex_1.xml
-%% run_test "(acc:afa AND -acc:aga) AND -color:oran*" results/100/complex_2.xml
-%% run_test "(acc:afa AND (NOT acc:aga)) AND (NOT color:oran*)" results/100/complex_2.xml
-%% run_test "acc:(afa NOT aga) AND -color:oran*" results/100/complex_3.xml
-%% run_test "acc:(afa AND (NOT aga)) AND (NOT color:oran*)" results/100/complex_3.xml
-%% end_tests
-
-
- %% Cleanup.
- {echo,   "De-indexing documents..."}
-%%  {solr,   "./solr_delete_all.xml"}
+    {echo,    "Complex Queries"},
+    {search,  "(color:re* OR color:blub~) AND (parity:{d TO f})", []},
+    {search,  "(acc:afa AND -acc:aga) AND -color:oran*", []},
+    {search,  "(acc:afa AND (NOT acc:aga)) AND (NOT color:oran*)", []},
+    {search,  "acc:(afa NOT aga) AND -color:oran*", []},
+    {search,  "acc:(afa AND (NOT aga)) AND (NOT color:oran*)", []}
 ].
