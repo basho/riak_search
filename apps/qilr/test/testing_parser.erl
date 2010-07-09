@@ -2,10 +2,15 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--define(PARSE(AnalyzerPid, X), qilr_parse:string(AnalyzerPid, X)).
--define(BOOL_PARSE(AnalyzerPid, Term, Bool), qilr_parse:string(AnalyzerPid, Term, Bool)).
 
--define(GEN_END, {generator, fun() -> [] end}).
+
+parse(AnalyzerPid, Query) ->
+    parse(AnalyzerPid, Query, 'or').
+
+parse(AnalyzerPid, Query, Bool) ->
+    Schema = riak_search_schema:new("search", undefined, "value", [],
+        Bool, "com.basho.search.analysis.DefaultAnalyzerFactory"),
+    qilr_parse:string(AnalyzerPid, Query, Schema).
 
 multiple_terms_test_() ->
     [fun() ->
@@ -14,84 +19,84 @@ multiple_terms_test_() ->
              ?assertMatch({ok,[{lor,[{term,<<"planes">>,[]},
                                      {term,<<"trains">>,[]},
                                      {term,<<"automobiles">>,[]}]}]},
-                   ?PARSE(AnalyzerPid, "planes trains automobiles")) end].
+                   parse(AnalyzerPid, "planes trains automobiles")) end].
 
 field_test_() ->
     [fun() ->
              application:start(qilr),             
              {ok, AnalyzerPid} = qilr_analyzer_sup:new_conn(),
              ?assertMatch({ok,[{field,"title",<<"peace">>,[required]}]},
-                          ?PARSE(AnalyzerPid, "+title:peace")),
+                          parse(AnalyzerPid, "+title:peace")),
              ?assertMatch({ok,[{field,"title",<<"scarlet">>,[prohibited]}]},
-                          ?PARSE(AnalyzerPid, "-title:scarlet")) end].
+                          parse(AnalyzerPid, "-title:scarlet")) end].
 
 prefix_test_() ->
     [fun() ->
              application:start(qilr),
              {ok, AnalyzerPid} = qilr_analyzer_sup:new_conn(),
-             ?assertMatch({ok, [{term, <<"planes">>, [required]}]}, ?PARSE(AnalyzerPid, "+planes")),
-             ?assertMatch({ok, [{term, <<"planes">>, [prohibited]}]}, ?PARSE(AnalyzerPid, "-planes")),
+             ?assertMatch({ok, [{term, <<"planes">>, [required]}]}, parse(AnalyzerPid, "+planes")),
+             ?assertMatch({ok, [{term, <<"planes">>, [prohibited]}]}, parse(AnalyzerPid, "-planes")),
              ?assertMatch({ok,[{phrase,"\"planes trains\"",
                                 {land,[{term,<<"planes">>,[required]},
                                        {term,<<"trains">>,[required]}]}}]},
-                          ?PARSE(AnalyzerPid, "+\"planes trains\"")),
+                          parse(AnalyzerPid, "+\"planes trains\"")),
              ?assertMatch({ok,[{phrase,"\"planes trains\"",
                                 {land,[{term,<<"planes">>,[prohibited]},
                                        {term,<<"trains">>,[prohibited]}]}}]},
-                          ?PARSE(AnalyzerPid, "-\"planes trains\"")) end].
+                          parse(AnalyzerPid, "-\"planes trains\"")) end].
 
 suffix_test_() ->
     [fun() ->
              application:start(qilr),             
              {ok, AnalyzerPid} = qilr_analyzer_sup:new_conn(),
-             ?assertMatch({ok,[{term,<<"solar">>,[{fuzzy,"0.5"}]}]}, ?PARSE(AnalyzerPid, "solar~")),
-             ?assertMatch({ok,[{term,<<"solar">>,[{proximity,5}]}]}, ?PARSE(AnalyzerPid, "solar~5")),
-             ?assertMatch({ok,[{term,<<"solar">>,[{fuzzy,"0.85"}]}]}, ?PARSE(AnalyzerPid, "solar~0.85")),
-             ?assertMatch({ok, [{term, <<"solar">>, [{boost, 2}]}]}, ?PARSE(AnalyzerPid, "solar^2")),
-             ?assertMatch({ok, [{term, <<"solar">>, [{boost, 0.9}]}]}, ?PARSE(AnalyzerPid, "solar^0.9")),
+             ?assertMatch({ok,[{term,<<"solar">>,[{fuzzy,"0.5"}]}]}, parse(AnalyzerPid, "solar~")),
+             ?assertMatch({ok,[{term,<<"solar">>,[{proximity,5}]}]}, parse(AnalyzerPid, "solar~5")),
+             ?assertMatch({ok,[{term,<<"solar">>,[{fuzzy,"0.85"}]}]}, parse(AnalyzerPid, "solar~0.85")),
+             ?assertMatch({ok, [{term, <<"solar">>, [{boost, 2}]}]}, parse(AnalyzerPid, "solar^2")),
+             ?assertMatch({ok, [{term, <<"solar">>, [{boost, 0.9}]}]}, parse(AnalyzerPid, "solar^0.9")),
              ?assertMatch({ok,[{phrase,"\"solar power\"",
                                 {land,[{term,<<"solar">>,[{fuzzy,"0.5"}]},
                                        {term,<<"power">>,[{fuzzy,"0.5"}]}]}}]},
-                          ?PARSE(AnalyzerPid, "\"solar power\"~")),
+                          parse(AnalyzerPid, "\"solar power\"~")),
              ?assertMatch({ok,[{phrase,"\"solar power\"",
                                 {land,[{term,<<"solar">>,[{proximity,5}]},
                                        {term,<<"power">>,[{proximity,5}]}]}}]},
-                          ?PARSE(AnalyzerPid, "\"solar power\"~5")),
+                          parse(AnalyzerPid, "\"solar power\"~5")),
              ?assertMatch({ok,[{phrase,"\"solar power\"",
                                 {land,[{term,<<"solar">>,[{fuzzy,"0.85"}]},
                                        {term,<<"power">>,[{fuzzy,"0.85"}]}]}}]},
-                          ?PARSE(AnalyzerPid, "\"solar power\"~0.85")),
+                          parse(AnalyzerPid, "\"solar power\"~0.85")),
              ?assertMatch({ok,[{phrase,"\"solar power\"",
                                 {land,[{term,<<"solar">>,[{boost,2}]},
                                        {term,<<"power">>,[{boost,2}]}]}}]},
-                          ?PARSE(AnalyzerPid, "\"solar power\"^2")),
+                          parse(AnalyzerPid, "\"solar power\"^2")),
              ?assertMatch({ok,[{phrase,"\"solar power\"",
                                 {land,[{term,<<"solar">>,[{boost,0.9}]},
                                        {term,<<"power">>,[{boost,0.9}]}]}}]},
-                          ?PARSE(AnalyzerPid, "\"solar power\"^0.9")) end].
+                          parse(AnalyzerPid, "\"solar power\"^0.9")) end].
 
 bool_test_() ->
     [fun() ->
              application:start(qilr),
              {ok, AnalyzerPid} = qilr_analyzer_sup:new_conn(),
              ?assertMatch({ok,[{land,[{term,<<"fish">>,[]},{term,<<"bicycle">>,[]}]}]},
-                          ?PARSE(AnalyzerPid, "fish AND bicycle")),
+                          parse(AnalyzerPid, "fish AND bicycle")),
              ?assertMatch({ok,[{lnot,[{land,[{term,"budweiser",[]},
                                              {term,"beer",[]}]}]}]},
-                          ?PARSE(AnalyzerPid, "NOT budweiser AND beer")),
+                          parse(AnalyzerPid, "NOT budweiser AND beer")),
              ?assertMatch({ok,[{lor,[{term,<<"pizza">>,[]},{term,<<"spaghetti">>,[]}]}]},
-                          ?PARSE(AnalyzerPid, "pizza OR spaghetti")),
+                          parse(AnalyzerPid, "pizza OR spaghetti")),
              ?assertMatch({ok,[{lor,[{term,<<"basil">>,[]},{term,<<"oregano">>,[]}]}]},
-                          ?PARSE(AnalyzerPid, "basil oregano")),
+                          parse(AnalyzerPid, "basil oregano")),
              ?assertMatch({ok,[{land,[{term,<<"basil">>,[]},{term,<<"oregano">>,[]}]}]},
-                          ?BOOL_PARSE(AnalyzerPid, "basil oregano", 'and')),
+                          parse(AnalyzerPid, "basil oregano", 'and')),
              ?assertMatch({ok,[{land,[{term,<<"fettucini">>,[]},{term,<<"alfredo">>,[]}]}]},
-                          ?BOOL_PARSE(AnalyzerPid, "fettucini && alfredo", 'and')),
+                          parse(AnalyzerPid, "fettucini && alfredo", 'and')),
              ?assertMatch({ok,[{lor,[{term,<<"apples">>,[]},{term,<<"oranges">>,[]}]}]},
-                          ?BOOL_PARSE(AnalyzerPid, "apples oranges", 'or')),
+                          parse(AnalyzerPid, "apples oranges", 'or')),
              ?assertMatch({ok,[{land,[{term,<<"french">>,[]},
                                       {lnot,[{term,"fries",[]}]}]}]},
-                          ?BOOL_PARSE(AnalyzerPid, "french AND NOT fries", 'and')) end].
+                          parse(AnalyzerPid, "french AND NOT fries", 'and')) end].
 
 grouping_test_() ->
     [fun() ->
@@ -99,60 +104,60 @@ grouping_test_() ->
              {ok, AnalyzerPid} = qilr_analyzer_sup:new_conn(),
              ?assertMatch({ok,[{group,[{land,[{term,<<"erlang">>,[]},
                                               {term,<<"sweden">>,[]}]}]}]},
-                          ?PARSE(AnalyzerPid, "(erlang && sweden)")),
+                          parse(AnalyzerPid, "(erlang && sweden)")),
              ?assertMatch({ok,[{lor,[{term,<<"broccoli">>,[]},
                                      {group,[{land,[{term,<<"green">>,[]},
                                                     {term,<<"tasty">>,[]}]}]}]}]},
-                          ?PARSE(AnalyzerPid, "broccoli (green AND tasty)")),
+                          parse(AnalyzerPid, "broccoli (green AND tasty)")),
              ?assertMatch({ok,[{lor,[{term,<<"broccoli">>,[]},
                                      {group,[{land,[{term,<<"green">>,[]},
                                                     {term,<<"tasty">>,[]}]}]}]}]},
-                          ?PARSE(AnalyzerPid, "broccoli || (green AND tasty)")),
+                          parse(AnalyzerPid, "broccoli || (green AND tasty)")),
              ?assertMatch({ok, [{term, <<"lisp">>, []}]},
-                          ?PARSE(AnalyzerPid, "((((lisp))))")),
+                          parse(AnalyzerPid, "((((lisp))))")),
              ?assertMatch({ok,[{land,[{group,[{lor,[{term,<<"jakarta">>,[]},
                                                     {term,<<"apache">>,[]}]}]},
                                       {term,<<"website">>,[]}]}]},
-                          ?PARSE(AnalyzerPid, "(jakarta OR apache) AND website")),
+                          parse(AnalyzerPid, "(jakarta OR apache) AND website")),
              ?assertMatch({ok,[{field,"title",
                                 {group,[{lor,[{term,"python",[required]},
                                               {term,"cookbook",[{proximity,2},required]}]}]}}]},
-                          ?PARSE(AnalyzerPid, "title:(+python +cookbook~2)")),
+                          parse(AnalyzerPid, "title:(+python +cookbook~2)")),
              ?assertMatch({ok,[{field,"color",{group,[{lor,[{term,"red",[]},
                                                             {term,"blue",[]}]}]}}]},
-                          ?PARSE(AnalyzerPid, "color:(red blue)")),
+                          parse(AnalyzerPid, "color:(red blue)")),
              ?assertMatch({ok,[{lor,[{group,[{lor,[{term,<<"fuzzy">>,[]},
                                                    {term,<<"wuzzy">>,[]}]}]},
                                      {term,<<"bear">>,[]}]}]},
-                          ?PARSE(AnalyzerPid, "(fuzzy wuzzy) bear")),
+                          parse(AnalyzerPid, "(fuzzy wuzzy) bear")),
              ?assertMatch({ok,[{land,[{term,<<"duck">>,[]},
                                       {group,[{lnot,[{term,"goose",[]}]}]}]}]},
-                          ?PARSE(AnalyzerPid, "duck AND (NOT goose)")),
+                          parse(AnalyzerPid, "duck AND (NOT goose)")),
              ?assertMatch({ok,[{lor,[{group,[{lnot,[{term,"goose",[]}]}]},
                                      {term,<<"duck">>,[]}]}]},
-                          ?PARSE(AnalyzerPid, "(NOT goose) OR duck")),
+                          parse(AnalyzerPid, "(NOT goose) OR duck")),
              ?assertMatch({ok,[{lor,[{group,[{lnot,[{term,"goose",[]}]}]},
                                      {term,<<"duck">>,[]}]}]},
-                          ?PARSE(AnalyzerPid, "(NOT goose) duck")),
+                          parse(AnalyzerPid, "(NOT goose) duck")),
              ?assertMatch({ok,[{land,[{term,<<"farm">>,[]},
                                       {group,[{lnot,[{field,"animal","sheep",[]}]}]}]}]},
-                          ?PARSE(AnalyzerPid, "farm AND (NOT animal:sheep)")),
+                          parse(AnalyzerPid, "farm AND (NOT animal:sheep)")),
              ?assertMatch({ok,[{lor,[{term,<<"farm">>,[]},
                                      {group,[{lnot,[{field,"animal","sheep",[]}]}]}]}]},
-                          ?PARSE(AnalyzerPid, "farm OR (NOT animal:sheep)")) end].
+                          parse(AnalyzerPid, "farm OR (NOT animal:sheep)")) end].
 
 req_prohib_test_() ->
     [fun() ->
              application:start(qilr),
              {ok, AnalyzerPid} = qilr_analyzer_sup:new_conn(),
              ?assertMatch({ok, [{field, "product", <<"milk">>, [required]}]},
-                          ?PARSE(AnalyzerPid, "+product:milk")),
+                          parse(AnalyzerPid, "+product:milk")),
              ?assertMatch({ok, [{field, "product", <<"eggs">>, [prohibited]}]},
-                          ?PARSE(AnalyzerPid, "-product:eggs")),
+                          parse(AnalyzerPid, "-product:eggs")),
              ?assertMatch({ok,[{field,"product",
                                 {group,[{land,[{term,"milk",[required]},
                                                {term,"whole",[prohibited]}]}]}}]},
-                          ?PARSE(AnalyzerPid, "product:(+milk AND -whole)")) end].
+                          parse(AnalyzerPid, "product:(+milk AND -whole)")) end].
 
 field_range_test_() ->
     [fun() ->
@@ -160,26 +165,26 @@ field_range_test_() ->
              {ok, AnalyzerPid} = qilr_analyzer_sup:new_conn(),
              ?assertMatch({ok,[{field,"title",[{inclusive_range,{term,"Aida",[]},
                                                 {term,"Carmen",[]}}]}]},
-                          ?PARSE(AnalyzerPid, "title:[Aida TO Carmen]")),
+                          parse(AnalyzerPid, "title:[Aida TO Carmen]")),
              ?assertMatch({ok,[{field,"title",[{inclusive_range,{term,"Aida",[]},
                                                 {term,"Carmen",[]}}]}]},
-                          ?PARSE(AnalyzerPid, "title:[Aida TO Carmen}")),
+                          parse(AnalyzerPid, "title:[Aida TO Carmen}")),
              ?assertMatch({ok,[{field,"mod_date",
                                  [{exclusive_range,{term,"20020101",[]},
                                    {term,"20030101",[]}}]}]},
-                          ?PARSE(AnalyzerPid, "mod_date:{20020101 TO 20030101}")),
+                          parse(AnalyzerPid, "mod_date:{20020101 TO 20030101}")),
              ?assertMatch({ok,[{field,"mod_date",
                                  [{exclusive_range,{term,"20020101",[]},
                                    {term,"20030101",[]}}]}]},
-                          ?PARSE(AnalyzerPid, "mod_date:{20020101 TO 20030101]")) end].
+                          parse(AnalyzerPid, "mod_date:{20020101 TO 20030101]")) end].
 
 analysis_trimming_test_() ->
     [fun() ->
              application:start(qilr),
              {ok, AnalyzerPid} = qilr_analyzer_sup:new_conn(),
-             ?assertMatch({ok, [{term, <<"television">>, []}]}, ?PARSE(AnalyzerPid, "the && television")),
+             ?assertMatch({ok, [{term, <<"television">>, []}]}, parse(AnalyzerPid, "the && television")),
              ?assertMatch({ok, [{land,[{term,<<"pen">>,[]},{term,<<"pad">>,[]}]}]},
-                          ?PARSE(AnalyzerPid, "pen && (a pad)")) end].
+                          parse(AnalyzerPid, "pen && (a pad)")) end].
 
 %% escaped_chars_gen(Chars) ->
 %%     escaped_chars_gen(Chars, []).
@@ -192,9 +197,9 @@ analysis_trimming_test_() ->
 %%     Term3 = lists:flatten(["lion\\", H]),
 %%     F = fun() ->
 %%                 ?assertMatch({ok, [{term, Term1, []}]},
-%%                              ?PARSE(Term1)),
+%%                              parse(Term1)),
 %%                 ?assertMatch({ok, [{term, Term2, []}]},
-%%                              ?PARSE(Term2)),
+%%                              parse(Term2)),
 %%                 ?assertMatch({ok, [{term, Term3, []}]},
-%%                              ?PARSE(Term3)) end,
+%%                              parse(Term3)) end,
 %%     escaped_chars_gen(T, [F|Accum]).

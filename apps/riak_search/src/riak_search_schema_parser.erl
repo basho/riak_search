@@ -11,7 +11,7 @@ from_eterm(SchemaName, {schema, SchemaProps, FieldDefs}) ->
     Version = proplists:get_value(version, SchemaProps),
     DefaultField = proplists:get_value(default_field, SchemaProps),
     SchemaAnalyzer = proplists:get_value(analyzer_factory, SchemaProps),
-    DefaultOp = proplists:get_value(default_op, SchemaProps, "or"),
+    DefaultOp = list_to_atom(proplists:get_value(default_op, SchemaProps, "or")),
 
     %% Verify that version is defined...
     Version /= undefined orelse
@@ -22,7 +22,7 @@ from_eterm(SchemaName, {schema, SchemaProps, FieldDefs}) ->
         throw({error, {malformed_schema, default_field, {schema, SchemaProps}}}),
 
     %% Verify that DefaultOp is either "and" or "or"...
-    lists:member(DefaultOp, ["and", "or"]) orelse 
+    lists:member(DefaultOp, ['and', 'or']) orelse 
         throw({error, {malformed_schema, default_op, {schema, SchemaProps}}}),
 
     {ok, Fields} = parse_fields(FieldDefs, SchemaAnalyzer, []),
