@@ -88,7 +88,7 @@ do_index(Partition, Index, Field, Term, DocId, Props) ->
                           term_to_binary(Props),
                           current_key_clock())
     after
-        raptor_conn_pool:checkin(Conn)
+        riak_sock_pool:checkin(?CONN_POOL, Conn)
     end,
     noreply.
 
@@ -108,7 +108,7 @@ multi_index(IFTVPList, State) ->
                            current_key_clock()) || 
             {Index, Field, Term, Value, Props} <- IFTVPList]
     after
-        raptor_conn_pool:checkin(Conn)
+        riak_sock_pool:checkin(?CONN_POOL, Conn)
     end,
     {reply, {indexed, node()}, State}.
 
