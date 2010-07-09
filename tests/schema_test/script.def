@@ -30,7 +30,6 @@
  {search, "sw_dyn:million", [{length, 0}]},
  {search, "sw_dyn:million,a", [{length, 1}]},
 
-
  {echo,   "Verify integer search."},
  {search, "int2:1", [{length, 1}]},
  {search, "int2:01", [{length, 1}]},
@@ -53,7 +52,6 @@
  {search, "int4:[0001 TO 0020]", [{length, 3}]},
  {search, "int4:[1 TO 100]", [{length, 4}]},
  {search, "int4:[0001 TO 0100]", [{length, 4}]},
-
 
  {echo,   "Verify dynamic integer fields."},
  {search, "dyn_i:1", [{length, 1}]},
