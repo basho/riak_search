@@ -31,20 +31,21 @@ analyze(Pid, Text) when is_binary(Text) ->
 analyze(Pid, Text, AnalyzerFactory) when is_list(Text) ->
     analyze(Pid, list_to_binary(Text), AnalyzerFactory);
 analyze(Pid, Text, AnalyzerFactory) ->
-    case gen_server:call(Pid, {analyze, Text, AnalyzerFactory}, 10000) of
-        ignore ->
-            analyze(Pid, Text, AnalyzerFactory);
+    try
+        case gen_server:call(Pid, {analyze, Text, AnalyzerFactory}, 10000) of
+            ignore ->
+                analyze(Pid, Text, AnalyzerFactory);
         R ->
             R
+        end
+    catch
+        exit:{timeout, {gen_server,call, _Call}} -> % gen_server timeout
+            exit(Pid, kill), % pool will re-open so nobody gets a stale analyzer
+            timeout
     end.
 
 close(Pid) ->
-    case gen_server:call(Pid, close) of
-        ignored ->
-            close(Pid);
-        R ->
-            R
-    end.
+    gen_server:call(Pid, close).
 
 start_link() ->
     gen_server:start_link(?MODULE, [], []).

@@ -290,7 +290,7 @@ receive_stream_results(StreamRef, Sender, FilterFun, Conn, Acc0) ->
                 false -> skip
             end,
             riak_search_backend:stream_response_done(Sender),
-            raptor_conn:close(Conn),
+            exit(Conn, kill),
             error_logger:warning_msg("Stream result Raptor socket timeout\n");
         {stream, StreamRef, "$end_of_table", _} ->
             case length(Acc) > 0 of
@@ -318,12 +318,12 @@ receive_stream_results(StreamRef, Sender, FilterFun, Conn, Acc0) ->
             receive_stream_results(StreamRef, Sender, FilterFun, Conn, Acc2);
         Msg ->
             riak_search_backend:stream_response_done(Sender),
-            raptor_conn:close(Conn),
+            exit(Conn, kill),
             throw({unexpected_msg, Msg})
     after
         ?STREAM_TIMEOUT ->
             riak_search_backend:stream_response_done(Sender),
-            raptor_conn:close(Conn),
+            exit(Conn, kill),
             error_logger:warning_msg("Stream result Raptor conn timeout\n")
     end,
     ok.
@@ -335,7 +335,7 @@ receive_info_range_results(StreamRef, Sender, Conn, Results) ->
     receive
         {info, StreamRef, timeout} ->
             riak_search_backend:info_response(Sender, Results),
-            raptor_conn:close(Conn),
+            exit(Conn, kill),
             error_logger:warning_msg("Info range result Raptor socket timeout\n");
 
         {info, StreamRef, "$end_of_info", 0} ->
@@ -347,12 +347,12 @@ receive_info_range_results(StreamRef, Sender, Conn, Results) ->
                 Results ++ [{Term, node(), Count}]);
         Msg ->
             riak_search_backend:info_response(Sender, [Results]),
-            raptor_conn:close(Conn),
+            exit(Conn, kill),
             throw({unexpected_msg, Msg})
     after
         ?INFO_RANGE_TIMEOUT ->
             riak_search_backend:info_response(Sender, Results),
-            raptor_conn:close(Conn),
+            exit(Conn, kill),
             error_logger:warning_msg("Info range result Raptor conn timeout\n")
     end,
     ok.
@@ -361,7 +361,7 @@ receive_info_results(StreamRef, Sender, Conn) ->
     receive
         {info, StreamRef, timeout} ->
             riak_search_backend:info_response(Sender, []),
-            raptor_conn:close(Conn),
+            exit(Conn, kill),
             error_logger:warning_msg("Info result Raptor socket timeout\n"),
             ok;
         {info, StreamRef, "$end_of_info", _Count} ->
@@ -371,12 +371,12 @@ receive_info_results(StreamRef, Sender, Conn) ->
             receive_info_results(StreamRef, Sender, Conn);
         Msg ->
             riak_search_backend:info_response(Sender, []),
-            raptor_conn:close(Conn),
+            exit(Conn, kill),
             throw({unexpected_msg, Msg})
     after
         ?INFO_TIMEOUT ->           
             riak_search_backend:info_response(Sender, []),
-            raptor_conn:close(Conn),
+            exit(Conn, kill),
             error_logger:warning_msg("Info result Raptor conn timeout\n")
     end,
     ok.
@@ -385,7 +385,7 @@ receive_catalog_query_results(StreamRef, Sender, Conn) ->
     receive
         {catalog_query, _ReqId, timeout} ->
             riak_search_backend:catalog_query_done(Sender),
-            raptor_conn:close(Conn),
+            exit(Conn, kill),
             error_logger:warning_msg("Catalog query result Raptor socket timeout\n");
         {catalog_query, _ReqId, "$end_of_results", _, _, _, _} ->
             riak_search_backend:catalog_query_done(Sender);
@@ -398,12 +398,12 @@ receive_catalog_query_results(StreamRef, Sender, Conn) ->
             receive_catalog_query_results(StreamRef, Sender, Conn);
         Msg ->
             riak_search_backend:catalog_query_done(Sender),
-            raptor_conn:close(Conn),
+            exit(Conn, kill),
             throw({unexpected_msg, Msg})
     after
         ?CATALOG_QUERY_TIMEOUT ->   
             riak_search_backend:catalog_query_done(Sender),
-            raptor_conn:close(Conn),
+            exit(Conn, kill),
             error_logger:warning_msg("Catalog query result Raptor conn timeout\n")
     end,
     ok.
@@ -493,11 +493,11 @@ fold_catalog_process(CatRef,
                 end;
         Msg ->
             FoldResultPid ! {fold_result, done},
-            raptor_conn:close(Conn),
+            exit(Conn, kill),
             throw({unexpected_msg, Msg})
 
         after ?FOLD_TIMEOUT ->
-            raptor_conn:close(Conn),
+            exit(Conn, kill),
             error_logger:warning_msg("Fold catalog Raptor conn timeout\n"),
             case FinishedStreamProcessCount >= (StreamProcessCount) of
                 true -> ok;
@@ -519,7 +519,8 @@ fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, IndexBin,
         {stream, StreamRef, timeout} ->
             error_logger:warning_msg("fold_stream_process: raptor socket timed out: ~p.~p.~p~n",
                                       [IndexBin, FieldBin, TermBin]),
-            CatalogProcessPid ! {fold_stream, done, StreamRef};
+            CatalogProcessPid ! {fold_stream, done, StreamRef},
+            exit(Conn, kill);
         {stream, StreamRef, "$end_of_table", _} ->
             %% io:format("fold_stream_process: table complete: ~p.~p.~p~n",
             %%     [Index, Field, Term]),
@@ -538,11 +539,11 @@ fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, IndexBin,
                                 IndexBin, FieldBin, TermBin, Conn);
         Msg ->
             FoldResultPid ! {fold_stream, done, StreamRef},
-            raptor_conn:close(Conn),
+            exit(Conn, kill),
             throw({unexpected_msg, Msg})
     after ?FOLD_TIMEOUT ->
             CatalogProcessPid ! {fold_stream, done, StreamRef},
-            raptor_conn:close(Conn),
+            exit(Conn, kill),
             error_logger:warning_msg("fold_stream_process: raptor conn timed out: ~p.~p.~p~n",
                                       [IndexBin, FieldBin, TermBin])
     end.
