@@ -35,7 +35,7 @@ rellink:
 	$(foreach dep,$(wildcard deps/*), rm -rf rel/riaksearch/lib/$(shell basename $(dep))* && ln -sf $(abspath $(dep)) rel/riaksearch/lib;)
 
 relclean:
-	rm -rf rel/riak
+	rm -rf rel/riaksearch
 
 ##
 ## Developer targets
@@ -55,8 +55,8 @@ devclean: clean
 	rm -rf dev
 
 stage : rel
-	$(foreach app,$(wildcard apps/*), rm -rf rel/riak/lib/$(shell basename $(app))-* && ln -sf $(abspath $(app)) rel/riak/lib;)
-	$(foreach dep,$(wildcard deps/*), rm -rf rel/riak/lib/$(shell basename $(dep))-* && ln -sf $(abspath $(dep)) rel/riak/lib;)
+	$(foreach app,$(wildcard apps/*), rm -rf rel/riaksearch/lib/$(shell basename $(app))-* && ln -sf $(abspath $(app)) rel/riaksearch/lib;)
+	$(foreach dep,$(wildcard deps/*), rm -rf rel/riaksearch/lib/$(shell basename $(dep))-* && ln -sf $(abspath $(dep)) rel/riaksearch/lib;)
 
 
 ##
