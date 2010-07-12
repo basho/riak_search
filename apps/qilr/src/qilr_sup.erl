@@ -15,6 +15,7 @@
 start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
+-ifndef(TEST).
 init([]) ->
     AnalyzerMonitor = {qilr_analyzer_monitor, {qilr_analyzer_monitor, start_link, []},
                        permanent, 2000, worker, [qilr_analyzer_monitor]},
@@ -29,3 +30,8 @@ init([]) ->
 
 
     {ok, {{one_for_all, 100, 10}, [AnalyzerMonitor, AnalyzerSup, ConnPool]}}.
+-endif.
+-ifdef(TEST).
+init([]) ->
+    {ok, {{one_for_all, 100, 10}, []}}.
+-endif.
