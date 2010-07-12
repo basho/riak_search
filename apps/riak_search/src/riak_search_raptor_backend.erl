@@ -55,7 +55,6 @@
 %%          {ok, state()} | {{error, Reason :: term()}, state()}
 %% @doc Start this backend.
 start(Partition, _Config) ->
-    io:format("starting partition ~p~n", [Partition]),
     {ok, #state { partition=Partition }}.
 
 %% @spec stop(state()) -> ok | {error, Reason :: term()}
