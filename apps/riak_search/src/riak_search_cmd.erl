@@ -8,7 +8,11 @@
 -include("riak_search.hrl").
 
 -export([
-    command/1
+    %% Used by bin/search-cmd
+    command/1,
+
+    %% Used by riak_search_test:test/N
+    set_schema/2
 ]).
 
 -import(riak_search_utils, [to_list/1]).
@@ -194,99 +198,4 @@ solr(Index, Path) ->
     solr_search:index_dir(Index, Path).
 
 test(Path) ->
-    io:format("~n :: Running Test Package '~s'...~n", [filename:basename(Path)]),
-    Path1 = filename:join(Path, "script.def"),
-    case file:consult(Path1) of
-        {ok, Terms} -> 
-            test_inner(Terms, Path);
-        {error, Error} ->
-            io:format(" :: ERROR - Could not read '~s' : ~p~n", [Path1, Error])
-    end.
-
--define(TEST_INDEX, "test").
-test_inner([], _Root) -> 
-    ok;
-
-test_inner([Op|Ops], Root) ->
-    test_inner(Op, Root),
-    test_inner(Ops, Root);
-
-test_inner({echo, Text}, _) ->
-    Tokens = string:tokens(Text, "\n"),
-    Tokens1 = [string:strip(X, both) || X <- Tokens],
-    io:format("~n"),
-    [io:format(" :: ~s~n", [X]) || X <- Tokens1, X /= ""];
-
-test_inner({sleep, Seconds}, _) ->
-    io:format("~n :: Sleeping ~p second(s)...~n", [Seconds]),
-    timer:sleep(Seconds * 1000);
-
-test_inner({schema, Schema}, Root) ->
-    set_schema(?TEST_INDEX, filename:join(Root, Schema));
-
-test_inner({solr, Path}, Root) ->
-    solr(?TEST_INDEX, filename:join(Root, Path));
-
-test_inner({index, Path}, Root) ->
-    index(?TEST_INDEX, filename:join(Root, Path));
-
-test_inner({delete, Path}, Root) ->
-    delete(?TEST_INDEX, filename:join(Root, Path));
-
-test_inner({search, Query, Validators}, _Root) ->
-    try search:search(?TEST_INDEX, Query) of
-        {Length, Results} ->
-            case validate_results(Length, Results, Validators) of
-                pass -> 
-                    io:format("~n    [√] PASS » ~s~n", [Query]);
-                {fail, Errors} ->
-                    io:format("~n    [ ] FAIL » ~s~n", [Query]),
-                    [io:format("        - ~s~n", [X]) || X <- Errors]
-            end;
-        Error ->
-            io:format("~n    [ ] FAIL » ~s~n", [Query]),
-            io:format("        - ERROR: ~p~n", [Error])
-    catch 
-        _Type : Error ->
-            io:format("~n    [ ] FAIL » ~s~n", [Query]),
-            io:format("        - ERROR: ~p : ~p~n", [Error, erlang:get_stacktrace()])
-    end;
-
-test_inner(Other, _Root) ->
-    io:format("Unexpected test step: ~p~n", [Other]),
-    throw({unexpected_test_step, Other}).
-
-validate_results(Length, Results, Validators) ->
-    L = validate_results_inner(Length, Results, Validators),
-    case [X || X <- lists:flatten(L), X /= pass] of
-        []      -> pass;
-        Errors  -> {fail, [X || {fail, X} <- Errors]}
-    end.
-validate_results_inner(_Length, _Results, []) -> 
-    [];
-validate_results_inner(Length, Results, [Validator|Validators]) ->
-    [validate_results_inner(Length, Results, Validator)|
-        validate_results_inner(Length, Results, Validators)];
-validate_results_inner(Length, _Results, {length, ValidLength}) ->
-    case Length == ValidLength of
-        true -> 
-            pass;
-        false ->
-            {fail, io_lib:format("Expected ~p result(s), got ~p!", [ValidLength, Length])}
-    end;
-validate_results_inner(_Length, Results, {property, Key, Value}) ->
-    KeyL = riak_search_utils:to_list(Key),
-    ValueB = riak_search_utils:to_binary(Value),
-    F = fun({_, Props}) ->
-        lists:member({KeyL, ValueB}, Props)
-    end,
-    case lists:all(F, Results) of
-        true -> 
-            pass;
-        false ->
-            {fail, io_lib:format("Missing property: ~s -> ~s", [Key, Value])}
-    end;
-validate_results_inner(_Length, _Results, Other) ->
-    io:format("Unexpected test validator: ~p~n", [Other]),
-    throw({unexpected_test_validator, Other}).
-
+    riak_search_test:test(Path).

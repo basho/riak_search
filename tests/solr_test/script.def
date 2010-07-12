@@ -1,0 +1,121 @@
+[
+    %% Set the schema...
+    {schema, "schema.def"},
+
+    %% Index the solr in "0"...
+    {echo,   "Indexing documents..."}, 
+    {solr_update, "./solr_add.xml"},
+
+    %% Let the database catch up.
+    {sleep,  5},
+
+    {echo, "Perform some queries. (XML)"},
+    {solr_select, 
+        [{q, "acc:ABC"}, {wt, xml}, {rows, 999}], 
+        [{length, 88}]},
+    {solr_select, 
+        [{q, "color:red OR color:blue)"}, {wt, xml}, {rows, 999}], 
+        [{length, 29}]},
+
+    {echo, "Change default field. (XML)"},
+    {solr_select, 
+        [{df, "key"}, {q, "sample100_AAB"}, {wt, xml}, {rows, 999}], 
+        [{length, 1}]},
+    {solr_select, 
+        [{df, "color"}, {q, "red OR blue"}, {wt, xml}, {rows, 999}], 
+        [{length, 29}]},
+
+    {echo, "Change default operation. (XML)"},
+    {solr_select, 
+        [{"q.op", "or"}, {q, "color:(red blue)"}, {wt, xml}, {rows, 999}], 
+        [{length, 29}]},
+    {solr_select, 
+        [{"q.op", "and"}, {q, "key:sample100_AAB OR color:(red blue)"}, {wt, xml}, {rows, 999}], 
+        [{length, 1}]},
+
+    {echo, "Test start. (XML)"},
+    {solr_select, 
+        [{q, "acc:ABC"}, {wt, xml}, {start, 1}, {rows, 999}], 
+        [{length, 88}]},
+    {solr_select, 
+        [{q, "acc:ABC"}, {wt, xml}, {start, 20}, {rows, 999}], 
+        [{length, 68}]},
+    {solr_select, 
+        [{q, "acc:ABC"}, {wt, xml}, {start, 87}, {rows, 999}], 
+        [{length, 1}]},
+
+    {echo, "Test rows. (XML)"},
+    {solr_select, 
+        [{q, "acc:ABC"}, {wt, xml}, {rows, 10}, {rows, 999}], 
+        [{length, 10}]},
+    {solr_select, 
+        [{q, "acc:ABC"}, {wt, xml}, {rows, 20}, {rows, 999}], 
+        [{length, 20}]},
+
+    {echo, "Test start and rows. (XML)"},
+    {solr_select, 
+        [{q, "acc:ABC"}, {wt, xml}, {start, 60}, {rows, 20}, {rows, 999}], 
+        [{length, 20}]},
+    {solr_select, 
+        [{q, "acc:ABC"}, {wt, xml}, {start, 70}, {rows, 20}, {rows, 999}], 
+        [{length, 18}]},
+
+
+    {echo, "Perform some queries. (JSON)"},
+    {solr_select, 
+        [{q, "acc:ABC"}, {wt, json}, {rows, 999}], 
+        [{length, 88}]},
+    {solr_select, 
+        [{q, "color:red OR color:blue)"}, {wt, json}, {rows, 999}], 
+        [{length, 29}]},
+
+    {echo, "Change default field. (JSON)"},
+    {solr_select, 
+        [{df, "key"}, {q, "sample100_AAB"}, {wt, json}, {rows, 999}], 
+        [{length, 1}]},
+    {solr_select, 
+        [{df, "color"}, {q, "red OR blue"}, {wt, json}, {rows, 999}], 
+        [{length, 29}]},
+
+    {echo, "Change default operation. (JSON)"},
+    {solr_select, 
+        [{"q.op", "or"}, {q, "color:(red blue)"}, {wt, json}, {rows, 999}], 
+        [{length, 29}]},
+    {solr_select, 
+        [{"q.op", "and"}, {q, "key:sample100_AAB OR color:(red blue)"}, {wt, json}, {rows, 999}], 
+        [{length, 1}]},
+
+    {echo, "Test start. (JSON)"},
+    {solr_select, 
+        [{q, "acc:ABC"}, {wt, json}, {start, 1}, {rows, 999}], 
+        [{length, 88}]},
+    {solr_select, 
+        [{q, "acc:ABC"}, {wt, json}, {start, 20}, {rows, 999}], 
+        [{length, 68}]},
+    {solr_select, 
+        [{q, "acc:ABC"}, {wt, json}, {start, 87}, {rows, 999}], 
+        [{length, 1}]},
+
+    {echo, "Test rows. (JSON)"},
+    {solr_select, 
+        [{q, "acc:ABC"}, {wt, json}, {rows, 10}, {rows, 999}], 
+        [{length, 10}]},
+    {solr_select, 
+        [{q, "acc:ABC"}, {wt, json}, {rows, 20}, {rows, 999}], 
+        [{length, 20}]},
+
+    {echo, "Test start and rows. (JSON)"},
+    {solr_select, 
+        [{q, "acc:ABC"}, {wt, json}, {start, 60}, {rows, 20}, {rows, 999}], 
+        [{length, 20}]},
+    {solr_select, 
+        [{q, "acc:ABC"}, {wt, json}, {start, 70}, {rows, 20}, {rows, 999}], 
+        [{length, 18}]},
+
+    
+
+    %% Cleanup.
+    {echo, "De-indexing documents..."},
+    {solr_update, "./solr_delete_all.xml"},
+    {echo, "Done"}
+].
