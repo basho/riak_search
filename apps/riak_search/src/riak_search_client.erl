@@ -122,13 +122,6 @@ index_doc(IdxDoc, AnalyzerPid) ->
 %% Index a specified #riak_idx_doc
 index_doc(IdxDoc, AnalyzerPid, IndexPid) ->
     {ok, Postings} = riak_indexed_doc:analyze(IdxDoc, AnalyzerPid),
-    Id = riak_indexed_doc:id(IdxDoc),
-    case Id of
-        "mckay-b_all_documents_43" ->
-            io:format("~p: ~p~n", [Id, Postings]);
-        _ ->
-            ok
-    end,
     index_terms(IndexPid, Postings),
     riak_indexed_doc:put(RiakClient, IdxDoc).
 
