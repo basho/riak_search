@@ -47,7 +47,7 @@ import raptor.store.handlers.*;
 public class ColumnStore implements Runnable {
     final private static Logger log = 
         Logger.getLogger(ColumnStore.class);
-    final private static int DEFAULT_PARTITIONS = 2;
+    final private static int DEFAULT_PARTITIONS = 4;
     final private static String DB_PFX = "db";
 
     private ConcurrentHashMap<String, BtreeStore>
@@ -93,7 +93,7 @@ public class ColumnStore implements Runnable {
         for (int i=0; i<partitions; i++) {
             BtreeStore store = new BtreeStore(
                 env,
-                DB_PFX + i + ".column", DB_PFX + i, 8192);
+                DB_PFX + i + ".column", DB_PFX + i, 4096);
             stores.put(DB_PFX + i, store);
         }
         metadata = new HashStore(env, "metadata.hash", "metadata");
@@ -119,10 +119,10 @@ public class ColumnStore implements Runnable {
     private byte[] getColumnKey(String table, byte[] key) 
         throws Exception {
         if ((new String(key, "UTF-8")).equals("")) {
-            return table.getBytes("UTF-8");
+            return (table + "|").getBytes("UTF-8");
         }
         ColumnKey ck = new ColumnKey();
-        ck.setTable(table);
+        ck.setTable(table + "|");
         ck.setKey(key);
         ColumnKeyTupleBinding keyBinding = new ColumnKeyTupleBinding();
         DatabaseEntry dbKey = new DatabaseEntry();
@@ -157,6 +157,7 @@ public class ColumnStore implements Runnable {
             updateCount = false;
         } else updateCount = true;
         if (store.put(columnKey, val)) {
+            /*
             if (updateCount) incrementTableCount(table);
             // ensure system __tables__ entry
             if (!table.equals(__TABLES__)) {
@@ -166,6 +167,8 @@ public class ColumnStore implements Runnable {
                     return false;
                 }
             } else return true;
+            */
+            return true;
         }
         return false;
     }
@@ -193,11 +196,9 @@ public class ColumnStore implements Runnable {
         throws Exception {
         byte[] columnKey = getColumnKey(table, key);
         BtreeStore store = stores.get(tableHash.get(table));
-        if (store.exists(columnKey)) {
-            if (store.delete(columnKey)) {
-                decrementTableCount(table);
-                return true;
-            }
+        if (store.delete(columnKey)) {
+            decrementTableCount(table);
+            return true;
         }
         return false;
     }
@@ -217,8 +218,10 @@ public class ColumnStore implements Runnable {
     protected void reportWriteQueueSizes() throws Exception {
         for(String k: stores.keySet()) {
             BtreeStore store = stores.get(k);
-            log.info("[" + k + "] writeQueue.size() = " +
-                store.writeQueue.size() + " (" + store.write_op_ct + " write_op_ct)");
+            if (store.write_op_ct > 0) {
+                log.info("[" + k + "] writeQueue.size() = " +
+                    store.writeQueue.size() + " (" + store.write_op_ct + " write_op_ct)");
+            }
             store.write_op_ct = 0;
         }
     }
@@ -427,31 +430,34 @@ public class ColumnStore implements Runnable {
         for (BtreeStore store: stores.values()) {
             long cTime = System.currentTimeMillis();
             store.sync();
-            log.info("<sync: " + store + ": " +
-                (System.currentTimeMillis() - cTime) + "ms>");
+            //log.info("<sync: " + store + ": " +
+            //    (System.currentTimeMillis() - cTime) + "ms>");
+            //Thread.sleep(5000);
         }
-        metadataLock.lock();
+        //metadataLock.lock();
         try {
-            log.info("<sync: metadata>");
+            //log.info("<sync: metadata>");
             metadata.sync();
         } finally {
-            metadataLock.unlock();
+            //metadataLock.unlock();
         }
-        entryMetadataLock.lock();
+        //entryMetadataLock.lock();
         try {
-            log.info("<sync: entryMetadata>");
+            //log.info("<sync: entryMetadata>");
             entryMetadata.sync();
         } finally {
-            entryMetadataLock.unlock();
+            //entryMetadataLock.unlock();
         }
     }
     
     public void checkpoint() throws Exception {
         log.info("<checkpoint>");
+        /*
         CheckpointConfig config = new CheckpointConfig();
         config.setKBytes(1000);
         config.setForce(true);
         env.checkpoint(config);
+        */
     }
     
     public void close() throws Exception {
@@ -520,7 +526,7 @@ public class ColumnStore implements Runnable {
 
     private void incrementTableCount(String table, long delta)
         throws Exception {
-        metadataLock.lock();
+        //metadataLock.lock();
         try {
             String val = getMetadata(table, METADATA_COUNT);
             if (val == null) {
@@ -534,7 +540,7 @@ public class ColumnStore implements Runnable {
                 setMetadata(table, METADATA_COUNT, "" + (count+delta));
             }
         } finally {
-            metadataLock.unlock();
+            //metadataLock.unlock();
         }
     }
     
@@ -550,7 +556,11 @@ public class ColumnStore implements Runnable {
                                        String term,
                                        String label) throws Exception {
         String compositeTable = makeTermEntryMetadataKey(table, term);
-        return getEntryMetadata(compositeTable, docId, label);
+        byte[] res = getEntryMetadata(compositeTable, docId, label);
+        if (res == null) {
+            log.info("getTermEntryMetadata(" + table + ", " + docId + ", " + term + ", " + label + ") = null");
+        }
+        return res;
     }
     
     public byte[] getEntryMetadata(String table, 

@@ -54,6 +54,9 @@ public class HashStore {
 
     private DefaultBDBMessageHandler 
         defaultMessageHandler = new DefaultBDBMessageHandler();
+        
+    private Thread writeThread;
+    protected LinkedBlockingQueue<Object> writeQueue;
 
     public HashStore(String filename, String name) 
         throws Exception {
@@ -84,13 +87,13 @@ public class HashStore {
         databaseConfig.setMessageHandler(defaultMessageHandler);
         databaseConfig.setErrorPrefix("<" + filename + ": " + name + "> ");
         databaseConfig.setType(DatabaseType.HASH);
-        databaseConfig.setChecksum(true);
-        databaseConfig.setPageSize(8192);
-        
+        databaseConfig.setChecksum(true);        
+        databaseConfig.setTransactional(false);
+        //databaseConfig.setPageSize(4096);
         databaseConfig.setReadUncommitted(true);
         
-        
         db = env.openDatabase(null, filename, name, databaseConfig);
+        startWriteThread();
     }
     
     public void close() throws Exception {
@@ -102,6 +105,57 @@ public class HashStore {
         }
     }
     
+    private void startWriteThread() {
+       writeQueue = new LinkedBlockingQueue<Object>();
+       writeThread = new Thread(new Runnable() {
+           public void run() {
+               try {
+                   log.info("writeThread: started");
+                   while(true) {
+                       try {
+                           //Object msg0 = writeQueue.take();
+                           while(writeQueue.size() == 0) {
+                               Thread.sleep(5);
+                           }
+                           List<Object> batch = new ArrayList<Object>();
+                           writeQueue.drainTo(batch); // todo: configurable batch size?
+                           for(Object msg0: batch) {
+                               if (msg0 instanceof PutOp) {
+                                   PutOp msg = (PutOp) msg0;
+                                   do_put(msg.key, msg.val);
+                               } else if (msg0 instanceof DeleteOp) {
+                                   DeleteOp msg = (DeleteOp) msg0;
+                                   do_delete(msg.key);
+                               } else {
+                                   log.error("writeQueue: unknown message (discarding): " + 
+                                             msg0.toString());
+                               }
+                           }
+                       } catch (Exception iex) {
+                           log.error("Error handling message", iex);
+                           iex.printStackTrace();
+                       }
+                   }
+               } catch (Exception ex) {
+                   log.error("Error setting up writeQueue process", ex);
+                   ex.printStackTrace();
+               }
+           }
+       });
+       
+       try {
+           writeThread.start();
+       } catch (Exception ex) {
+           log.error("Error starting BtreeStore writeThread", ex);
+           System.exit(-1);
+       }
+    }
+    
+    /* * */
+    
+    private class PutOp { public byte[] key, val; }
+    private class DeleteOp { public byte[] key; }    
+    
     public boolean put(String key, String val) throws Exception {
         return put(key.getBytes("UTF-8"), val.getBytes("UTF-8"));
     }
@@ -111,6 +165,15 @@ public class HashStore {
     }
     
     public boolean put(byte[] key, byte[] val) throws Exception {
+        PutOp op = new PutOp();
+        op.key = key;
+        op.val = val;
+        writeQueue.put(op);
+        return true;
+    }
+
+    
+    public boolean do_put(byte[] key, byte[] val) throws Exception {
         dbLock.lock();
         try {
             if (db.put(null,
@@ -131,32 +194,34 @@ public class HashStore {
     }
     
     public byte[] get(byte[] key) throws Exception {
-        //dbLock.lock();
-        try {
-            DatabaseEntry dbKey = new DatabaseEntry(key);
-            DatabaseEntry dbVal = new DatabaseEntry();
-            if (db.get(null, dbKey, dbVal, LockMode.DEFAULT) == 
-                OperationStatus.SUCCESS) {
-                return dbVal.getData();
-            } else {
-                //log.info("error: hashdb: [" + new String(key, "UTF-8") + "] not found");
-                return null;
-            }
-        } finally {
-            //dbLock.unlock();
+        DatabaseEntry dbKey = new DatabaseEntry(key);
+        DatabaseEntry dbVal = new DatabaseEntry();
+        if (db.get(null, dbKey, dbVal, LockMode.DEFAULT) == 
+            OperationStatus.SUCCESS) {
+            return dbVal.getData();
+        } else {
+            //log.info("error: hashdb: [" + new String(key, "UTF-8") + "] not found");
+            return null;
         }
     }
     
     public void sync() throws Exception {
-        dbLock.lock();
+        //dbLock.lock();
         try {
             db.sync();
         } finally {
-            dbLock.unlock();
+            //dbLock.unlock();
         }
     }
-    
+
     public boolean delete(byte[] key) throws Exception {
+        DeleteOp op = new DeleteOp();
+        op.key = key;
+        writeQueue.put(op);
+        return true;
+    }
+
+    public boolean do_delete(byte[] key) throws Exception {
         dbLock.lock();
         try {
             if (db.delete(null, new DatabaseEntry(key)) ==

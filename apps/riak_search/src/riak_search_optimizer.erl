@@ -1,4 +1,25 @@
+%% -------------------------------------------------------------------
+%%
+%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%%
+%% This file is provided to you under the Apache License,
+%% Version 2.0 (the "License"); you may not use this file
+%% except in compliance with the License.  You may obtain
+%% a copy of the License at
+%%
+%%   http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing,
+%% software distributed under the License is distributed on an
+%% "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+%% KIND, either express or implied.  See the License for the
+%% specific language governing permissions and limitations
+%% under the License.
+%%
+%% -------------------------------------------------------------------
+
 -module(riak_search_optimizer).
+-author("John Muellerleile <johnm@basho.com>").
 -export([
          optimize_or/4
         ]).
@@ -6,7 +27,7 @@
 -include("riak_search.hrl").
 %% -record(config, { default_index, default_field, facets }).
 
--define(MAX_MULTI_TERM_SZ, 250).
+-define(MAX_MULTI_TERM_SZ, 500).
 -define(OPTIMIZER_PROC_CT, 32).
 
 optimize_or(Ops, Index, Field, Props) ->
@@ -39,8 +60,10 @@ optimize_or(Ops, Index, Field, Props) ->
                             digraph:del_edges(G, digraph:edges(G, Nt)),
                             digraph:del_vertex(G, Nt)
                     end, RemTerms),
+                    
+                    U_RemTerms = lists:usort(RemTerms),
     
-                    L_RemTerms = partition_list(RemTerms, ?MAX_MULTI_TERM_SZ, []),
+                    L_RemTerms = partition_list(U_RemTerms, ?MAX_MULTI_TERM_SZ, []),
                     MultiTermOps ++ 
                         lists:map(fun(RemTerms2) ->
                             Vtx = {multi_term, RemTerms2, Node},
@@ -50,6 +73,7 @@ optimize_or(Ops, Index, Field, Props) ->
                         end, L_RemTerms)
             end
         end, [], TCD),
+    %%io:format("Optimized_Ops = ~p~n", [Optimized_Ops]), 
     Optimized_Ops.
 
 terms_to_graph(Terms, Index, Field, Props) ->
