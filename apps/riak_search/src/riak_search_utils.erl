@@ -87,11 +87,34 @@ collector_loop(_Ref, eof) ->
 
 %% Gine
 combine_terms({Value, Props1}, {Value, Props2}) ->
+    %% score list is concatenation of each term's scores
     ScoreList1 = proplists:get_value(score, Props1, []),
     ScoreList2 = proplists:get_value(score, Props2, []),
-    NewProps = sets:to_list(sets:intersection(sets:from_list(Props1), sets:from_list(Props2))),
-    {Value, lists:keystore(score, 1, NewProps,
-                           {score, ScoreList1++ScoreList2})};
+    ScoreList = ScoreList1++ScoreList2,
+
+    %% word position is concatentation of each term's scores
+    WordPos1 = proplists:get_value(word_pos, Props1, []),
+    WordPos2 = proplists:get_value(word_pos, Props2, []),
+    WordPos = WordPos1++WordPos2,
+
+    %% frequency is sum of each term's frequency
+    Freq1 = proplists:get_value(freq, Props1, 0),
+    Freq2 = proplists:get_value(freq, Props2, 0),
+    Freq = Freq1+Freq2,
+
+    %% only include the common properties from the rest of the list
+    Intersection = sets:to_list(sets:intersection(sets:from_list(Props1),
+                                                  sets:from_list(Props2))),
+
+    %% overwrite whatever score/position/frequency came out of intersection
+    NewProps = lists:foldl(fun({K, V}, Acc) ->
+                                   lists:keystore(K, 1, Acc, {K, V})
+                           end,
+                           [{score, ScoreList},
+                            {word_pos, WordPos},
+                            {freq, Freq}],
+                           Intersection),
+    {Value, NewProps};
 combine_terms(Other1, Other2) ->
     error_logger:error_msg("Could not combine terms: [~p, ~p]~n", [Other1, Other2]),
     throw({could_not_combine, Other1, Other2}).
