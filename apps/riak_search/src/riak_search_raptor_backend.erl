@@ -113,7 +113,7 @@ multi_index(IFTVPList, State) ->
     after
         riak_sock_pool:checkin(?CONN_POOL, Conn)
     end,
-    {reply, {indexed, node()}, State}.
+    {reply, {indexed, State#state.partition}, State}.
 
 delete_entry(Index, Field, Term, DocId, State) ->
     Partition = to_binary(State#state.partition),
