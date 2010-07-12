@@ -49,7 +49,6 @@ delete_entry(Index, Field, Term, DocId, State) ->
     noreply.
 %%% TODO: why can't I {reply, ok} here? (cargo-cult raptor_backend)
 
-%%% TODO: I've never actually seen info/5 get executed
 info(Index, Field, Term, Sender, State) ->
     Count = ets:select_count(State#state.table,
                              [{{{b(Index), b(Field), b(Term)}, '_'},
@@ -57,7 +56,6 @@ info(Index, Field, Term, Sender, State) ->
     riak_search_backend:info_response(Sender, [{Term, node(), Count}]),
     noreply.
 
-%%% TODO: I've never actually seen info_range/7 get executed
 info_range(Index, Field, StartTerm, EndTerm, _Size, Sender, State) ->
     Terms = find_terms_in_range(b(Index), b(Field),
                                 b(StartTerm), b(EndTerm),
@@ -86,11 +84,16 @@ find_terms_in_range(I, F, ST, ET, Table, K) ->
 -define(STREAM_SIZE, 100).
 
 stream(Index, Field, Term, FilterFun, Sender, State) ->
+    multi_stream([{term, {Index, Field, Term}, []}],
+                 FilterFun, Sender, State).
+
+multi_stream(IFTList, FilterFun, Sender, State) ->
     spawn(riak_search_ets_backend, stream_results,
           [Sender,
            FilterFun,
            ets:select(State#state.table,
-                      [{{{b(Index),b(Field),b(Term)},'$1'},[],['$1']}],
+                      [{{{b(I), b(F), b(T)}, '$1'}, [], ['$1']}
+                       || {term, {I, F, T}, _P} <- IFTList],
                       ?STREAM_SIZE)]),
     noreply.
 
@@ -104,23 +107,6 @@ stream_results(Sender, FilterFun, {Results0, Continuation}) ->
     stream_results(Sender, FilterFun, ets:select(Continuation));
 stream_results(Sender, _, '$end_of_table') ->
     riak_search_backend:stream_response_done(Sender).
-
-%%% TODO: I've never actually seen multi_stream/4 get executed
-multi_stream(IFTList, FilterFun, Sender, State) ->
-    Guard = [{'andalso',
-              {'==', '$1', b(I)},
-              {'andalso',
-               {'==', '$2', b(F)},
-               {'==', '$3', b(T)}}}
-             || {I, F, T} <- IFTList],
-    spawn(riak_search_ets_backend, stream_results,
-          [Sender,
-           FilterFun,
-           ets:select(State#state.table,
-                      [{{{'$1', '$2', '$3'}, '$4'},
-                         Guard,
-                        ['$4']}])]),
-    noreply.
 
 %%% TODO: find catalog_query/3 documentation
 catalog_query(CatalogQuery, _Sender, _State) ->
