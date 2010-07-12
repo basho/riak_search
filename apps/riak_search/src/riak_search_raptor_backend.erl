@@ -79,14 +79,8 @@ index(Index, Field, Term, DocId, Props, State) ->
     end.
 
 do_index(Partition, Index, Field, Term, DocId, Props) ->
-    case get(index_con) of
-        undefined ->
-            {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
-            put(index_con, Conn);
-        C ->
-            Conn = C
-    end,
-    %%try
+    {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
+    try
         raptor_conn:index(Conn,
                           to_binary(Index),
                           to_binary(Field),
@@ -94,10 +88,10 @@ do_index(Partition, Index, Field, Term, DocId, Props) ->
                           to_binary(DocId),
                           Partition,
                           term_to_binary(Props),
-                          current_key_clock()),
-    %%after
-    %%    riak_sock_pool:checkin(?CONN_POOL, Conn)
-    %%end,
+                          current_key_clock())
+    after
+        riak_sock_pool:checkin(?CONN_POOL, Conn)
+    end,
     noreply.
 
 multi_index(IFTVPList, State) ->
