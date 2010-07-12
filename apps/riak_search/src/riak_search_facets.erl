@@ -1,3 +1,9 @@
+%% -------------------------------------------------------------------
+%%
+%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%%
+%% -------------------------------------------------------------------
+
 -module(riak_search_facets).
 -export([passes_facets/2]).
 -include("riak_search.hrl").

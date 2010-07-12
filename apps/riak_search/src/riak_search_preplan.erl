@@ -1,3 +1,9 @@
+%% -------------------------------------------------------------------
+%%
+%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%%
+%% -------------------------------------------------------------------
+
 -module(riak_search_preplan).
 -export([preplan/2]).
 
@@ -310,8 +316,8 @@ range_to_lor(Start, End, Inclusive, Facets, _Schema) ->
     {Index, Field, StartTerm, EndTerm, _Size} = normalize_range(Start, End, Inclusive),
 
     %% Results are of form {"term", 'node@1.1.1.1', Count}
-    %% {ok, Results} = riak_search:info_range(Index, Field, StartTerm, EndTerm, Size),
-    {ok, Results} = riak_search:info_range_no_count(Index, Field, StartTerm, EndTerm),
+    {ok, Results} = riak_search:info_range(Index, Field, StartTerm, EndTerm, _Size),
+    %% {ok, Results} = riak_search:info_range_no_count(Index, Field, StartTerm, EndTerm),
     
     %% Collapse or terms into multi_stream operation
     TermProps = [{facets, Facets}],

@@ -143,7 +143,7 @@ public class RaptorServer {
              new NioServerSocketChannelFactory(
                    Executors.newCachedThreadPool(),
                    Executors.newCachedThreadPool(),
-                   Runtime.getRuntime().availableProcessors()));
+                   4));
          bootstrap.setOption("reuseAddress", true);
          bootstrap.setOption("child.tcpNoDelay", true);
          bootstrap.setPipelineFactory(new RaptorPipelineFactory());

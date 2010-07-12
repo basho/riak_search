@@ -25,9 +25,7 @@
 
 package raptor.store;
 
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Map;
+import java.util.*;
 
 import org.apache.log4j.Logger;
 import org.apache.lucene.document.Document;
@@ -47,8 +45,8 @@ public class RSXIndex implements Runnable {
     final private static String TABLE_SEP = "/";
     final private static String IFT_SEP = ".";
     final private static String CATALOG_TABLE = "__sys._catalog_";
-    final private static int STORE_COMMIT_INTERVAL = 60000; /* ms; todo: configurable? */
-    final private static int LUCENE_COMMIT_INTERVAL = 60000; /* ms; todo: configurable?  */
+    final private static int STORE_COMMIT_INTERVAL = 5000; /* ms; todo: configurable? */
+    final private static int LUCENE_COMMIT_INTERVAL = 5000; /* ms; todo: configurable?  */
     final private ColumnStore store;
     final private LuceneStore lucene;
     final private Map<String, List<JSONObject>> catalogCache;
@@ -68,7 +66,7 @@ public class RSXIndex implements Runnable {
             .maximumWeightedCapacity(150000)
             .concurrencyLevel(Runtime.getRuntime().availableProcessors()*4)
             .build();
-        store = new ColumnStore(dataDir + "/raptor-db", "log", 8);
+        store = new ColumnStore(dataDir + "/raptor-db", "log", 1);
         lucene = new LuceneStore(dataDir + "/raptor-catalog");
         RaptorServer.writeThread.start();
     }
@@ -82,7 +80,8 @@ public class RSXIndex implements Runnable {
                     return;
                 }
                 long cpt = System.currentTimeMillis();
-                store.checkpoint();
+                //store.checkpoint();
+                store.sync();
                 store_commit_ct++;
                 if (STORE_COMMIT_INTERVAL * store_commit_ct >= 
                     LUCENE_COMMIT_INTERVAL) {
@@ -90,12 +89,14 @@ public class RSXIndex implements Runnable {
                     lucene.sync();
                 }
                 long cpt2 = System.currentTimeMillis() - cpt;
-                log.info("checkpoint: " + cpt2);
-                int queueSize = RaptorServer.writeQueue.size();
-                log.info(">> " + stat_index_c + " index puts (" + 
-                    queueSize + " queued)");
+                //log.info("checkpoint: " + cpt2);
+                //int queueSize = RaptorServer.writeQueue.size();
+                //log.info(">> " + stat_index_c + " index puts (" + 
+                //    queueSize + " queued)");
+                if (stat_index_c > 0) {
+                    log.info(">> " + stat_index_c + " indexed");
+                }
                 stat_index_c = 0;
-                //log.info("writeQueue.size() = " + RaptorServer.writeQueue.size());
                 store.reportWriteQueueSizes();
                 Thread.sleep(STORE_COMMIT_INTERVAL);
             } catch (Exception ex) {
@@ -153,8 +154,10 @@ public class RSXIndex implements Runnable {
                                                      docId.getBytes("UTF-8"), 
                                                      term, 
                                                      ENTRY_METADATA__PROPS);
-        log.info("delete(" + index+ ", " + field + ", " + term + ", " + docId + ", " +
+        if (!res || !res1) {
+            log.info("delete(" + index+ ", " + field + ", " + term + ", " + docId + ", " +
                  partition + "), [index] res = " + res + ", [entry metadata] res1 = " + res1);
+        }
     }
     
     public void stream(final String index,
@@ -231,16 +234,32 @@ public class RSXIndex implements Runnable {
             catalogEntries = catalogCache.get(query);
         }
         
-        final BloomFilter<String> filt = new BloomFilter<String>(64000, 2000); // 0.00000021167340 fp
+        log.info("catalogTime = " + (System.currentTimeMillis() - ctime));
+        
+        //final BloomFilter<String> filt = new BloomFilter<String>(64000, 2000); // 0.00000021167340 fp
+        HashSet<String> completeTerms = new HashSet<String>();
+        List<String> tables = new ArrayList<String>();
+        Map<String, String> tableTerms = new HashMap<String, String>();
+        
         for (int j=0; j<catalogEntries.size(); j++) {
-            long t1 = System.currentTimeMillis();
             JSONObject catalogEntry = catalogEntries.get(j);
             final String index = catalogEntry.getString("index");
             final String field = catalogEntry.getString("field");
             final String term = catalogEntry.getString("term");
             final String partition = catalogEntry.getString("partition_id");
             final String table = makeTableKey(index, field, term, partition);
-            
+            String cTermStr = index + "." + field + "." + term;
+            if (completeTerms.contains(cTermStr)) continue;
+            completeTerms.add(cTermStr);
+            tables.add(table);
+            tableTerms.put(table, term);
+        }
+        
+        Collections.sort(tables);
+        
+        for(final String table: tables) {
+            long t1 = System.currentTimeMillis();
+            final String term = tableTerms.get(table);
             Map<byte[], byte[]> results =
                 store.getRange(table,
                                ("").getBytes("UTF-8"),
@@ -251,18 +270,20 @@ public class RSXIndex implements Runnable {
                                    public void handleResult(byte[] key, byte[] value) {
                                        try {
                                            // value: KeyClock
+                                           /*
                                            if (filt.contains(new String(key, "UTF-8"))) {
                                                //log.info("filt/skip [" + new String(key, "UTF-8") + "]");
                                            } else {
+                                            */
                                                byte[] props = store.getTermEntryMetadata(table,
                                                                                          key,
                                                                                          term,
                                                                                          ENTRY_METADATA__PROPS);
                                                if (props != null) {
-                                                   filt.add(new String(key, "UTF-8"));
+                                                   //filt.add(new String(key, "UTF-8"));
                                                    resultHandler.handleResult(key, props);
                                                }
-                                           }
+                                           //}
                                        } catch (Exception ex) {
                                            ex.printStackTrace();
                                        }
@@ -270,29 +291,33 @@ public class RSXIndex implements Runnable {
                                    public void handleResult(String key, String value) {
                                        try {
                                            // value: KeyClock
+                                           /*
                                            if (filt.contains(key)) {
                                                log.info("filt/skip [" + key + "]");
                                            } else {
+                                           */
                                                byte[] props = store.getTermEntryMetadata(table,
                                                                                          key.getBytes("UTF-8"),
                                                                                          term,
                                                                                          ENTRY_METADATA__PROPS);
                                                if (props != null) {
-                                                   filt.add(key);
+                                                   //filt.add(key);
                                                    resultHandler.handleResult(key, new String(props, "UTF-8"));
                                                }
-                                           }
+                                           //}
                                        } catch (Exception ex) {
                                            ex.printStackTrace();
                                        }
                                    }
                                });
 
+            /*
             log.info("multistream: starting: " +
                 index + "." +
                 field + "." +
                 term + "/" +
                 partition + " <" + (System.currentTimeMillis() - t1) + "ms>");
+            */
         }
         long elapsed = System.currentTimeMillis() - ctime;
         log.info("<< multistream complete, " + elapsed + "ms elapsed >>");
@@ -351,7 +376,7 @@ public class RSXIndex implements Runnable {
     // only supposed to be used externally
     // fire and forget
     public synchronized void sync() throws Exception {
-        log.info(" << sync() >> ");
+        //log.info(" << sync() >> ");
         lucene.sync();
         store.sync();
     }
