@@ -42,7 +42,8 @@
              riak_search_basic_qc,
              riak_search_operators_qc,
              riak_search_op_mockterm,
-             riak_search_optimizer
+             riak_search_optimizer,
+             riak_search_ets_backend
             ]},
   {registered, []},
   {applications, [

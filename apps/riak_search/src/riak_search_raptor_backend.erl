@@ -277,7 +277,8 @@ receive_stream_results(StreamRef, Sender, FilterFun, Conn) ->
 receive_stream_results(StreamRef, Sender, FilterFun, Conn, Acc0) ->
     case length(Acc0) > ?RESULT_VEC_SZ of
         true ->
-            riak_search_backend:stream_response_results(Sender, Acc0),
+            riak_search_backend:stream_response_results(
+              Sender, lists:reverse(Acc0)),
             Acc = [];
         false ->
             Acc = Acc0
@@ -286,7 +287,8 @@ receive_stream_results(StreamRef, Sender, FilterFun, Conn, Acc0) ->
         {stream, StreamRef, timeout} ->
             case length(Acc) > 0 of
                 true ->
-                    riak_search_backend:stream_response_results(Sender, Acc);
+                    riak_search_backend:stream_response_results(
+                      Sender, lists:reverse(Acc));
                 false -> skip
             end,
             riak_search_backend:stream_response_done(Sender),
@@ -295,7 +297,8 @@ receive_stream_results(StreamRef, Sender, FilterFun, Conn, Acc0) ->
         {stream, StreamRef, "$end_of_table", _} ->
             case length(Acc) > 0 of
                 true ->
-                    riak_search_backend:stream_response_results(Sender, Acc);
+                    riak_search_backend:stream_response_results(
+                      Sender, lists:reverse(Acc));
                 
                 false -> skip
             end,
@@ -309,7 +312,7 @@ receive_stream_results(StreamRef, Sender, FilterFun, Conn, Acc0) ->
             end,
             case FilterFun(Value, Props2) of
                 true ->
-                    Acc2 = Acc ++ [{Value, Props2}];
+                    Acc2 = [{Value, Props2}|Acc];
                     %OutputPid ! {result, {Value, Props2}, OutputRef};
                 _ ->
                     Acc2 = Acc,
@@ -334,24 +337,23 @@ receive_info_range_results(StreamRef, Sender, Conn) ->
 receive_info_range_results(StreamRef, Sender, Conn, Results) ->
     receive
         {info, StreamRef, timeout} ->
-            riak_search_backend:info_response(Sender, Results),
+            riak_search_backend:info_response(Sender, lists:reverse(Results)),
             exit(Conn, kill),
             error_logger:warning_msg("Info range result Raptor socket timeout\n");
 
         {info, StreamRef, "$end_of_info", 0} ->
-            riak_search_backend:info_response(Sender, Results);
+            riak_search_backend:info_response(Sender, lists:reverse(Results));
         
-        %% TODO: Replace this with a [New | Acc] and lists:reverse
         {info, StreamRef, Term, Count} ->
             receive_info_range_results(StreamRef, Sender, Conn,
-                Results ++ [{Term, node(), Count}]);
+                [{Term, node(), Count}|Results]);
         Msg ->
-            riak_search_backend:info_response(Sender, [Results]),
+            riak_search_backend:info_response(Sender, lists:reverse(Results)),
             exit(Conn, kill),
             throw({unexpected_msg, Msg})
     after
         ?INFO_RANGE_TIMEOUT ->
-            riak_search_backend:info_response(Sender, Results),
+            riak_search_backend:info_response(Sender, lists:reverse(Results)),
             exit(Conn, kill),
             error_logger:warning_msg("Info range result Raptor conn timeout\n")
     end,

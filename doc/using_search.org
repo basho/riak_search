@@ -3,7 +3,7 @@
 
 * Introduction
 
-  Basho Search is a distributed index and full-text search engine
+  Basho Riak Search is a distributed index and full-text search engine
   built on top of (and complementary to) Basho Riak. Just like Riak,
   Search allows you to store your data in a distributed fashion
   designed for easy operations. You can add physical servers to gain
@@ -52,9 +52,9 @@
     : make
     : make rel
     
-    Change to the rel/riak directory
+    Change to the rel/riaksearch directory
 
-    : cd rel/riak
+    : cd rel/riaksearch
 
 *** Start Riak
 
@@ -64,16 +64,16 @@
     : export JAVA_HOME=/System/Library/Frameworks/JavaVM.framework/Versions/1.6/Home
     : ulimit -n 1024
     
-    From within the rel/riak directory, start Riak:
+    From within the rel/riaksearch directory, start Riak:
     
-    : bin/riak console
+    : bin/riaksearch console
     
-    Or, use =bin/riak start= to start riak\_search in the background.
+    Or, use =bin/riaksearch start= to start riak\_search in the background.
 
 
 ** Major Components
    
-   Basho Search is comprised of:
+   Riak Search is comprised of:
 
    + *Riak Core* -  Dynamo-inspired 
    + *Riak KV* - Distributed Key/Value store inspired by Amazon's Dynamo.
@@ -83,9 +83,9 @@
    + *Qilr* - Library for parsing queries into execution plans and
              documents into terms.
    + *Riak Solr* - Adds a subset of Solr HTTP interface capabilities to
-                  Basho Search.
+                  Riak Search.
 
-   Note that even though Riak KV is included in Basho Search, it
+   Note that even though Riak KV is included in Riak Search, it
    *SHOULD NOT* be used to store application data. It is used intenally
    by Search to store document data, schema definitions, and other
    configuration data. Specifically, documents are stored in
@@ -111,7 +111,7 @@
 
    + Search does not use quorum values when writing (indexing)
      data. The data is written in a fire and forget model. Search
-     *does* use hinted-handoff to remain write available when a node
+     *does* use hinted-handoff to remain write-available when a node
      goes offline.
 
    + Search does not use quorum values when reading (querying)
@@ -121,7 +121,7 @@
 
 * Schema
 
-  Basho Search was designed to work seamlessly with Riak. As a
+  Riak Search was designed to work seamlessly with Riak. As a
   result, it retains many of the same properties as Riak, including
   a schema-free design. In other words, you can start adding data
   to a new index without having to explicitly define the index
@@ -133,23 +133,19 @@
    
 ** Defining an Index Schema
 
-   *NOTE:* Basho Search currently stores schema definition files in
+   *NOTE:* Riak Search currently stores schema definition files in
    the lib/riak\_search/priv/ directory. This is covered in #289.
 
-   *NOTE:* The commands below are not yet implemented. This is covered
-   in #318.
-
-
-   Schema definitions are stored in Basho Search under a =schema=
+   Schema definitions are stored in Riak Search under a =schema=
    bucket. To create a new schema, write a new Riak object to the
    =schema= with a key equal to the schema name, and a value as the
    Erlang formatted schema definition file.
 
    : # Set an index schema.
-   : bin/basho_search set_schema Index SchemaFile
+   : bin/search-cmd set_schema Index SchemaFile
    : 
    : # View the schema for an Index.
-   : bin/basho_search view_schema Index
+   : bin/search-cmd view_schema Index
 
    There is currently no way to list all defined schemas.
 
@@ -174,7 +170,7 @@
    
    A Schema definition consists of the following properties:
    
-   + *version* - /Atom/, currently unused by Basho Search.
+   + *version* - /Atom/, currently unused by Riak Search.
 
    + *default\_field* - /String/, the default field to use for
                       searching, if no other field is specified in
@@ -241,7 +237,7 @@
 
 ** Data Types
    
-   Basho Search supports the following data types:
+   Riak Search supports the following data types:
 
    * *string* - A field of type =string= is parsed using the
                # analyzer\_factory class set in the index's schema
@@ -266,17 +262,14 @@
   4. Normalizing the terms in each field.
   5. Writing the ={Field, Term, DocumentID}= postings to an index.
 
-  There are numerous ways to index a document in Basho Search.
+  There are numerous ways to index a document in Riak Search.
 
 ** Indexing via the Command Line
 
-   *NOTE:* This command line tool does not yet exist. It is covered in
-   issue #318.
-
    The easiest way to index documents stored on the filesystem is to
-   use the =basho_search= command line tool:
+   use the =search-cmd= command line tool:
 
-   : bin/basho_search index <INDEX> <PATH>
+   : bin/search-cmd index <INDEX> <PATH>
 
    Parameters:
    
@@ -287,7 +280,7 @@
    
    For example:
 
-   : bin/basho_search index my_index files/to/index/*.txt
+   : bin/search-cmd index my_index files/to/index/*.txt
 
    The documents will be indexed into the default field defined by the
    Index's schema, using the base filename plus extension as the
@@ -296,12 +289,10 @@
 
 ** Deleting via the Command Line
    
-   *NOTE:* This command line tool does not yet exist. It is covered in issue #318.
-
    To remove previously indexed files from the command line, use the
-   =basho_search= command line tool:
+   =search-cmd= command line tool:
 
-   : bin/basho_search delete <INDEX> <PATH>
+   : bin/search-cmd delete <INDEX> <PATH>
 
    Parameters:
    
@@ -312,7 +303,7 @@
    
    For example:
 
-   : bin/basho_search delete my_index files/to/index/*.txt
+   : bin/search-cmd delete my_index files/to/index/*.txt
 
    Any documents matching the base filename plus extension of the
    files found will be removed from the index. The actual contents of
@@ -343,8 +334,6 @@
 
    : search:index_doc(Index, Fields)
 
-   *NOTE:* This function is not yet supported. It is covered in issue #320.
-
    Parameters:
 
    + *Index* - The name of the index.
@@ -374,8 +363,6 @@
 
    : search:delete_dir("my_index", "files/to/index/*.txt").
 
-   *NOTE:* This function is not yet supported. It is covered in issue #329.
-
    Any documents matching the base filename plus extension of the
    files found will be removed from the index. The actual contents of
    the files are ignored during this operation.
@@ -383,8 +370,6 @@
    Alternatively, you can provide the fields of the document to index:
 
    : search:delete_doc(Index, DocID)
-
-   *NOTE:* This function is not yet supported. It is covered in issue #320.
 
    Parameters:
 
@@ -395,7 +380,7 @@
 
 ** Indexing via the Solr Interface
 
-   Basho Search supports a Solr-compatible interface for indexing
+   Riak Search supports a Solr-compatible interface for indexing
    documents via HTTP. Documents must be formatted as simple Solr XML
    documents, for example:
 
@@ -452,11 +437,6 @@
    :   ...
    : </delete>
 
-   *NOTE:* Search does not yet support deleting documents from a
-   specific index via "index:docid" format. The index name must be
-   specified in either the endpoint URL or query parameters. (See /Indexing via
-   the Solr Interface/ section above.) This is covered in #330.
-
    To delete documents by Query, post the following XML to the update endpoint:
 
    : <delete>
@@ -472,19 +452,19 @@
    *NOTE:* Search is not yet integrated with Riak. This is scheduled
    for a future release. 
 
-   Basho Riak (a distributed Key/Value store) can be configured to
-   index new data automatically using Basho Search. Indexing is
+   Riak (a distributed Key/Value store) can be configured to
+   index new data automatically using Riak Search. Indexing is
    configured at a bucket level using a post-commit hook written in
    Erlang. (See [[https://wiki.basho.com/display/RIAK/Pre-+and+Post-Commit+Hooks][Pre and Post Commit Hooks]] for instructions on
    configuring Post-Commit hooks.)
 
-   The following post-commit hook provides integration with Basho Search:
+   The following post-commit hook provides integration with Riak Search:
    
    : {"mod": "riak_search", "fun": "index"}
 
    Pending Questions:
    
-   + How does Riak know /where/ Basho Search is located?
+   + How does Riak know /where/ Riak Search is located?
    + How does it know which index?
    + How does it break the value into fields.
    + Handle insert, update, and delete.
@@ -496,7 +476,7 @@
 
 ** Query Syntax
 
-   Basho Search follows the same query syntax as Lucene, detailed
+   Riak Search follows the same query syntax as Lucene, detailed
    here:  http://lucene.apache.org/java/2_4_0/queryparsersyntax.html
 
 *** Terms and Phrases
@@ -588,16 +568,16 @@
     
     Range searches allow you to find documents with terms in between
     a specific range. Ranges are calculated lexicographically.  Use
-    brackets to specify an inclusive range, and brackes (mustaches)
+    square brackets to specify an inclusive range, and curly braces
     to specify an exclusive range.
 
-    The following example will return documents with words containing "red" and
-    "rum", plus any words in between.
+    The following example will return documents with words containing
+    "red" and "rum", plus any words in between.
 
     : "[red TO rum]" 
     
-    The following example will return documents with words in between "red" and
-    "rum":
+    The following example will return documents with words in between
+    "red" and "rum":
 
     : "{red TO rum}"
 
@@ -606,8 +586,8 @@
     A term (or phrase) can have its score boosted using the caret
     operator along with an integer boost factor.
 
-    In the following example, documents with the term "red" will have their score
-    boosted:
+    In the following example, documents with the term "red" will have
+    their score boosted:
 
     : red^5 OR blue
 
@@ -629,22 +609,18 @@
 
 *** Grouping
 
-    Clauses in a query can be grouped using parentheses. The following query
-    returns documents that contain the terms "red" or "blue", but not "yellow":
+    Clauses in a query can be grouped using parentheses. The following
+    query returns documents that contain the terms "red" or "blue",
+    but not "yellow":
 
     : (red OR blue) AND NOT yellow
 
 ** Querying via the Search Shell
 
-   *NOTE:* For now, you need to start the shell from Erlang using
-   =riak_search_shell:start()= or
-   =riak_search_shell:start(Index)=. Starting via command line is
-   covered in #318.
-
    The Search Shell is the easiest way to run interactive queries
    against Search. To start the shell, run:
 
-   : bin/basho_search shell [INDEX]
+   : bin/search-cmd shell [INDEX]
 
    This launches an interactive console into which you can type search
    commands. For help, type =h()=. 
@@ -654,17 +630,17 @@
 
    To run a single query from the command line, use:
 
-   : bin/basho_search search [INDEX] QUERY
+   : bin/search-cmd search [INDEX] QUERY
 
    For example:
 
-   : bin/basho_search search "books" "title:\"See spot run\""
+   : bin/search-cmd search "books" "title:\"See spot run\""
 
    This will display a list of Document ID values matching the
    query. To conduct a document search, use the *search\_doc*
    command. For example:
 
-   : bin/basho_search search_doc "books" "title:\"See spot run\""
+   : bin/search-cmd search_doc "books" "title:\"See spot run\""
 
 ** Querying via the Erlang Command Line
 
@@ -682,7 +658,7 @@
 
 ** Querying via the Solr Interface
 
-   Basho Search supports a Solr-compatible interface for searching
+   Riak Search supports a Solr-compatible interface for searching
    documents via HTTP. By default, the select endpoint is located at
    "http://hostname:8098/solr/select".
 
@@ -699,7 +675,8 @@
      the /default_field/ setting in the schema file.
 
    + *q.op=OPERATION* - Allowed settings are either "and" or
-     "or". Overrides the /default_op/ setting in the schema file. Default is "or".
+     "or". Overrides the /default_op/ setting in the schema
+     file. Default is "or".
 
    + *start=N* - Specify the starting result of the query. Useful for
      paging. Default is 0.
@@ -710,17 +687,17 @@
      "none", which causes the results to be sorted in descending order
      by score.
 
+   + *wt=FORMAT* - Choose the format of the output.  Options are "xml"
+     and "json".  The default is "xml".
+
    To query data in the system with Curl:
 
    : curl "http://localhost:8098/solr/books/select?start=0&rows=10000&q=prog*"
 
-   *NOTE:* Currently, all query output will be served in JSON. This is
-   analogous to specifying =wt=json= on a regular Solr
-   query. Outputting as XML is covered in #189.
-
 ** Faceted Queries via the Solr Interfae
    
-   *NOTE:* The facet features listed below do not yet exist. These are covered in #326.
+   *NOTE:* The facet features listed below do not yet exist. These are
+   covered in #326.
 
    Faceted search allows you to generate keywords (plus counts) to
    display to a user to drill down into search results.
@@ -767,10 +744,10 @@
 
    http://lucene.apache.org/java/3_0_2/api/core/org/apache/lucene/search/Similarity.html
 
-   The key difference is in how Basho Search calculates the Inverse
+   The key difference is in how Riak Search calculates the Inverse
    Document Frequency. The equations described on the /Similarity/
    page require knowledge of the total number of documents in a
-   collection. Basho Search does not maintain this information for a
+   collection. Riak Search does not maintain this information for a
    collection, so instead uses the count of the total number of
    documents associated with each term in the query.
 
@@ -804,8 +781,9 @@
 
     1. You can edit log4j.properties to change the logging characteristics
 
-    2. From the riak search console you can significantly decrease logging output 
-       (though not turn it off entirely) by using the command:
+    2. From the riak search console you can significantly decrease
+       logging output (though not turn it off entirely) by using the
+       command:
         
        : raptor_index_backend:poke("toggle_debug").
 
@@ -821,15 +799,15 @@
        meantime it is recommended you run Raptor on server with a MINIMUM 
        of 2G ram.
 
-    2. You may use Raptor on 32-bit systems; change the command line option in 
-       start.sh from "-d64" to "-d32"
+    2. You may use Raptor on 32-bit systems; change the command line
+       option in start.sh from "-d64" to "-d32"
 
-    3. 32-bit operation is not available on Mac OS X systems (Java 1.6 has no 
-       32 bit mode on OS X)
+    3. 32-bit operation is not available on Mac OS X systems (Java 1.6
+       has no 32 bit mode on OS X)
 
-    4. If you wish to keep the BDB native library in somewhere other than it's 
-       installed location, change the following command line option in start.sh 
-       to reflect the new location:
+    4. If you wish to keep the BDB native library in somewhere other
+       than it's installed location, change the following command line
+       option in start.sh to reflect the new location:
 
        : -Djava.library.path=/usr/local/lib:java.library.path=/usr/local/lib:/usr/local/BerkeleyDB.4.8/lib
 
