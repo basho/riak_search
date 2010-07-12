@@ -2,8 +2,6 @@
 
 -export([optimize/3]).
 
--include_lib("eunit/include/eunit.hrl").
-
 -include("qilr.hrl").
 
 optimize(AnalyzerPid, {ok, Query}, Schema) when not is_list(Query) ->
@@ -161,6 +159,47 @@ default_bool_children([H|T], DefaultBoolOp) ->
 default_bool_children(Query, _DefaultBoolOp) ->
     Query.
 
+%% For testing only
+-ifdef(TEST).
+analyze_term_text(FieldName, testing, Schema, Text0) ->
+    %% If FieldName == 'default', then pull the default field from the
+    %% schema.
+    case FieldName of
+        default -> FieldName1 = Schema:default_field();
+        _ -> FieldName1 = FieldName
+    end,
+
+    %% If this is a quoted value, then strip the quotes. Not using
+    %% string:strip/N because there might be multiple quotes, and we
+    %% only want to strip one set.
+    case hd(Text0) == $" andalso lists:last(Text0) == $" of
+        true ->
+            Text = string:sub_string(Text0, 2, length(Text0) - 1);
+        false ->
+            Text = Text0
+    end,
+
+    %% Get the field....
+    Field = Schema:find_field(FieldName1),
+    PadSize = Schema:padding_size(Field),
+    PadChar = Schema:padding_char(Field),
+
+    %% Analyze the field...
+    Tokens = [list_to_binary(lists:delete($*, Tok)) || Tok <- string:tokens(Text, " "),
+                                                       length(Tok) > 2 andalso
+                                                       Tok /= "the"],
+    Tokens1 = [riak_search_text:left_pad(X, PadSize, PadChar) || X <- Tokens, X /= ""],
+    case Tokens1 of
+        [] ->      % None
+            none;
+        [Token] -> % One
+            {single, Token};
+        _ ->       % Many
+            {multi, Tokens1}
+    end.
+-endif.
+
+-ifndef(TEST).
 analyze_term_text(FieldName, AnalyzerPid, Schema, Text0) ->
     %% If FieldName == 'default', then pull the default field from the
     %% schema.
@@ -172,7 +211,7 @@ analyze_term_text(FieldName, AnalyzerPid, Schema, Text0) ->
     %% If this is a quoted value, then strip the quotes. Not using
     %% string:strip/N because there might be multiple quotes, and we
     %% only want to strip one set.
-    case hd(Text0) == $" andalso lists:last(Text0) == $" of 
+    case hd(Text0) == $" andalso lists:last(Text0) == $" of
         true ->
             Text = string:sub_string(Text0, 2, length(Text0) - 1);
         false ->
@@ -196,6 +235,7 @@ analyze_term_text(FieldName, AnalyzerPid, Schema, Text0) ->
         _ ->       % Many
             {multi, Tokens1}
     end.
+-endif.
 
 get_type({land, _}) ->
     land;
@@ -205,7 +245,7 @@ get_type({lnot, _}) ->
     lnot;
 get_type({group, _}) ->
     group;
-get_type({field, _, _, _}) ->
+get_type({field, _, _}) ->
     field;
 get_type({phrase, _Phrase, _Ops}) ->
     phrase;

@@ -65,62 +65,116 @@ bool_expr -> query_term lnot query_term:
     {lnot, ['$1', '$3']}.
 bool_expr -> query_term lnot group_expr:
     {lnot, ['$1', '$3']}.
+bool_expr -> query_term lnot field_group:
+    {lnot, ['$1', '$3']}.
 bool_expr -> group_expr lnot query_term:
     {lnot, ['$1', '$3']}.
 bool_expr -> group_expr lnot group_expr:
+    {lnot, ['$1', '$3']}.
+bool_expr -> group_expr lnot field_group:
+    {lnot, ['$1', '$3']}.
+bool_expr -> field_group lnot query_term:
+    {lnot, ['$1', '$3']}.
+bool_expr -> field_group lnot field_group:
+    {lnot, ['$1', '$3']}.
+bool_expr -> field_group lnot group_expr:
     {lnot, ['$1', '$3']}.
 bool_expr -> query_term lnot bool_expr:
     {lnot, ['$1', '$3']}.
 bool_expr -> group_expr lnot bool_expr:
     {lnot, ['$1', '$3']}.
+bool_expr -> field_group lnot bool_expr:
+    {lnot, ['$1', '$3']}.
 
+bool_expr -> field_group land field_group:
+    {land, ['$1', '$3']}.
+bool_expr -> field_group land query_term:
+    {land, ['$1', '$3']}.
+bool_expr -> field_group land group_expr:
+    {land, ['$1', '$3']}.
 bool_expr -> query_term land query_term:
     {land, ['$1', '$3']}.
 bool_expr -> query_term land group_expr:
+    {land, ['$1', '$3']}.
+bool_expr -> query_term land field_group:
     {land, ['$1', '$3']}.
 bool_expr -> group_expr land query_term:
     {land, ['$1', '$3']}.
 bool_expr -> group_expr land group_expr:
     {land, ['$1', '$3']}.
+bool_expr -> group_expr land field_group:
+    {land, ['$1', '$3']}.
 bool_expr -> query_term land lnot query_term:
     {land, ['$1', {lnot, ['$4']}]}.
 bool_expr -> query_term land lnot group_expr:
+    {land, ['$1', {lnot, ['$4']}]}.
+bool_expr -> query_term land lnot field_group:
     {land, ['$1', {lnot, ['$4']}]}.
 bool_expr -> group_expr land lnot query_term:
     {land, ['$1', {lnot, ['$4']}]}.
 bool_expr -> group_expr land lnot group_expr:
     {land, ['$1', {lnot, ['$4']}]}.
+bool_expr -> group_expr land lnot field_group:
+    {land, ['$1', {lnot, ['$4']}]}.
 bool_expr -> query_term land bool_expr:
     {land, ['$1', '$3']}.
 bool_expr -> group_expr land bool_expr:
+    {land, ['$1', '$3']}.
+bool_expr -> field_group land bool_expr:
     {land, ['$1', '$3']}.
 bool_expr -> query_term land lnot bool_expr:
     {land, ['$1', {lnot, ['$4']}]}.
 bool_expr -> group_expr land lnot bool_expr:
     {land, ['$1', {lnot, ['$4']}]}.
+bool_expr -> field_group land lnot bool_expr:
+    {land, ['$1', {lnot, ['$4']}]}.
 
 
+bool_expr -> field_group lor field_group:
+    {lor, ['$1', '$3']}.
+bool_expr -> field_group lor query_term:
+    {lor, ['$1', '$3']}.
+bool_expr -> field_group lor group_expr:
+    {lor, ['$1', '$3']}.
 bool_expr -> query_term lor query_term:
     {lor, ['$1', '$3']}.
 bool_expr -> query_term lor group_expr:
+    {lor, ['$1', '$3']}.
+bool_expr -> query_term lor field_group:
     {lor, ['$1', '$3']}.
 bool_expr -> group_expr lor query_term:
     {lor, ['$1', '$3']}.
 bool_expr -> group_expr lor group_expr:
     {lor, ['$1', '$3']}.
+bool_expr -> group_expr lor field_group:
+    {lor, ['$1', '$3']}.
+bool_expr -> field_group lor lnot query_term:
+    {lor, ['$1', {lnot, ['$4']}]}.
+bool_expr -> field_group lor lnot group_expr:
+    {lor, ['$1', {lnot, ['$4']}]}.
+bool_expr -> field_group lor lnot field_group:
+    {lor, ['$1', {lnot, ['$4']}]}.
 bool_expr -> query_term lor lnot query_term:
     {lor, ['$1', {lnot, ['$4']}]}.
 bool_expr -> query_term lor lnot group_expr:
+    {lor, ['$1', {lnot, ['$4']}]}.
+bool_expr -> query_term lor lnot field_group:
     {lor, ['$1', {lnot, ['$4']}]}.
 bool_expr -> group_expr lor lnot query_term:
     {lor, ['$1', {lnot, ['$4']}]}.
 bool_expr -> group_expr lor lnot group_expr:
     {lor, ['$1', {lnot, ['$4']}]}.
+bool_expr -> group_expr lor lnot field_group:
+    {lor, ['$1', {lnot, ['$4']}]}.
 bool_expr -> query_term lor bool_expr:
     {lor, ['$1', '$3']}.
 bool_expr -> group_expr lor bool_expr:
     {lor, ['$1', '$3']}.
+bool_expr -> field_group lor bool_expr:
+    {lor, ['$1', '$3']}.
 bool_expr -> query_term lor lnot bool_expr:
+    {lor, ['$1', {lnot, ['$4']}]}.
+bool_expr -> field_group lor lnot bool_expr:
     {lor, ['$1', {lnot, ['$4']}]}.
 bool_expr -> group_expr lor lnot bool_expr:
     {lor, ['$1', {lnot, ['$4']}]}.
@@ -185,17 +239,15 @@ boost_suffix -> caret term:
     make_boost('$2').
 
 Erlang code.
--export([
-    string/3
-]).
+-export([string/2,
+         string/3]).
 
+string(Query, Schema) ->
+    {ok, Tokens, _} = qilr_scan:string(Query),
+    qilr_postprocess:optimize(testing, parse(Tokens), Schema).
 string(AnalyzerPid, Query, Schema) ->
     {ok, Tokens, _} = qilr_scan:string(Query),
     qilr_postprocess:optimize(AnalyzerPid, parse(Tokens), Schema).
-
-%% [{default_bool, Bool},
-%%                                                            {schema_fields, SchemaFields},
-%%                                                            {analyzer_factory, AnalyzerFactory}]).
 
 %% Internal functions
 add_node(Parent, Child) when is_list(Parent) ->
