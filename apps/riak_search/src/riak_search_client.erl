@@ -82,14 +82,9 @@ search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
 
 %% Run the query through preplanning, return the result.
 explain(IndexOrSchema, QueryOps) ->
-    %% Get schema information...
-    {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
-    DefaultIndex = Schema:name(),
-    DefaultField = Schema:default_field(),
-    Facets = [{DefaultIndex, Schema:field_name(X)} || X <- Schema:facets()],
-
     %% Run the query through preplanning.
-    riak_search_preplan:preplan(QueryOps, DefaultIndex, DefaultField, Facets).
+    {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
+    riak_search_preplan:preplan(QueryOps, Schema).
 
 %% Create an index FSM, send the terms and shut it down
 index_terms(Terms) ->
@@ -150,23 +145,20 @@ truncate_list(QueryStart, QueryRows, List) ->
     List2.
 
 stream_search(IndexOrSchema, OpList) ->
-    %% Get schema information...
+    %% Run the query through preplanning.
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
-    DefaultIndex = Schema:name(),
-    DefaultField = Schema:default_field(),
-    Facets = [{DefaultIndex, Schema:field_name(X)} || X <- Schema:facets()],
-    %% Normalize, Optimize, and Expand Buckets.
-    
-    OpList1 = riak_search_preplan:preplan(OpList, DefaultIndex, DefaultField, Facets),
+    OpList1 = riak_search_preplan:preplan(OpList, Schema),
 
     %% Get the total number of terms and weight in query...
     {NumTerms, NumDocs, QueryNorm} = get_scoring_info(OpList1),
     
     %% Set up the operators. They automatically start when created...
     Ref = make_ref(),
-    QueryProps = [{num_docs, NumDocs},
-                  {default_field, DefaultField},
-                  {index_name, IndexOrSchema}],
+    QueryProps = [
+        {num_docs, NumDocs},
+        {index_name, Schema:name()},
+        {default_field, Schema:default_field()}
+    ],
     
     %% Start the query process ...
     {ok, NumInputs} = riak_search_op:chain_op(OpList1, self(), Ref, QueryProps),

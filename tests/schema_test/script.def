@@ -84,14 +84,21 @@
     {search, "i_dyn:[0001 TO 0100]", [{length, 4}]},
 
     {echo,   "Verify dynamic facet fields."},
+    {search, "key:one", [{property, "dyn_facet", "one"}]}, 
     {search, "key:one AND dyn_facet:one", [{property, "dyn_facet", "one"}]}, 
-    {search, "key:one AND dyn_facet:one", [{property, "dyn_facet", "one"}]}, 
+    {search, "(key:one OR key:two) AND dyn_facet:one", [{property, "dyn_facet", "one"}]}, 
+
     {search, "key:twenty", [{property, "dyn_facet", "twenty"}]}, 
     {search, "key:twenty AND dyn_facet:twenty", [{property, "dyn_facet", "twenty"}]}, 
+    {search, "(key:twenty OR key:hundred) AND dyn_facet:twenty", [{property, "dyn_facet", "twenty"}]}, 
+
     {search, "key:one", [{property, "facet_dyn", "one"}]}, 
     {search, "key:one AND facet_dyn:one", [{property, "facet_dyn", "one"}]}, 
+    {search, "(key:one OR key:two) AND facet_dyn:one", [{property, "facet_dyn", "one"}]}, 
+
     {search, "key:twenty", [{property, "facet_dyn", "twenty"}]}, 
     {search, "key:twenty AND facet_dyn:twenty", [{property, "facet_dyn", "twenty"}]}, 
+    {search, "(key:twenty OR key:hundred) AND facet_dyn:twenty", [{property, "facet_dyn", "twenty"}]}, 
 
     %%  %% Cleanup.
     {echo,   "De-indexing documents..."},
