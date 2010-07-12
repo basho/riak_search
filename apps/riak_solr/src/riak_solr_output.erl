@@ -12,7 +12,7 @@
                             to_boolean/1,
                             to_float/1]).
 
--define(XML_PROLOG, {prolog, ["<?xml version=\"1.0\" encoding=\"UTF-8\">"]}).
+-define(XML_PROLOG, {prolog, ["<?xml version=\"1.0\" encoding=\"UTF-8\"?>"]}).
 
 
 xml_response(Schema, _SortBy, ElapsedTime, SQuery, NumFound, MaxScore, Docs) ->
@@ -25,7 +25,7 @@ xml_response(Schema, _SortBy, ElapsedTime, SQuery, NumFound, MaxScore, Docs) ->
               [xml_nl(),
                xml_indent(4), {int, [{name, "status"}], [#xmlText{value="0"}]},
                xml_nl(),
-               xml_indent(4), {int, [{name, "QTime"}], [#xmlText{value=ElapsedTime}]}] ++
+               xml_indent(4), {int, [{name, "QTime"}], [#xmlText{value=integer_to_list(ElapsedTime)}]}] ++
                              RenderedParams ++ [xml_nl(), xml_indent(2)]},
              xml_nl(),
              xml_indent(2), {result, [{name, "response"},
