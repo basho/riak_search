@@ -77,4 +77,10 @@ calculate_score(ScoringVars, Props) ->
     Norm = DocFieldBoost,
     
     Score = TF * math:pow(IDF, 2) * TermBoost * Norm,
-    Props ++ [{score, [Score]}].
+    ScoreList = case lists:keyfind(score, 1, Props) of
+                    {score, OldScores} ->
+                        [Score|OldScores];
+                    false ->
+                        [Score]
+                end,
+    lists:keystore(score, 1, Props, {score, ScoreList}).

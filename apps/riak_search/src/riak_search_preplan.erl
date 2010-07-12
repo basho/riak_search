@@ -1,44 +1,36 @@
 -module(riak_search_preplan).
--export([preplan/4]).
+-export([preplan/2]).
 
 -include("riak_search.hrl").
--record(config, { default_index, default_field, facets }).
-
-preplan(OpList, DefaultIndex, DefaultField, Facets) ->
-    preplan(OpList, #config {
-              default_index=DefaultIndex,
-              default_field=DefaultField,
-              facets=Facets }).
-
-preplan(OpList, Config) ->
+preplan(OpList, Schema) ->
     OpList0 = #group { ops=OpList },
-    OpList1 = pass1(OpList0, Config),
-    OpList2 = pass2(OpList1, Config),
-    OpList3 = pass3(OpList2, Config),
-    OpList4 = pass4(OpList3, Config),
-    OpList5 = pass5(OpList4, Config),
-    OpList6 = pass6(OpList5, Config),
-    pass7(OpList6, Config).
+    OpList1 = pass1(OpList0, Schema),
+    OpList2 = pass2(OpList1, Schema),
+    OpList3 = pass3(OpList2, Schema),
+    OpList4 = pass4(OpList3, Schema),
+    OpList5 = pass5(OpList4, Schema),
+    OpList6 = pass6(OpList5, Schema),
+    pass7(OpList6, Schema).
 
 %% FIRST PASS - Normalize incoming qil.
 %% - We should move this to the qilr project.
 %% - Turn field/4 into field/3
 %% - Turn group statements into ANDs and ORs.
 %% - Wrap prohibited terms into an #lnot.
-pass1(OpList, Config) when is_list(OpList) ->
-    lists:flatten([pass1(X, Config) || X <- OpList]);
+pass1(OpList, Schema) when is_list(OpList) ->
+    lists:flatten([pass1(X, Schema) || X <- OpList]);
 
-pass1({field, Field, Q, Options}, Config) ->
+pass1({field, Field, Q, Options}, Schema) ->
     TermOp = #term { q=Q, options=Options},
-    pass1(#field { field=Field, ops=[TermOp]}, Config);
+    pass1(#field { field=Field, ops=[TermOp]}, Schema);
 
-pass1(Op = #group {}, Config) ->
+pass1(Op = #group {}, Schema) ->
     %% Qilr parser returns nested lists in a group.
     OpList = lists:flatten([Op#group.ops]),
     case length(OpList) == 1 of
         true ->
             %% Single op, so get rid of the group.
-            pass1(OpList, Config);
+            pass1(OpList, Schema);
         false ->
             %% Multiple ops. Pull out any terms where required flag is
             %% set, make those on AND. The rest are an OR. AND the
@@ -47,61 +39,60 @@ pass1(Op = #group {}, Config) ->
             {RequiredOps, NonRequiredOps} = lists:splitwith(F, OpList),
             if
                 RequiredOps /= [] andalso NonRequiredOps == [] ->
-                    pass1(#land { ops=RequiredOps }, Config);
+                    pass1(#land { ops=RequiredOps }, Schema);
                 RequiredOps == [] andalso NonRequiredOps /= [] ->
-                    pass1(#lor { ops=NonRequiredOps }, Config);
+                    pass1(#lor { ops=NonRequiredOps }, Schema);
                 true ->
                     NewOp = #land { ops=[#land { ops=RequiredOps },
                                          #lor { ops=NonRequiredOps }]},
-                    pass1(NewOp, Config)
+                    pass1(NewOp, Schema)
             end
     end;
 
-pass1(Op = #term {}, Config) ->
+pass1(Op = #term {}, Schema) ->
     IsProhibited = ?IS_TERM_PROHIBITED(Op),
     IsProximity = ?IS_TERM_PROXIMITY(Op),
     if
         IsProhibited ->
             %% Rewrite a prohibited term to be a not.
             NewOp = #lnot { ops=[Op#term { options=[] }] },
-            pass1(NewOp, Config);
+            pass1(NewOp, Schema);
         IsProximity ->
             Proximity = proplists:get_value(proximity, Op#term.options),
             NewOptions = Op#term.options -- [{proximity, Proximity}],
             Tokens = string:tokens(binary_to_list(Op#term.q), " "),
             NewOps = [#term { q=X, options=NewOptions }|| X <- Tokens],
-            pass1(#proximity { ops=NewOps, proximity=Proximity }, Config);
+            pass1(#proximity { ops=NewOps, proximity=Proximity }, Schema);
         true ->
             Op
     end;
 
-pass1(Op, Config) ->
-    F = fun(X) -> lists:flatten([pass1(Y, Config) || Y <- to_list(X)]) end,
+pass1(Op, Schema) ->
+    F = fun(X) -> lists:flatten([pass1(Y, Schema) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
 
 %% SECOND PASS
 %% - Flatten nested ands/ors. (Also move to qilr project.)
 %% - Normalize #term queries.
-pass2(OpList, Config) when is_list(OpList) ->
-    [pass2(Op, Config) || Op <- OpList];
+pass2(OpList, Schema) when is_list(OpList) ->
+    [pass2(Op, Schema) || Op <- OpList];
 
-pass2(Op = #field {}, Config) ->
-    {Index, Field} = normalize_field(Op#field.field, Config),
-    NewConfig = Config#config {
-        default_index = Index,
-        default_field = Field
-    },
+pass2(Op = #field {}, Schema) ->
+    {Index, Field} = normalize_field(Op#field.field, Schema),
+    %% TODO - Turn this into a new schema
+    {ok, NewSchema1} = riak_search_config:get_schema(Index),
+    NewSchema2 = NewSchema1:set_default_field(Field),
     case Op#field.ops of
-        [Op1] -> pass2(Op1, NewConfig);
-        Ops -> pass2(Ops, NewConfig)
+        [Op1] -> pass2(Op1, NewSchema2);
+        Ops -> pass2(Ops, NewSchema2)
     end;
 
-pass2(Op = #term {}, Config) ->
-    NewQ = normalize_term(Op#term.q, Config),
+pass2(Op = #term {}, Schema) ->
+    NewQ = normalize_term(Op#term.q, Schema),
     Options = Op#term.options,
-    rewrite_term(NewQ, Options, Config);
+    rewrite_term(NewQ, Options, Schema);
 
-%% pass2(Op = #land {}, Config) ->
+%% pass2(Op = #land {}, Schema) ->
 %%     %% Collapse nested and operations.
 %%     F = fun
 %%         (X = #land {}, {_, Acc}) -> {loop, X#land.ops ++ Acc};
@@ -112,12 +103,12 @@ pass2(Op = #term {}, Config) ->
 %%     %% If anything changed, do another round of collapsing...
 %%     case Continue of
 %%         stop ->
-%%             Op#land { ops=pass2(NewOps, Config) };
+%%             Op#land { ops=pass2(NewOps, Schema) };
 %%         loop ->
-%%             pass2(Op#land { ops=NewOps }, Config)
+%%             pass2(Op#land { ops=NewOps }, Schema)
 %%     end;
 
-%% pass2(Op = #lor {}, Config) ->
+%% pass2(Op = #lor {}, Schema) ->
 %%     %% Collapse nested or operations.
 %%     F = fun
 %%         (X = #lor {}, {_, Acc}) -> {loop, X#lor.ops ++ Acc};
@@ -128,26 +119,24 @@ pass2(Op = #term {}, Config) ->
 %%     %% If anything changed, do another round of collapsing...
 %%     case Continue of
 %%         stop ->
-%%             Op#lor { ops=pass2(NewOps, Config) };
+%%             Op#lor { ops=pass2(NewOps, Schema) };
 %%         loop ->
-%%             pass2(Op#lor { ops=NewOps }, Config)
+%%             pass2(Op#lor { ops=NewOps }, Schema)
 %%     end;
 
-pass2(Op, Config) ->
-    F = fun(X) -> lists:flatten([pass2(Y, Config) || Y <- to_list(X)]) end,
+pass2(Op, Schema) ->
+    F = fun(X) -> lists:flatten([pass2(Y, Schema) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
 
 %% Return true if this Query is a facet.
-is_facet({Index, Field, _}, Config) ->
-    FacetList = Config#config.facets,
-    FacetList1 = [normalize_field(X, Config) || X <- FacetList],
-    F = fun({FacetIndex, FacetField}) ->
-        Index == FacetIndex andalso Field == FacetField
-    end,
-    lists:any(F, FacetList1).
+is_facet({IndexName, FieldName, _}) ->
+    %% Load the schema...
+    {ok, Schema} = riak_search_config:get_schema(IndexName),
+    Field = Schema:find_field(FieldName),
+    Schema:is_field_facet(Field).
 
-normalize_field(OriginalField, Config) when is_list(OriginalField) ->
-    DefIndex = Config#config.default_index,
+normalize_field(OriginalField, Schema) when is_list(OriginalField) ->
+    DefIndex = Schema:name(),
     case string:tokens(OriginalField, ".") of
         [Field] -> {DefIndex, Field};
         [Index, Field] -> {Index, Field};
@@ -158,8 +147,8 @@ normalize_field(Field, _) when is_tuple(Field) -> Field.
 
 %% Rewrite a term, adding either a facet flag or node weights
 %% depending on whether this is a facet.
-rewrite_term(Q, Options, Config) ->
-    case is_facet(Q, Config) of
+rewrite_term(Q, Options, _Schema) ->
+    case is_facet(Q) of
         true ->
             [#term { q=Q, options=[facet|Options] }];
         false ->
@@ -180,11 +169,11 @@ rewrite_term(Q, Options, Config) ->
 
 
 %% Convert a string field into {Index, Field, Term}.
-normalize_term(OriginalField, Config) when is_binary(OriginalField) ->
-    normalize_term(binary_to_list(OriginalField), Config);
-normalize_term(OriginalTerm, Config) when is_list(OriginalTerm) ->
-    DefIndex = Config#config.default_index,
-    DefField = Config#config.default_field,
+normalize_term(OriginalField, Schema) when is_binary(OriginalField) ->
+    normalize_term(binary_to_list(OriginalField), Schema);
+normalize_term(OriginalTerm, Schema) when is_list(OriginalTerm) ->
+    DefIndex = Schema:name(),
+    DefField = Schema:default_field(),
     OriginalTerm1 = string:strip(OriginalTerm, right, $*),
     OriginalTerm2 = string:strip(OriginalTerm1, right, $?),
     case string:tokens(OriginalTerm2, ".") of
@@ -199,15 +188,15 @@ normalize_term(Term, _) when is_tuple(Term) -> Term.
 %% - Scan oplist looking for fuzzily matched terms. Determine
 %%   their expansions and replace the terms with their expanded
 %%   version.
-pass3(OpList, Config) when is_list(OpList) ->
-    [pass3(Op, Config) || Op <- OpList];
-pass3({BoolOp, SubTerms}, Config) when BoolOp =:= land;
+pass3(OpList, Schema) when is_list(OpList) ->
+    [pass3(Op, Schema) || Op <- OpList];
+pass3({BoolOp, SubTerms}, Schema) when BoolOp =:= land;
                                        BoolOp =:= lor;
                                        BoolOp =:= lnot->
 
-    {BoolOp, pass3(SubTerms, Config)};
+    {BoolOp, pass3(SubTerms, Schema)};
 pass3(#term{q={Index, Field, Term0},
-            options=Options}=Op, _Config) ->
+            options=Options}=Op, _Schema) ->
     case proplists:get_value(fuzzy, Options) of
         undefined ->
             Op;
@@ -222,24 +211,24 @@ pass3(#term{q={Index, Field, Term0},
                     {lor, FuzzyTerms}
             end
     end;
-pass3(Op, _Config) ->
+pass3(Op, _Schema) ->
     Op.
 
 %% FOURTH PASS
 %% - Collapse facets into the other branches of the query.
-pass4(OpList, Config) when is_list(OpList) ->
-    [pass4(Op, Config) || Op <- OpList];
+pass4(OpList, Schema) when is_list(OpList) ->
+    [pass4(Op, Schema) || Op <- OpList];
 
-pass4(Op = #land {}, Config) ->
+pass4(Op = #land {}, Schema) ->
     OpList = facetize(Op#land.ops),
-    Op#land { ops=pass4(OpList, Config) };
+    Op#land { ops=pass4(OpList, Schema) };
 
-pass4(Op = #lor {}, Config) ->
+pass4(Op = #lor {}, Schema) ->
     OpList = facetize(Op#lor.ops),
-    Op#lor { ops=pass4(OpList, Config) };
+    Op#lor { ops=pass4(OpList, Schema) };
 
-pass4(Op, Config) ->
-    F = fun(X) -> lists:flatten([pass4(Y, Config) || Y <- to_list(X)]) end,
+pass4(Op, Schema) ->
+    F = fun(X) -> lists:flatten([pass4(Y, Schema) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
 
 %% Given a list of operations, fold the facets into the non-facets.
@@ -281,22 +270,22 @@ inject_facets(Ops, Facets) when is_list(Ops) ->
 %% FIFTH PASS
 %% Expand wildcards and ranges into a #lor operator.
 %% Add doc_freq counts to all terms.
-pass5(OpList, Config) when is_list(OpList) ->
-    [pass5(X, Config) || X <- OpList];
+pass5(OpList, Schema) when is_list(OpList) ->
+    [pass5(X, Schema) || X <- OpList];
 
-pass5(Op = #inclusive_range {}, Config) ->
+pass5(Op = #inclusive_range {}, Schema) ->
     Start = hd(Op#inclusive_range.start_op),
     End = hd(Op#inclusive_range.end_op),
     Facets = proplists:get_all_values(facets, Start#term.options),
-    range_to_lor(Start#term.q, End#term.q, true, Facets, Config);
+    range_to_lor(Start#term.q, End#term.q, true, Facets, Schema);
 
-pass5(Op = #exclusive_range {}, Config) ->
+pass5(Op = #exclusive_range {}, Schema) ->
     Start = hd(Op#exclusive_range.start_op),
     End = hd(Op#exclusive_range.end_op),
     Facets = proplists:get_all_values(facets, Start#term.options),
-    range_to_lor(Start#term.q, End#term.q, false, Facets, Config);
+    range_to_lor(Start#term.q, End#term.q, false, Facets, Schema);
 
-pass5(Op = #term {}, Config) ->
+pass5(Op = #term {}, Schema) ->
     IsWildcardAll = ?IS_TERM_WILDCARD_ALL(Op),
     IsWildcardOne = ?IS_TERM_WILDCARD_ONE(Op),
     Facets = proplists:get_all_values(facets, Op#term.options),
@@ -304,20 +293,20 @@ pass5(Op = #term {}, Config) ->
         IsWildcardAll ->
             Start = Op#term.q,
             End = wildcard_all,
-            range_to_lor(Start, End, true, Facets, Config);
+            range_to_lor(Start, End, true, Facets, Schema);
         IsWildcardOne ->
             Start = Op#term.q,
             End = wildcard_one,
-            range_to_lor(Start, End, true, Facets, Config);
+            range_to_lor(Start, End, true, Facets, Schema);
         true ->
             Op
     end;
 
-pass5(Op, Config) ->
-    F = fun(X) -> lists:flatten([pass5(Y, Config) || Y <- to_list(X)]) end,
+pass5(Op, Schema) ->
+    F = fun(X) -> lists:flatten([pass5(Y, Schema) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
 
-range_to_lor(Start, End, Inclusive, Facets, _Config) ->
+range_to_lor(Start, End, Inclusive, Facets, _Schema) ->
     {Index, Field, StartTerm, EndTerm, _Size} = normalize_range(Start, End, Inclusive),
 
     %% Results are of form {"term", 'node@1.1.1.1', Count}
@@ -372,10 +361,10 @@ typesafe_size(Term) when is_list(Term) -> length(Term).
 %% SIXTH PASS
 %% Expand NOTs into multiple branches depending on parent.
 %% Collapse nested NOTs.
-pass6(OpList, Config) when is_list(OpList) ->
-    [pass6(X, Config) || X <- OpList];
+pass6(OpList, Schema) when is_list(OpList) ->
+    [pass6(X, Schema) || X <- OpList];
 
-pass6(Op = #land {}, Config) ->
+pass6(Op = #land {}, Schema) ->
     %% If the operation is a land, and it has a child lnot operation
     %% with with multiple ops, then split those ops.
     F = fun(X, Acc) ->
@@ -385,9 +374,9 @@ pass6(Op = #land {}, Config) ->
         end
     end,
     NewOps = lists:foldl(F, [], Op#land.ops),
-    #land { ops=to_list(pass6(NewOps, Config)) };
+    #land { ops=to_list(pass6(NewOps, Schema)) };
 
-pass6(Op = #lor {}, Config) ->
+pass6(Op = #lor {}, Schema) ->
     %% If the operation is a lor, and it has a child lnot operation
     %% with with multiple ops, then split those ops.
     F = fun(X, Acc) ->
@@ -397,23 +386,23 @@ pass6(Op = #lor {}, Config) ->
         end
     end,
     NewOps = lists:foldl(F, [], Op#lor.ops),
-    #lor { ops=to_list(pass6(NewOps, Config)) };
+    #lor { ops=to_list(pass6(NewOps, Schema)) };
 
-pass6(Op = #lnot { ops=Op }, _Config) when is_list(Op)->
+pass6(Op = #lnot { ops=Op }, _Schema) when is_list(Op)->
     throw({unexpected, Op});
 
-pass6(Op = #lnot { ops=Op }, Config) when not is_list(Op)->
+pass6(Op = #lnot { ops=Op }, Schema) when not is_list(Op)->
     case is_record(Op, lnot) of
         true ->
-            pass6(Op#lnot.ops, Config);
+            pass6(Op#lnot.ops, Schema);
         false ->
-            #lnot { ops=to_list(pass6(Op, Config)) }
+            #lnot { ops=to_list(pass6(Op, Schema)) }
     end;
 
 
 
-pass6(Op, Config) ->
-    F = fun(X) -> lists:flatten([pass6(Y, Config) || Y <- to_list(X)]) end,
+pass6(Op, Schema) ->
+    F = fun(X) -> lists:flatten([pass6(Y, Schema) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
 
 
@@ -423,23 +412,23 @@ pass6(Op, Config) ->
 %% {node_weight, Node, Weight} where Weight is simply the number of
 %% documents. We want to make sure that #lors and #lands happen on the
 %% node with the most weight.
-pass7(OpList, Config) when is_list(OpList) ->
-    [pass7(X, Config) || X <- OpList];
+pass7(OpList, Schema) when is_list(OpList) ->
+    [pass7(X, Schema) || X <- OpList];
 
-pass7(Op = #land {}, Config) ->
+pass7(Op = #land {}, Schema) ->
     Node = get_preferred_node(Op),
     Ops = Op#land.ops,
-    NewOp = Op#land { ops=pass7(Ops, Config) },
+    NewOp = Op#land { ops=pass7(Ops, Schema) },
     #node { ops=NewOp, node=Node };
 
-pass7(Op = #lor {}, Config) ->
+pass7(Op = #lor {}, Schema) ->
     Node = get_preferred_node(Op),
     Ops = Op#lor.ops,
-    NewOp = Op#lor { ops=pass7(Ops, Config) },
+    NewOp = Op#lor { ops=pass7(Ops, Schema) },
     #node { ops=NewOp, node=Node };
 
-pass7(Op, Config) ->
-    F = fun(X) -> lists:flatten([pass7(Y, Config) || Y <- to_list(X)]) end,
+pass7(Op, Schema) ->
+    F = fun(X) -> lists:flatten([pass7(Y, Schema) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
 
 
