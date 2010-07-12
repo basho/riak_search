@@ -1,3 +1,9 @@
+%% -------------------------------------------------------------------
+%%
+%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%%
+%% -------------------------------------------------------------------
+
 -module(riak_search_shell).
 
 -export([start/0, start/1, search/2, parse/2, graph/2]).

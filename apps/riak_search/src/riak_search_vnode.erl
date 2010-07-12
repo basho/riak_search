@@ -1,3 +1,9 @@
+%% -------------------------------------------------------------------
+%%
+%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%%
+%% -------------------------------------------------------------------
+
 -module(riak_search_vnode).
 -export([index/6,index/7,
          multi_index/3,
