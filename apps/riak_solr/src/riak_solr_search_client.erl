@@ -1,3 +1,9 @@
+%% -------------------------------------------------------------------
+%%
+%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%%
+%% -------------------------------------------------------------------
+
 -module(riak_solr_search_client, [RiakClient, SearchClient]).
 -export([parse_solr_xml/2,
          run_solr_command/3
