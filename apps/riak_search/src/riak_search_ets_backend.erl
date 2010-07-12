@@ -59,8 +59,7 @@ info(Index, Field, Term, Sender, State) ->
 info_range(Index, Field, StartTerm, EndTerm, _Size, Sender, State) ->
     Terms = find_terms_in_range(b(Index), b(Field),
                                 b(StartTerm), b(EndTerm),
-                                State#state.table,
-                                ets:first(State#state.table)),
+                                State),
     spawn(
       fun() ->
               R = [{T, node(),
@@ -71,6 +70,11 @@ info_range(Index, Field, StartTerm, EndTerm, _Size, Sender, State) ->
               riak_search_backend:info_response(Sender, R)
       end),
     noreply.
+
+find_terms_in_range(I, F, ST, ET, State) ->
+    find_terms_in_range(I, F, ST, ET,
+                        State#state.table,
+                        ets:first(State#state.table)).
 
 find_terms_in_range(_, _, _, _, _,'$end_of_table') ->
     [];
@@ -108,11 +112,28 @@ stream_results(Sender, FilterFun, {Results0, Continuation}) ->
 stream_results(Sender, _, '$end_of_table') ->
     riak_search_backend:stream_response_done(Sender).
 
-%%% TODO: find catalog_query/3 documentation
-catalog_query(CatalogQuery, _Sender, _State) ->
-    error_logger:info_msg("No idea what a catalog query is~n"
-                          "~p~n", [CatalogQuery]),
+%% TODO: hack up this function or change the implementation of
+%%       riak_search:do_catalog_query/3, such that catalog_queries
+%%       are performed on all vnodes, not just one per node
+catalog_query(CatalogQuery, Sender, State) ->
+    {Index, Field, StartTerm, EndTerm} = parse_catalog_query(CatalogQuery),
+    Terms = find_terms_in_range(Index, Field, StartTerm, EndTerm, State),
+    I = binary_to_list(Index),
+    F = binary_to_list(Field),
+    [riak_search_backend:catalog_query_response(
+       Sender, State#state.partition, I, F, T,
+       [{json_props, []}, {node, node()}])
+     || T <- Terms],
+    riak_search_backend:catalog_query_done(Sender),
     noreply.
+
+parse_catalog_query(CatalogQuery) ->
+    RE = <<"index:(.*) AND field:(.*) AND term:\\[(.*) TO (.*)\\]">>,
+    {match, [I, F, ST, ET]} = re:run(CatalogQuery, RE,
+                                     [{capture, [1, 2, 3, 4], binary}]),
+    {I, F, ST, ET}.
+                            
+
 
 %%% TODO: test fold/3
 fold(FoldFun, Acc, State) ->
