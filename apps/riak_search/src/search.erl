@@ -1,3 +1,9 @@
+%% -------------------------------------------------------------------
+%%
+%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%%
+%% -------------------------------------------------------------------
+
 %%% Convenience module for interacting with Search from the Erlang
 %%% command line. Allows the user to search for keys and docs, explain
 %%% queries, index documents in a directory, index a set of fields,

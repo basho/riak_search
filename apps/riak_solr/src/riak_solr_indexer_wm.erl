@@ -1,3 +1,9 @@
+%% -------------------------------------------------------------------
+%%
+%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%%
+%% -------------------------------------------------------------------
+
 -module(riak_solr_indexer_wm).
 -export([init/1, allowed_methods/2, malformed_request/2]).
 -export([process_post/2]).
