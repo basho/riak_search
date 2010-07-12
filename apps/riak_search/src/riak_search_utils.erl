@@ -87,10 +87,11 @@ collector_loop(_Ref, eof) ->
 
 %% Gine
 combine_terms({Value, Props1}, {Value, Props2}) ->
-    ScoreList1 = proplists:get_value(score, Props1),
-    ScoreList2 = proplists:get_value(score, Props1),
+    ScoreList1 = proplists:get_value(score, Props1, []),
+    ScoreList2 = proplists:get_value(score, Props2, []),
     NewProps = sets:to_list(sets:intersection(sets:from_list(Props1), sets:from_list(Props2))),
-    {Value, NewProps ++ [{score, ScoreList1 ++ ScoreList2 }]};
+    {Value, lists:keystore(score, 1, NewProps,
+                           {score, ScoreList1++ScoreList2})};
 combine_terms(Other1, Other2) ->
     error_logger:error_msg("Could not combine terms: [~p, ~p]~n", [Other1, Other2]),
     throw({could_not_combine, Other1, Other2}).
