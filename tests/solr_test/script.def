@@ -14,7 +14,7 @@
         [{q, "acc:ABC"}, {wt, xml}, {rows, 999}], 
         [{length, 88}]},
     {solr_select, 
-        [{q, "color:red OR color:blue)"}, {wt, xml}, {rows, 999}], 
+        [{q, "(color:red OR color:blue)"}, {wt, xml}, {rows, 999}], 
         [{length, 29}]},
 
     {echo, "Change default field. (XML)"},
@@ -66,7 +66,7 @@
         [{q, "acc:ABC"}, {wt, json}, {rows, 999}], 
         [{length, 88}]},
     {solr_select, 
-        [{q, "color:red OR color:blue)"}, {wt, json}, {rows, 999}], 
+        [{q, "(color:red OR color:blue)"}, {wt, json}, {rows, 999}], 
         [{length, 29}]},
 
     {echo, "Change default field. (JSON)"},

@@ -105,9 +105,6 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
          quitFuture.addListener(ChannelFutureListener.CLOSE);
          return;
       }
-      if ( (e.getMessage()) instanceof String) {
-          log.info("what the FUCK: " + e.getMessage());          
-      }
       ByteBuffer bbuf = ((ChannelBuffer) e.getMessage()).toByteBuffer();
       if (bbuf.hasArray()) {
          byte[] b_ar = bbuf.array();
