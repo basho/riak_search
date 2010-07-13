@@ -197,7 +197,7 @@ public class ColumnStore implements Runnable {
         byte[] columnKey = getColumnKey(table, key);
         BtreeStore store = stores.get(tableHash.get(table));
         if (store.delete(columnKey)) {
-            decrementTableCount(table);
+            //decrementTableCount(table);
             return true;
         }
         return false;
