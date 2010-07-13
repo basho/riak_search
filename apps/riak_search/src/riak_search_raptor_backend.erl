@@ -42,6 +42,7 @@
 %% @doc Start this backend.
 start(Partition, _Config) ->
     {ok, #state { partition=Partition }}.
+        
 
 %% @spec stop(state()) -> ok | {error, Reason :: term()}
 stop(_State) ->
@@ -67,14 +68,14 @@ index(Index, Field, Term, DocId, Props, State) ->
 do_index(Partition, Index, Field, Term, DocId, Props) ->
     {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
     try
-        raptor_conn:index(Conn,
-                          to_binary(Index),
-                          to_binary(Field),
-                          to_binary(Term),
-                          to_binary(DocId),
-                          Partition,
-                          term_to_binary(Props),
-                          current_key_clock())
+        {ok, indexed} = raptor_conn:index(Conn,
+                                          to_binary(Index),
+                                          to_binary(Field),
+                                          to_binary(Term),
+                                          to_binary(DocId),
+                                          Partition,
+                                          term_to_binary(Props),
+                                          current_key_clock())
     after
         riak_sock_pool:checkin(?CONN_POOL, Conn)
     end,
@@ -719,4 +720,24 @@ run_timeout_test(TestFun) ->
         exit(Sup, kill)
     end.
     
+
+eqc_test() ->
+    TestDir = "test/raptor-backend",
+    Cleanup = fun(_State,_OldS) ->
+                      os:cmd("rm -rf " ++ TestDir),
+                      catch raptor_monitor:restart()
+              end,
+    error_logger:tty(false),
+    application:load(raptor),
+    application:set_env(raptor, raptor_backend_root, TestDir),
+    ok = riak_core_util:start_app_deps(raptor),
+    application:start(raptor),
+    error_logger:tty(true),
+    try
+        index_backend_eqc:test(?MODULE, false, [], Cleanup)
+    after
+        application:stop(raptor)
+    end.
+
+
 -endif.
