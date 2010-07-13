@@ -32,7 +32,7 @@ public class RaptorUtils {
         return new ConsistentHash<String>(1, ar);
     }
     
-    public static ConsistentHash createConsistentHash(String[] pfx) throws Exception {
+    public static ConsistentHash<String> createConsistentHash(String[] pfx) throws Exception {
         List<String> ar = new ArrayList<String>();
         for (int i = 0; i < pfx.length; i++) {
             ar.add(pfx[i]);
@@ -40,7 +40,7 @@ public class RaptorUtils {
         return new ConsistentHash<String>(1, ar);
     }
     
-    public static ConsistentHash createConsistentHash(List<String> pfx) throws Exception {
+    public static ConsistentHash<String> createConsistentHash(List<String> pfx) throws Exception {
         return new ConsistentHash<String>(1, pfx);
     }
     
