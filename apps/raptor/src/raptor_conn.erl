@@ -191,8 +191,14 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info(timeout, #state{req_type=ReqType, reqid=ReqId, dest=Dest}=State) ->
-    Message = build_timeout_message(ReqType, ReqId),
-    Dest ! Message,
+    case Dest of
+        undefined ->
+            gen_server:reply(State#state.reply_to, {error, timeout});
+
+        _ when is_pid(Dest) ->
+            Message = build_timeout_message(ReqType, ReqId),
+            Dest ! Message
+    end,
     {noreply, State#state{req_type=undefined, reqid=undefined, dest=undefined}};
 
 handle_info({tcp, Sock, _Data}, #state{req_type=index}=State) ->
