@@ -32,7 +32,8 @@
 -define(SERVER, ?MODULE).
 -define(TIMEOUT, 30000).
 
--record(state, {sock, caller, req_type, reqid, dest}).
+-record(state, {sock, caller, req_type, reqid, dest,
+                reply_to}). % process to reply to for delayed call() replies
 
 close(ConnPid) ->
     gen_server:call(ConnPid, close_conn).
@@ -135,11 +136,11 @@ handle_call(_Msg, _From, #state{req_type=ReqType}=State) when ReqType /= undefin
 handle_call(close_conn, _From, State) ->
     {stop, normal, ok, State};
 
-handle_call({index, IndexRec}, _From, #state{sock=Sock}=State) ->
+handle_call({index, IndexRec}, From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_index(IndexRec),
     gen_tcp:send(Sock, Data),
     inet:setopts(Sock, [{active, once}]),
-    {reply, {ok, indexed}, State#state{req_type=index}, ?RECV_TIMEOUT};
+    {noreply, State#state{req_type=index, reply_to=From}, ?RECV_TIMEOUT};
 
 handle_call({deleteentry, DeleteEntryRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_deleteentry(DeleteEntryRec),
@@ -196,7 +197,9 @@ handle_info(timeout, #state{req_type=ReqType, reqid=ReqId, dest=Dest}=State) ->
 
 handle_info({tcp, Sock, _Data}, #state{req_type=index}=State) ->
     inet:setopts(Sock, [{active, once}]),
-    {noreply, State#state{req_type=undefined, reqid=undefined, dest=undefined}};
+    gen_server:reply(State#state.reply_to, {ok, indexed}), 
+    {noreply, State#state{req_type=undefined, reqid=undefined, 
+                          dest=undefined, reply_to=undefined}};
 
 %%
 %% for now, stream and multistream returns protobuf messages exactly the same as stream
