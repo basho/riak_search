@@ -441,21 +441,21 @@ fold_catalog_process(CatRef,
                     spawn_link(fun() ->
                         %% io:format("fold_catalog_process: catalog_query_response: ~p: ~p.~p.~p (~p)~n",
                         %%     [Partition, Index, Field, Term, JSONProps]),
-                        {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
+                        {ok, StreamConn} = riak_sock_pool:checkout(?CONN_POOL),
                         try
                             IndexBin = to_binary(Index),
                             FieldBin = to_binary(Field),
                             TermBin = to_binary(Term),
                             {ok, StreamRef} = raptor_conn:stream(
-                                                Conn,
+                                                StreamConn,
                                                 IndexBin,
                                                 FieldBin,
                                                 TermBin,
                                                 to_binary(Partition)),
                           fold_stream_process(Me, FoldResultPid, StreamRef,
-                                              IndexBin, FieldBin, TermBin, Conn)
+                                              IndexBin, FieldBin, TermBin, StreamConn)
                         after 
-                            riak_sock_pool:checkin(?CONN_POOL, Conn)
+                            riak_sock_pool:checkin(?CONN_POOL, StreamConn)
                         end end),
                     fold_catalog_process(CatRef, FoldResultPid, CatalogDone,
                                          StreamProcessCount+1, 
