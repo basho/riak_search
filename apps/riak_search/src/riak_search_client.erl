@@ -182,9 +182,10 @@ collect_results(SearchRef, Timeout, Acc) ->
         {[], Ref} ->
             collect_results(Ref, Timeout, Acc);
         {Results, Ref} ->
-            collect_results(Ref, Timeout, Acc ++ Results);
-        Error ->
-            Error
+            collect_results(Ref, Timeout, Acc ++ Results)
+        %% Dialyzer says this clause is impossible
+        % Error ->
+        %     Error
     end.
 
 %% Collect one or more individual results in as non-blocking of a

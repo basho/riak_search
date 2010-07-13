@@ -214,7 +214,7 @@ fold(Folder, Acc, State) ->
     Partition = integer_to_list(State#state.partition),
     {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
     Me = self(),
-    FoldCatRef = {fold_catalog, erlang:make_ref()},
+    FoldCatRef = erlang:make_ref(),
     CatalogResultsPid = spawn_link(fun() ->
                                            fold_catalog_process(FoldCatRef, Me, 
                                                                 false, 0, 0, false, Conn) end),

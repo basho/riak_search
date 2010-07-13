@@ -394,15 +394,17 @@ pass6(Op = #lor {}, Schema) ->
     NewOps = lists:foldl(F, [], Op#lor.ops),
     #lor { ops=to_list(pass6(NewOps, Schema)) };
 
-pass6(Op = #lnot { ops=Op }, _Schema) when is_list(Op)->
-    throw({unexpected, Op});
+%% Dialyzer says this clause is impossible
+% pass6(Op = #lnot { ops=Op }, _Schema) when is_list(Op)->
+%     throw({unexpected, Op});
 
 pass6(Op = #lnot { ops=Op }, Schema) when not is_list(Op)->
     case is_record(Op, lnot) of
         true ->
-            pass6(Op#lnot.ops, Schema);
-        false ->
-            #lnot { ops=to_list(pass6(Op, Schema)) }
+            pass6(Op#lnot.ops, Schema)
+        %% Dialyzer says this clause is impossible
+        % false ->
+        %     #lnot { ops=to_list(pass6(Op, Schema)) }
     end;
 
 

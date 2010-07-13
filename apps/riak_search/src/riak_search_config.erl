@@ -142,9 +142,10 @@ load_default_schema(SchemaName) ->
                 {ok, RawSchema} ->
                     case riak_search_schema_parser:from_eterm(SchemaName, RawSchema) of
                         {ok, Schema} ->
-                            {ok, Schema:set_name(riak_search_utils:to_list(SchemaName))};
-                        Error ->
-                            Error
+                            {ok, Schema:set_name(riak_search_utils:to_list(SchemaName))}
+                        %% Dialyzer says this clause is impossible
+                        % Error ->
+                        %     Error
                     end;
                 Error ->
                     error_logger:error_msg("Error parsing default schema.~n", []),

@@ -101,7 +101,7 @@ idle(empty, State) ->
 %% Handle sync_send_event
 -spec idle(sync_event(),term(),#state{}) -> {reply, term(), statename(), #state{}} |
                                             {next_state, statename(), #state{}} |
-                                            {stop, term(), #state{}}.
+                                            {stop, term(), term(), #state{}}.
 idle({index, Terms}, From, #state{terms = []} = State) ->
     {Status, State1} = add_terms(Terms, From, State),
     {StateName, NewState} = send_batch(State1),
@@ -116,8 +116,7 @@ idle(done, _From, #state{terms = []} = State) ->
 
 %% @private
 %% handle gen_fsm:send_event
--spec receiving(event(),#state{}) -> {next_state, statename(), #state{}} | 
-                                     {stop, term(), #state{}}.
+-spec receiving(event(),#state{}) -> {next_state, statename(), #state{}}.
 receiving({Ref, {indexed, _Node}}, #state{ref = Ref}=State) ->
     %% Reply for the current batch
     case State#state.replies_left - 1 of
@@ -144,8 +143,7 @@ receiving(empty, State) ->
 %% @private
 %% Handle sync_send_event
 -spec receiving(sync_event(),term(),#state{}) -> {reply, term(), statename(), #state{}} |
-                                                 {next_state, statename(), #state{}} |
-                                                 {stop, term(), #state{}}.
+                                                 {next_state, statename(), #state{}}.
 receiving({index, Terms}, From, State) ->
     case add_terms(Terms, From, State) of
         {ok, NewState} ->
