@@ -87,7 +87,7 @@ multi_index(IFTVPList, State) ->
     try
         %% Index for raptor is fire and forget - no point checking
         %% return value
-        [raptor_conn:index(Conn,
+        [{ok, _} = raptor_conn:index(Conn,
                            to_binary(Index),
                            to_binary(Field),
                            to_binary(Term),
