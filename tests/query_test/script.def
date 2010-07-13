@@ -7,7 +7,7 @@
     {solr,   "./solr_add.xml"},
 
     %% Let the database catch up.
-    {sleep,  5},
+    %% {sleep,  5},
 
     {echo,   "Perform some simple queries."},
     {search, "acc:ABC", [{length, 88}]},

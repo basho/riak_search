@@ -7,7 +7,7 @@
     {solr_update, "./solr_add.xml"},
 
     %% Let the database catch up.
-    {sleep,  5},
+    %% {sleep,  5},
 
     {echo, "Perform some queries. (XML)"},
     {solr_select, 
@@ -36,7 +36,7 @@
     {echo, "Test start. (XML)"},
     {solr_select, 
         [{q, "acc:ABC"}, {wt, xml}, {start, 1}, {rows, 999}], 
-        [{length, 88}]},
+        [{length, 87}]},
     {solr_select, 
         [{q, "acc:ABC"}, {wt, xml}, {start, 20}, {rows, 999}], 
         [{length, 68}]},
@@ -88,7 +88,7 @@
     {echo, "Test start. (JSON)"},
     {solr_select, 
         [{q, "acc:ABC"}, {wt, json}, {start, 1}, {rows, 999}], 
-        [{length, 88}]},
+        [{length, 87}]},
     {solr_select, 
         [{q, "acc:ABC"}, {wt, json}, {start, 20}, {rows, 999}], 
         [{length, 68}]},

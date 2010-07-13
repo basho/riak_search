@@ -7,7 +7,7 @@
     {solr,   "./solr_add.xml"},
 
     %% Let the database catch up.
-    {sleep,  5},
+    %% {sleep,  5},
 
     {echo,   "Verify that we find all five documents containing 'one'."},
     {search, "one", [{length, 5}]},

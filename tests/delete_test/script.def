@@ -7,7 +7,7 @@
  {solr,   "./solr_add.xml"},
 
  %% Let the database catch up.
- {sleep,  5},
+ %% {sleep,  1},
 
  {echo,   "Verify that the data was written."},
  {search, "key:sample100_AAA", [{length, 1}]},
@@ -28,7 +28,7 @@
  {search, "acc:AJA", [{length, 10}]},
  {solr,   "./solr_delete_by_query.xml"},
  {search, "key:sample100_AJA", [{length, 0}]},
- {search, "acc:AAA", [{lenth, 70}]},
+ {search, "acc:AAA", [{length, 70}]},
  {search, "acc:AJA", [{length, 0}]},
 
  %% Cleanup.
