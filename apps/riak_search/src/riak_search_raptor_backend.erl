@@ -734,7 +734,7 @@ eqc_test() ->
     application:start(raptor),
     error_logger:tty(true),
     try
-        index_backend_eqc:test(?MODULE, false, [], Cleanup)
+        backend_eqc:test(?MODULE, false, [], Cleanup)
     after
         application:stop(raptor)
     end.
