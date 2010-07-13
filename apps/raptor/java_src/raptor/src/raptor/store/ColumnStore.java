@@ -451,13 +451,11 @@ public class ColumnStore implements Runnable {
     }
     
     public void checkpoint() throws Exception {
-        log.info("<checkpoint>");
-        /*
+        //log.info("<checkpoint>");
         CheckpointConfig config = new CheckpointConfig();
         config.setKBytes(1000);
         config.setForce(true);
         env.checkpoint(config);
-        */
     }
     
     public void close() throws Exception {

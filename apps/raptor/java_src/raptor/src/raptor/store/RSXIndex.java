@@ -80,7 +80,7 @@ public class RSXIndex implements Runnable {
                     return;
                 }
                 long cpt = System.currentTimeMillis();
-                //store.checkpoint();
+                store.checkpoint();
                 store.sync();
                 store_commit_ct++;
                 if (STORE_COMMIT_INTERVAL * store_commit_ct >= 
