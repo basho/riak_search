@@ -10,27 +10,29 @@
  {sleep,  5},
 
  {echo,   "Verify that the data was written."},
- {search, "id:sample100_AAA", [{length, 1}]},
- {search, "id:sample100_AJJ", [{length, 1}]},
+ {search, "key:sample100_AAA", [{length, 1}]},
+ {search, "key:sample100_AJJ", [{length, 1}]},
  {search, "acc:AAA", [{length, 100}]},
 
  {echo ,  "Delete data by Id."},
  {solr,   "./solr_delete_by_id.xml"},
- {search, "id:sample100_AAA", [{length, 0}]},
+ {search, "key:sample100_AAA", [{length, 0}]},
  {search, "acc:AAA", [{length, 90}]},
 
  {echo ,  "Delete by Index:Id."},
  {solr,   "./solr_delete_by_index_id.xml"},
- {search, "id:sample100_ABA", [{length, 0}]},
+ {search, "key:sample100_ABA", [{length, 0}]},
  {search, "acc:AAA", [{length, 80}]},
 
  {echo,   "Delete by Query."},
  {search, "acc:AJA", [{length, 10}]},
  {solr,   "./solr_delete_by_query.xml"},
- {search, "id:sample100_AJA", [{length, 0}]},
- {search, "acc:AJA", [{length, 70}]},
+ {search, "key:sample100_AJA", [{length, 0}]},
+ {search, "acc:AAA", [{lenth, 70}]},
+ {search, "acc:AJA", [{length, 0}]},
 
  %% Cleanup.
  {echo,   "De-indexing documents..."},
- {solr,   "./solr_delete_all.xml"}
+ {solr,   "./solr_delete_all.xml"},
+ {echo,   "Done."} 
 ].
