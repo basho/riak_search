@@ -214,7 +214,7 @@ handle_call({buffer_to_segment, Buffer, Segment}, _From, State) ->
             %% Spawn a function to merge a bunch of segments into one...
             Pid = self(),
             spawn_link(fun() ->
-                StartIFT = mi_utils:ift_pack(0, 0, 0, 0, 0),
+                StartIFT = mi_utils:ift_pack(0, 0, 0),
                 EndIFT = all,
                 SegmentIterators = [mi_segment:iterator(StartIFT, EndIFT, X) || X <- SegmentsToCompact],
                 GroupIterator = build_group_iterator(SegmentIterators),
@@ -359,7 +359,7 @@ handle_call({fold, Fun, Acc}, _From, State) ->
 
     %% Fold over each buffer...
     F1 = fun(Buffer, AccIn) ->
-        Begin = mi_utils:ift_pack(0, 0, 0, 0, 0),
+        Begin = mi_utils:ift_pack(0, 0, 0),
         End = all,
         BufferIterator = mi_buffer:iterator(Begin, End, Buffer),
         fold(WrappedFun, AccIn, BufferIterator())
@@ -368,7 +368,7 @@ handle_call({fold, Fun, Acc}, _From, State) ->
 
     %% Fold over each segment...
     F2 = fun(Segment, AccIn) ->
-        Begin = mi_utils:ift_pack(0, 0, 0, 0, 0),
+        Begin = mi_utils:ift_pack(0, 0, 0),
         End = all,
         SegmentIterator = mi_segment:iterator(Begin, End, Segment),
         fold(WrappedFun, AccIn, SegmentIterator())

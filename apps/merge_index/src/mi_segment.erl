@@ -240,8 +240,9 @@ write_offsets(Segment) ->
     Table = Segment#segment.table,
     ok = ets:tab2file(Table, offsets_file(Segment)).
 
-read_seg_value(undefined) ->
-    eof;
+%% Dialyzer says this clause is impossible.
+%% read_seg_value(undefined) ->
+%%     eof;
 read_seg_value(FH) ->
     case file:read(FH, 2) of
         {ok, <<1:1/integer, Size:15/integer>>} ->
@@ -281,7 +282,7 @@ test() ->
     [file:delete(X) || X <- filelib:wildcard("/tmp/test_merge_index_*")],
 
     %% Create a buffer...
-    BufferA = mi_buffer:open("/tmp/test_merge_index_bufferA"),
+    BufferA = mi_buffer:open("/tmp/test_merge_index_bufferA", [write]),
     BufferA1 = mi_buffer:write(<<1>>, 1, [], 1, BufferA),
     BufferA2 = mi_buffer:write(<<2>>, 2, [], 1, BufferA1),
     BufferA3 = mi_buffer:write(<<3>>, 3, [], 1, BufferA2),

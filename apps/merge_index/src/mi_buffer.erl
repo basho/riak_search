@@ -153,9 +153,10 @@ iterator_1({Table, IFT, EndIFT}) ->
     [{IFT, Values}] = ets:lookup(Table, IFT),
     ValuesIterator = gb_trees:next(gb_trees:iterator(Values)),
     NextIFT = ets:next(Table, IFT),
-    iterator_2(IFT, ValuesIterator, {Table, NextIFT, EndIFT});
-iterator_1('$end_of_table') ->
-    eof.
+    iterator_2(IFT, ValuesIterator, {Table, NextIFT, EndIFT}).
+%% Dialyzer says this clause is impossible.
+%% iterator_1('$end_of_table') ->
+%%    eof.
 
 %% Iterate through values. at a values level...
 iterator_2(IFT, {Value, {Props, TS}, Iter}, Continuation) ->
