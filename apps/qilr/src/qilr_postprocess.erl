@@ -81,13 +81,13 @@ analyze_terms(AnalyzerPid, Schema, [{field, FieldName, TermText, TProps}|T], Acc
                   true ->
                       case analyze_term_text(FieldName, AnalyzerPid, Schema, TermText) of
                           {single, NewText} ->
-                              BaseQuery = {field, FieldName, NewText, TProps},
-                              {phrase, TermText, BaseQuery};
+                              BaseQuery = {field, FieldName, NewText, []},
+                              {phrase, TermText, BaseQuery, add_proximity_terms(AnalyzerPid, TermText, TProps)};
                           {multi, NewTexts} ->
                               BaseQuery = {land,
-                                           [{field, FieldName, NT, TProps} ||
+                                           [{field, FieldName, NT, []} ||
                                                NT <- NewTexts]},
-                              {phrase, TermText, BaseQuery};
+                              {phrase, TermText, BaseQuery, add_proximity_terms(AnalyzerPid, TermText, TProps)};
                           none ->
                               none
                       end
@@ -116,13 +116,14 @@ analyze_terms(AnalyzerPid, Schema, [{term, TermText, TProps}|T], Acc) ->
                   true ->
                       case analyze_term_text(default, AnalyzerPid, Schema, TermText) of
                           {single, NewText} ->
-                              BaseQuery = {term, NewText, TProps},
-                              {phrase, TermText, [{base_query, BaseQuery}|TProps]};
+                              BaseQuery = {term, NewText, []},
+                              {phrase, TermText, BaseQuery, add_proximity_terms(AnalyzerPid, TermText, TProps)};
                           {multi, NewTexts} ->
                               BaseQuery = {land,
-                                           [{term, NT, TProps} ||
+                                           [{term, NT, []} ||
                                                NT <- NewTexts]},
-                              {phrase, TermText, BaseQuery};
+                              {phrase, TermText, BaseQuery,
+                               add_proximity_terms(AnalyzerPid, TermText, TProps)};
                           none ->
                               none
                       end
@@ -158,6 +159,17 @@ default_bool_children([H|T], DefaultBoolOp) ->
     [H|default_bool_children(T, DefaultBoolOp)];
 default_bool_children(Query, _DefaultBoolOp) ->
     Query.
+
+add_proximity_terms(AnalyzerPid, TermText, Props) ->
+    case proplists:get_value(proximity, Props, undefined) of
+        undefined ->
+            Props;
+        _ ->
+            {ok, Terms0} = qilr_analyzer:analyze(AnalyzerPid, TermText, ?WHITESPACE_ANALYZER),
+            Terms = [list_to_binary(string:strip(binary_to_list(T), both, 34)) ||
+                        T <- Terms0],
+            [{proximity_terms, Terms}|Props]
+    end.
 
 %% For testing only
 -ifdef(TEST).
