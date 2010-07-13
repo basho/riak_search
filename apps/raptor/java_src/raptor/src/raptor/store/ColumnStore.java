@@ -119,10 +119,10 @@ public class ColumnStore implements Runnable {
     private byte[] getColumnKey(String table, byte[] key) 
         throws Exception {
         if ((new String(key, "UTF-8")).equals("")) {
-            return (table + "|").getBytes("UTF-8");
+            return (table).getBytes("UTF-8");
         }
         ColumnKey ck = new ColumnKey();
-        ck.setTable(table + "|");
+        ck.setTable(table);
         ck.setKey(key);
         ColumnKeyTupleBinding keyBinding = new ColumnKeyTupleBinding();
         DatabaseEntry dbKey = new DatabaseEntry();
