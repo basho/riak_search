@@ -90,7 +90,7 @@ to_xml(Req, #state{sort=SortBy}=State) ->
     {riak_solr_output:xml_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, Docs), Req, State}.
 
 run_query(#state{client=Client, schema=Schema, squery=SQuery,
-                 query_ops=QueryOps}=State) ->
+                 query_ops=QueryOps}) ->
     #squery{query_start=QStart, query_rows=QRows}=SQuery,
 
     %% Run the query...
