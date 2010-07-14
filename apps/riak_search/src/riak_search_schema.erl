@@ -107,35 +107,25 @@ field_types() ->
 
 %% Return the field matching the specified name, or 'undefined'
 find_field(FName) ->
-    find_field_inner(FName, FieldsAndFacets).
+    find_field(FName, FieldsAndFacets).
 
-find_field_inner(FName, []) ->
-    error_logger:error_msg("Could not locate field ~s in Schema ~s! Using defaults.", [FName, Name]),
-    #riak_search_field {
-        name=FName, 
-        type=string, 
-        padding_size=0,
-        padding_char=$\s,
-        required=false, 
-        dynamic=false, 
-        analyzer_factory=AnalyzerFactory, 
-        facet=false
-    };
-find_field_inner(FName, [Field|Fields]) ->
+find_field(FName, []) ->
+    throw({error, missing_field, FName});
+find_field(FName, [Field|Fields]) ->
     case Field#riak_search_field.dynamic of
-        true -> 
+        true ->
             case re:run(FName, Field#riak_search_field.name) of
-                {match, _} -> 
+                {match, _} ->
                     Field;
                 nomatch ->
-                    find_field_inner(FName, Fields)
+                    find_field(FName, Fields)
             end;
         false ->
             case FName == Field#riak_search_field.name of
                 true ->
                     Field;
                 false ->
-                    find_field_inner(FName, Fields)
+                    find_field(FName, Fields)
             end
     end.
 
