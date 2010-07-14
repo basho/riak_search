@@ -45,9 +45,11 @@
     
     {echo,    "Ranges"},
     {search,  "key:[keyAAA TO keyAAJ]", [{length, 10}]},
+    {search,  "key:[keyaaa TO keyaaj]", [{length, 10}]},
     {search,  "color:[aaa TO ccc]", [{length, 14}]},
     {search,  "color:[blue TO yellow]", [{length, 100}]},
     {search,  "key:{keyAAA TO keyAAJ}", [{length, 8}]},
+    {search,  "key:{keyaaa TO keyaaj}", [{length, 8}]},
     {search,  "color:{aaa TO ccc}", [{length, 14}]},
     {search,  "color:{blue TO yellow}", [{length, 72}]},
 

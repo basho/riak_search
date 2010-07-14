@@ -88,6 +88,30 @@
         {dynamic_field, [
             {name, "facet_*"},
             {facet, true}
+        ]},
+
+        %% Test ordering...
+        {field, [
+            {name, "order1_int"},
+            {type, integer},
+            {padding_size, 4}
+        ]},
+
+        {dynamic_field, [
+            {name, "order1_*"},
+            {type, string}
+        ]},
+
+        {dynamic_field, [
+            {name, "order2_*"},
+            {type, integer},
+            {padding_size, 4}
+        ]},
+        
+        % This field should be ignored.
+        {field, [
+            {name, "order2_int"},
+            {type, string}
         ]}
     ]
 }.

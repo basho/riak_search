@@ -11,6 +11,8 @@
     <field name="facet">one</field>
     <field name="dyn_facet">one</field>
     <field name="facet_dyn">one</field>
+    <field name="order1_int">1</field>
+    <field name="order2_int">1</field>
   </doc>
   <doc>
     <field name="id">2</field>
