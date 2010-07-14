@@ -13,7 +13,7 @@
     {search, "color:(red OR blue)", []},
     {search, "color:red OR color:blue", []},
     {search, "color:red OR parity:odd", []},
-    {search, "color:red OR parity:odd OR key:sample100_aab", []},
+    {search, "color:red OR parity:odd OR key:keyAAB", []},
 
     {echo,    "'NOT' Operator"},
     {search,  "acc:(aab AND NOT aac)", []},
@@ -32,13 +32,13 @@
     {echo,    "Grouping"},
     {search,  "(color:red OR color:blue) AND (acc:aja)", []},
     {search,  "(color:red AND parity:even) OR (color:blue AND parity:odd)", []},
-    {search,  "(color:red AND (parity:even OR key:sample100_abe)) OR ((color:blue OR key:sample100_abc) AND parity:odd)", []},
+    {search,  "(color:red AND (parity:even OR key:keyABE)) OR ((color:blue OR key:keyABC) AND parity:odd)", []},
 
     {echo,    "Ranges"},
-    {search,  "key:[sample100_aaa TO sample100_aaj]", []},
+    {search,  "key:[keyAAA TO keyAAJ]", []},
     {search,  "color:[aaa TO ccc]", []},
     {search,  "color:[blue TO yellow]", []},
-    {search,  "key:{sample100_aaa TO sample100_aaj}", []},
+    {search,  "key:{keyAAA TO keyAAJ}", []},
     {search,  "color:{aaa TO ccc}", []},
     {search,  "color:{blue TO yellow}", []},
 
