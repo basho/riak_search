@@ -3723,7 +3723,7 @@ public final class Messages {
     public boolean hasProps() { return hasProps; }
     public com.google.protobuf.ByteString getProps() { return props_; }
     
-    // required bytes key_clock = 3;
+    // optional bytes key_clock = 3;
     public static final int KEY_CLOCK_FIELD_NUMBER = 3;
     private boolean hasKeyClock;
     private com.google.protobuf.ByteString keyClock_ = com.google.protobuf.ByteString.EMPTY;
@@ -3735,7 +3735,6 @@ public final class Messages {
     public final boolean isInitialized() {
       if (!hasValue) return false;
       if (!hasProps) return false;
-      if (!hasKeyClock) return false;
       return true;
     }
     
@@ -4023,7 +4022,7 @@ public final class Messages {
         return this;
       }
       
-      // required bytes key_clock = 3;
+      // optional bytes key_clock = 3;
       public boolean hasKeyClock() {
         return result.hasKeyClock();
       }
@@ -5222,7 +5221,7 @@ public final class Messages {
       "x\030\001 \002(\t\022\r\n\005field\030\002 \002(\t\022\014\n\004term\030\003 \002(\t\022\016\n\006" +
       "doc_id\030\004 \002(\t\022\021\n\tpartition\030\005 \002(\t\022\024\n\014messa",
       "ge_type\030\006 \002(\t\"A\n\016StreamResponse\022\r\n\005value" +
-      "\030\001 \002(\t\022\r\n\005props\030\002 \002(\014\022\021\n\tkey_clock\030\003 \002(\014" +
+      "\030\001 \002(\t\022\r\n\005props\030\002 \002(\014\022\021\n\tkey_clock\030\003 \001(\014" +
       "\"+\n\014InfoResponse\022\014\n\004term\030\001 \002(\t\022\r\n\005count\030" +
       "\002 \002(\003\"i\n\024CatalogQueryResponse\022\021\n\tpartiti" +
       "on\030\001 \002(\t\022\r\n\005index\030\002 \002(\t\022\r\n\005field\030\003 \002(\t\022\014" +
