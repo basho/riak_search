@@ -114,27 +114,22 @@ public class BtreeStore {
         String logDirectory) {
         EnvironmentConfig envConf = new EnvironmentConfig();
         envConf.setAllowCreate(true);
-        //envConf.setInitializeLogging(true);
-        
-        //envConf.setRunRecovery(true);
-        
-        //envConf.setLogDirectory(new File(logDirectory));
-        
-        
+        envConf.setInitializeLogging(true);
+        envConf.setRunRecovery(true);
+        envConf.setLogDirectory(new File(logDirectory));
         
         envConf.setCacheSize(218435456);
         envConf.setInitializeCache(true);
-        //envConf.setMMapSize(100000000);
+        envConf.setMMapSize(100000000);
         
         
+        envConf.setMaxLogFileSize(10000000);
         
-        //envConf.setMaxLogFileSize(1000000);
+        //envConf.setInitializeLocking(false);
         
-        ////envConf.setInitializeLocking(false);
+        envConf.setLogAutoRemove(true);
         
-        //envConf.setLogAutoRemove(true);
         //envConf.setDsyncLog(false);
-        
         //envConf.setDirectDatabaseIO(true);
         //envConf.setDsyncDatabases(false);
         
@@ -148,10 +143,10 @@ public class BtreeStore {
         //envConf.setMutexIncrement(5000);
         //envConf.setLockDetectMode(LockDetectMode.RANDOM);
         
-        //envConf.setTxnNoSync(true);
+        envConf.setTxnNoSync(true);
         //envConf.setTxnNotDurable(true);
         
-        envConf.setTransactional(false);
+        envConf.setTransactional(true);
         
         try {
             RaptorUtils.ensureDirectory(directory);

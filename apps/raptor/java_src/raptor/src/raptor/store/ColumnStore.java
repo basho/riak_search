@@ -119,10 +119,10 @@ public class ColumnStore implements Runnable {
     private byte[] getColumnKey(String table, byte[] key) 
         throws Exception {
         if ((new String(key, "UTF-8")).equals("")) {
-            return (table + "|").getBytes("UTF-8");
+            return (table).getBytes("UTF-8");
         }
         ColumnKey ck = new ColumnKey();
-        ck.setTable(table + "|");
+        ck.setTable(table);
         ck.setKey(key);
         ColumnKeyTupleBinding keyBinding = new ColumnKeyTupleBinding();
         DatabaseEntry dbKey = new DatabaseEntry();
@@ -197,7 +197,7 @@ public class ColumnStore implements Runnable {
         byte[] columnKey = getColumnKey(table, key);
         BtreeStore store = stores.get(tableHash.get(table));
         if (store.delete(columnKey)) {
-            decrementTableCount(table);
+            //decrementTableCount(table);
             return true;
         }
         return false;
@@ -451,13 +451,11 @@ public class ColumnStore implements Runnable {
     }
     
     public void checkpoint() throws Exception {
-        log.info("<checkpoint>");
-        /*
+        //log.info("<checkpoint>");
         CheckpointConfig config = new CheckpointConfig();
         config.setKBytes(1000);
         config.setForce(true);
         env.checkpoint(config);
-        */
     }
     
     public void close() throws Exception {

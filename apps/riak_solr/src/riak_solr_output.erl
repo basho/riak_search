@@ -22,7 +22,7 @@
 
 
 xml_response(Schema, _SortBy, ElapsedTime, SQuery, NumFound, MaxScore, Docs) ->
-    RenderedParams = render_xml_params(NumFound, SQuery),
+    RenderedParams = render_xml_params(NumFound, Schema, SQuery),
     RenderedDocs = lists:flatten([render_xml_doc(Schema, Doc) || Doc <- Docs]),
     XML = [xml_nl(),
            {response, [],
@@ -74,7 +74,10 @@ json_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, Docs0) ->
                            {<<"params">>,
                              {struct, [{<<"q">>, to_binary(SQuery#squery.q)},
                                        {<<"q.op">>, to_binary(Schema:default_op())},
-                                       {<<"wt">>, <<"json">>}]}}]}},
+                                       {<<"df">>, to_binary(Schema:default_field())},
+                                       {<<"wt">>, <<"json">>},
+                                       {<<"version">>, <<"1.1">>},
+                                       {<<"rows">>, NumFound}]}}]}},
                  {<<"response">>,
                   {struct, [{<<"numFound">>, NumFound},
                             {<<"start">>, SQuery#squery.query_start},
@@ -124,7 +127,7 @@ render_xml_doc(Schema, Doc) ->
                      render_xml_fields(Schema, Fields, []) ++
                      [xml_nl(), xml_indent(4)]}].
 
-render_xml_params(NumFound, SQuery) ->
+render_xml_params(NumFound, Schema, SQuery) ->
     [xml_nl(),
      xml_indent(4), {lst, [{name, "params"}],
      [xml_nl(),
@@ -133,6 +136,10 @@ render_xml_params(NumFound, SQuery) ->
       xml_indent(6), {str, [{name, "start"}], [#xmlText{value=integer_to_list(SQuery#squery.query_start)}]},
       xml_nl(),
       xml_indent(6),{str, [{name, "q"}], [#xmlText{value=SQuery#squery.q}]},
+      xml_nl(),
+      xml_indent(6), {str, [{name, "q.op"}], [#xmlText{value=atom_to_list(Schema:default_op())}]},
+      xml_nl(),
+      xml_indent(6), {str, [{name, "df"}], [#xmlText{value=Schema:default_field()}]},
       xml_nl(),
       xml_indent(6), {str, [{name, "wt"}], [#xmlText{value="standard"}]},
       xml_nl(),

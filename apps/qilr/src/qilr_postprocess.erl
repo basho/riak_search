@@ -79,15 +79,16 @@ analyze_terms(AnalyzerPid, Schema, [{field, FieldName, TermText, TProps}|T], Acc
                               none
                       end;
                   true ->
+                      TProps1 = proplists:delete(proximity, TProps),
                       case analyze_term_text(FieldName, AnalyzerPid, Schema, TermText) of
                           {single, NewText} ->
-                              BaseQuery = {field, FieldName, NewText, TProps},
-                              {phrase, TermText, BaseQuery};
+                              BaseQuery = {field, FieldName, NewText, TProps1},
+                              {phrase, TermText, BaseQuery, add_proximity_terms(AnalyzerPid, TermText, TProps)};
                           {multi, NewTexts} ->
                               BaseQuery = {land,
-                                           [{field, FieldName, NT, TProps} ||
+                                           [{field, FieldName, NT, TProps1} ||
                                                NT <- NewTexts]},
-                              {phrase, TermText, BaseQuery};
+                              {phrase, TermText, BaseQuery, add_proximity_terms(AnalyzerPid, TermText, TProps)};
                           none ->
                               none
                       end
@@ -114,15 +115,17 @@ analyze_terms(AnalyzerPid, Schema, [{term, TermText, TProps}|T], Acc) ->
                               none
                       end;
                   true ->
+                      TProps1 = proplists:delete(proximity, TProps),
                       case analyze_term_text(default, AnalyzerPid, Schema, TermText) of
                           {single, NewText} ->
-                              BaseQuery = {term, NewText, TProps},
-                              {phrase, TermText, [{base_query, BaseQuery}|TProps]};
+                              BaseQuery = {term, NewText, TProps1},
+                              {phrase, TermText, BaseQuery, add_proximity_terms(AnalyzerPid, TermText, TProps)};
                           {multi, NewTexts} ->
                               BaseQuery = {land,
-                                           [{term, NT, TProps} ||
+                                           [{term, NT, TProps1} ||
                                                NT <- NewTexts]},
-                              {phrase, TermText, BaseQuery};
+                              {phrase, TermText, BaseQuery,
+                               add_proximity_terms(AnalyzerPid, TermText, TProps)};
                           none ->
                               none
                       end
@@ -158,6 +161,17 @@ default_bool_children([H|T], DefaultBoolOp) ->
     [H|default_bool_children(T, DefaultBoolOp)];
 default_bool_children(Query, _DefaultBoolOp) ->
     Query.
+
+%% All of these ifdefs are ugly, ugly hacks and need to be fixed via proper
+%% app deps.
+add_proximity_terms(AnalyzerPid, TermText, Props) ->
+    case proplists:get_value(proximity, Props, undefined) of
+        undefined ->
+            Props;
+        _ ->
+            Terms = analyze_proximity_text(AnalyzerPid, TermText),
+            [{proximity_terms, Terms}|Props]
+    end.
 
 %% For testing only
 -ifdef(TEST).
@@ -197,6 +211,8 @@ analyze_term_text(FieldName, testing, Schema, Text0) ->
         _ ->       % Many
             {multi, Tokens1}
     end.
+analyze_proximity_text(testing, TermText) ->
+    [list_to_binary(string:strip(T, both, 34)) || T <- string:tokens(TermText, " ")].
 -endif.
 
 -ifndef(TEST).
@@ -235,6 +251,10 @@ analyze_term_text(FieldName, AnalyzerPid, Schema, Text0) ->
         _ ->       % Many
             {multi, Tokens1}
     end.
+analyze_proximity_text(AnalyzerPid, TermText) ->
+    {ok, Terms0} = qilr_analyzer:analyze(AnalyzerPid, TermText, ?WHITESPACE_ANALYZER),
+    [list_to_binary(string:strip(binary_to_list(T), both, 34)) ||
+        T <- Terms0].
 -endif.
 
 get_type({land, _}) ->
@@ -246,6 +266,8 @@ get_type({lnot, _}) ->
 get_type({group, _}) ->
     group;
 get_type({field, _, _}) ->
+    field;
+get_type({field, _, _, _}) ->
     field;
 get_type({phrase, _Phrase, _Ops}) ->
     phrase;
