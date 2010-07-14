@@ -23,11 +23,11 @@
 
     {echo, "Change default operation. (XML)"},
     {solr_select, 
-        [{"q.op", "or"}, {q, "color:(red blue)"}, {wt, xml}, {rows, 999}], 
-        [{length, 29}]},
+        [{"q.op", "or"}, {q, "AAC AAJ"}, {wt, xml}, {rows, 999}], 
+        [{length, 98}]},
     {solr_select, 
-        [{"q.op", "and"}, {q, "key:keyAAB OR color:(red blue)"}, {wt, xml}, {rows, 999}], 
-        [{length, 1}]},
+        [{"q.op", "and"}, {q, "AAC AAJ"}, {wt, xml}, {rows, 999}], 
+        [{length, 91}]},
 
     {echo, "Test start. (XML)"},
     {solr_select, 
@@ -75,11 +75,11 @@
 
     {echo, "Change default operation. (JSON)"},
     {solr_select, 
-        [{"q.op", "or"}, {q, "color:(red blue)"}, {wt, json}, {rows, 999}], 
-        [{length, 29}]},
+        [{"q.op", "or"}, {q, "AAC AAJ"}, {wt, json}, {rows, 999}], 
+        [{length, 98}]},
     {solr_select, 
-        [{"q.op", "and"}, {q, "key:keyAAB OR color:(red blue)"}, {wt, json}, {rows, 999}], 
-        [{length, 1}]},
+        [{"q.op", "and"}, {q, "AAC AAJ"}, {wt, json}, {rows, 999}], 
+        [{length, 91}]},
 
     {echo, "Test start. (JSON)"},
     {solr_select, 
@@ -111,6 +111,6 @@
     
     %% Cleanup.
     {echo, "De-indexing documents..."},
-    {solr_update, "../_files/sample100/solr_delete_all.xml"},
+%%     {solr_update, "../_files/sample100/solr_delete_all.xml"},
     {echo, "Done"}
 ].
