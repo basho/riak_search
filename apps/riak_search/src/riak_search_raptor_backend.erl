@@ -208,7 +208,7 @@ catalog_query(CatalogQuery, Sender, _State) ->
 fold(Folder, Acc, State) ->
     sync(),
     {ok, Pid} = riak_search_raptor_backend_folder:start_link(),
-    Result = riak_search_raptor_backend_folder:fold(Pid, State#state.partition, Folder, Acc),
+    {ok, Result} = riak_search_raptor_backend_folder:fold(Pid, State#state.partition, Folder, Acc),
     {reply, Result, State}.
 
 is_empty(State) ->
