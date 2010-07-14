@@ -803,23 +803,4 @@ run_timeout_test(TestFun) ->
     end.
     
 
-eqc_test() ->
-    TestDir = "test/raptor-backend",
-    Cleanup = fun(_State,_OldS) ->
-                      os:cmd("rm -rf " ++ TestDir),
-                      catch raptor_monitor:restart()
-              end,
-    error_logger:tty(false),
-    application:load(raptor),
-    application:set_env(raptor, raptor_backend_root, TestDir),
-    ok = riak_core_util:start_app_deps(raptor),
-    application:start(raptor),
-    error_logger:tty(true),
-    try
-        backend_eqc:test(?MODULE, false, [], Cleanup)
-    after
-        application:stop(raptor)
-    end.
-
-
 -endif.

@@ -37,7 +37,7 @@ from_eterm(SchemaName, {schema, SchemaProps, FieldDefs}) ->
 
 
 parse_fields([], _SchemaAnalyzer, Fields) ->
-    {ok, Fields};
+    {ok, lists:reverse(Fields)};
 parse_fields({fields, Fields}, SchemaAnalyzer, Fields) ->
     parse_fields(Fields, SchemaAnalyzer, Fields);
 parse_fields([{FieldClass, FieldProps}|T], SchemaAnalyzer, Fields) 

@@ -98,37 +98,37 @@ pass2(Op = #term {}, Schema) ->
     Options = Op#term.options,
     rewrite_term(NewQ, Options, Schema);
 
-%% pass2(Op = #land {}, Schema) ->
-%%     %% Collapse nested and operations.
-%%     F = fun
-%%         (X = #land {}, {_, Acc}) -> {loop, X#land.ops ++ Acc};
-%%         (X, {Again, Acc}) -> {Again, [X|Acc]}
-%%         end,
-%%     {Continue, NewOps} = lists:foldl(F, {stop, []}, Op#land.ops),
+pass2(Op = #land {}, Schema) ->
+    %% Collapse nested and operations.
+    F = fun
+        (X = #land {}, {_, Acc}) -> {loop, X#land.ops ++ Acc};
+        (X, {Again, Acc}) -> {Again, [X|Acc]}
+        end,
+    {Continue, NewOps} = lists:foldl(F, {stop, []}, Op#land.ops),
 
-%%     %% If anything changed, do another round of collapsing...
-%%     case Continue of
-%%         stop ->
-%%             Op#land { ops=pass2(NewOps, Schema) };
-%%         loop ->
-%%             pass2(Op#land { ops=NewOps }, Schema)
-%%     end;
+    %% If anything changed, do another round of collapsing...
+    case Continue of
+        stop ->
+            Op#land { ops=pass2(NewOps, Schema) };
+        loop ->
+            pass2(Op#land { ops=NewOps }, Schema)
+    end;
 
-%% pass2(Op = #lor {}, Schema) ->
-%%     %% Collapse nested or operations.
-%%     F = fun
-%%         (X = #lor {}, {_, Acc}) -> {loop, X#lor.ops ++ Acc};
-%%         (X, {Again, Acc}) -> {Again, [X|Acc]}
-%%         end,
-%%     {Continue, NewOps} = lists:foldl(F, {stop, []}, Op#lor.ops),
+pass2(Op = #lor {}, Schema) ->
+    %% Collapse nested or operations.
+    F = fun
+        (X = #lor {}, {_, Acc}) -> {loop, X#lor.ops ++ Acc};
+        (X, {Again, Acc}) -> {Again, [X|Acc]}
+        end,
+    {Continue, NewOps} = lists:foldl(F, {stop, []}, Op#lor.ops),
 
-%%     %% If anything changed, do another round of collapsing...
-%%     case Continue of
-%%         stop ->
-%%             Op#lor { ops=pass2(NewOps, Schema) };
-%%         loop ->
-%%             pass2(Op#lor { ops=NewOps }, Schema)
-%%     end;
+    %% If anything changed, do another round of collapsing...
+    case Continue of
+        stop ->
+            Op#lor { ops=pass2(NewOps, Schema) };
+        loop ->
+            pass2(Op#lor { ops=NewOps }, Schema)
+    end;
 
 pass2(Op, Schema) ->
     F = fun(X) -> lists:flatten([pass2(Y, Schema) || Y <- to_list(X)]) end,

@@ -8,12 +8,13 @@
 
 -export([preplan_op/2, chain_op/4]).
 
+-include_lib("qilr/include/qilr.hrl").
 -include("riak_search.hrl").
 
 preplan_op(#phrase{phrase=Phrase0, base_query=BQ}=Op, F) ->
     Phrase = [C || C <- Phrase0,
-                   C /= $\"],
-    
+                   C /= 34], %% double quotes
+
     %% This is a temporary fix for Bugzilla #336
     %%
     %% Woven into the parser and preplanner is the assumption that when there is a single
@@ -37,33 +38,54 @@ preplan_op(#phrase{phrase=Phrase0, base_query=BQ}=Op, F) ->
     %%
     %% Update: added another similar case for single-term decomps with proximity searches.
     %%
-    
-    case BQ of
-        [{base_query, {term, Term, Props}}] ->
-            BQ1 = {land, [{term, Term, Props}]};
-        [{base_query, {term, Term, Props}}, {proximity, _}] ->
-            BQ1 = {land, [{term, Term, Props}]};
-        _ -> BQ1 = BQ
-    end,    
+    BQ1 = case BQ of
+              BQ when is_tuple(BQ),
+                      size(BQ) == 3 orelse size(BQ) == 4 ->
+                  {land, [BQ]};
+              _ ->
+                  BQ
+          end,
     Op#phrase{phrase=Phrase, base_query=riak_search_op_land:preplan_op(BQ1, F)}.
 
-chain_op(#phrase{phrase=Phrase, base_query=BaseQuery}, OutputPid, OutputRef, QueryProps) ->
+chain_op(#phrase{phrase=Phrase, base_query=BaseQuery, props=Props}, OutputPid, OutputRef, QueryProps) ->
     {ok, Client} = riak:local_client(),
     IndexName = proplists:get_value(index_name, QueryProps),
     DefaultField = proplists:get_value(default_field, QueryProps),
     FieldName = get_query_field(DefaultField, BaseQuery),
     F = fun({DocId, _}) ->
-                Bucket = riak_search_utils:to_binary(IndexName),
-                Key = riak_search_utils:to_binary(DocId),
-                case Client:get(Bucket, Key, 1) of
-                    {ok, Obj} ->
-                        IdxDoc = riak_object:get_value(Obj),
-                        #riak_idx_doc{fields=Fields}=IdxDoc,
-                        Value = proplists:get_value(FieldName, Fields, ""),
-                        string:str(Value, Phrase) > 0;
-                    _ ->
-                        false
-                end end,
+                {ok, Analyzer} = qilr:new_analyzer(),
+                try
+                    Bucket = riak_search_utils:to_binary(IndexName),
+                    Key = riak_search_utils:to_binary(DocId),
+                    case Client:get(Bucket, Key, 1) of
+                        {ok, Obj} ->
+                            IdxDoc = riak_object:get_value(Obj),
+                            #riak_idx_doc{fields=Fields}=IdxDoc,
+                            Value = proplists:get_value(FieldName, Fields, ""),
+                            case proplists:get_value(proximity, Props, undefined) of
+                                undefined ->
+                                    Evaluator = case proplists:get_value(prohibited,
+                                                                         Props,
+                                                                         false) of
+                                                    true ->
+                                                        fun erlang:'=='/2;
+                                                    false ->
+                                                        fun erlang:'>'/2
+                                                end,
+                                    Evaluator(string:str(Value, Phrase), 0);
+                                Distance ->
+                                    ProxTerms = proplists:get_value(proximity_terms, Props, []),
+                                    {ok, AValue} = qilr_analyzer:analyze(Analyzer,
+                                                                         Value, ?WHITESPACE_ANALYZER),
+                                    evaluate_proximity(AValue, Distance, ProxTerms)
+                            end;
+                        _ ->
+                            false
+                    end
+                after
+                    qilr:close_analyzer(Analyzer)
+                end
+        end,
     riak_search_op_land:chain_op(BaseQuery, OutputPid, OutputRef, [{term_filter, F}|QueryProps]).
 
 get_query_field(DefaultField, {land, [Op|_]}) ->
@@ -72,4 +94,39 @@ get_query_field(DefaultField, {land, [Op|_]}) ->
             FieldName;
         _ ->
             DefaultField
+    end.
+
+evaluate_proximity(_Value, _Distance, []) ->
+    false;
+evaluate_proximity(Value, Distance, ProxTerms) ->
+    case find_term_indices(ProxTerms, 1, Value, []) of
+        false ->
+            false;
+        [Index] ->
+            Index =< Distance;
+        Indices ->
+            io:format("Indices: ~p~n", [Indices]),
+            evaluate_indices(Indices, Distance)
+    end.
+
+find_term_indices([], _Counter, _Val, Accum) ->
+    lists:reverse(Accum);
+find_term_indices(_Terms, _Counter, [], _Accum) ->
+    false;
+find_term_indices(Terms, Counter, [H|T], Accum) ->
+    case lists:member(H, Terms) of
+        true ->
+            find_term_indices(lists:delete(H, Terms), Counter + 1, T, [Counter|Accum]);
+        false ->
+            find_term_indices(Terms, Counter + 1, T, Accum)
+    end.
+
+evaluate_indices([F, S], Distance) ->
+    erlang:abs(F - S) =< Distance;
+evaluate_indices([F, S|T], Distance) ->
+    case erlang:abs(F - S) =< Distance of
+        true ->
+            evaluate_indices([S|T], Distance);
+        false ->
+            false
     end.

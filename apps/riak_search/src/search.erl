@@ -10,7 +10,7 @@
 %%% de-index (delete) documents in a directory, and delete a specific
 %%% document.
 %%%
-%%% It provides convenience in three main ways: 
+%%% It provides convenience in three main ways:
 %%%
 %%% 1. Takes care of instantiating the riak_search_client
 %%%    parameterized module.
@@ -27,7 +27,7 @@
     search_doc/1, search_doc/2,
 
     %% Inspection.
-    explain/1, explain/2, 
+    explain/1, explain/2,
     graph/1, graph/2,
 
     %% Indexing.
@@ -133,6 +133,9 @@ index_dir(Index, Directory) ->
         end,
     try
         riak_search_utils:index_recursive(F, Directory)
+    catch _: {{nocatch, Error}, Trace} ->
+            error_logger:error_msg("Indexing error: ~p~n", [Error]),
+            error_logger:error_msg("~p~n", [Trace])
     after
         Client:stop_index_fsm(IndexPid),
         qilr:close_analyzer(AnalyzerPid)
@@ -149,7 +152,7 @@ delete_dir(Index, Directory) ->
         end,
     riak_search_utils:index_recursive(F, Directory),
     ok.
-    
+
 delete_doc(DocID) ->
     delete_doc(?DEFAULT_INDEX, DocID).
 

@@ -2,15 +2,14 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
-
-
 parse(Query) ->
-    file:write_file("/tmp/output.txt", io_lib:format("~p~n", [parse(Query, 'or')]), [append]),
     parse(Query, 'or').
 
 parse(Query, Bool) ->
-    Schema = riak_search_schema:new("search", undefined, "value", [],
-        Bool, "com.basho.search.analysis.DefaultAnalyzerFactory"),
+    Schema = riak_search_schema:new("search", undefined, "value",
+                                    [{riak_search_field, ".*", string, 0,
+                                      undefined, false, true, undefined, false}],
+                                    Bool, "com.basho.search.analysis.DefaultAnalyzerFactory"),
     qilr_parse:string(Query, Schema).
 
 multiple_terms_test_() ->
@@ -24,6 +23,10 @@ field_test_() ->
     [fun() ->
              ?assertMatch({ok,[{field,"title",<<"peace">>,[required]}]},
                           parse("+title:peace")),
+             ?assertMatch({ok,[{land,[{group,[{lor,[{field,"color",<<"red">>,[]},
+                                                    {field,"color",<<"blue">>,[]}]}]},
+                                      {field,"acc",<<"aja">>,[]}]}]},
+                          parse("(color:red OR color:blue) AND (acc:aja)")),
              ?assertMatch({ok,[{field,"title",<<"scarlet">>,[prohibited]}]},
                           parse("-title:scarlet")) end].
 
@@ -33,11 +36,13 @@ prefix_test_() ->
              ?assertMatch({ok, [{term, <<"planes">>, [prohibited]}]}, parse("-planes")),
              ?assertMatch({ok,[{phrase,"\"planes trains\"",
                                 {land,[{term,<<"planes">>,[required]},
-                                       {term,<<"trains">>,[required]}]}}]},
+                                       {term,<<"trains">>,[required]}]},
+                                [required]}]},
                           parse("+\"planes trains\"")),
              ?assertMatch({ok,[{phrase,"\"planes trains\"",
                                 {land,[{term,<<"planes">>,[prohibited]},
-                                       {term,<<"trains">>,[prohibited]}]}}]},
+                                       {term,<<"trains">>,[prohibited]}]},
+                               [prohibited]}]},
                           parse("-\"planes trains\"")) end].
 
 suffix_test_() ->
@@ -49,23 +54,27 @@ suffix_test_() ->
              ?assertMatch({ok, [{term, <<"solar">>, [{boost, 0.9}]}]}, parse("solar^0.9")),
              ?assertMatch({ok,[{phrase,"\"solar power\"",
                                 {land,[{term,<<"solar">>,[{fuzzy,"0.5"}]},
-                                       {term,<<"power">>,[{fuzzy,"0.5"}]}]}}]},
+                                       {term,<<"power">>,[{fuzzy,"0.5"}]}]},
+                              [{fuzzy, "0.5"}]}]},
                           parse("\"solar power\"~")),
              ?assertMatch({ok,[{phrase,"\"solar power\"",
-                                {land,[{term,<<"solar">>,[{proximity,5}]},
-                                       {term,<<"power">>,[{proximity,5}]}]}}]},
+                                {land,[{term,<<"solar">>,[]},{term,<<"power">>,[]}]},
+                                [{proximity_terms,[<<"solar">>,<<"power">>]},{proximity,5}]}]},
                           parse("\"solar power\"~5")),
              ?assertMatch({ok,[{phrase,"\"solar power\"",
                                 {land,[{term,<<"solar">>,[{fuzzy,"0.85"}]},
-                                       {term,<<"power">>,[{fuzzy,"0.85"}]}]}}]},
+                                       {term,<<"power">>,[{fuzzy,"0.85"}]}]},
+                                [{fuzzy, "0.85"}]}]},
                           parse("\"solar power\"~0.85")),
              ?assertMatch({ok,[{phrase,"\"solar power\"",
                                 {land,[{term,<<"solar">>,[{boost,2}]},
-                                       {term,<<"power">>,[{boost,2}]}]}}]},
+                                       {term,<<"power">>,[{boost,2}]}]},
+                                [{boost, 2}]}]},
                           parse("\"solar power\"^2")),
              ?assertMatch({ok,[{phrase,"\"solar power\"",
                                 {land,[{term,<<"solar">>,[{boost,0.9}]},
-                                       {term,<<"power">>,[{boost,0.9}]}]}}]},
+                                       {term,<<"power">>,[{boost,0.9}]}]},
+                               [{boost, 0.9}]}]},
                           parse("\"solar power\"^0.9")) end].
 
 bool_test_() ->
