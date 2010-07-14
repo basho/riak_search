@@ -46,7 +46,7 @@ malformed_request(Req, State) ->
                     %% Try to parse the query
                     Client = State#state.client,
                     try
-                        {ok, QueryOps} = Client:parse_query(Schema:name(), SQuery#squery.q),
+                        {ok, QueryOps} = Client:parse_query(Schema, SQuery#squery.q),
                         {false, Req, State#state{schema=Schema, squery=SQuery, query_ops=QueryOps,
                                                  sort=wrq:get_qs_value("sort", "none", Req),
                                                  wt=wrq:get_qs_value("wt", "standard", Req)}}
@@ -94,7 +94,7 @@ run_query(#state{client=Client, schema=Schema, squery=SQuery,
 
     %% Run the query...
     StartTime = erlang:now(),
-    {NumFound, MaxScore, Docs} = Client:search_doc(Schema:name(), QueryOps, QStart, QRows, ?DEFAULT_TIMEOUT),
+    {NumFound, MaxScore, Docs} = Client:search_doc(Schema, QueryOps, QStart, QRows, ?DEFAULT_TIMEOUT),
     ElapsedTime = erlang:round(timer:now_diff(erlang:now(), StartTime) / 1000),
     {ElapsedTime, NumFound, MaxScore, Docs}.
 
