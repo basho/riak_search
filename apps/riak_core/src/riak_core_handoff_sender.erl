@@ -65,8 +65,8 @@ start_fold(TargetNode, Module, Partition, ParentPid) ->
                                                  VMaster, infinity),
          error_logger:info_msg("Handoff of partition ~p ~p to ~p completed: sent ~p objects~n", 
                                [Module, Partition, TargetNode, SentCount]),
-         gen_fsm:send_event(ParentPid, handoff_complete)
-         %% Socket will be closed when this process exits
+         gen_fsm:send_event(ParentPid, handoff_complete),
+         gen_tcp:close(Socket)
      catch
          Err:Reason ->
              error_logger:error_msg("Handoff sender ~p ~p failed ~p:~p\n", 
