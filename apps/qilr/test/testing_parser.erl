@@ -2,15 +2,14 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
-
-
 parse(Query) ->
-    file:write_file("/tmp/output.txt", io_lib:format("~p~n", [parse(Query, 'or')]), [append]),
     parse(Query, 'or').
 
 parse(Query, Bool) ->
-    Schema = riak_search_schema:new("search", undefined, "value", [],
-        Bool, "com.basho.search.analysis.DefaultAnalyzerFactory"),
+    Schema = riak_search_schema:new("search", undefined, "value",
+                                    [{riak_search_field, ".*", string, 0,
+                                      undefined, false, true, undefined, false}],
+                                    Bool, "com.basho.search.analysis.DefaultAnalyzerFactory"),
     qilr_parse:string(Query, Schema).
 
 multiple_terms_test_() ->
