@@ -51,8 +51,7 @@ malformed_request(Req, State) ->
                                                  sort=wrq:get_qs_value("sort", "none", Req),
                                                  wt=wrq:get_qs_value("wt", "standard", Req)}}
                     catch _ : Error ->
-                        error_logger:error_msg("Could not parse query '~s'.~n~p~n", [SQuery#squery.q, Error]),
-                        {true, Req, State}
+                            {true, riak_solr_error:log_error(Req, Error), State}
                     end;
                 _Error ->
                     {true, Req, State}

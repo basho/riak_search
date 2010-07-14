@@ -6,6 +6,7 @@
              mustache,
              riak_solr_app,
              riak_solr_sup,
+             riak_solr_error,
              riak_solr_indexer_wm,
              riak_solr_searcher_wm,
              riak_solr_xml_xform,
