@@ -64,7 +64,15 @@ chain_op(#phrase{phrase=Phrase, base_query=BaseQuery, props=Props}, OutputPid, O
                             Value = proplists:get_value(FieldName, Fields, ""),
                             case proplists:get_value(proximity, Props, undefined) of
                                 undefined ->
-                                    string:str(Value, Phrase) > 0;
+                                    Evaluator = case proplists:get_value(prohibited,
+                                                                         Props,
+                                                                         false) of
+                                                    true ->
+                                                        fun erlang:'=='/2;
+                                                    false ->
+                                                        fun erlang:'>'/2
+                                                end,
+                                    Evaluator(string:str(Value, Phrase), 0);
                                 Distance ->
                                     ProxTerms = proplists:get_value(proximity_terms, Props, []),
                                     {ok, AValue} = qilr_analyzer:analyze(Analyzer,
