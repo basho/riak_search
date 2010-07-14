@@ -33,65 +33,79 @@
 
 
 %% Run the test package at Path.
+%% Returns ok if the test passed, error if it didn't.
 test(Path) ->
     io:format("~n :: Running Test Package '~s'...~n", [filename:basename(Path)]),
     Path1 = filename:join(Path, "script.def"),
     case file:consult(Path1) of
         {ok, Terms} -> 
-            test_inner(Terms, Path);
+            case test_inner(Terms, Path) of
+                true -> ok;
+                false -> error
+            end;
         {error, Error} ->
-            io:format(" :: ERROR - Could not read '~s' : ~p~n", [Path1, Error])
+            io:format(" :: ERROR - Could not read '~s' : ~p~n", [Path1, Error]),
+            error
     end.
 
 test_inner([], _Root) -> 
-    ok;
+    true;
 
 test_inner([Op|Ops], Root) ->
-    test_inner(Op, Root),
-    test_inner(Ops, Root);
+    test_inner(Op, Root) andalso test_inner(Ops, Root);
 
 test_inner({echo, Text}, _) ->
     Tokens = string:tokens(Text, "\n"),
     Tokens1 = [string:strip(X, both) || X <- Tokens],
     io:format("~n"),
-    [io:format(" :: ~s~n", [X]) || X <- Tokens1, X /= ""];
+    [io:format(" :: ~s~n", [X]) || X <- Tokens1, X /= ""],
+    true;
 
 test_inner({sleep, Seconds}, _) ->
     io:format("~n :: Sleeping ~p second(s)...~n", [Seconds]),
-    timer:sleep(Seconds * 1000);
+    timer:sleep(Seconds * 1000),
+    true;
 
 test_inner({schema, Schema}, Root) ->
-    riak_search_cmd:set_schema(?TEST_INDEX, filename:join(Root, Schema));
+    riak_search_cmd:set_schema(?TEST_INDEX, filename:join(Root, Schema)),
+    true;
 
 test_inner({solr, Path}, Root) ->
     io:format("~n :: Running Solr document(s) '~s'...~n", [Path]),
-    solr_search:index_dir(?TEST_INDEX, filename:join(Root, Path));
+    solr_search:index_dir(?TEST_INDEX, filename:join(Root, Path)),
+    true;
 
 test_inner({index, Path}, Root) ->
     io:format("~n :: Indexing path '~s'...~n~n", [Path]),
-    search:index_dir(?TEST_INDEX, filename:join(Root, Path));
+    search:index_dir(?TEST_INDEX, filename:join(Root, Path)),
+    true;
 
 test_inner({delete, Path}, Root) ->
     io:format("~n :: De-Indexing path '~s'...~n~n", [Path]),
-    search:delete_dir(?TEST_INDEX, filename:join(Root, Path));
+    search:delete_dir(?TEST_INDEX, filename:join(Root, Path)),
+    true;
 
 test_inner({search, Query, Validators}, _Root) ->
     try search:search(?TEST_INDEX, Query) of
         {Length, Results} ->
             case validate_results(Length, Results, Validators) of
                 pass -> 
-                    io:format("~n    [√] PASS QUERY » ~s~n", [Query]);
+                    io:format("~n    [√] PASS QUERY » ~s~n", [Query]),
+                    true;
                 {fail, Errors} ->
                     io:format("~n    [ ] FAIL QUERY » ~s~n", [Query]),
-                    [io:format("        - ~s~n", [X]) || X <- Errors]
+                    [io:format("        - ~s~n", [X]) || X <- Errors],
+                    false
             end;
         Error ->
             io:format("~n    [ ] FAIL QUERY » ~s~n", [Query]),
-            io:format("        - ERROR: ~p~n", [Error])
+            io:format("        - ERROR: ~p~n", [Error]),
+            false
     catch 
         _Type : Error ->
             io:format("~n    [ ] FAIL QUERY » ~s~n", [Query]),
-            io:format("        - ERROR: ~p : ~p~n", [Error, erlang:get_stacktrace()])
+            io:format("        - ERROR: ~p : ~p~n", [Error, erlang:get_stacktrace()]),
+            false
     end;
 test_inner({solr_select, Params, Validators}, _Root) ->
     %% Run the query...
@@ -106,21 +120,26 @@ test_inner({solr_select, Params, Validators}, _Root) ->
             {Length, Results} = parse_solr_select_result(Format, Body),
             case validate_results(Length, Results, Validators) of
                 pass -> 
-                    io:format("~n    [√] PASS SOLR SELECT » ~s (~s)~n", [Query, QS]);
+                    io:format("~n    [√] PASS SOLR SELECT » ~s (~s)~n", [Query, QS]),
+                    true;
                 {fail, Errors} ->
                     io:format("~n    [ ] FAIL SOLR SELECT » ~s (~s)~n", [Query, QS]),
-                    [io:format("        - ~s~n", [X]) || X <- Errors]
+                    [io:format("        - ~s~n", [X]) || X <- Errors],
+                    false
             end;
         {ok, {{_, Status, _}, _, _}} ->
             io:format("~n    [ ] FAIL SOLR SELECT » ~s (~s)~n", [Query, QS]),
-            io:format("        - Status ~p from ~s~n", [Status, Url]);
+            io:format("        - Status ~p from ~s~n", [Status, Url]),
+            false;
         {error, Error} ->
             io:format("~n    [ ] FAIL SOLR SELECT » ~s (~s)~n", [Query, QS]),
-            io:format("        - ERROR: ~p~n", [Error])
+            io:format("        - ERROR: ~p~n", [Error]),
+            false
     catch 
         _Type : Error ->
             io:format("~n    [ ] FAIL SOLR SELECT » ~s (~s)~n", [Query, QS]),
-            io:format("        - ERROR: ~p : ~p~n", [Error, erlang:get_stacktrace()])
+            io:format("        - ERROR: ~p : ~p~n", [Error, erlang:get_stacktrace()]),
+            false
     end;
 test_inner({solr_update, Path, Params}, Root) ->
     io:format("~n :: Running Solr Update '~s' (via HTTP)...~n", [Path]),
@@ -135,7 +154,8 @@ test_inner({solr_update, Path, Params}, Root) ->
             Req = {lists:flatten(Url), [], "text/xml", Bytes},
             try http:request(post, Req, [], []) of
                 {ok, {{_, 200, _}, _, _}} ->
-                    io:format("~n :: Success!");
+                    io:format("~n :: Success!"),
+                    true;
                 {ok, {{_, Status, _}, _, _}} ->
                     io:format("~n :: Solr Update Failed! (Status: ~p, Url: ~s)~n", [Status, Url]),
                     throw({solr_update_error, status, Status});
