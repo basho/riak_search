@@ -31,7 +31,17 @@ init(_) ->
     {ok, #state{ client=Client }}.
 
 allowed_methods(Req, State) ->
-    {['GET'], Req, State}.
+    %% Hackish, but its what Solr clients expect. If we have an
+    %% incoming 'POST' request, then transform it to a 'GET'.
+    case wrq:method(Req) of
+        'POST' ->
+            Body = wrq:req_body(Req),
+            Parsed = mochiweb_util:parse_qs(Body),
+            NewReq = Req#wm_reqdata{req_qs=Parsed, method='GET'};
+        _ ->
+            NewReq = Req
+    end,
+    {['GET'], NewReq, State}.
 
 malformed_request(Req, State) ->
     %% Try to get the schema...
@@ -51,7 +61,7 @@ malformed_request(Req, State) ->
                                                  sort=wrq:get_qs_value("sort", "none", Req),
                                                  wt=wrq:get_qs_value("wt", "standard", Req)}}
                     catch _ : Error ->
-                            {true, riak_solr_error:log_error(Req, Error), State}
+                        {true, riak_solr_error:log_error(Req, Error), State}
                     end;
                 _Error ->
                     {true, Req, State}
@@ -68,6 +78,8 @@ content_types_provided(Req, #state{wt=WT}=State) ->
                 "xml" ->
                     [{"text/xml", to_xml}];
                 "json" ->
+                    [{"application/json", to_json}];
+                "ruby" ->
                     [{"application/json", to_json}];
                 _ ->
                     []
