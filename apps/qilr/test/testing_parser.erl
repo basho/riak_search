@@ -24,6 +24,10 @@ field_test_() ->
     [fun() ->
              ?assertMatch({ok,[{field,"title",<<"peace">>,[required]}]},
                           parse("+title:peace")),
+             ?assertMatch({ok,[{land,[{group,[{lor,[{field,"color",<<"red">>,[]},
+                                                    {field,"color",<<"blue">>,[]}]}]},
+                                      {field,"acc",<<"aja">>,[]}]}]},
+                          parse("(color:red OR color:blue) AND (acc:aja)")),
              ?assertMatch({ok,[{field,"title",<<"scarlet">>,[prohibited]}]},
                           parse("-title:scarlet")) end].
 
