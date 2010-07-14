@@ -37,17 +37,17 @@ malformed_request(Req, State) ->
     %% Try to get the schema...
     Index = get_index_name(Req),
     case riak_search_config:get_schema(Index) of
-        {ok, Schema} ->
+        {ok, Schema0} ->
             case parse_squery(Req) of
                 {ok, SQuery} ->
                     %% Update schema defaults...
-                    Schema1 = replace_schema_defaults(SQuery, Schema),
+                    Schema = replace_schema_defaults(SQuery, Schema0),
 
                     %% Try to parse the query
                     Client = State#state.client,
                     try
                         {ok, QueryOps} = Client:parse_query(Schema:name(), SQuery#squery.q),
-                        {false, Req, State#state{schema=Schema1, squery=SQuery, query_ops=QueryOps,
+                        {false, Req, State#state{schema=Schema, squery=SQuery, query_ops=QueryOps,
                                                  sort=wrq:get_qs_value("sort", "none", Req),
                                                  wt=wrq:get_qs_value("wt", "standard", Req)}}
                     catch _ : Error ->
@@ -89,8 +89,8 @@ to_xml(Req, #state{sort=SortBy}=State) ->
     %% Generate output
     {riak_solr_output:xml_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, Docs), Req, State}.
 
-run_query(State) ->
-    #state{client=Client, schema=Schema, squery=SQuery, query_ops=QueryOps}=State,
+run_query(#state{client=Client, schema=Schema, squery=SQuery,
+                 query_ops=QueryOps}=State) ->
     #squery{query_start=QStart, query_rows=QRows}=SQuery,
 
     %% Run the query...
@@ -118,46 +118,36 @@ get_index_name(Req) ->
 parse_squery(Req) ->
     %% Parse the query parts...
     Query = wrq:get_qs_value("q", "", Req),
-    DefaultField = wrq:get_qs_value("df", undefined, Req),
-    DefaultOp = to_atom(wrq:get_qs_value("q.op", undefined, Req)),
-    QueryStart = to_integer(wrq:get_qs_value("start", 0, Req)),
-    QueryRows = to_integer(wrq:get_qs_value("rows", ?DEFAULT_RESULT_SIZE, Req)),
-    SQuery = #squery{
-        q=Query,
-        default_op=DefaultOp,
-        default_field=DefaultField,
-        query_start=QueryStart,
-        query_rows=QueryRows
-    },
-
     case Query == "" of
         true ->
             {error, missing_query};
         false ->
+            DefaultField = wrq:get_qs_value("df", undefined, Req),
+            DefaultOp = to_atom(wrq:get_qs_value("q.op", undefined, Req)),
+            QueryStart = to_integer(wrq:get_qs_value("start", 0, Req)),
+            QueryRows = to_integer(wrq:get_qs_value("rows", ?DEFAULT_RESULT_SIZE, Req)),
+            SQuery = #squery{q=Query,
+                             default_op=DefaultOp,
+                             default_field=DefaultField,
+                             query_start=QueryStart,
+                             query_rows=QueryRows},
             {ok, SQuery}
     end.
+
 
 %% @private
 %% Override the provided schema with a new default field, if one is
 %% supplied in the query string.
-replace_schema_defaults(SQuery, Schema) ->
-    %% Get the Default Op...
-    case SQuery#squery.default_op of
-        undefined ->
-            DefaultOp = Schema:default_op();
-        Other1 ->
-            DefaultOp = Other1
-    end,
-
-    %% Get the default field...
+replace_schema_defaults(SQuery, Schema0) ->
+    Schema1 = case SQuery#squery.default_op of
+                  undefined ->
+                      Schema0;
+                  Op ->
+                      Schema0:set_default_op(Op)
+              end,
     case SQuery#squery.default_field of
         undefined ->
-            DefaultField = Schema:default_field();
-        Other2 ->
-            DefaultField = Other2
-    end,
-
-    %% Update the Schema...
-    Schema1 = Schema:set_default_op(DefaultOp),
-    Schema2 = Schema1:set_default_field(DefaultField),
-    Schema2.
+            Schema1;
+        Field ->
+            Schema1:set_default_field(Field)
+    end.
