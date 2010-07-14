@@ -62,7 +62,10 @@ index_terms(Pid, Terms) ->
 
 -spec index_terms(pid(), index_terms() ,timeout()) -> ok.
 index_terms(Pid, Terms, Timeout) ->
-    gen_fsm:sync_send_event(Pid, {index, Terms}, Timeout).
+    %% Add the keyclock
+    K = riak_search_utils:current_key_clock(),
+    Terms1 = [{I,F,T,V,P,K} || {I,F,T,V,P} <- Terms],
+    gen_fsm:sync_send_event(Pid, {index, Terms1}, Timeout).
 
 %% Signal we are done and wait for the FSM to complete and exit
 -spec done(pid()) -> ok.
@@ -241,15 +244,10 @@ lookup_preflist(0, TermCount, Terms, PlTerms, _N) ->
 lookup_preflist(_BatchLeft, TermCount, [], PlTerms, _N) ->
     {[], PlTerms, TermCount};
 lookup_preflist(BatchLeft, TermCount, [IFTVP|Terms], PlTerms, N) ->
-    {Index,Field,Term,_Value,_Props} = IFTVP,
+    {Index,Field,Term,_Value,_Props,_KeyClock} = IFTVP,
     Partition = riak_search_utils:calc_partition(Index, Field, Term),
     Preflist = riak_core_apl:get_apl(Partition, N),
     NewPlTerms = lists:foldl(fun(Pl,PlTermsAcc) ->
                                      orddict:append_list(Pl,[IFTVP],PlTermsAcc)
                              end, PlTerms, Preflist),
     lookup_preflist(BatchLeft-1, TermCount+1, Terms, NewPlTerms, N).
-
-
-
-
-

@@ -65,6 +65,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
       Logger.getLogger(RaptorHandler.class);
    final private static String MSG_INFO = "Info";
    final private static String MSG_INDEX = "Index";
+   final private static String MSG_INDEX_IF_NEWER = "IndexIfNewer";
    final private static String MSG_DELETE_ENTRY = "DeleteEntry";
    final private static String MSG_STREAM = "Stream";
    final private static String MSG_MULTISTREAM = "MultiStream";
@@ -114,6 +115,10 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
             Index index = Index.newBuilder().mergeFrom(b_ar).build();
             if (index.getMessageType().equals(MSG_INDEX)) {
                processIndexMessage(e, index);
+               return;
+            }
+            else if (index.getMessageType().equals(MSG_INDEX_IF_NEWER)) {
+               processIndexIfNewerMessage(e, index);
                return;
             }
          } catch (com.google.protobuf.UninitializedMessageException ex) { }
@@ -228,6 +233,29 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
          log.error("Error handling index request", ex);
       }
    }
+
+   private void processIndexIfNewerMessage(MessageEvent e, Index msg) {
+      try {
+         CommandResponse.Builder response =
+            CommandResponse.newBuilder();
+         final Channel chan = e.getChannel();
+         
+         //RaptorServer.writeQueue.put(msg);
+         RaptorServer.idx.index_if_newer(msg.getIndex(),
+             msg.getField(),
+             msg.getTerm(),
+             msg.getValue(),
+             msg.getPartition(),
+             msg.getProps().toByteArray(),
+             msg.getKeyClock());
+         
+         response.setResponse("");
+         CommandResponse r = response.build();
+         chan.write(r);
+      } catch (Exception ex) {
+         log.error("Error handling index if newer request", ex);
+      }
+   }
    
    private void processDeleteEntryMessage(DeleteEntry msg) {
       try {
@@ -250,7 +278,8 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
                                  msg.getTerm(),
                                  msg.getPartition(),
                                  new ResultHandler() {
-                                        public void handleResult(byte[] key, byte[] value) {
+                                        public void handleResult(byte[] key, byte[] value,
+                                        			byte[] key_clock) {
                                             try {
                                                StreamResponse.Builder response = 
                                                    StreamResponse.newBuilder();
@@ -259,13 +288,15 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
                                                     new String(key, "UTF-8"));
                                                }
                                                response.setValue(new String(key, "UTF-8"))
-                                                       .setProps(ByteString.copyFrom(value));
+                                                       .setProps(ByteString.copyFrom(value))
+                                                       .setKeyClock(ByteString.copyFrom(key_clock));
                                                chan.write(response.build());
                                             } catch (Exception ex) {
                                                ex.printStackTrace();
                                             }
                                         }
-                                        public void handleResult(String key, String value) {
+                                        public void handleResult(String key, String value,
+                                        			             String key_clock) {
                                             try {
                                                 StreamResponse.Builder response = 
                                                     StreamResponse.newBuilder();
@@ -275,7 +306,9 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
                                                 }
                                                 response.setValue(key)
                                                         .setProps(ByteString.copyFrom(
-                                                            value.getBytes("UTF-8")));
+                                                            value.getBytes("UTF-8")))
+                                                        .setKeyClock(ByteString.copyFrom(
+                                                        	key_clock.getBytes("UTF-8")));
                                                 chan.write(response.build());
                                             } catch (Exception ex) {
                                                ex.printStackTrace();

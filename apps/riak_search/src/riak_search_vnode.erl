@@ -225,8 +225,8 @@ handoff_cancelled(VState) ->
 handoff_finished(_TargetNode, State) ->
     {ok, State}.
 
-encode_handoff_item({Index,{Field,Term}}, {Value,Props}) ->
-    BinObj = term_to_binary({Index,Field,Term,Value,Props}),
+encode_handoff_item({Index,{Field,Term}}, {Value,Props,KeyClock}) ->
+    BinObj = term_to_binary({Index,Field,Term,Value,Props,KeyClock}),
     <<?HANDOFF_VER:8, BinObj/binary>>.
     
 handle_handoff_data(<<?HANDOFF_VER:8,BinObj/binary>>,
@@ -235,8 +235,8 @@ handle_handoff_data(<<?HANDOFF_VER:8,BinObj/binary>>,
     %% {error, not_found} on a get request, so it would always
     %% overwrite with handoff data.  Keep this behavior until 
     %% we get a chance to fix.
-    {Index,Field,Term,Value,Props} = binary_to_term(BinObj),   
-    noreply = BMod:index(Index, Field, Term, Value, Props, BState),
+    {Index,Field,Term,Value,Props,KeyClock} = binary_to_term(BinObj),   
+    noreply = BMod:index_if_newer(Index, Field, Term, Value, Props, KeyClock, BState),
     {reply, ok, VState}.
 
 is_empty(VState=#vstate{bmod=BMod, bstate=BState}) ->

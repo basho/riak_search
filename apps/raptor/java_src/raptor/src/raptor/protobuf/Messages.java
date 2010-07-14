@@ -3723,11 +3723,19 @@ public final class Messages {
     public boolean hasProps() { return hasProps; }
     public com.google.protobuf.ByteString getProps() { return props_; }
     
+    // required bytes key_clock = 3;
+    public static final int KEY_CLOCK_FIELD_NUMBER = 3;
+    private boolean hasKeyClock;
+    private com.google.protobuf.ByteString keyClock_ = com.google.protobuf.ByteString.EMPTY;
+    public boolean hasKeyClock() { return hasKeyClock; }
+    public com.google.protobuf.ByteString getKeyClock() { return keyClock_; }
+    
     private void initFields() {
     }
     public final boolean isInitialized() {
       if (!hasValue) return false;
       if (!hasProps) return false;
+      if (!hasKeyClock) return false;
       return true;
     }
     
@@ -3739,6 +3747,9 @@ public final class Messages {
       }
       if (hasProps()) {
         output.writeBytes(2, getProps());
+      }
+      if (hasKeyClock()) {
+        output.writeBytes(3, getKeyClock());
       }
       getUnknownFields().writeTo(output);
     }
@@ -3756,6 +3767,10 @@ public final class Messages {
       if (hasProps()) {
         size += com.google.protobuf.CodedOutputStream
           .computeBytesSize(2, getProps());
+      }
+      if (hasKeyClock()) {
+        size += com.google.protobuf.CodedOutputStream
+          .computeBytesSize(3, getKeyClock());
       }
       size += getUnknownFields().getSerializedSize();
       memoizedSerializedSize = size;
@@ -3921,6 +3936,9 @@ public final class Messages {
         if (other.hasProps()) {
           setProps(other.getProps());
         }
+        if (other.hasKeyClock()) {
+          setKeyClock(other.getKeyClock());
+        }
         this.mergeUnknownFields(other.getUnknownFields());
         return this;
       }
@@ -3952,6 +3970,10 @@ public final class Messages {
             }
             case 18: {
               setProps(input.readBytes());
+              break;
+            }
+            case 26: {
+              setKeyClock(input.readBytes());
               break;
             }
           }
@@ -3998,6 +4020,27 @@ public final class Messages {
       public Builder clearProps() {
         result.hasProps = false;
         result.props_ = getDefaultInstance().getProps();
+        return this;
+      }
+      
+      // required bytes key_clock = 3;
+      public boolean hasKeyClock() {
+        return result.hasKeyClock();
+      }
+      public com.google.protobuf.ByteString getKeyClock() {
+        return result.getKeyClock();
+      }
+      public Builder setKeyClock(com.google.protobuf.ByteString value) {
+        if (value == null) {
+    throw new NullPointerException();
+  }
+  result.hasKeyClock = true;
+        result.keyClock_ = value;
+        return this;
+      }
+      public Builder clearKeyClock() {
+        result.hasKeyClock = false;
+        result.keyClock_ = getDefaultInstance().getKeyClock();
         return this;
       }
       
@@ -5178,13 +5221,14 @@ public final class Messages {
       "\001(\t\022\014\n\004arg3\030\005 \001(\t\"r\n\013DeleteEntry\022\r\n\005inde" +
       "x\030\001 \002(\t\022\r\n\005field\030\002 \002(\t\022\014\n\004term\030\003 \002(\t\022\016\n\006" +
       "doc_id\030\004 \002(\t\022\021\n\tpartition\030\005 \002(\t\022\024\n\014messa",
-      "ge_type\030\006 \002(\t\".\n\016StreamResponse\022\r\n\005value" +
-      "\030\001 \002(\t\022\r\n\005props\030\002 \002(\014\"+\n\014InfoResponse\022\014\n" +
-      "\004term\030\001 \002(\t\022\r\n\005count\030\002 \002(\003\"i\n\024CatalogQue" +
-      "ryResponse\022\021\n\tpartition\030\001 \002(\t\022\r\n\005index\030\002" +
-      " \002(\t\022\r\n\005field\030\003 \002(\t\022\014\n\004term\030\004 \002(\t\022\022\n\njso" +
-      "n_props\030\005 \002(\t\"#\n\017CommandResponse\022\020\n\010resp" +
-      "onse\030\001 \002(\tB\033\n\017raptor.protobufB\010Messages"
+      "ge_type\030\006 \002(\t\"A\n\016StreamResponse\022\r\n\005value" +
+      "\030\001 \002(\t\022\r\n\005props\030\002 \002(\014\022\021\n\tkey_clock\030\003 \002(\014" +
+      "\"+\n\014InfoResponse\022\014\n\004term\030\001 \002(\t\022\r\n\005count\030" +
+      "\002 \002(\003\"i\n\024CatalogQueryResponse\022\021\n\tpartiti" +
+      "on\030\001 \002(\t\022\r\n\005index\030\002 \002(\t\022\r\n\005field\030\003 \002(\t\022\014" +
+      "\n\004term\030\004 \002(\t\022\022\n\njson_props\030\005 \002(\t\"#\n\017Comm" +
+      "andResponse\022\020\n\010response\030\001 \002(\tB\033\n\017raptor." +
+      "protobufB\010Messages"
     };
     com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner assigner =
       new com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner() {
@@ -5260,7 +5304,7 @@ public final class Messages {
           internal_static_StreamResponse_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_StreamResponse_descriptor,
-              new java.lang.String[] { "Value", "Props", },
+              new java.lang.String[] { "Value", "Props", "KeyClock", },
               raptor.protobuf.Messages.StreamResponse.class,
               raptor.protobuf.Messages.StreamResponse.Builder.class);
           internal_static_InfoResponse_descriptor =

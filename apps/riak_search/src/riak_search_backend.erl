@@ -14,7 +14,8 @@
 behaviour_info(callbacks) ->
     [{start,2},
      {stop,1},
-     {index,6},
+     {index_if_newer,7},
+     {multi_index,2},
      {delete_entry,5},
      {stream,6},
      {info,5},

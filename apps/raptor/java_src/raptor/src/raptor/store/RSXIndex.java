@@ -131,7 +131,38 @@ public class RSXIndex implements Runnable {
                                    props);
         stat_index_c++;
     }
-    
+
+    public void index_if_newer(String index,
+                               String field,
+                               String term,
+                               String docId,
+                               String partition,
+                               byte[] props,
+                               String updKeyClock) throws Exception {
+        String table = makeTableKey(index, field, term, partition);
+        String curKeyClock = null;
+        if (!store.tableExists(table)) {
+            addCatalogEntry(partition, index, field, term, null);
+            String catalogTableKey = makeTableKey(index, field, term, partition);
+            store.put(CATALOG_TABLE, catalogTableKey, term);
+        } else {
+            byte[] curKeyClockBytes = store.get(table, docId.getBytes("UTF-8"));
+            if (curKeyClockBytes != null) {
+                curKeyClock = new String(curKeyClockBytes);
+            }
+        }
+ 
+        if (curKeyClock == null || is_newer(updKeyClock, curKeyClock)) {
+            store.put(table, docId.getBytes("UTF-8"), updKeyClock.getBytes("UTF-8"));
+            store.setTermEntryMetadata(table, 
+                                       docId.getBytes("UTF-8"), 
+                                       term, 
+                                       ENTRY_METADATA__PROPS, 
+                                       props);
+            stat_index_c++;
+        }
+    }
+
     public String getEntryKeyClock(String index,
                                    String field,
                                    String term,
@@ -173,32 +204,35 @@ public class RSXIndex implements Runnable {
                            true, 
                            true,
                            new ResultHandler() {
-                               public void handleResult(byte[] key, byte[] value) {
+                               public void handleResult(byte[] key, byte[] key_clock) {
                                    try {
                                        // value: KeyClock
                                        byte[] props = store.getTermEntryMetadata(table,
                                                                                  key,
                                                                                  term,
                                                                                  ENTRY_METADATA__PROPS);
-                                       if (props != null) resultHandler.handleResult(key, props);
+                                       if (props != null)
+                                    	   	resultHandler.handleResult(key, props, key_clock);
                                    } catch (Exception ex) {
                                        ex.printStackTrace();
                                    }
                                }
-                               public void handleResult(String key, String value) { 
+                               public void handleResult(String key, String key_clock) { 
                                    try {
                                        // value: KeyClock
                                        byte[] props = store.getTermEntryMetadata(table,
                                                                                  key.getBytes("UTF-8"),
                                                                                  term,
                                                                                  ENTRY_METADATA__PROPS);
-                                       if (props != null) resultHandler.handleResult(key, new String(props, "UTF-8"));
+                                       if (props != null) resultHandler.handleResult(key,
+                                    		   new String(props, "UTF-8"),
+                                    		   key_clock);
                                    } catch (Exception ex) {
                                        ex.printStackTrace();
                                    }
                                }
                            });
-        resultHandler.handleResult(END_OF_TABLE, "");
+        resultHandler.handleResult(END_OF_TABLE, "", "");
     }
     
     public void multistream(JSONArray terms,
@@ -462,6 +496,10 @@ public class RSXIndex implements Runnable {
         lucene.addDocument(doc);
     }
     
+    private boolean is_newer(String updKeyClock, String curKeyClock) {
+        return Integer.getInteger(updKeyClock) > Integer.getInteger(curKeyClock);
+    }
+
     public static void main(String args[]) throws Exception {
         RSXIndex idx = new RSXIndex("");
         

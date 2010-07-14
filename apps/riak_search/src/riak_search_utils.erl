@@ -21,7 +21,8 @@
     index_recursive/2,
     n_val/0,
     calc_partition/3,
-    calc_n_partition/3
+    calc_n_partition/3,
+    current_key_clock/0
 ]).
 
 -include("riak_search.hrl").
@@ -257,3 +258,9 @@ calc_n_partition(Index, Field, Term) ->
     N = n_val(),
     Partition = calc_partition(Index, Field, Term),
     {N, Partition}.
+
+
+%% Return a key clock to use for revisioning IFTVPs
+current_key_clock() ->
+    {MegaSeconds,Seconds,_}=erlang:now(),
+    to_binary(integer_to_list(MegaSeconds*1000000+Seconds)).

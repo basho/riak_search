@@ -68,6 +68,7 @@ message DeleteEntry {
 message StreamResponse {
     required string value = 1;
     required bytes  props = 2;
+    optional bytes  key_clock = 3;
 }
 
 message InfoResponse {

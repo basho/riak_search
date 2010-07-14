@@ -8,7 +8,8 @@
 -author("John Muellerleile <johnm@basho.com>").
 -behavior(riak_search_backend).
 
--export([start/2,stop/1,index/6,multi_index/2,delete_entry/5,
+-export([start/2,stop/1,index_if_newer/7,
+         multi_index/2,delete_entry/5,
          stream/6,multi_stream/4,
          info/5,info_range/7,catalog_query/3,fold/3,is_empty/1,drop/1]).
 -export([toggle_raptor_debug/0, shutdown_raptor/0]).
@@ -24,7 +25,7 @@
 % @type state() = term().
 -record(state, {partition}).
 
--define(MAX_HANDOFF_STREAMS, 50).
+-define(MAX_HANDOFF_STREAMS,  10).
 -define(FOLD_TIMEOUT,         30000).
 -define(INFO_TIMEOUT,          5000).
 -define(INFO_RANGE_TIMEOUT,    5000).
@@ -48,40 +49,39 @@ start(Partition, _Config) ->
 stop(_State) ->
     ok.
 
-index(Index, Field, Term, DocId, Props, State) ->
-    Partition = to_binary(State#state.partition),
-    case proplists:get_value(if_newer_keyclock, Props, undefined) of
-        undefined ->
-            do_index(Partition, Index, Field, term, DocId, Props);
-        ObjKeyClock ->
-            CurrentKeyClock = get_entry_keyclock(Partition, Index, Field, Term, DocId),
-            {ObjKeyClockInt,_} = string:to_integer(ObjKeyClock),
-            {CurrentKeyClockInt,_} = string:to_integer(CurrentKeyClock),
-            case ObjKeyClockInt > CurrentKeyClockInt of
-                true ->
-                    Props1 = proplists:delete(if_newer_keyclock, Props),
-                    do_index(Partition, Index, Field, Term, DocId, Props1);
-                _ -> noreply
-            end
-    end.
+%% index(Partition, Index, Field, Term, DocId, Props, KeyClock) ->
+%%     {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
+%%     try
+%%         {ok, indexed} = raptor_conn:index(Conn,
+%%                                           to_binary(Index),
+%%                                           to_binary(Field),
+%%                                           to_binary(Term),
+%%                                           to_binary(DocId),
+%%                                           Partition,
+%%                                           term_to_binary(Props),
+%%                                           KeyClock)
+%%     after
+%%         riak_sock_pool:checkin(?CONN_POOL, Conn)
+%%     end,
+%%     noreply.
 
-do_index(Partition, Index, Field, Term, DocId, Props) ->
+index_if_newer(Index, Field, Term, DocId, Props, KeyClock, State) ->
     {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
     try
-        {ok, indexed} = raptor_conn:index(Conn,
+        {ok, indexed} = raptor_conn:index_if_newer(Conn,
                                           to_binary(Index),
                                           to_binary(Field),
                                           to_binary(Term),
                                           to_binary(DocId),
-                                          Partition,
+                                          to_binary(State#state.partition),
                                           term_to_binary(Props),
-                                          current_key_clock())
+                                          KeyClock)
     after
         riak_sock_pool:checkin(?CONN_POOL, Conn)
     end,
     noreply.
 
-multi_index(IFTVPList, State) ->
+multi_index(IFTVPKList, State) ->
     Partition = to_binary(State#state.partition),
     {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
     try
@@ -94,8 +94,8 @@ multi_index(IFTVPList, State) ->
                            to_binary(Value),
                            Partition,
                            term_to_binary(Props),
-                           current_key_clock()) || 
-            {Index, Field, Term, Value, Props} <- IFTVPList]
+                           KeyClock) || 
+            {Index, Field, Term, Value, Props, KeyClock} <- IFTVPKList]
     after
         riak_sock_pool:checkin(?CONN_POOL, Conn)
     end,
@@ -280,7 +280,7 @@ receive_stream_results(StreamRef, Sender, FilterFun, Conn, Acc0) ->
             riak_search_backend:stream_response_done(Sender),
             exit(Conn, kill),
             error_logger:warning_msg("Stream result Raptor socket timeout\n");
-        {stream, StreamRef, "$end_of_table", _} ->
+        {stream, StreamRef, "$end_of_table", _, _} ->
             case length(Acc) > 0 of
                 true ->
                     riak_search_backend:stream_response_results(
@@ -289,7 +289,7 @@ receive_stream_results(StreamRef, Sender, FilterFun, Conn, Acc0) ->
                 false -> skip
             end,
             riak_search_backend:stream_response_done(Sender);
-        {stream, StreamRef, Value, Props} ->
+        {stream, StreamRef, Value, Props, _KeyClock} ->
             case Props of
                 <<"">> ->
                     Props2 = [];
@@ -509,11 +509,11 @@ fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, IndexBin,
                                       [IndexBin, FieldBin, TermBin]),
             CatalogProcessPid ! {fold_stream, done, StreamRef},
             exit(Conn, kill);
-        {stream, StreamRef, "$end_of_table", _} ->
+        {stream, StreamRef, "$end_of_table", _, _} ->
             %% io:format("fold_stream_process: table complete: ~p.~p.~p~n",
             %%     [Index, Field, Term]),
             CatalogProcessPid ! {fold_stream, done, StreamRef};
-        {stream, StreamRef, Value, Props}=_Msg2 ->
+        {stream, StreamRef, Value, Props, KeyClock}=_Msg2 ->
             case Props of
                 <<>> ->
                     Props2 = [];
@@ -521,7 +521,7 @@ fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, IndexBin,
                     Props2 = binary_to_term(Props)
             end,
             Key = {IndexBin,{FieldBin,TermBin}},
-            Val = {Value, Props2},
+            Val = {Value, Props2, KeyClock},
             FoldResultPid ! {fold_result, Key, Val},
             fold_stream_process(CatalogProcessPid, FoldResultPid, StreamRef, 
                                 IndexBin, FieldBin, TermBin, Conn);
@@ -580,10 +580,6 @@ get_entry_keyclock(Partition, Index, Field, Term, DocId) ->
     raptor_command("get_entry_keyclock", IFT, Partition, DocId).
 
 %%%
-
-current_key_clock() ->
-    {MegaSeconds,Seconds,_}=erlang:now(),
-    to_binary(integer_to_list(MegaSeconds*1000000+Seconds)).
 
 -ifdef(TEST).
 %% test fold

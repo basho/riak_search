@@ -16,6 +16,7 @@
 -export([start_link/0,
          close/1,
          index/8,
+         index_if_newer/8,
          delete_entry/6,
          stream/5,
          multi_stream/2,
@@ -40,6 +41,16 @@ close(ConnPid) ->
 
 index(ConnPid, IndexName, FieldName, Term, Value, Partition, Props, KeyClock) ->
     MessageType = <<"Index">>,
+    IndexRec = #index{index=IndexName, field=FieldName,
+                      term=Term, value=Value,
+                      partition=Partition,
+                      message_type=MessageType,
+                      props=Props,
+                      key_clock=KeyClock},
+    gen_server:call(ConnPid, {index, IndexRec}, ?TIMEOUT).
+
+index_if_newer(ConnPid, IndexName, FieldName, Term, Value, Partition, Props, KeyClock) ->
+    MessageType = <<"IndexIfNewer">>,
     IndexRec = #index{index=IndexName, field=FieldName,
                       term=Term, value=Value,
                       partition=Partition,
@@ -214,7 +225,9 @@ handle_info({tcp, Sock, _Data}, #state{req_type=index}=State) ->
 %%
 handle_info({tcp, Sock, Data}, #state{req_type=stream, reqid=ReqId, dest=Dest}=State) ->
     StreamResponse = raptor_pb:decode_streamresponse(Data),
-    Dest ! {stream, ReqId, StreamResponse#streamresponse.value, StreamResponse#streamresponse.props},
+    Dest ! {stream, ReqId, StreamResponse#streamresponse.value, 
+                           StreamResponse#streamresponse.props,
+                           StreamResponse#streamresponse.key_clock},
     NewState = if
                    StreamResponse#streamresponse.value =:= "$end_of_table" ->
                        State#state{req_type=undefined,
