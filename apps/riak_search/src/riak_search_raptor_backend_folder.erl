@@ -27,6 +27,7 @@
                 reply_to,
                 folder,
                 acc,
+                vpk_list=[],
                 fold_key,
                 pending=[]}).
 
@@ -94,10 +95,17 @@ handle_info({stream, StreamRef, timeout},
     {stop, stream_socket_timeout, State};
 
 handle_info({stream, StreamRef, "$end_of_table", _, _}, 
-            #state{str_ref = StreamRef} = State) ->
+            #state{str_ref = StreamRef, folder = Folder, acc = Acc,
+                   fold_key = FoldKey, vpk_list = VPKList} = State) ->
+    %% End of stream, call the folder function
+    NewAcc = Folder(FoldKey, VPKList, Acc),
+
     case State#state.pending of
         [] ->
-            NewState = State#state{str_ref = undefined},
+            NewState = State#state{str_ref = undefined,
+                                   fold_key = undefined,
+                                   vpk_list = [],
+                                   acc = NewAcc},
             case fold_complete(NewState) of
                 true ->
                     {stop, normal, NewState};
@@ -106,22 +114,22 @@ handle_info({stream, StreamRef, "$end_of_table", _, _},
             end;
         [IFT | Rest] ->
             {noreply, start_stream(IFT, State#state{pending = Rest, 
-                                                    str_ref = undefined}), 
+                                                    str_ref = undefined,
+                                                    fold_key = undefined,
+                                                    vpk_list = [],
+                                                    acc = NewAcc}), 
              ?TIMEOUT}
     end;
 
 handle_info({stream, StreamRef, Value, PropsBin, KeyClock}, 
-            #state{str_ref = StreamRef} = State) ->
+            #state{str_ref = StreamRef, vpk_list = VPKList} = State) ->
     case PropsBin of
         <<"">> ->
             Props = [];
         _ ->
             Props = binary_to_term(PropsBin)
     end,
-    Val = {Value, Props, KeyClock},
-    Folder = State#state.folder,
-    NewAcc = Folder(State#state.fold_key, Val, State#state.acc),
-    {noreply, State#state{acc = NewAcc}, ?TIMEOUT}.
+    {noreply, State#state{vpk_list = [{Value, Props, KeyClock} | VPKList]}, ?TIMEOUT}.
 
 terminate(_Reason, State) ->
     maybe_checkin(State#state.cat_conn),
