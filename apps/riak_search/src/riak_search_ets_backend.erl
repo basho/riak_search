@@ -9,7 +9,7 @@
 
 -export([start/2,
          stop/1,
-         index/6,
+         index_if_newer/7,
          multi_index/2,
          delete_entry/5,
          stream/6,
@@ -34,7 +34,7 @@ start(Partition, _Config) ->
 stop(State) ->
     maybe_delete(State).
 
-index(Index, Field, Term, DocId, Props, State) ->
+index_if_newer(Index, Field, Term, DocId, Props, _KeyClock, State) ->
     multi_index([{Index, Field, Term, DocId, Props}], State),
     noreply.
 %%% TODO: why can't I {reply, ok} here? (cargo-cult raptor_backend)
