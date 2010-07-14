@@ -42,14 +42,12 @@ start_fold(TargetNode, Module, Partition, ParentPid) ->
                                    [binary, 
                                     {packet, 4}, 
                                     {header,1}, 
-                                    {active, once}], 15000),
+                                    {active, false}], 15000),
     VMaster = list_to_atom(atom_to_list(Module) ++ "_master"),
     ModBin = atom_to_binary(Module, utf8),
     Msg = <<?PT_MSG_OLDSYNC:8,ModBin/binary>>,
-    inet:setopts(Socket, [{active, false}]),
-    gen_tcp:send(Socket, Msg),
+    ok = gen_tcp:send(Socket, Msg),
     {ok,[?PT_MSG_OLDSYNC|<<"sync">>]} = gen_tcp:recv(Socket, 0),
-    inet:setopts(Socket, [{active, once}]),
     M = <<?PT_MSG_INIT:8,Partition:160/integer>>,
     ok = gen_tcp:send(Socket, M),
     riak_core_vnode_master:sync_command({Partition, node()},
@@ -70,10 +68,14 @@ folder(K, V, AccIn) ->
 visit_item(K, V, {Socket, ParentPid, Module, ?ACK_COUNT}) ->
     M = <<?PT_MSG_OLDSYNC:8,"sync">>,
     ok = gen_tcp:send(Socket, M),
-    inet:setopts(Socket, [{active, false}]),
-    {ok,[?PT_MSG_OLDSYNC|<<"sync">>]} = gen_tcp:recv(Socket, 0),
-    inet:setopts(Socket, [{active, once}]),
-    visit_item(K, V, {Socket, ParentPid, Module, 0});
+    case gen_tcp:recv(Socket, 0) of
+        {ok,[?PT_MSG_OLDSYNC|<<"sync">>]} ->
+            visit_item(K, V, {Socket, ParentPid, Module, 0});
+        Other ->
+            error_logger:info_msg("Handoff sender for ~p failed to sync: ~p\n", 
+                                  [Module, Other]),
+            throw(sync_failed)
+    end;
 visit_item(K, V, {Socket, ParentPid, Module, Acc}) ->
     BinObj = Module:encode_handoff_item(K, V),
     M = <<?PT_MSG_OBJ:8,BinObj/binary>>,
