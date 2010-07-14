@@ -112,23 +112,6 @@ catalog_query(Preflist, CatalogQuery, ReplyTo) ->
     command(Preflist, Req, {raw, Ref, ReplyTo}),
     {ok, Ref}.
 
-%% %% Get replies from all nodes that are willing to stream this
-%% %% bucket. If there is one on the local node, then use it, otherwise,
-%% %% use the first one that responds.
-%% wait_for_ready(0, _Ref, Partition, Node) ->
-%%     {ok, Partition, Node};
-%% wait_for_ready(RepliesRemaining, Ref, Partition, Node) ->
-%%     LocalNode = node(),
-%%     receive
-%%         {stream_ready, LocalPartition, LocalNode, Ref} ->
-%%             {ok, LocalPartition, LocalNode};
-%%         {stream_ready, _NewPartition, _NewNode, Ref} when Node /= undefined ->
-%%             wait_for_ready(RepliesRemaining - 1, Ref, Partition, Node);
-%%         {stream_ready, NewPartition, NewNode, Ref} ->
-%%             wait_for_ready(RepliesRemaining -1, Ref, NewPartition, NewNode)
-%%     end.
-
-
 %%
 %% Utility functions
 %%
