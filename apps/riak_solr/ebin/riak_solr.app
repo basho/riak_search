@@ -3,7 +3,6 @@
   {description, "Riak Search Solr API"},
   {vsn, "0.1"},
   {modules, [
-             mustache,
              riak_solr_app,
              riak_solr_sup,
              riak_solr_error,
