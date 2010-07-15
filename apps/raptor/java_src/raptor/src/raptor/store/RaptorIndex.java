@@ -94,7 +94,6 @@ public class RaptorIndex {
                             log.info(">> " + stat_index_c + " operations");
                         }
                         stat_index_c = 0;
-                        store.reportWriteQueueSizes();
                         Thread.sleep(STORE_COMMIT_INTERVAL);
                     } catch (Exception ex) {
                         ex.printStackTrace();
