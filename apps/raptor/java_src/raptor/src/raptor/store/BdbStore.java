@@ -34,7 +34,6 @@ import java.util.Random;
 
 import org.apache.log4j.Logger;
 
-import raptor.store.bdb.DefaultBDBMessageHandler;
 import raptor.store.handlers.ResultHandler;
 import raptor.util.RaptorUtils;
 
@@ -55,9 +54,6 @@ public class BdbStore {
     private final DatabaseConfig databaseConfig;
     private Database db;
     private final Environment env;
-
-    private static final DefaultBDBMessageHandler
-            defaultMessageHandler = new DefaultBDBMessageHandler();
 
     public BdbStore(String filename,
                       String name) throws Exception {
@@ -85,9 +81,6 @@ public class BdbStore {
         databaseConfig = new DatabaseConfig();
         databaseConfig.setAllowCreate(true);
         databaseConfig.setErrorStream(System.err);
-        databaseConfig.setErrorHandler(defaultMessageHandler);
-        databaseConfig.setFeedbackHandler(defaultMessageHandler);
-        databaseConfig.setMessageHandler(defaultMessageHandler);
         databaseConfig.setErrorPrefix("<" + filename + ": " + name + "> ");
         databaseConfig.setType(DatabaseType.BTREE);
         databaseConfig.setReverseSplitOff(true);
@@ -110,7 +103,6 @@ public class BdbStore {
         envConf.setMMapSize(100000000);
         envConf.setMaxLogFileSize(64 * 1048576); // 64 MB
         envConf.setLogAutoRemove(true);
-        envConf.setMessageHandler(defaultMessageHandler);
         envConf.setMessageStream(System.err);
         envConf.setPrivate(true);
         envConf.setTxnWriteNoSync(true);
