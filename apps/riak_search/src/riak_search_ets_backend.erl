@@ -40,11 +40,25 @@ index_if_newer(Index, Field, Term, DocId, Props, KeyClock, State) ->
 %%% TODO: why can't I {reply, ok} here? (cargo-cult raptor_backend)
 
 
-multi_index(IFTVPKList, State) ->
-    %% TODO: look for timestamp before clobbering
-    ets:insert(State#state.table,
-               [ {{b(I), b(F), b(T), b(V)}, P, K}
-                 || {I, F, T, V, P, K} <- IFTVPKList ]),
+multi_index(IFTVPKList, #state{table=Table}=State) ->
+    lists:foreach(
+      fun({I, F, T, V, P, K}) ->
+              Key = {b(I), b(F), b(T), b(V)},
+              case ets:lookup(Table, Key) of
+                  [{_, _, ExistingKeyClock}] ->
+                      if ExistingKeyClock > K ->
+                              %% stored data is newer
+                              ok;
+                         true ->
+                              %% stored data is older
+                              ets:update_element(Table, Key,
+                                                 [{2, P},{3, K}])
+                      end;
+                  [] ->
+                      ets:insert(Table, {Key, P, K})
+              end
+      end,
+      IFTVPKList),
     {reply, {indexed, node()}, State}.
 %%% TODO: why can't I {reply, ok} here? (cargo-cult raptor_backend)
 
