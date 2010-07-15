@@ -1,0 +1,29 @@
+{
+    schema, 
+    [
+        {version, "1.1"},
+        {default_field, "date"}
+    ],
+    [
+        {field, [
+            {name, "id"},
+            {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+        ]},
+
+        {field, [
+            {name, "key"},
+            {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+        ]},
+
+        {field, [
+            {name, "date"},
+            {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+        ]},
+
+        {field, [
+            {name, "date_facet"},
+            {facet, true},
+            {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+        ]}
+    ]
+}.

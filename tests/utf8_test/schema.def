@@ -1,0 +1,23 @@
+{
+    schema, 
+    [
+        {version, "1.1"},
+        {default_field, "value"}
+    ],
+    [
+        {field, [
+            {name, "id"},
+            {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+        ]},
+
+        {field, [
+            {name, "language"},
+            {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+        ]},
+
+        {field, [
+            {name, "value"},
+            {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+        ]}
+    ]
+}.

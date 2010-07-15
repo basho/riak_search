@@ -159,17 +159,17 @@ rewrite_term(Q, Options, _Schema) ->
             [#term { q=Q, options=[facet|Options] }];
         false ->
             {Index, Field, Term} = Q,
-            
+
             %%{ok, {_, Node, Count}} = riak_search:info(Index, Field, Term),
             %%Weights = [{node_weight, Node, Count}],
-            
+
             TermPreflist = riak_search:term_preflist(Index, Field, Term),
             %% [ {Partition, Node} ... ]
-            
+
             Weights = lists:map(fun({Partition, Node}) ->
                 [{node_weight, Node, 1}, {preflist_entry, Partition, Node}]
             end, TermPreflist),
-            
+
             [#term { q=Q, options=Weights ++ Options }]
     end.
 
@@ -209,11 +209,10 @@ pass3(#term{q={Index, Field, Term0},
         V ->
             Term = Term0 ++ "~" ++ V,
             {ok, Ref} = riak_search:term(Index, Term),
-            FuzzyTerms = receive_matched_terms(Ref, Field, proplists:delete(fuzzy, Options), []),
-            case length(FuzzyTerms) < 2 of
-                true ->
+            case receive_matched_terms(Ref, Field, proplists:delete(fuzzy, Options), []) of
+                [] ->
                     Op;
-                false ->
+                FuzzyTerms ->
                     {lor, FuzzyTerms}
             end
     end;
@@ -318,7 +317,7 @@ range_to_lor(Start, End, Inclusive, Facets, _Schema) ->
     %% Results are of form {"term", 'node@1.1.1.1', Count}
     {ok, Results} = riak_search:info_range(Index, Field, StartTerm, EndTerm, _Size),
     %% {ok, Results} = riak_search:info_range_no_count(Index, Field, StartTerm, EndTerm),
-    
+
     %% Collapse or terms into multi_stream operation
     TermProps = [{facets, Facets}],
     Optimized_Or = riak_search_optimizer:optimize_or(Results, Index, Field, TermProps),
