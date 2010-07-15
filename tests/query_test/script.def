@@ -1,6 +1,6 @@
 [
     %% Set the schema...
-    {schema, "schema.def"},
+    {schema, "../_files/sample100/schema.def"},
 
     {echo,   "Indexing documents..."}, 
     {solr,   "../_files/sample100/solr_add.xml"},
