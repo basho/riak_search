@@ -57,7 +57,7 @@
                   raptor
                  ]},
   {mod, { riak_search_app, []}},
-  {env, [{riak_search_backend, riak_search_raptor_backend},
+  {env, [{search_backend, riak_search_raptor_backend},
          %% N value to use for indices
          {n_val, 2},
          %% How many index terms get sent in a batch to the vnodes
