@@ -25,58 +25,63 @@
 
 package raptor.store;
 
-import com.sleepycat.db.*;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+
 import org.apache.log4j.Logger;
+
 import raptor.store.bdb.DefaultBDBMessageHandler;
 import raptor.store.handlers.ResultHandler;
 import raptor.util.RaptorUtils;
 
-import java.io.File;
-import java.util.*;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import com.sleepycat.db.Cursor;
+import com.sleepycat.db.Database;
+import com.sleepycat.db.DatabaseConfig;
+import com.sleepycat.db.DatabaseEntry;
+import com.sleepycat.db.DatabaseType;
+import com.sleepycat.db.Environment;
+import com.sleepycat.db.EnvironmentConfig;
+import com.sleepycat.db.LockMode;
+import com.sleepycat.db.OperationStatus;
 
 public class BtreeStore {
     final private static Logger log =
             Logger.getLogger(BtreeStore.class);
 
-    private static final int DB_PAGE_SIZE = 2048;
     private final DatabaseConfig databaseConfig;
     private Database db;
     private final Environment env;
-    private final Lock dbLock;
-    private String directory;
-    private String logDirectory;
-    protected LinkedBlockingQueue<Object> writeQueue;
 
     private static final DefaultBDBMessageHandler
             defaultMessageHandler = new DefaultBDBMessageHandler();
 
     public BtreeStore(String filename,
                       String name) throws Exception {
-        this(getDefaultEnvironment(".", "."), filename, name, DB_PAGE_SIZE);
+        this(getDefaultEnvironment(".", "."), filename, name);
     }
 
     public BtreeStore(String filename,
                       String directory,
                       String name) throws Exception {
-        this(getDefaultEnvironment(directory, directory), filename, name, DB_PAGE_SIZE);
+        this(getDefaultEnvironment(directory, directory), filename, name);
     }
 
     public BtreeStore(String filename,
                       String directory,
                       String logDirectory,
                       String name) throws Exception {
-        this(getDefaultEnvironment(directory, logDirectory), filename, name, DB_PAGE_SIZE);
+        this(getDefaultEnvironment(directory, logDirectory), filename, name);
     }
 
     public BtreeStore(Environment env,
                       String filename,
-                      String name,
-                      int pageSize) throws Exception {
+                      String name) throws Exception {
         this.env = env;
-        dbLock = new ReentrantLock();
+
         databaseConfig = new DatabaseConfig();
         databaseConfig.setAllowCreate(true);
         databaseConfig.setErrorStream(System.err);
@@ -88,14 +93,11 @@ public class BtreeStore {
         databaseConfig.setReverseSplitOff(true);
         databaseConfig.setChecksum(true);
         databaseConfig.setSortedDuplicates(false);
-        databaseConfig.setBtreePrefixCalculator(null);
         databaseConfig.setTransactional(true);
         databaseConfig.setReadUncommitted(true);
         db = this.env.openDatabase(null, filename, name, databaseConfig);
-        startWriteThread();
     }
 
-    @SuppressWarnings("deprecation")
     protected static Environment getDefaultEnvironment(String directory,
                                                        String logDirectory) {
         EnvironmentConfig envConf = new EnvironmentConfig();
@@ -106,22 +108,12 @@ public class BtreeStore {
         envConf.setCacheSize(218435456);
         envConf.setInitializeCache(true);
         envConf.setMMapSize(100000000);
-        envConf.setMaxLogFileSize(10000000);
-        //envConf.setInitializeLocking(true);
+        envConf.setMaxLogFileSize(64 * 1048576); // 64 MB
         envConf.setLogAutoRemove(true);
-        //envConf.setDsyncLog(false);
-        //envConf.setDirectDatabaseIO(true);
-        //envConf.setDsyncDatabases(false);
         envConf.setMessageHandler(defaultMessageHandler);
         envConf.setMessageStream(System.err);
         envConf.setPrivate(true);
-        envConf.setVerboseDeadlock(true);
-        envConf.setVerboseRecovery(true);
-        envConf.setVerboseWaitsFor(true);
-        //envConf.setMutexIncrement(5000);
-        //envConf.setLockDetectMode(LockDetectMode.RANDOM);
-        envConf.setTxnNoSync(true);
-        //envConf.setTxnNotDurable(true);
+        envConf.setTxnWriteNoSync(true);
         envConf.setTransactional(true);
         try {
             log.info("ensureDirectory(" + directory + ")");
@@ -138,65 +130,7 @@ public class BtreeStore {
     }
 
     public void close() throws Exception {
-        //dbLock.lock();
-        try {
-            db.close();
-        } finally {
-            //dbLock.unlock();
-        }
-    }
-
-    private void startWriteThread() {
-        writeQueue = new LinkedBlockingQueue<Object>(50000);
-        Thread writeThread = new Thread(new Runnable() {
-            public void run() {
-                try {
-                    log.info("writeThread: started");
-                    while (true) {
-                        try {
-                            while (writeQueue.size() == 0)
-                                Thread.sleep(100);
-                            List<Object> batch = new ArrayList<Object>();
-                            writeQueue.drainTo(batch); // todo: configurable batch size?
-                            for (Object msg0 : batch) {
-                                if (msg0 instanceof PutOp) {
-                                    PutOp msg = (PutOp) msg0;
-                                    do_put(msg.key, msg.val);
-                                } else if (msg0 instanceof DeleteOp) {
-                                    DeleteOp msg = (DeleteOp) msg0;
-                                    do_delete(msg.key);
-                                } else {
-                                    log.error("writeQueue: unknown message (discarding): " +
-                                            msg0.toString());
-                                }
-                                RaptorIndex.stat_index_c++;
-                            }
-                        } catch (Exception iex) {
-                            log.error("Error handling message", iex);
-                            iex.printStackTrace();
-                        }
-                    }
-                } catch (Exception ex) {
-                    log.error("Error setting up writeQueue process", ex);
-                    ex.printStackTrace();
-                }
-            }
-        });
-
-        try {
-            writeThread.start();
-        } catch (Exception ex) {
-            log.error("Error starting BtreeStore writeThread", ex);
-            System.exit(-1);
-        }
-    }
-
-    private class PutOp {
-        byte[] key, val;
-    }
-
-    private class DeleteOp {
-        byte[] key;
+    	db.close();
     }
 
     public boolean put(String key, String val) throws Exception {
@@ -204,25 +138,9 @@ public class BtreeStore {
     }
 
     public boolean put(byte[] key, byte[] val) throws Exception {
-        PutOp op = new PutOp();
-        op.key = key;
-        op.val = val;
-        writeQueue.put(op);
-        return true;
-    }
-
-    private boolean do_put(byte[] key, byte[] val) throws Exception {
-        //dbLock.lock();
-        try {
-            if (db.put(null,
-                    new DatabaseEntry(key),
-                    new DatabaseEntry(val)) == OperationStatus.SUCCESS) {
-                return true;
-            }
-        } finally {
-            //dbLock.unlock();
-        }
-        return false;
+        return (db.put(null,
+                       new DatabaseEntry(key),
+                       new DatabaseEntry(val)) == OperationStatus.SUCCESS);
     }
 
     public String get(String key) throws Exception {
@@ -389,32 +307,13 @@ public class BtreeStore {
     }
 
     public boolean delete(byte[] key) throws Exception {
-        DeleteOp op = new DeleteOp();
-        op.key = key;
-        writeQueue.put(op);
-        return true;
-    }
-
-    private boolean do_delete(byte[] key) throws Exception {
-        //dbLock.lock();
-        try {
-            if (db.delete(null, new DatabaseEntry(key)) ==
-                    OperationStatus.SUCCESS) return true;
-        } finally {
-            //dbLock.unlock();
-        }
-        return false;
+    	return (db.delete(null, new DatabaseEntry(key)) ==
+                OperationStatus.SUCCESS);
     }
 
     public boolean exists(byte[] key) throws Exception {
-        //dbLock.lock();
-        try {
-            if (db.exists(null, new DatabaseEntry(key)) ==
-                    OperationStatus.SUCCESS) return true;
-        } finally {
-            //dbLock.unlock();
-        }
-        return false;
+    	return (db.exists(null, new DatabaseEntry(key)) ==
+                OperationStatus.SUCCESS);
     }
 
     protected Database getDatabase() {
@@ -445,7 +344,7 @@ public class BtreeStore {
         startTime = System.currentTimeMillis();
         for (int i = 0; i < 100000; i++) {
             String k = "k" + i;
-            String v = store.get(k);
+            store.get(k);
         }
         log.info("100k reads in " + ((System.currentTimeMillis() - startTime) / 1000) + " sec");
 
