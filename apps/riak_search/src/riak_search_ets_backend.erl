@@ -28,7 +28,7 @@
 
 start(Partition, _Config) ->
     Table = ets:new(list_to_atom(integer_to_list(Partition)),
-                    [protected, bag]),
+                    [protected, ordered_set]),
     {ok, #state{partition=Partition, table=Table}}.
 
 stop(State) ->
@@ -43,7 +43,7 @@ index_if_newer(Index, Field, Term, DocId, Props, KeyClock, State) ->
 multi_index(IFTVPKList, State) ->
     %% TODO: look for timestamp before clobbering
     ets:insert(State#state.table,
-               [ {{b(I), b(F), b(T)}, {V, P}, K}
+               [ {{b(I), b(F), b(T), b(V)}, P, K}
                  || {I, F, T, V, P, K} <- IFTVPKList ]),
     {reply, {indexed, node()}, State}.
 %%% TODO: why can't I {reply, ok} here? (cargo-cult raptor_backend)
@@ -51,13 +51,15 @@ multi_index(IFTVPKList, State) ->
 
 delete_entry(Index, Field, Term, DocId, State) ->
     ets:match_delete(State#state.table,
-                     {{b(Index), b(Field), b(Term)}, {DocId, '_'}, '_'}),
+                     {{b(Index), b(Field), b(Term), b(DocId)},
+                      '_', '_'}),
     noreply.
 %%% TODO: why can't I {reply, ok} here? (cargo-cult raptor_backend)
 
 info(Index, Field, Term, Sender, State) ->
     Count = ets:select_count(State#state.table,
-                             [{{{b(Index), b(Field), b(Term)}, '_', '_'},
+                             [{{{b(Index), b(Field), b(Term), '_'},
+                                '_', '_'},
                                [],[true]}]),
     riak_search_backend:info_response(Sender, [{Term, node(), Count}]),
     noreply.
@@ -70,7 +72,8 @@ info_range(Index, Field, StartTerm, EndTerm, _Size, Sender, State) ->
       fun() ->
               R = [{T, node(),
                     ets:select_count(State#state.table,
-                                     [{{{b(Index), b(Field), T}, '_', '_'},
+                                     [{{{b(Index), b(Field), T, '_'},
+                                        '_', '_'},
                                        [], [true]}])}
                    || T <- Terms],
               riak_search_backend:info_response(Sender, R)
@@ -78,16 +81,19 @@ info_range(Index, Field, StartTerm, EndTerm, _Size, Sender, State) ->
     noreply.
 
 find_terms_in_range(I, F, ST, ET, State) ->
-    find_terms_in_range(I, F, ST, ET,
-                        State#state.table,
-                        ets:first(State#state.table)).
+    %% usort removes duplicates introduced by find_terms_in_range/6
+    lists:usort(
+      find_terms_in_range(I, F, ST, ET,
+                          State#state.table,
+                          ets:first(State#state.table))).
 
 find_terms_in_range(_, _, _, _, _,'$end_of_table') ->
     [];
-find_terms_in_range(I, F, ST, ET, Table, {I, F, T})
+find_terms_in_range(I, F, ST, ET, Table, {I, F, T, V})
   when T >= ST, T =< ET ->
+    %% duplicates will be removed by usort in find_terms_in_range/5
     [T|find_terms_in_range(I, F, ST, ET, Table,
-                           ets:next(Table, {I, F, T}))];
+                           ets:next(Table, {I, F, T, V}))];
 find_terms_in_range(I, F, ST, ET, Table, K) ->
     find_terms_in_range(I, F, ST, ET, Table, ets:next(Table, K)).
 
@@ -102,7 +108,8 @@ multi_stream(IFTList, FilterFun, Sender, State) ->
           [Sender,
            FilterFun,
            ets:select(State#state.table,
-                      [{{{b(I), b(F), b(T)}, '$1', '_'}, [], ['$1']}
+                      [{{{b(I), b(F), b(T), '$1'}, '$2', '_'},
+                        [], [{{'$1', '$2'}}]}
                        || {term, {I, F, T}, _P} <- IFTList],
                       ?STREAM_SIZE)]),
     noreply.
