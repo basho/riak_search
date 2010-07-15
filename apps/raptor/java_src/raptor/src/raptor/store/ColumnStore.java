@@ -45,16 +45,16 @@ public class ColumnStore implements Runnable {
     final private static int DEFAULT_PARTITIONS = 4;
     final private static String DB_PFX = "db";
 
-    private ConcurrentHashMap<String, BtreeStore>
-            stores = new ConcurrentHashMap<String, BtreeStore>();
+    private ConcurrentHashMap<String, BdbStore>
+            stores = new ConcurrentHashMap<String, BdbStore>();
     private ConcurrentHashMap<String, String>
             metadataCache = new ConcurrentHashMap<String, String>();
     private ConcurrentHashMap<byte[], byte[]>
             entryMetadataCache = new ConcurrentHashMap<byte[], byte[]>();
     private ConsistentHash<String> tableHash;
     private int partitions;
-    private BtreeStore metadata;
-    private BtreeStore entryMetadata;
+    private BdbStore metadata;
+    private BdbStore entryMetadata;
     private Lock metadataLock = new ReentrantLock();
     private Lock entryMetadataLock = new ReentrantLock();
     private Environment env;
@@ -84,19 +84,19 @@ public class ColumnStore implements Runnable {
         this.partitions = partitions;
         log.info("ensureDirectory(" + directory + ")");
         RaptorUtils.ensureDirectory(directory);
-        env = BtreeStore.getDefaultEnvironment(directory, logDirectory);
+        env = BdbStore.getDefaultEnvironment(directory, logDirectory);
         tableHash = RaptorUtils.createConsistentHash(DB_PFX, partitions);
         for (int i = 0; i < partitions; i++) {
             log.info("Opening " + DB_PFX + i + ".column");
-            BtreeStore store = new BtreeStore(
+            BdbStore store = new BdbStore(
                     env,
                     DB_PFX + i + ".column", DB_PFX + i);
             stores.put(DB_PFX + i, store);
         }
         log.info("Opening metadata.hash");
-        metadata = new BtreeStore(env, "metadata.hash", "metadata");
+        metadata = new BdbStore(env, "metadata.hash", "metadata");
         log.info("Opening entry_metadata.hash");
-        entryMetadata = new BtreeStore(env, "entry_metadata.hash", "entry_metadata");
+        entryMetadata = new BdbStore(env, "entry_metadata.hash", "entry_metadata");
     }
 
     public void run() {
@@ -151,7 +151,7 @@ public class ColumnStore implements Runnable {
             throws Exception {
         boolean updateCount;
         byte[] columnKey = getColumnKey(table, key);
-        BtreeStore store = stores.get(tableHash.get(table));
+        BdbStore store = stores.get(tableHash.get(table));
         updateCount = !store.exists(columnKey);
         if (store.put(columnKey, val)) {
             /*
@@ -172,7 +172,7 @@ public class ColumnStore implements Runnable {
 
     public String get(String table, String key)
             throws Exception {
-        BtreeStore store = stores.get(tableHash.get(table));
+        BdbStore store = stores.get(tableHash.get(table));
         byte[] v = store.get(getColumnKey(table, key));
         if (v == null) return null;
         return new String(v, "UTF-8");
@@ -180,7 +180,7 @@ public class ColumnStore implements Runnable {
 
     public byte[] get(String table, byte[] key)
             throws Exception {
-        BtreeStore store = stores.get(tableHash.get(table));
+        BdbStore store = stores.get(tableHash.get(table));
         return store.get(getColumnKey(table, key));
     }
 
@@ -192,7 +192,7 @@ public class ColumnStore implements Runnable {
     public boolean delete(String table, byte[] key)
             throws Exception {
         byte[] columnKey = getColumnKey(table, key);
-        BtreeStore store = stores.get(tableHash.get(table));
+        BdbStore store = stores.get(tableHash.get(table));
         if (store.delete(columnKey)) {
             //decrementTableCount(table);
             return true;
@@ -203,7 +203,7 @@ public class ColumnStore implements Runnable {
     protected boolean rawDelete(byte[] key)
             throws Exception {
         for (String k : stores.keySet()) {
-            BtreeStore store = stores.get(k);
+            BdbStore store = stores.get(k);
             boolean rval = store.delete(key);
             log.info("rawDelete: [" +
                     new String(key, "UTF-8") + "] " +
@@ -223,7 +223,7 @@ public class ColumnStore implements Runnable {
 
     public boolean exists(String table, byte[] key)
             throws Exception {
-        BtreeStore store = stores.get(tableHash.get(table));
+        BdbStore store = stores.get(tableHash.get(table));
         return store.exists(getColumnKey(table, key));
     }
 
@@ -266,7 +266,7 @@ public class ColumnStore implements Runnable {
                                         boolean rawKeys,
                                         final ResultHandler resultHandler)
             throws Exception {
-        BtreeStore store = stores.get(tableHash.get(table));
+        BdbStore store = stores.get(tableHash.get(table));
         byte[] ckStart = getColumnKey(table, keyStart);
         byte[] ckEnd = getColumnKey(table, keyEnd);
         if (resultHandler != null) {
@@ -309,7 +309,7 @@ public class ColumnStore implements Runnable {
                           String keyEnd,
                           boolean startInclusive,
                           boolean endInclusive) throws Exception {
-        BtreeStore store = stores.get(tableHash.get(table));
+        BdbStore store = stores.get(tableHash.get(table));
         byte[] ckStart = getColumnKey(table, keyStart);
         byte[] ckEnd = getColumnKey(table, keyEnd);
         return store.countRange(ckStart,
@@ -323,7 +323,7 @@ public class ColumnStore implements Runnable {
                                    String keyEnd,
                                    boolean startInclusive,
                                    boolean endInclusive) throws Exception {
-        BtreeStore store = stores.get(tableHash.get(table));
+        BdbStore store = stores.get(tableHash.get(table));
         byte[] ckStart = getColumnKey(table, keyStart);
         byte[] ckEnd = getColumnKey(table, keyEnd);
         return store.getRawKeyRange(ckStart,
@@ -337,7 +337,7 @@ public class ColumnStore implements Runnable {
                                         String keyEnd,
                                         boolean startInclusive,
                                         boolean endInclusive) throws Exception {
-        BtreeStore store = stores.get(tableHash.get(table));
+        BdbStore store = stores.get(tableHash.get(table));
         byte[] ckStart = keyStart.getBytes("UTF-8");
         byte[] ckEnd = keyEnd.getBytes("UTF-8");
         Map<byte[], byte[]> results =
@@ -411,7 +411,7 @@ public class ColumnStore implements Runnable {
     }
 
     public void sync() throws Exception {
-        for (BtreeStore store : stores.values()) {
+        for (BdbStore store : stores.values()) {
             store.sync();
         }
         metadata.sync();
@@ -428,7 +428,7 @@ public class ColumnStore implements Runnable {
     public void close() throws Exception {
         //metadataLock.lock();
         try {
-            for (BtreeStore store : stores.values()) {
+            for (BdbStore store : stores.values()) {
                 store.close();
             }
             metadata.close();
@@ -622,11 +622,11 @@ public class ColumnStore implements Runnable {
 
     private Sequence getSequence(String table)
             throws Exception {
-        BtreeStore store = stores.get(tableHash.get(table));
+        BdbStore store = stores.get(tableHash.get(table));
         return getSequence(store, table);
     }
 
-    private Sequence getSequence(BtreeStore store, String table)
+    private Sequence getSequence(BdbStore store, String table)
             throws Exception {
         SequenceConfig sequenceConfig = new SequenceConfig();
         sequenceConfig.setAllowCreate(true);
@@ -642,11 +642,11 @@ public class ColumnStore implements Runnable {
 
     public long getSequenceValue(String table)
             throws Exception {
-        BtreeStore store = stores.get(tableHash.get(table));
+        BdbStore store = stores.get(tableHash.get(table));
         return getSequenceValue(store, table);
     }
 
-    private long getSequenceValue(BtreeStore store, String table)
+    private long getSequenceValue(BdbStore store, String table)
             throws Exception {
         Sequence sequence = getSequence(store, table);
         StatsConfig statsConfig = new StatsConfig();

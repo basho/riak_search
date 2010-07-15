@@ -48,9 +48,9 @@ import com.sleepycat.db.EnvironmentConfig;
 import com.sleepycat.db.LockMode;
 import com.sleepycat.db.OperationStatus;
 
-public class BtreeStore {
+public class BdbStore {
     final private static Logger log =
-            Logger.getLogger(BtreeStore.class);
+            Logger.getLogger(BdbStore.class);
 
     private final DatabaseConfig databaseConfig;
     private Database db;
@@ -59,25 +59,25 @@ public class BtreeStore {
     private static final DefaultBDBMessageHandler
             defaultMessageHandler = new DefaultBDBMessageHandler();
 
-    public BtreeStore(String filename,
+    public BdbStore(String filename,
                       String name) throws Exception {
         this(getDefaultEnvironment(".", "."), filename, name);
     }
 
-    public BtreeStore(String filename,
+    public BdbStore(String filename,
                       String directory,
                       String name) throws Exception {
         this(getDefaultEnvironment(directory, directory), filename, name);
     }
 
-    public BtreeStore(String filename,
+    public BdbStore(String filename,
                       String directory,
                       String logDirectory,
                       String name) throws Exception {
         this(getDefaultEnvironment(directory, logDirectory), filename, name);
     }
 
-    public BtreeStore(Environment env,
+    public BdbStore(Environment env,
                       String filename,
                       String name) throws Exception {
         this.env = env;
@@ -325,7 +325,7 @@ public class BtreeStore {
     }
 
     public static void main(String args[]) throws Exception {
-        BtreeStore store = new BtreeStore("test.btree", "test");
+        BdbStore store = new BdbStore("test.btree", "test");
         store.put("apple", "fruit: apple");
         store.put("banana", "fruit: banana");
         store.put("carrot", "vegetable: carrot");
