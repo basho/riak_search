@@ -164,8 +164,28 @@ parse_catalog_query(CatalogQuery) ->
 
 %%% TODO: test fold/3
 fold(FoldFun, Acc, State) ->
-    ets:foldl(FoldFun, Acc, State#state.table),
-    {reply, ok}.
+    Fun = fun({{I,F,T,V},P,K}, {OuterAcc, {{I,{F,T}},InnerAcc}}) ->
+                  %% same IFT, just accumulate doc/props/clock
+                  {OuterAcc, {{I,{F,T}},[{V,P,K}|InnerAcc]}};
+             ({{I,F,T,V},P,K}, {OuterAcc, {FoldKey, VPKList}}) ->
+                  %% finished a string of IFT, send it off
+                  %% (sorted order is assumed)
+                  NewOuterAcc = FoldFun(FoldKey, VPKList, OuterAcc),
+                  {NewOuterAcc, {{I,{F,T}},[{V,P,K}]}};
+             ({{I,F,T,V},P,K}, {OuterAcc, undefined}) ->
+                  %% first round through the fold - just start building
+                  {OuterAcc, {{I,{F,T}},[{V,P,K}]}}
+          end,
+    {OuterAcc0, Final} = ets:foldl(Fun, {Acc, undefined}, State#state.table),
+    OuterAcc = case Final of
+                   {FoldKey, VPKList} ->
+                       %% one last IFT to send off
+                       FoldFun(FoldKey, VPKList, OuterAcc0);
+                   undefined ->
+                       %% this partition was empty
+                       OuterAcc0
+               end,
+    {reply, OuterAcc, State}.
 
 is_empty(State) ->
     0 == ets:info(State#state.table, size).
