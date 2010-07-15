@@ -17,8 +17,8 @@
 -export([idle/2, idle/3,
          receiving/2, receiving/3]).
 
--define(RECV_TIMEOUT_USECS, 5000).
--define(INDEX_TIMEOUT_USECS, 5000).
+-define(RECV_TIMEOUT_USECS, 60000).
+-define(INDEX_TIMEOUT_USECS, 60000).
 
 -record(state, {terms=[],          % Terms left to index,
                 num_terms=0,       % Number of terms

@@ -1,33 +1,25 @@
 package raptor.store.bdb;
 
-import java.io.*;
-import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import com.sleepycat.db.Database;
+import com.sleepycat.db.DatabaseEntry;
+import raptor.util.ConsistentHash;
+import raptor.util.RaptorUtils;
 
-import com.sleepycat.db.*;
-import org.apache.log4j.Logger;
-import org.json.*;
-import org.apache.log4j.BasicConfigurator;
-import org.apache.log4j.LogManager;
-import org.apache.log4j.Logger;
-
-import raptor.util.*;
+import java.util.HashMap;
 
 public class DefaultPartitionHandler implements com.sleepycat.db.PartitionHandler {
-    
+
     private ConsistentHash chash;
     private HashMap<String, Integer> map;
-    
+
     public DefaultPartitionHandler(String[] partitionDirs) throws Exception {
         map = new HashMap<String, Integer>();
         chash = RaptorUtils.createConsistentHash(partitionDirs);
-        for(int i=0; i<partitionDirs.length; i++) {
+        for (int i = 0; i < partitionDirs.length; i++) {
             map.put(partitionDirs[i], new Integer(i));
         }
     }
-    
+
     public int partition(Database db, DatabaseEntry key) {
         try {
             return map.get(chash.get(new String(key.getData())));

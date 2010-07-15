@@ -14,14 +14,11 @@ optimize(AnalyzerPid, {ok, Query0}, Schema) when is_list(Query0) ->
     end,
 
     %% Process and consolidate the query...
-    case analyze_terms(AnalyzerPid, Query0, Schema) of
-        [] ->
-            {error, no_terms};
-        Query1 ->
-            Query2 = consolidate_exprs(Query1, []),
-            Query3 = default_bool(Query2, DefaultBoolOp),
-            {ok, consolidate_exprs(Query3, [])}
-    end;
+    Query1 = analyze_terms(AnalyzerPid, Query0, Schema),
+    Query2 = consolidate_exprs(Query1, []),
+    Query3 = default_bool(Query2, DefaultBoolOp),
+    Query4 = consolidate_exprs(Query3, []),
+    {ok, consolidate_exprs(Query4, [])};
 optimize(_, {error, {_, _, [_Message, [91, Error, 93]]}}, _) ->
     Err = [list_to_integer(M) || M <- Error,
                                  is_list(M)],
@@ -57,6 +54,7 @@ analyze_terms(_AnalyzerPid, _Schema, [], Acc) ->
     lists:reverse(Acc);
 analyze_terms(AnalyzerPid, Schema, [{Op, Terms}|T], Acc) when Op =:= land;
                                                               Op =:= lor;
+                                                              Op =:= lnot;
                                                               Op =:= group ->
     case analyze_terms(AnalyzerPid, Schema, Terms, []) of
         [] ->
@@ -64,106 +62,152 @@ analyze_terms(AnalyzerPid, Schema, [{Op, Terms}|T], Acc) when Op =:= land;
         NewTerms ->
             analyze_terms(AnalyzerPid, Schema, T, [{Op, NewTerms}|Acc])
     end;
-analyze_terms(AnalyzerPid, Schema, [{field, FieldName, TermText, TProps}|T], Acc) ->
-    NewTerm = case string:chr(TermText, $\ ) > 0 andalso
-                  hd(TermText) =:= 34 of %% double quotes
-                  false ->
-                      case analyze_term_text(FieldName, AnalyzerPid, Schema, TermText) of
-                          {single, NewText} ->
-                              {field, FieldName, NewText, TProps};
-                          {multi, NewTexts} ->
-                              {group, [{land,
-                                        [{field, FieldName, NT, TProps} ||
-                                            NT <- NewTexts]}]};
-                          none ->
-                              none
-                      end;
-                  true ->
-                      TProps1 = proplists:delete(proximity, TProps),
-                      case analyze_term_text(FieldName, AnalyzerPid, Schema, TermText) of
-                          {single, NewText} ->
-                              BaseQuery = {field, FieldName, NewText, TProps1},
-                              {phrase, TermText, BaseQuery, add_proximity_terms(AnalyzerPid, TermText, TProps)};
-                          {multi, NewTexts} ->
-                              BaseQuery = {land,
-                                           [{field, FieldName, NT, TProps1} ||
-                                               NT <- NewTexts]},
-                              {phrase, TermText, BaseQuery, add_proximity_terms(AnalyzerPid, TermText, TProps)};
-                          none ->
-                              none
-                      end
-              end,
-    case NewTerm of
+analyze_terms(AnalyzerPid, Schema, [{field, FieldName, TermText, TProps}|T], Acc) when is_list(TermText) ->
+    TermFun = fun(Text) -> {field, FieldName, Text, TProps} end,
+    PhraseTermsFun = fun(Text) -> {field, FieldName, Text, proplists:delete(proximity, TProps)} end,
+    PhraseFun = fun(BaseQuery) ->
+                            {phrase, TermText,
+                             BaseQuery,
+                             add_proximity_terms(AnalyzerPid, TermText, TProps)} end,
+    Funs = [{term, TermFun},
+            {phrase_terms, PhraseTermsFun},
+            {phrase, PhraseFun}],
+    case analyze_term(AnalyzerPid, FieldName, Schema, Funs, TermText) of
         none ->
             analyze_terms(AnalyzerPid, Schema, T, Acc);
-        _ ->
+        NewTerm ->
             analyze_terms(AnalyzerPid, Schema, T, [NewTerm|Acc])
     end;
+analyze_terms(AnalyzerPid, Schema, [{field, FieldName, {group, Group}}|T], Acc) ->
+    NewGroup = analyze_terms(AnalyzerPid, Schema, Group, []),
+    NewTerm = {field, FieldName, {group, NewGroup}},
+    analyze_terms(AnalyzerPid, Schema, T, [NewTerm|Acc]);
+analyze_terms(AnalyzerPid, Schema, [{field, FieldName,
+                                     [{Range, {term, StartText, StartProps},
+                                       {term, EndText, EndProps}}]}|T], Acc)
+                                                         when Range =:= inclusive_range orelse
+                                                              Range =:= exclusive_range ->
+    StartTermFun = fun(Text) -> {term, Text, StartProps} end,
+    StartPhraseT = fun(Text) -> {term, Text, proplists:delete(proximity, StartProps)} end,
+    StartPhraseFun = fun(BaseQuery) ->
+                             {phrase, StartText,
+                              BaseQuery,
+                              add_proximity_terms(AnalyzerPid, StartText, StartProps)} end,
+
+    EndTermFun = fun(Text) -> {term, Text, EndProps} end,
+    EndPhraseT = fun(Text) -> {term, Text, proplists:delete(proximity, EndProps)} end,
+    EndPhraseFun = fun(BaseQuery) ->
+                           {phrase, EndText,
+                            BaseQuery,
+                            add_proximity_terms(AnalyzerPid, EndText, EndProps)} end,
+
+    SFuns = [{term, StartTermFun},
+             {phrase_terms, StartPhraseT},
+             {phrase, StartPhraseFun}],
+    EFuns = [{term, EndTermFun},
+             {phrase_terms, EndPhraseT},
+             {phrase, EndPhraseFun}],
+    NewStartTerm = analyze_term(AnalyzerPid, FieldName, Schema, SFuns, StartText),
+    NewEndTerm = analyze_term(AnalyzerPid, FieldName, Schema, EFuns, EndText),
+    case NewStartTerm =:= none orelse NewEndTerm =:= none of
+        true ->
+            analyze_terms(AnalyzerPid, Schema, T, Acc);
+        false ->
+            NewRange = {field, FieldName,
+                        [{Range, NewStartTerm, NewEndTerm}]},
+            analyze_terms(AnalyzerPid, Schema, T, [NewRange|Acc])
+    end;
+
+analyze_terms(AnalyzerPid, Schema, [{field, FieldName, FieldTerms, TProps}|T], Acc) ->
+    [NewFieldTerms] = analyze_terms(AnalyzerPid, Schema, [FieldTerms], []),
+    analyze_terms(AnalyzerPid, Schema, T, [{field, FieldName, NewFieldTerms, TProps}|Acc]);
 
 analyze_terms(AnalyzerPid, Schema, [{term, TermText, TProps}|T], Acc) ->
-    NewTerm = case string:chr(TermText, $\ ) > 0 andalso
-                  hd(TermText) =:= 34 of %% double quotes
-                  false ->
-                      case analyze_term_text(default, AnalyzerPid, Schema, TermText) of
-                          {single, NewText} ->
-                              {term, NewText, TProps};
-                          {multi, NewTexts} ->
-                               {group, [{land,
-                                        [{term, NT, TProps} ||
-                                            NT <- NewTexts]}]};
-                          none ->
-                              none
-                      end;
-                  true ->
-                      TProps1 = proplists:delete(proximity, TProps),
-                      case analyze_term_text(default, AnalyzerPid, Schema, TermText) of
-                          {single, NewText} ->
-                              BaseQuery = {term, NewText, TProps1},
-                              {phrase, TermText, BaseQuery, add_proximity_terms(AnalyzerPid, TermText, TProps)};
-                          {multi, NewTexts} ->
-                              BaseQuery = {land,
-                                           [{term, NT, TProps1} ||
-                                               NT <- NewTexts]},
-                              {phrase, TermText, BaseQuery,
-                               add_proximity_terms(AnalyzerPid, TermText, TProps)};
-                          none ->
-                              none
-                      end
-              end,
-    case NewTerm of
+    TermFun = fun(Text) -> {term, Text, TProps} end,
+    PhraseTermsFun = fun(Text) -> {term, Text, proplists:delete(proximity, TProps)} end,
+    PhraseFun = fun(BaseQuery) ->
+                        {phrase, TermText,
+                         BaseQuery,
+                         add_proximity_terms(AnalyzerPid, TermText, TProps)} end,
+    Funs = [{term, TermFun},
+            {phrase_terms, PhraseTermsFun},
+            {phrase, PhraseFun}],
+    case analyze_term(AnalyzerPid, default, Schema, Funs, TermText) of
         none ->
             analyze_terms(AnalyzerPid, Schema, T, Acc);
-        _ ->
+        NewTerm ->
             analyze_terms(AnalyzerPid, Schema, T, [NewTerm|Acc])
     end;
 analyze_terms(AnalyzerPid, Schema, [H|T], Acc) ->
     analyze_terms(AnalyzerPid, Schema, T, [H|Acc]).
 
+analyze_term(AnalyzerPid, FieldName, Schema, TFuns, TermText) ->
+    case string:chr(TermText, $\ ) > 0 andalso
+        hd(TermText) =:= 34 of %% double quotes
+        false ->
+            TF = proplists:get_value(term, TFuns),
+            case analyze_term_text(FieldName, AnalyzerPid, Schema, TermText) of
+                {single, NewText} ->
+                    TF(NewText);
+                {multi, NewTexts} ->
+                    {group, [{land,
+                              [TF(NT) || NT <- NewTexts]}]};
+                none ->
+                    none
+            end;
+        true ->
+            PTF = proplists:get_value(phrase_terms, TFuns),
+            PF = proplists:get_value(phrase, TFuns),
+            case analyze_term_text(FieldName, AnalyzerPid, Schema, TermText) of
+                {single, NewText} ->
+                    BaseQuery = PTF(NewText),
+                    PF(BaseQuery);
+                {multi, NewTexts} ->
+                    BaseQuery = {land,
+                                 [PTF(NT) || NT <- NewTexts]},
+                    PF(BaseQuery);
+                none ->
+                    none
+            end
+    end.
+
 default_bool([{term, _, _}=H|T], DefaultBoolOp) ->
     default_bool([{DefaultBoolOp, [H|T]}], DefaultBoolOp);
 default_bool([{group, _}=H|T], DefaultBoolOp) when length(T) > 0 ->
     default_bool([{DefaultBoolOp, [H|T]}], DefaultBoolOp);
-default_bool([{Bool, SubTerms}|T], DefaultBoolOp) when Bool =:= lnot;
-                                              Bool =:= lor;
-                                              Bool =:= land ->
-    [{Bool, default_bool_children(SubTerms, DefaultBoolOp)}|default_bool(T, DefaultBoolOp)];
+default_bool([{Op, SubTerms}|T], DefaultBoolOp) when Op =:= lnot;
+                                                     Op =:= lor;
+                                                     Op =:= land ->
+    [{Op, default_bool_children(SubTerms, DefaultBoolOp)}|default_bool(T, DefaultBoolOp)];
 default_bool([{field, FieldName, Terms}|T], DefaultBoolOp) ->
     [{field, FieldName, default_bool_children(Terms, DefaultBoolOp)}|
      default_bool(T, DefaultBoolOp)];
 default_bool(Query, _DefaultBoolOp) ->
     Query.
 
-default_bool_children({group, SubTerms}, DefaultBoolOp) ->
-    {group, default_bool(SubTerms, DefaultBoolOp)};
-default_bool_children([{group, SubTerms}|T], DefaultBoolOp) ->
-    [{group, default_bool(SubTerms, DefaultBoolOp)}|default_bool_children(T, DefaultBoolOp)];
+default_bool_children([{group, SubTerms}=H|T], DefaultBoolOp) ->
+    if
+        length(SubTerms) < 2 ->
+            [H|default_bool_children(T, DefaultBoolOp)];
+        true ->
+            [{group, {DefaultBoolOp, SubTerms}}|
+             default_bool_children(T, DefaultBoolOp)]
+    end;
 default_bool_children([H|T], DefaultBoolOp) ->
     [H|default_bool_children(T, DefaultBoolOp)];
+default_bool_children({group, [H|_]=SubTerms}, DefaultBoolOp) ->
+    [H|_] = SubTerms,
+    case get_type(H) of
+        land ->
+            {group, SubTerms};
+        lor ->
+            {group, SubTerms};
+        _ ->
+            {group, [{DefaultBoolOp, SubTerms}]}
+    end;
 default_bool_children(Query, _DefaultBoolOp) ->
     Query.
 
-%% All of these ifdefs are ugly, ugly hacks and need to be fixed via proper
-%% app deps.
 add_proximity_terms(AnalyzerPid, TermText, Props) ->
     case proplists:get_value(proximity, Props, undefined) of
         undefined ->
@@ -172,7 +216,8 @@ add_proximity_terms(AnalyzerPid, TermText, Props) ->
             Terms = analyze_proximity_text(AnalyzerPid, TermText),
             [{proximity_terms, Terms}|Props]
     end.
-
+%% All of these ifdefs are ugly, ugly hacks and need to be fixed via proper
+%% app deps.
 %% For testing only
 -ifdef(TEST).
 analyze_term_text(FieldName, testing, Schema, Text0) ->

@@ -34,9 +34,7 @@ public class RaptorUtils {
     
     public static ConsistentHash<String> createConsistentHash(String[] pfx) throws Exception {
         List<String> ar = new ArrayList<String>();
-        for (int i = 0; i < pfx.length; i++) {
-            ar.add(pfx[i]);
-        }
+        ar.addAll(Arrays.asList(pfx));
         return new ConsistentHash<String>(1, ar);
     }
     

@@ -25,70 +25,63 @@
 
 package raptor.store;
 
-import java.io.*;
-import java.util.*;
-import java.util.concurrent.*;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
 
-import com.sleepycat.db.*;
-import org.apache.log4j.Logger;
-import org.json.*;
-import org.apache.log4j.BasicConfigurator;
-import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
 
-import raptor.util.*;
-import raptor.store.bdb.*;
-import raptor.store.handlers.*;
+import raptor.store.bdb.DefaultBDBMessageHandler;
+import raptor.store.handlers.ResultHandler;
+import raptor.util.RaptorUtils;
+
+import com.sleepycat.db.Cursor;
+import com.sleepycat.db.Database;
+import com.sleepycat.db.DatabaseConfig;
+import com.sleepycat.db.DatabaseEntry;
+import com.sleepycat.db.DatabaseType;
+import com.sleepycat.db.Environment;
+import com.sleepycat.db.EnvironmentConfig;
+import com.sleepycat.db.LockMode;
+import com.sleepycat.db.OperationStatus;
 
 public class BtreeStore {
-    final private static Logger log = 
-        Logger.getLogger(BtreeStore.class);
-    
-    private static final int DB_PAGE_SIZE = 2048;
-    private DatabaseConfig databaseConfig;
+    final private static Logger log =
+            Logger.getLogger(BtreeStore.class);
+
+    private final DatabaseConfig databaseConfig;
     private Database db;
-    private Environment env;
-    private Lock dbLock;
-    private String directory;
-    private String logDirectory;
-    private String filename;
-    private String name;
-    
-    private Thread writeThread;
-    protected LinkedBlockingQueue<Object> writeQueue;
-    protected long write_op_ct;
+    private final Environment env;
 
-    private static DefaultBDBMessageHandler 
-        defaultMessageHandler = new DefaultBDBMessageHandler();
+    private static final DefaultBDBMessageHandler
+            defaultMessageHandler = new DefaultBDBMessageHandler();
 
     public BtreeStore(String filename,
                       String name) throws Exception {
-        this(getDefaultEnvironment(".", "."), filename, name, DB_PAGE_SIZE);
+        this(getDefaultEnvironment(".", "."), filename, name);
     }
-    
+
     public BtreeStore(String filename,
-                      String directory, 
+                      String directory,
                       String name) throws Exception {
-        this(getDefaultEnvironment(directory, directory), filename, name, DB_PAGE_SIZE);
+        this(getDefaultEnvironment(directory, directory), filename, name);
     }
-    
+
     public BtreeStore(String filename,
-                      String directory, 
+                      String directory,
                       String logDirectory,
                       String name) throws Exception {
-        this(getDefaultEnvironment(directory, logDirectory), filename, name, DB_PAGE_SIZE);
+        this(getDefaultEnvironment(directory, logDirectory), filename, name);
     }
-    
-    public BtreeStore(Environment env, 
-                      String filename, 
-                      String name, 
-                      int pageSize) throws Exception {
+
+    public BtreeStore(Environment env,
+                      String filename,
+                      String name) throws Exception {
         this.env = env;
-        dbLock = new ReentrantLock();
-        this.filename = filename;
-        this.name = name;
+
         databaseConfig = new DatabaseConfig();
         databaseConfig.setAllowCreate(true);
         databaseConfig.setErrorStream(System.err);
@@ -99,190 +92,92 @@ public class BtreeStore {
         databaseConfig.setType(DatabaseType.BTREE);
         databaseConfig.setReverseSplitOff(true);
         databaseConfig.setChecksum(true);
-        //databaseConfig.setPageSize(pageSize);
         databaseConfig.setSortedDuplicates(false);
-        databaseConfig.setBtreePrefixCalculator(null);
-        databaseConfig.setTransactional(false);
+        databaseConfig.setTransactional(true);
         databaseConfig.setReadUncommitted(true);
         db = this.env.openDatabase(null, filename, name, databaseConfig);
-        write_op_ct = 0;
-        startWriteThread();
     }
-    
-    @SuppressWarnings("deprecation")
-    protected static Environment getDefaultEnvironment(String directory, 
-        String logDirectory) {
+
+    protected static Environment getDefaultEnvironment(String directory,
+                                                       String logDirectory) {
         EnvironmentConfig envConf = new EnvironmentConfig();
         envConf.setAllowCreate(true);
         envConf.setInitializeLogging(true);
         envConf.setRunRecovery(true);
         envConf.setLogDirectory(new File(logDirectory));
-        
         envConf.setCacheSize(218435456);
         envConf.setInitializeCache(true);
         envConf.setMMapSize(100000000);
-        
-        
-        envConf.setMaxLogFileSize(10000000);
-        
-        //envConf.setInitializeLocking(false);
-        
+        envConf.setMaxLogFileSize(64 * 1048576); // 64 MB
         envConf.setLogAutoRemove(true);
-        
-        //envConf.setDsyncLog(false);
-        //envConf.setDirectDatabaseIO(true);
-        //envConf.setDsyncDatabases(false);
-        
         envConf.setMessageHandler(defaultMessageHandler);
-        envConf.setMessageStream(System.out);
+        envConf.setMessageStream(System.err);
         envConf.setPrivate(true);
-        envConf.setVerboseDeadlock(true);
-        envConf.setVerboseRecovery(true);
-        envConf.setVerboseWaitsFor(true);
-        
-        //envConf.setMutexIncrement(5000);
-        //envConf.setLockDetectMode(LockDetectMode.RANDOM);
-        
-        envConf.setTxnNoSync(true);
-        //envConf.setTxnNotDurable(true);
-        
+        envConf.setTxnWriteNoSync(true);
         envConf.setTransactional(true);
-        
         try {
+            log.info("ensureDirectory(" + directory + ")");
             RaptorUtils.ensureDirectory(directory);
+            log.info("ensureDirectory(" + directory + "/" + logDirectory + ")");
             RaptorUtils.ensureDirectory(directory + "/" + logDirectory);
             Environment env = new Environment(new File(directory), envConf);
             return env;
         } catch (Exception ex) {
+            log.error("error getting default environment", ex);
             ex.printStackTrace();
         }
         return null;
     }
-    
+
     public void close() throws Exception {
-        dbLock.lock();
-        try {
-            db.close();
-        } finally {
-            dbLock.unlock();
-        }
+    	db.close();
     }
-    
-    /* * */
-    
-    private void startWriteThread() {
-       writeQueue = new LinkedBlockingQueue<Object>();
-       writeThread = new Thread(new Runnable() {
-           public void run() {
-               try {
-                   log.info("writeThread: started");
-                   while(true) {
-                       try {
-                           //Object msg0 = writeQueue.take();
-                           while(writeQueue.size() == 0) {
-                               Thread.sleep(5);
-                           }
-                           List<Object> batch = new ArrayList<Object>();
-                           writeQueue.drainTo(batch); // todo: configurable batch size?
-                           for(Object msg0: batch) {
-                               if (msg0 instanceof PutOp) {
-                                   PutOp msg = (PutOp) msg0;
-                                   do_put(msg.key, msg.val);
-                               } else if (msg0 instanceof DeleteOp) {
-                                   DeleteOp msg = (DeleteOp) msg0;
-                                   do_delete(msg.key);
-                               } else {
-                                   log.error("writeQueue: unknown message (discarding): " + 
-                                             msg0.toString());
-                               }
-                               write_op_ct++;
-                           }
-                       } catch (Exception iex) {
-                           log.error("Error handling message", iex);
-                           iex.printStackTrace();
-                       }
-                   }
-               } catch (Exception ex) {
-                   log.error("Error setting up writeQueue process", ex);
-                   ex.printStackTrace();
-               }
-           }
-       });
-       
-       try {
-           writeThread.start();
-       } catch (Exception ex) {
-           log.error("Error starting BtreeStore writeThread", ex);
-           System.exit(-1);
-       }
-    }
-    
-    /* * */
-    
-    private class PutOp { public byte[] key, val; }
-    private class DeleteOp { public byte[] key; }
-    
+
     public boolean put(String key, String val) throws Exception {
         return put(key.getBytes("UTF-8"), val.getBytes("UTF-8"));
     }
-    
+
     public boolean put(byte[] key, byte[] val) throws Exception {
-        PutOp op = new PutOp();
-        op.key = key;
-        op.val = val;
-        writeQueue.put(op);
-        return true;
+        return (db.put(null,
+                       new DatabaseEntry(key),
+                       new DatabaseEntry(val)) == OperationStatus.SUCCESS);
     }
-    
-    private boolean do_put(byte[] key, byte[] val) throws Exception {
-        dbLock.lock();
-        try {
-            if (db.put(null,
-                new DatabaseEntry(key),
-                new DatabaseEntry(val)) == OperationStatus.SUCCESS) {
-                return true;
-            }
-        } finally {
-            dbLock.unlock();
-        }
-        return false;
-    }
-    
+
     public String get(String key) throws Exception {
         byte[] v = get(key.getBytes("UTF-8"));
         if (v == null) return null;
         return new String(v, "UTF-8");
     }
-    
+
     public byte[] get(byte[] key) throws Exception {
         DatabaseEntry dbKey = new DatabaseEntry(key);
         DatabaseEntry dbVal = new DatabaseEntry();
-        if (db.get(null, dbKey, dbVal, LockMode.DEFAULT) == 
-            OperationStatus.SUCCESS) {
+        if (db.get(null, dbKey, dbVal, LockMode.DEFAULT) ==
+                OperationStatus.SUCCESS) {
             return dbVal.getData();
         } else {
             return null;
         }
     }
 
-    public Map<byte[],byte[]> getRange(byte[] keyStart, 
-                                       byte[] keyEnd,
-                                       boolean startInclusive,
-                                       boolean endInclusive) 
-                                        throws Exception {
-        return getRange(keyStart, 
-                        keyEnd, 
-                        startInclusive, 
-                        endInclusive, 
-                        null);
+    public Map<byte[], byte[]> getRange(byte[] keyStart,
+                                        byte[] keyEnd,
+                                        boolean startInclusive,
+                                        boolean endInclusive)
+            throws Exception {
+        return getRange(keyStart,
+                keyEnd,
+                startInclusive,
+                endInclusive,
+                null);
     }
-    
-    public Map<byte[],byte[]> getRange(byte[] keyStart, 
-                                       byte[] keyEnd,
-                                       boolean startInclusive,
-                                       boolean endInclusive,
-                                       final ResultHandler resultHandler) 
-                                        throws Exception {
+
+    public Map<byte[], byte[]> getRange(byte[] keyStart,
+                                        byte[] keyEnd,
+                                        boolean startInclusive,
+                                        boolean endInclusive,
+                                        final ResultHandler resultHandler)
+            throws Exception {
         Cursor cursor = null;
         DatabaseEntry dbKey = new DatabaseEntry(keyStart);
         String dbKeyEnd = new String(keyEnd, "UTF-8");
@@ -291,24 +186,21 @@ public class BtreeStore {
             cursor = db.openCursor(null, null);
             DatabaseEntry dbVal = new DatabaseEntry();
             OperationStatus retVal = cursor.getSearchKeyRange(dbKey, dbVal, LockMode.DEFAULT);
-            long ct=0;
+            long ct = 0;
             if (retVal == OperationStatus.SUCCESS &&
-                cursor.count() > 0) {
-                while(retVal == OperationStatus.SUCCESS) {
+                    cursor.count() > 0) {
+                while (retVal == OperationStatus.SUCCESS) {
                     byte[] k = dbKey.getData();
                     byte[] v = dbVal.getData();
                     String kcomp = new String(k, "UTF-8");
                     if ((kcomp.compareTo(dbKeyEnd) > 0 &&
-                         endInclusive &&
-                         !kcomp.startsWith(dbKeyEnd)) ||
-                        (kcomp.compareTo(dbKeyEnd) >= 0 &&
-                         !endInclusive)) {
-                         log.info("breaking on result (" + 
-                            new String(k) + ", " + 
-                            new String(v) + ")");
-                         break;
+                            endInclusive &&
+                            !kcomp.startsWith(dbKeyEnd)) ||
+                            (kcomp.compareTo(dbKeyEnd) >= 0 &&
+                                    !endInclusive)) {
+                        break;
                     }
-                    if ((ct==0 && startInclusive) || ct > 0) {
+                    if ((ct == 0 && startInclusive) || ct > 0) {
                         if (resultHandler != null) {
                             resultHandler.handleResult(k, v);
                         } else {
@@ -321,11 +213,6 @@ public class BtreeStore {
                     retVal = cursor.getNext(dbKey, dbVal, LockMode.DEFAULT);
                 }
             }
-            log.info("getRange(" +
-                new String(keyStart) + ", " +
-                new String(keyEnd) + ", " +
-                startInclusive + ", " +
-                endInclusive + ", handler) ct = " + ct);
         } catch (com.sleepycat.db.DatabaseException ex) {
             log.info("com.sleepycat.db.DatabaseException: " + ex.toString());
         } finally {
@@ -333,33 +220,33 @@ public class BtreeStore {
         }
         return results;
     }
-    
-    public int countRange(byte[] keyStart, 
+
+    public int countRange(byte[] keyStart,
                           byte[] keyEnd,
                           boolean startInclusive,
-                          boolean endInclusive) 
-                            throws Exception {
+                          boolean endInclusive)
+            throws Exception {
         Cursor cursor = null;
         DatabaseEntry dbKey = new DatabaseEntry(keyStart);
         String dbKeyEnd = new String(keyEnd, "UTF-8");
-        int ct=0, rc=0;
+        int ct = 0, rc = 0;
         try {
             cursor = db.openCursor(null, null);
             DatabaseEntry dbVal = new DatabaseEntry();
             OperationStatus retVal = cursor.getSearchKeyRange(dbKey, dbVal, LockMode.DEFAULT);
             if (retVal == OperationStatus.SUCCESS &&
-                cursor.count() > 0) {
-                while(retVal == OperationStatus.SUCCESS) {
+                    cursor.count() > 0) {
+                while (retVal == OperationStatus.SUCCESS) {
                     byte[] k = dbKey.getData();
                     String kcomp = new String(k, "UTF-8");
                     if ((kcomp.compareTo(dbKeyEnd) > 0 &&
-                         endInclusive &&
-                         !kcomp.startsWith(dbKeyEnd)) ||
-                        (kcomp.compareTo(dbKeyEnd) >= 0 &&
-                         !endInclusive)) {
-                         break;
+                            endInclusive &&
+                            !kcomp.startsWith(dbKeyEnd)) ||
+                            (kcomp.compareTo(dbKeyEnd) >= 0 &&
+                                    !endInclusive)) {
+                        break;
                     }
-                    if ((ct==0 && startInclusive) || ct > 0) {
+                    if ((ct == 0 && startInclusive) || ct > 0) {
                         rc++;
                     }
                     ct++;
@@ -373,33 +260,33 @@ public class BtreeStore {
         }
         return rc;
     }
-    
-    public List<byte[]> getRawKeyRange(byte[] keyStart, 
+
+    public List<byte[]> getRawKeyRange(byte[] keyStart,
                                        byte[] keyEnd,
                                        boolean startInclusive,
                                        boolean endInclusive) throws Exception {
         Cursor cursor = null;
         DatabaseEntry dbKey = new DatabaseEntry(keyStart);
         String dbKeyEnd = new String(keyEnd, "UTF-8");
-        int ct=0;
+        int ct = 0;
         List<byte[]> results = new ArrayList<byte[]>();
         try {
             cursor = db.openCursor(null, null);
             DatabaseEntry dbVal = new DatabaseEntry();
             OperationStatus retVal = cursor.getSearchKeyRange(dbKey, dbVal, LockMode.DEFAULT);
             if (retVal == OperationStatus.SUCCESS &&
-                cursor.count() > 0) {
-                while(retVal == OperationStatus.SUCCESS) {
+                    cursor.count() > 0) {
+                while (retVal == OperationStatus.SUCCESS) {
                     byte[] k = dbKey.getData();
                     String kcomp = new String(k, "UTF-8");
                     if ((kcomp.compareTo(dbKeyEnd) > 0 &&
-                         endInclusive &&
-                         !kcomp.startsWith(dbKeyEnd)) ||
-                        (kcomp.compareTo(dbKeyEnd) >= 0 &&
-                         !endInclusive)) {
-                         break;
+                            endInclusive &&
+                            !kcomp.startsWith(dbKeyEnd)) ||
+                            (kcomp.compareTo(dbKeyEnd) >= 0 &&
+                                    !endInclusive)) {
+                        break;
                     }
-                    if ((ct==0 && startInclusive) || ct > 0) {
+                    if ((ct == 0 && startInclusive) || ct > 0) {
                         results.add(k);
                     }
                     ct++;
@@ -416,48 +303,23 @@ public class BtreeStore {
 
 
     public void sync() throws Exception {
-        //dbLock.lock(); // tryLock(100, TimeUnit.MILLISECONDS);
-        try {
-            db.sync();
-        } finally {
-            //dbLock.unlock();
-        }
-        //log.info(env.getMutexStats(new StatsConfig()).toString());
+        db.sync();
     }
-    
+
     public boolean delete(byte[] key) throws Exception {
-        DeleteOp op = new DeleteOp();
-        op.key = key;
-        writeQueue.put(op);
-        return true;
-    }
-    
-    private boolean do_delete(byte[] key) throws Exception {
-        dbLock.lock();
-        try {
-            if (db.delete(null, new DatabaseEntry(key)) ==
-                OperationStatus.SUCCESS) return true;
-        } finally {
-            dbLock.unlock();
-        }
-        return false;
+    	return (db.delete(null, new DatabaseEntry(key)) ==
+                OperationStatus.SUCCESS);
     }
 
     public boolean exists(byte[] key) throws Exception {
-        dbLock.lock();
-        try {
-            if (db.exists(null, new DatabaseEntry(key)) ==
-                OperationStatus.SUCCESS) return true;
-        } finally {
-            dbLock.unlock();
-        }
-        return false;
+    	return (db.exists(null, new DatabaseEntry(key)) ==
+                OperationStatus.SUCCESS);
     }
-    
+
     protected Database getDatabase() {
         return db;
     }
-    
+
     protected Environment getEnvironment() {
         return env;
     }
@@ -469,23 +331,23 @@ public class BtreeStore {
         store.put("carrot", "vegetable: carrot");
         store.put("potato", "vegetable: potato");
         store.put("pineapple", "fruit: pineapple");
-        
+
         Random r = new Random();
         long startTime = System.currentTimeMillis();
-        for(int i=0; i<1000000; i++) {
+        for (int i = 0; i < 1000000; i++) {
             String k = "k" + i;
             String v = "v" + r.nextInt(1929398);
             store.put(k, v);
         }
-        log.info("100k writes in " + ( (System.currentTimeMillis() - startTime) / 1000 ) + " sec");
+        log.info("100k writes in " + ((System.currentTimeMillis() - startTime) / 1000) + " sec");
         log.info("starting reads...");
         startTime = System.currentTimeMillis();
-        for(int i=0; i<100000; i++) {
+        for (int i = 0; i < 100000; i++) {
             String k = "k" + i;
-            String v = store.get(k);
+            store.get(k);
         }
-        log.info("100k reads in " + ( (System.currentTimeMillis() - startTime) / 1000 ) + " sec");
-        
+        log.info("100k reads in " + ((System.currentTimeMillis() - startTime) / 1000) + " sec");
+
         log.info("store.get(potato): " + store.get("potato"));
         store.close();
     }
