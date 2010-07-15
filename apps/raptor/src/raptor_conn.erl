@@ -40,7 +40,7 @@ close(ConnPid) ->
     gen_server:call(ConnPid, close_conn).
 
 index(ConnPid, IndexName, FieldName, Term, Value, Partition, Props, KeyClock) ->
-    MessageType = <<"Index">>,
+    MessageType = <<"1">>,
     IndexRec = #index{index=IndexName, field=FieldName,
                       term=Term, value=Value,
                       partition=Partition,
@@ -50,7 +50,7 @@ index(ConnPid, IndexName, FieldName, Term, Value, Partition, Props, KeyClock) ->
     gen_server:call(ConnPid, {index, IndexRec}, ?TIMEOUT).
 
 index_if_newer(ConnPid, IndexName, FieldName, Term, Value, Partition, Props, KeyClock) ->
-    MessageType = <<"IndexIfNewer">>,
+    MessageType = <<"2">>,
     IndexRec = #index{index=IndexName, field=FieldName,
                       term=Term, value=Value,
                       partition=Partition,
@@ -60,7 +60,7 @@ index_if_newer(ConnPid, IndexName, FieldName, Term, Value, Partition, Props, Key
     gen_server:call(ConnPid, {index, IndexRec}, ?TIMEOUT).
 
 delete_entry(ConnPid, IndexName, FieldName, Term, DocId, Partition) ->
-    MessageType = <<"DeleteEntry">>,
+    MessageType = <<"3">>,
     DeleteEntryRec = #deleteentry{index=IndexName, field=FieldName,
                                   term=Term, doc_id=DocId,
                                   partition=Partition,
@@ -68,7 +68,7 @@ delete_entry(ConnPid, IndexName, FieldName, Term, DocId, Partition) ->
     gen_server:call(ConnPid, {deleteentry, DeleteEntryRec}, ?TIMEOUT).
 
 stream(ConnPid, IndexName, FieldName, Term, Partition) ->
-    MessageType = <<"Stream">>,
+    MessageType = <<"4">>,
     StreamRec = #stream{index=IndexName, field=FieldName,
                         term=Term, partition=Partition,
                         message_type=MessageType},
@@ -78,14 +78,14 @@ stream(ConnPid, IndexName, FieldName, Term, Partition) ->
 multi_stream(ConnPid, TermArg) ->
     %io:format("raptor_conn: multi_stream: ConnPid = ~p, TermArg = ~p~n",
     %    [ConnPid, TermArg]),
-    MessageType = <<"MultiStream">>,
+    MessageType = <<"5">>,
     MultiStreamRec = #multistream{term_list=TermArg,
                                   message_type=MessageType},
     Ref = erlang:make_ref(),
     gen_server:call(ConnPid, {multistream, self(), Ref, MultiStreamRec}, ?TIMEOUT).
 
 info(ConnPid, IndexName, FieldName, Term, Partition) ->
-    MessageType = <<"Info">>,
+    MessageType = <<"6">>,
     InfoRec = #info{index=IndexName, field=FieldName, term=Term,
                     partition=Partition,
                     message_type=MessageType},
@@ -94,7 +94,7 @@ info(ConnPid, IndexName, FieldName, Term, Partition) ->
 
 info_range(ConnPid, IndexName, FieldName, StartTerm,
            EndTerm, Partition) ->
-    MessageType = <<"InfoRange">>,
+    MessageType = <<"7">>,
     InfoRangeRec = #inforange{index=IndexName, field=FieldName,
                               start_term=StartTerm, end_term=EndTerm,
                               partition=Partition,
@@ -106,7 +106,7 @@ catalog_query(ConnPid, SearchQuery) ->
     catalog_query(ConnPid, SearchQuery, 0).
 
 catalog_query(ConnPid, SearchQuery, MaxResults) ->
-    MessageType = <<"CatalogQuery">>,
+    MessageType = <<"8">>,
     CatalogQueryRec = #catalogquery{search_query=SearchQuery,
                                     max_results=MaxResults,
                                     message_type=MessageType},
@@ -114,7 +114,7 @@ catalog_query(ConnPid, SearchQuery, MaxResults) ->
     gen_server:call(ConnPid, {catalog_query, self(), Ref, CatalogQueryRec}, ?TIMEOUT).
 
 command(ConnPid, Command, Arg1, Arg2, Arg3) ->
-    MessageType = <<"Command">>,
+    MessageType = <<"9">>,
     CommandRec = #command{command=Command,
                           arg1=Arg1,
                           arg2=Arg2,
@@ -221,7 +221,7 @@ handle_info({tcp, Sock, _Data}, #state{req_type=index}=State) ->
 %%
 %% for now, stream and multistream returns protobuf messages exactly the same as stream
 %%  (i.e., StreamResponse messages).  If they get split apart, make sure the code
-%% for handling timeouts in riak_search_raptor_backend is adjusted fro the new req_type.
+%% for handling timeouts in riak_search_raptor_backend is adjusted for the new req_type.
 %%
 handle_info({tcp, Sock, Data}, #state{req_type=stream, reqid=ReqId, dest=Dest}=State) ->
     StreamResponse = raptor_pb:decode_streamresponse(Data),

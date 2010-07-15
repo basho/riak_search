@@ -1,6 +1,8 @@
 package raptor.store.column;
 
-import com.sleepycat.bind.tuple.*;
+import com.sleepycat.bind.tuple.TupleBinding;
+import com.sleepycat.bind.tuple.TupleInput;
+import com.sleepycat.bind.tuple.TupleOutput;
 
 public class ColumnKeyTupleBinding extends TupleBinding<ColumnKey> {
     public void objectToEntry(ColumnKey ck, TupleOutput to) {
@@ -11,7 +13,7 @@ public class ColumnKeyTupleBinding extends TupleBinding<ColumnKey> {
             ex.printStackTrace();
         }
     }
-    
+
     public ColumnKey entryToObject(TupleInput ti) {
         ColumnKey ck = new ColumnKey();
         try {

@@ -25,57 +25,40 @@
 
 package raptor.server;
 
-import java.net.InetSocketAddress;
-import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
-
 import org.apache.log4j.Logger;
 import org.jboss.netty.bootstrap.ServerBootstrap;
 import org.jboss.netty.channel.socket.nio.NioServerSocketChannelFactory;
+import raptor.store.RaptorIndex;
 
-import raptor.protobuf.Messages.Index;
-import raptor.protobuf.Messages.DeleteEntry;
-import raptor.store.RSXIndex;
+import java.net.InetSocketAddress;
+import java.util.concurrent.Executors;
 
 public class RaptorServer {
-    final private static Logger log = 
-        Logger.getLogger(RaptorServer.class);
-    
-    public static RSXIndex idx;
-    public static Thread idxThread;
-    
-    public static Thread writeThread;
-    public static LinkedBlockingQueue<Object> writeQueue;
-    
+    final private static Logger log =
+            Logger.getLogger(RaptorServer.class);
+
+    public static RaptorIndex idx;
     public static boolean shuttingDown = false;
-    public static boolean debugging = true;
-    
-    static {        
+    public static boolean debugging = false;
+
+    static {
         Runtime.getRuntime().addShutdownHook(
-            new Thread() {
-                public void run() {
-                    RaptorServer.shuttingDown = true;
-                    log.info("shutting down... [" + 
-                        RaptorServer.writeQueue.size() + " queued]");
-                    while(RaptorServer.writeQueue.size() > 0) {
-                        log.info("draining writeQueue (" +
-                            RaptorServer.writeQueue.size() + ")");
+                new Thread() {
+                    public void run() {
+                        RaptorServer.shuttingDown = true;
+                        log.info("shutting down...");
                         try {
-                            Thread.sleep(1000);
-                        } catch (Exception ex) { ex.printStackTrace(); }
+                            log.info("sync, close, shutdown ...");
+                            RaptorServer.idx.shutdown();
+                            log.info("closing...");
+                        } catch (Exception ex) {
+                            ex.printStackTrace();
+                            log.info("Problem sync/close [crash] - verify and restore recommended");
+                        }
                     }
-                    try {
-                        log.info("sync, close, shutdown ...");
-                        RaptorServer.idx.shutdown();
-                        log.info("closing...");
-                    } catch (Exception ex) {
-                        ex.printStackTrace();
-                        log.info("Problem sync/close [crash] - verify and restore recommended");
-                    }
-                }
-            });
+                });
     }
-    
+
     public static void main(String[] argv) throws Exception {
         log.info("starting");
         int raptorPort = Integer.parseInt(argv[0]);
@@ -84,81 +67,38 @@ public class RaptorServer {
         buildRaptorServer(raptorPort);
         buildHeartbeatServer(raptorPort + 1);
     }
-    
+
     private static void configureStorage(String dataDir) {
-       // TODO: configurable writeQueue size?
-       writeQueue = new LinkedBlockingQueue<Object>();
-       writeThread = new Thread(new Runnable() {
-           public void run() {
-               try {
-                   log.info("writeThread: started");
-                   while(true) {
-                       try {
-                           Object msg0 = writeQueue.take();
-                           if (msg0 instanceof Index) {
-                               Index msg = (Index) msg0;
-                               idx.index(msg.getIndex(),
-                                         msg.getField(),
-                                         msg.getTerm(),
-                                         msg.getValue(),
-                                         msg.getPartition(),
-                                         msg.getProps().toByteArray(),
-                                         msg.getKeyClock());
-                           } else if (msg0 instanceof DeleteEntry) {
-                               DeleteEntry msg = (DeleteEntry) msg0;
-                               RaptorServer.idx.deleteEntry(msg.getIndex(),
-                                                            msg.getField(),
-                                                            msg.getTerm(),
-                                                            msg.getDocId(),
-                                                            msg.getPartition());
-                           } else {
-                               log.error("writeQueue: unknown message (discarding): " + 
-                                         msg0.toString());
-                           }
-                       } catch (Exception iex) {
-                           log.error("Error handling message", iex);
-                           iex.printStackTrace();
-                       }
-                   }
-               } catch (Exception ex) {
-                   log.error("Error setting up writeQueue process", ex);
-                   ex.printStackTrace();
-               }
-           }
-       });
-       
-       try {
-           idx = new RSXIndex(dataDir);
-           idxThread = new Thread(idx);
-           idxThread.start();
-       } catch (Exception ex) {
-           idx = null;
-           log.error("Error configuring Raptor storage", ex);
-           System.exit(-1);
-       }
+        try {
+            idx = new RaptorIndex(dataDir);
+        } catch (Exception ex) {
+            idx = null;
+            log.error("Error configuring Raptor storage", ex);
+            System.exit(-1);
+        }
     }
-    
+
     private static void buildRaptorServer(int port) {
-       ServerBootstrap bootstrap = new ServerBootstrap(
-             new NioServerSocketChannelFactory(
-                   Executors.newCachedThreadPool(),
-                   Executors.newCachedThreadPool(),
-                   4));
-         bootstrap.setOption("reuseAddress", true);
-         bootstrap.setOption("child.tcpNoDelay", true);
-         bootstrap.setPipelineFactory(new RaptorPipelineFactory());
-         bootstrap.bind(new InetSocketAddress(port));
+        ServerBootstrap bootstrap = new ServerBootstrap(
+                new NioServerSocketChannelFactory(
+                        Executors.newCachedThreadPool(),
+                        Executors.newCachedThreadPool(),
+                        Runtime.getRuntime().availableProcessors()));
+        bootstrap.setOption("reuseAddress", true);
+        bootstrap.setOption("child.tcpNoDelay", true);
+        bootstrap.setPipelineFactory(new RaptorPipelineFactory());
+        bootstrap.bind(new InetSocketAddress(port));
     }
-    
+
     private static void buildHeartbeatServer(int port) {
-       ServerBootstrap bootstrap = new ServerBootstrap(
-             new NioServerSocketChannelFactory(
-                   Executors.newCachedThreadPool(),
-                   Executors.newCachedThreadPool()));
-         bootstrap.setOption("reuseAddress", true);
-         bootstrap.setOption("child.tcpNoDelay", true);
-         bootstrap.setPipelineFactory(new HeartbeatPipelineFactory());
-         bootstrap.bind(new InetSocketAddress(port));
-    }    
+        ServerBootstrap bootstrap = new ServerBootstrap(
+                new NioServerSocketChannelFactory(
+                        Executors.newCachedThreadPool(),
+                        Executors.newCachedThreadPool()));
+        bootstrap.setOption("reuseAddress", true);
+        bootstrap.setOption("child.tcpNoDelay", true);
+        bootstrap.setPipelineFactory(new HeartbeatPipelineFactory());
+        bootstrap.bind(new InetSocketAddress(port));
+    }
 }
 

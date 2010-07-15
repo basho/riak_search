@@ -25,57 +25,41 @@
 
 package raptor.store;
 
-import java.io.*;
-import java.util.*;
-import java.util.concurrent.*;
+import com.sleepycat.db.*;
+import org.apache.log4j.Logger;
+import raptor.store.bdb.DefaultBDBMessageHandler;
+
+import java.util.Random;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-import com.sleepycat.db.*;
-import org.apache.log4j.Logger;
-import org.json.*;
-import org.apache.log4j.BasicConfigurator;
-import org.apache.log4j.LogManager;
-import org.apache.log4j.Logger;
-
-import raptor.util.*;
-import raptor.store.bdb.*;
-
 public class QueueStore {
-    final private static Logger log = 
-        Logger.getLogger(QueueStore.class);
-    private DatabaseConfig databaseConfig;
+    final private static Logger log =
+            Logger.getLogger(QueueStore.class);
     private Database db;
     private EnvironmentConfig environmentConfig;
     private Environment env;
-    private Lock dbLock;
-    private String filename;
-    private String name;
+    private final Lock dbLock;
 
-    private DefaultBDBMessageHandler 
-        defaultMessageHandler = new DefaultBDBMessageHandler();
-    
-    public QueueStore(String filename, String name, int extentSize, int recordLength) 
-        throws Exception {
+    public QueueStore(String filename, String name, int extentSize, int recordLength)
+            throws Exception {
         dbLock = new ReentrantLock();
-        this.filename = filename;
-        this.name = name;
-        databaseConfig = new DatabaseConfig();
+        DatabaseConfig databaseConfig = new DatabaseConfig();
         databaseConfig.setAllowCreate(true);
         databaseConfig.setErrorStream(System.err);
+        DefaultBDBMessageHandler defaultMessageHandler = new DefaultBDBMessageHandler();
         databaseConfig.setErrorHandler(defaultMessageHandler);
         databaseConfig.setFeedbackHandler(defaultMessageHandler);
         databaseConfig.setMessageHandler(defaultMessageHandler);
         databaseConfig.setErrorPrefix("<" + filename + ": " + name + "> ");
         databaseConfig.setType(DatabaseType.QUEUE);
         databaseConfig.setChecksum(true);
-        databaseConfig.setPageSize(4096);
         databaseConfig.setQueueInOrder(true);
         databaseConfig.setQueueExtentSize(extentSize);
         databaseConfig.setRecordLength(recordLength);
         db = new Database(filename, null, databaseConfig);
     }
-    
+
     public void close() throws Exception {
         dbLock.lock();
         try {
@@ -84,40 +68,40 @@ public class QueueStore {
             dbLock.unlock();
         }
     }
-    
+
     public void append(String val) throws Exception {
         append(val.getBytes("UTF-8"));
     }
-    
+
     public void append(byte[] val) throws Exception {
         DatabaseEntry dbKey = new DatabaseEntry();
         dbLock.lock();
         try {
             db.append(null,
-                dbKey,
-                new DatabaseEntry(val));
+                    dbKey,
+                    new DatabaseEntry(val));
         } finally {
             dbLock.unlock();
         }
     }
-    
+
     public String consume() throws Exception {
         byte[] v = consume(true);
         if (v == null) return null;
         return new String(v, "UTF-8");
     }
-    
+
     public byte[] consume(boolean wait) throws Exception {
         DatabaseEntry dbKey = new DatabaseEntry();
         DatabaseEntry dbVal = new DatabaseEntry();
-        if (db.consume(null, dbKey, dbVal, wait) == 
-            OperationStatus.SUCCESS) {
+        if (db.consume(null, dbKey, dbVal, wait) ==
+                OperationStatus.SUCCESS) {
             return dbVal.getData();
         } else {
             return null;
         }
     }
-    
+
     public void sync() throws Exception {
         dbLock.lock();
         try {
@@ -126,28 +110,28 @@ public class QueueStore {
             dbLock.unlock();
         }
     }
-    
+
     public static void main(String args[]) throws Exception {
         // 10000 record extents,
         // 1024 byte record length
         QueueStore store = new QueueStore("test.queue", "test", 10000, 1024);
-        
+
         Random r = new Random();
         long startTime = System.currentTimeMillis();
-        for(int i=0; i<1000000; i++) {
+        for (int i = 0; i < 1000000; i++) {
             String v = "v" + r.nextInt(1929398);
             store.append(v);
         }
         store.sync();
-        log.info("1m appends in " + ( (System.currentTimeMillis() - startTime) / 1000 ) + " sec");
-        
+        log.info("1m appends in " + ((System.currentTimeMillis() - startTime) / 1000) + " sec");
+
         log.info("starting reads...");
         startTime = System.currentTimeMillis();
-        for(int i=0; i<1000000; i++) {
+        for (int i = 0; i < 1000000; i++) {
             String v = store.consume();
         }
-        log.info("1m consumes in " + ( (System.currentTimeMillis() - startTime) / 1000 ) + " sec");
-        
+        log.info("1m consumes in " + ((System.currentTimeMillis() - startTime) / 1000) + " sec");
+
         store.close();
     }
 }
