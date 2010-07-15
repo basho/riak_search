@@ -109,8 +109,14 @@
         [{length, 18}]},
 
     
+    {echo, "Test <commit />, which is a noop in Riak Search."},
+    {solr_update, "./commit.xml"},
+
+    {echo, "Test <optimize />, which is a noop in Riak Search."},
+    {solr_update, "./optimize.xml"},
+    
     %% Cleanup.
     {echo, "De-indexing documents..."},
-%%     {solr_update, "../_files/sample100/solr_delete_all.xml"},
+    {solr_update, "../_files/sample100/solr_delete_all.xml"},
     {echo, "Done"}
 ].
