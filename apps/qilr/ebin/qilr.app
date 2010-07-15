@@ -1,7 +1,7 @@
 % -*- mode: erlang -*-
 {application, qilr,
  [{description,  "Full text query parser and planner"},
-  {vsn,          "0.1"},
+  {vsn,          "0.12.0"},
   {modules,      [qilr,
                   qilr_sup,
                   qilr_app,
