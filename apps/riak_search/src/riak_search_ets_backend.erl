@@ -34,30 +34,30 @@ start(Partition, _Config) ->
 stop(State) ->
     maybe_delete(State).
 
-index_if_newer(Index, Field, Term, DocId, Props, _KeyClock, State) ->
-    multi_index([{Index, Field, Term, DocId, Props}], State),
+index_if_newer(Index, Field, Term, DocId, Props, KeyClock, State) ->
+    multi_index([{Index, Field, Term, DocId, Props, KeyClock}], State),
     noreply.
 %%% TODO: why can't I {reply, ok} here? (cargo-cult raptor_backend)
 
 
-multi_index(IFTVPList, State) ->
+multi_index(IFTVPKList, State) ->
     %% TODO: look for timestamp before clobbering
     ets:insert(State#state.table,
-               [ {{b(I), b(F), b(T)}, {V, P}}
-                 || {I, F, T, V, P} <- IFTVPList ]),
+               [ {{b(I), b(F), b(T)}, {V, P}, K}
+                 || {I, F, T, V, P, K} <- IFTVPKList ]),
     {reply, {indexed, node()}, State}.
 %%% TODO: why can't I {reply, ok} here? (cargo-cult raptor_backend)
 
 
 delete_entry(Index, Field, Term, DocId, State) ->
     ets:match_delete(State#state.table,
-                     {{b(Index), b(Field), b(Term)}, {DocId, '_'}}),
+                     {{b(Index), b(Field), b(Term)}, {DocId, '_'}, '_'}),
     noreply.
 %%% TODO: why can't I {reply, ok} here? (cargo-cult raptor_backend)
 
 info(Index, Field, Term, Sender, State) ->
     Count = ets:select_count(State#state.table,
-                             [{{{b(Index), b(Field), b(Term)}, '_'},
+                             [{{{b(Index), b(Field), b(Term)}, '_', '_'},
                                [],[true]}]),
     riak_search_backend:info_response(Sender, [{Term, node(), Count}]),
     noreply.
@@ -70,7 +70,7 @@ info_range(Index, Field, StartTerm, EndTerm, _Size, Sender, State) ->
       fun() ->
               R = [{T, node(),
                     ets:select_count(State#state.table,
-                                     [{{{b(Index), b(Field), T}, '_'},
+                                     [{{{b(Index), b(Field), T}, '_', '_'},
                                        [], [true]}])}
                    || T <- Terms],
               riak_search_backend:info_response(Sender, R)
@@ -102,7 +102,7 @@ multi_stream(IFTList, FilterFun, Sender, State) ->
           [Sender,
            FilterFun,
            ets:select(State#state.table,
-                      [{{{b(I), b(F), b(T)}, '$1'}, [], ['$1']}
+                      [{{{b(I), b(F), b(T)}, '$1', '_'}, [], ['$1']}
                        || {term, {I, F, T}, _P} <- IFTList],
                       ?STREAM_SIZE)]),
     noreply.
