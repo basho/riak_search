@@ -162,7 +162,6 @@ parse_catalog_query(CatalogQuery) ->
                             
 
 
-%%% TODO: test fold/3
 fold(FoldFun, Acc, State) ->
     Fun = fun({{I,F,T,V},P,K}, {OuterAcc, {{I,{F,T}},InnerAcc}}) ->
                   %% same IFT, just accumulate doc/props/clock
