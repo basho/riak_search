@@ -52,7 +52,9 @@ test_inner([], _Root) ->
     true;
 
 test_inner([Op|Ops], Root) ->
-    test_inner(Op, Root) andalso test_inner(Ops, Root);
+    Bool1 = test_inner(Op, Root),
+    Bool2 = test_inner(Ops, Root),
+    Bool1 andalso Bool2;
 
 test_inner({echo, Text}, _) ->
     Tokens = string:tokens(Text, "\n"),
@@ -99,12 +101,12 @@ test_inner({search, Query, Validators}, _Root) ->
             end;
         Error ->
             io:format("~n    [ ] FAIL QUERY » ~s~n", [Query]),
-            io:format("        - ERROR: ~p~n", [Error]),
+            io:format("        - ERROR1: ~p~n", [Error]),
             false
     catch 
         _Type : Error ->
             io:format("~n    [ ] FAIL QUERY » ~s~n", [Query]),
-            io:format("        - ERROR: ~p : ~p~n", [Error, erlang:get_stacktrace()]),
+            io:format("        - ERROR2: ~p : ~p~n", [Error, erlang:get_stacktrace()]),
             false
     end;
 test_inner({solr_select, Params, Validators}, _Root) ->
