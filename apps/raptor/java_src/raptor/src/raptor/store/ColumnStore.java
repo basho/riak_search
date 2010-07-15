@@ -53,8 +53,8 @@ public class ColumnStore implements Runnable {
             entryMetadataCache = new ConcurrentHashMap<byte[], byte[]>();
     private ConsistentHash<String> tableHash;
     private int partitions;
-    private HashStore metadata;
-    private HashStore entryMetadata;
+    private BtreeStore metadata;
+    private BtreeStore entryMetadata;
     private Lock metadataLock = new ReentrantLock();
     private Lock entryMetadataLock = new ReentrantLock();
     private Environment env;
@@ -90,13 +90,13 @@ public class ColumnStore implements Runnable {
             log.info("Opening " + DB_PFX + i + ".column");
             BtreeStore store = new BtreeStore(
                     env,
-                    DB_PFX + i + ".column", DB_PFX + i, 4096);
+                    DB_PFX + i + ".column", DB_PFX + i);
             stores.put(DB_PFX + i, store);
         }
         log.info("Opening metadata.hash");
-        metadata = new HashStore(env, "metadata.hash", "metadata");
+        metadata = new BtreeStore(env, "metadata.hash", "metadata");
         log.info("Opening entry_metadata.hash");
-        entryMetadata = new HashStore(env, "entry_metadata.hash", "entry_metadata");
+        entryMetadata = new BtreeStore(env, "entry_metadata.hash", "entry_metadata");
     }
 
     public void run() {
@@ -210,15 +210,6 @@ public class ColumnStore implements Runnable {
                     rval);
         }
         return true;
-    }
-
-    protected void reportWriteQueueSizes() throws Exception {
-        for (String k : stores.keySet()) {
-            BtreeStore store = stores.get(k);
-            if (store.writeQueue.size() > 0) {
-                log.info("[" + k + "] writeQueue.size() = " + store.writeQueue.size());
-            }
-        }
     }
 
     public boolean exists(String table, String key)
