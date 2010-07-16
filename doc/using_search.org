@@ -14,7 +14,7 @@
 
    The following components are required:
 
-   + Erlang R13B04 (or later)
+   + Erlang R13B04
    + Java 1.6.x
    + Ant
    + gcc toolchain
@@ -77,12 +77,9 @@
    Note that even though Riak KV is included in Riak Search, it
    *SHOULD NOT* be used to store application data. It is used intenally
    by Search to store document data, schema definitions, and other
-   configuration data. Specifically, documents are stored in
-   "INDEX\_doc" where INDEX is the name of the search schema. 
-
-   *NOTE:* Don't yet know the bucket name for schema data. That work
-   is currently in progress. Covered in bug #289.
-
+   configuration data. Documents are stored in a bucket with the same
+   name as the search index, where the key is the value of the
+   document's ID field.
 
 ** Replication
 
@@ -110,136 +107,151 @@
 
 * Schema
 
-  Riak Search was designed to work seamlessly with Riak. As a
-  result, it retains many of the same properties as Riak, including
-  a schema-free design. In other words, you can start adding data
-  to a new index without having to explicitly define the index
-  fields.
+  Riak Search was designed to work seamlessly with Riak. As a result,
+  it retains many of the same properties as Riak, including a
+  schema-free design. In other words, you can start adding data to a
+  new index without having to explicitly define the index fields. 
 
-  That said, Search does provide the ability to define a schema,
-  this is useful to set required fields and data types. This section
-  describes how to define an index schema.
+  That said, Search does provide the ability to define a custom
+  schema. This allows you to specify required fields and custom
+  analyzer factories, among other things.
    
-** Defining an Index Schema
+** The Default Schema
 
-   *NOTE:* Riak Search currently stores schema definition files in
-   the lib/riak\_search/priv/ directory. This is covered in #289.
+   The default schema treats all fields as strings, unless you suffix
+   your field name as follows:
 
-   Schema definitions are stored in Riak Search under a =schema=
-   bucket. To create a new schema, write a new Riak object to the
-   =schema= with a key equal to the schema name, and a value as the
-   Erlang formatted schema definition file.
+   + *FIELDNAME\_num* - Numeric field. Uses Whitespace analyzer.
+
+   + *FIELDNAME\_facet* - Facet field. Uses Whitespace analyzer.
+
+   + All other fields are treated as Strings and use the Standard analyzer.
+  
+   The default field is named *value*.
+
+** Defining a Schema
+
+   The schema definition for an index for an are stored in the Riak
+   bucket of the same name as the index, under the key
+   =_rs_schema=. For example, the schema for the "books" index is
+   stored under =books/_rs_schema=.
+
+   Alternatively, you can set or retrieve the schema for an index
+   using command line tools:
 
    : # Set an index schema.
    : bin/search-cmd set_schema Index SchemaFile
    : 
    : # View the schema for an Index.
-   : bin/search-cmd view_schema Index
+   : bin/search-cmd show_schema Index
 
-   There is currently no way to list all defined schemas.
+   Note that changes to the Schema File *will not* affect previously
+   indexed data. It is recommended that if you change field
+   definitions, especially settings such as /facet/ or /type/, that
+   you re-index your documents.
 
-   Below is an example schema file. This is an Erlang formatted
-   term. Spacing does not matter, but it is important to matching
-   opening and closing brackets or braces, and to include commas
-   between all list items:
+   Below is an example schema file. The schema is formatted as an
+   Erlang term. Spacing does not matter, but it is important to
+   matching opening and closing brackets and braces, to include
+   commas between all list items, and to include the final period
+   after the last brace:
 
-   : TODO - 
-   : Put in example schema file. 
-   : This is currently changing. Covered in #315.
+   : {
+   :     schema, 
+   :     [
+   :         {version, "1.1"},
+   :         {default_field, "value"},
+   :         {default_op, "or"},
+   :         {analyzer_factory, "com.basho.search.analysis.DefaultAnalyzerFactory"}
+   :     ],
+   :     [
+   :         {field, [
+   :             {name, "id"},
+   :             {type, string}
+   :         ]},
+   :         {field, [
+   :             {name, "title"},
+   :             {required, true},
+   :             {type, string}
+   :         ]},
+   :         {dynamic_field, [
+   :             {name, "*_text"},
+   :             {type, string}
+   :         ]},
+   :         {field, [
+   :             {name, "tags"},
+   :             {type, string},
+   :             {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+   :         ]},
+   :         {field, [
+   :             {name, "count"},
+   :             {type, integer},
+   :             {padding_size, 10}
+   :         ]},
+   :         {field, [
+   :             {name, "category"},
+   :             {facet, true}
+   :         ]}
+   :     ]
+   : }.
 
-** Changing the Schema File
+*** Schema-level properties:
+      
+    The following properties are defined at a schema level:
 
-   Changes to the Schema File *will not* affect previously indexed
-   data. It is recommended that if you change field definitions,
-   especially settings such as /inline/ or /type/, that you re-index
-   your documents. The schema file can be changed using the same
-   steps described above for setting the schema.
+    + *version* - Required. A version number, currently unused.
 
-** Schema Properties
-   
-   A Schema definition consists of the following properties:
-   
-   + *version* - /Atom/, currently unused by Riak Search.
+    + *default\_field* - Required. Specify the default field used for
+      searching.
 
-   + *default\_field* - /String/, the default field to use for
-                      searching, if no other field is specified in
-                      the query.
+    + *default\_op* - Optional. Set to "and" or "or" to define the
+      default boolean. Defaults to "or".
 
-   + *default\_op* - /String/, either "and" or "or". Defaults to "or".
+    + *analyzer\_factory* - Optional. Defaults to
+      "com.basho.search.analysis.DefaultAnalyzerFactory"
 
-   + *analyzer\_factory* - Determines the Java class used to analyze the
-        data. Defaults to
-        *com.basho.search.analysis.DefaultAnalyzerFactory*, which is a
-        StandardAnalyzer with a minimum length of 3 letters, lower
-        cased, with stop words filtered using
-        StopAnalyzer.ENGLISH\_STOP\_WORDS\_SET.
+*** Fields and Field-Level Properties:
 
-   + *fields* - See /Schema Field Properties/ section below.
+    Fields can either by static or dynamic. A static field is denoted
+    with 'field' at the start of the field definition, whereas a
+    dynamic field is denoted with 'dynamic\_field' at the start of the
+    field definition.
 
-** Schema Field Properties
+    The difference is that a static field will perform an exact string
+    match on a field name, and a dynamic field will perform a wildcard
+    match on the string name. The wildcard can appear anywhere within
+    the field, but it usually occurs at the beginning or end. (The
+    default schema, described above, uses dynamic fields, allowing you
+    to use fieldname suffixes to create fields of different data
+    types.) 
 
-   Each field consists of a field name string and the following
-   properties:
+    Field matching occurs in the order of appearance in the schema
+    definition. This allows you to create a number of static fields
+    followed by a dynamic field as a "catch all" to match the rest.
 
-   + *type* - /Atom/. Either 'string', 'boolean', 'integer', or
-             # 'float'. Defaults to 'string'. See /Data Types/ section
-             # below.
+    The following properties are defined at a field level, and apply
+    to both static and dynamic fields:
 
-   + *required* - /Boolean/. Either 'true' or 'false'. Defaults to
-                 # 'false'. 
+    + *name* - Required. The name of the field. Dynamic fields can use
+      wildcards. Note that the unique field identifying a document
+      /must/ be named "id".
 
-   + *inline* - /Boolean/. Either 'true' or 'false'. Defaults to
-               # 'false'. See /Inline Fields/ section below. 
+    + *required* - Optional. Boolean flag indicating whether this
+      field is required in an incoming search document. If missing,
+      then the document will fail validation. Defaults to false.
 
-** Inline Fields
+    + *type* - Optional. The type of field, either 'string' or
+      'integer'. If 'integer' is specified, and no field-level
+      analyzer\_factory is defined, then the field will use the
+      Whitespace analyzer. Defaults to 'string'.
 
-   *NOTE:* These are called "facet" fields in the latest version of
-   code. The name may or may not change to "inline" fields. This is
-   covered in #314.
+    + *analyzer\_factory* - Optional. Specify the analyzer factory to
+      use when parsing the field. If not specified, defaults to the
+      analyzer factory for the schema. (Unless the field is an integer
+      type. See above.)
 
-   Inline fields take their name from inline code. Just like inline
-   code, the value of an inline field is repeated. The value of an
-   inline field is transformed to a key/value property and stored
-   along with each term of the document. For this reason, inline
-   fields should be used carefully (and sparingly), as they
-   substantially increase the amount of space used in an index.
-
-   A typical use case might be to store the color of a
-   product. Picture a product catalog with millions of products. A
-   good portion of those products might be the color /red/, and so a
-   query for =title:spatula AND color:red= would need to scan the
-   entire /color:red/ section of the index to execute the query.
-
-   If /color/ were made inline field, then /color/ would instead be
-   stored as a property inline with every other value associated with
-   the item. A query for =title:spatula AND color:red= would just
-   read the /title:spatula/ section of the index, and then the
-   =color:red= part of the query is applied as a second step in query
-   execution, leading to less data transfer among query nodes and
-   therefore faster queries.
-
-   Note that both the field name and value are serialized, so if you
-   are creating an inline field for color, you should consider using
-   an abbreviated field name, such as /c/, and a small field value,
-   such as /r/, rather than spelling out the entire word.
-
-
-** Data Types
-   
-   Riak Search supports the following data types:
-
-   * *string* - A field of type =string= is parsed using the
-               # analyzer\_factory class set in the index's schema
-               # file. 
-
-   * *integer* - A field of type =integer= is always parsed
-                # using the whitespace parser and padded to 10
-                # digits. (In other words, the integer is converted
-                # to a sortable string.) This allows for range
-                # searches on integer fields and proper sorting.
-
-   *NOTE:* The 10 digit padding is currently hard coded, but is due to
-   change in issue #312.
+    + *padding\_size* - Optional. Values are padded up to this
+      size. Defaults to 0 for string types, 10 for integer types.
 
 * Indexing
   
@@ -413,6 +425,10 @@
 
    : curl -X POST -H text/xml --data-binary @tests/books.xml http://localhost:8098/solr/books/update
 
+   Alternatively, you can index Solr files on the command line:
+
+   : bin/search-cmd solr my_index path/to/solrfile.xml
+
 
 ** Deleting via the Solr Interface
 
@@ -436,30 +452,6 @@
 
    Any documents that match the provided queries will be deleted.
 
-** Indexing via Riak Post-Commit Hook
-
-   *NOTE:* Search is not yet integrated with Riak. This is scheduled
-   for a future release. 
-
-   Riak (a distributed Key/Value store) can be configured to
-   index new data automatically using Riak Search. Indexing is
-   configured at a bucket level using a post-commit hook written in
-   Erlang. (See [[https://wiki.basho.com/display/RIAK/Pre-+and+Post-Commit+Hooks][Pre and Post Commit Hooks]] for instructions on
-   configuring Post-Commit hooks.)
-
-   The following post-commit hook provides integration with Riak Search:
-   
-   : {"mod": "riak_search", "fun": "index"}
-
-   Pending Questions:
-   
-   + How does Riak know /where/ Riak Search is located?
-   + How does it know which index?
-   + How does it break the value into fields.
-   + Handle insert, update, and delete.
-   + Handle case where the hook fails? Maybe do some preliminary work
-     during pre-commit hook to make sure things parse correctly and
-     can contact the index server.
 
 * Querying
 
@@ -480,10 +472,6 @@
     OR operation. By default, a phrase is treated as an OR
     operation. In other words, a document is returned if it matches
     any one of the terms in the phrase.
-
-    *NOTE:* In the future, there will be different analyzers for each
-    field. During a query, the terms will be parsed using the analyzer
-    for that field. This is covered in #317.
 
 *** Fields
 
@@ -563,12 +551,12 @@
     The following example will return documents with words containing
     "red" and "rum", plus any words in between.
 
-    : "[red TO rum]" 
+    : "field:[red TO rum]" 
     
     The following example will return documents with words in between
     "red" and "rum":
 
-    : "{red TO rum}"
+    : "field:{red TO rum}"
 
 *** Boosting a Term
 
@@ -623,13 +611,13 @@
 
    For example:
 
-   : bin/search-cmd search "books" "title:\"See spot run\""
+   : bin/search-cmd search books "title:\"See spot run\""
 
    This will display a list of Document ID values matching the
    query. To conduct a document search, use the *search\_doc*
    command. For example:
 
-   : bin/search-cmd search_doc "books" "title:\"See spot run\""
+   : bin/search-cmd search_doc books "title:\"See spot run\""
 
 ** Querying via the Erlang Command Line
 
@@ -685,8 +673,7 @@
 
 ** Faceted Queries via the Solr Interfae
    
-   *NOTE:* The facet features listed below do not yet exist. These are
-   covered in #326.
+   *NOTE:* Facet querying through the Solr interface is not yet supported.
 
    Faceted search allows you to generate keywords (plus counts) to
    display to a user to drill down into search results.
@@ -722,10 +709,6 @@
    never see a facet count entry of zero.) Faceted fields are analyzed
    using the analyzer associated with the field.
 
-
-** Querying via Riak Map/Reduce
-   
-   /This functionality is planned for a future release./
 
 ** Query Scoring
    

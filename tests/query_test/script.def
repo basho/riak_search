@@ -2,8 +2,8 @@
     %% Set the schema...
     {schema, "../_files/sample100/schema.def"},
 
-    {echo,   "Indexing documents..."}, 
-    {solr,   "../_files/sample100/solr_add.xml"},
+    {echo,   "Indexing documents..."},
+    {solr_update,   "../_files/sample100/solr_add.xml"},
 
     {echo,   "Perform some simple queries."},
     {search, "acc:ABC", [{length, 88}]},
@@ -42,7 +42,7 @@
     {search,  "acc:AEB AND (NOT parity:even) AND (NOT color:red)", [{length, 0}]}, %% Solr returns 0
     {search,  "+acc:AEB -parity:even -color:red", [{length, 24}]},
     {search,  "+acc:AEB AND -parity:even -color:red", [{length, 24}]},
-    
+
     {echo,    "Ranges"},
     {search,  "key:[keyAAA TO keyAAJ]", [{length, 10}]},
     {search,  "key:[keyaaa TO keyaaj]", [{length, 10}]},
@@ -73,6 +73,13 @@
 
     %% Cleanup.
     {echo,   "De-indexing documents..."},
-    {solr,   "./solr_delete_all.xml"},
-    {echo,   "Done"}
+    {solr_update,   "../_files/sample100/solr_delete_all.xml"},
+
+    %% Verify deletes occurred
+    {echo, "Verifying delete removed data"},
+    {search, "acc:ABC", [{length, 0}]},
+    {search, "color:red", [{length, 0}]},
+    {search, "parity:even", [{length, 0}]},
+    {search, "color:(red blue)", [{length, 0}]},
+    {echo, "Done"}
 ].
