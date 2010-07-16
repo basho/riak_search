@@ -52,8 +52,7 @@ public class RaptorServer {
                             RaptorServer.idx.shutdown();
                             log.info("closing...");
                         } catch (Exception ex) {
-                            ex.printStackTrace();
-                            log.info("Problem sync/close [crash] - verify and restore recommended");
+                            log.info("Problem sync/close [crash] - verify and restore recommended", ex);
                         }
                     }
                 });
