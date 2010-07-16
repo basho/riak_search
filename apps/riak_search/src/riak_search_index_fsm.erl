@@ -20,15 +20,18 @@
 -define(RECV_TIMEOUT_USECS, 60000).
 -define(INDEX_TIMEOUT_USECS, 60000).
 
--record(state, {terms=[],          % Terms left to index,
-                num_terms=0,       % Number of terms
+-record(state, {total=0,           % Total number of terms sent to all vnodes
+                acks=0,            % Number of indexed messages received
+                timeouts=0,        % Number of timeout messages received
+                num_terms=0,       % Number of terms in the terms list below
                 ref,               % Reference for current batch of terms sent out
                 replies_left,      % Count of replies pending
                 timer,             % Timer reference for batch
                 overload_waiters=[], % List to reply to once out of overload
                 done_waiters=[],   % List to reply to once terms is empty
                 batch_size,        % Size of index batches to send
-                overload_thresh}). % Threshold for num_terms to trigger overload
+                overload_thresh,   % Threshold for num_terms to trigger overload
+                terms=[]}).        % Terms left to index,
 
 
 -type index() :: term().
@@ -64,8 +67,18 @@ index_terms(Pid, Terms) ->
 index_terms(Pid, Terms, Timeout) ->
     %% Add the keyclock
     K = riak_search_utils:current_key_clock(),
-    Terms1 = [{I,F,T,V,P,K} || {I,F,T,V,P} <- Terms],
-    gen_fsm:sync_send_event(Pid, {index, Terms1}, Timeout).
+    %% Terms1 = [{I,F,T,V,P,K} || {I,F,T,V,P} <- Terms],
+    %% Rc = gen_fsm:sync_send_event(Pid, {index, Terms1}, Timeout),
+    F = fun({I,F,T,V,P}, Status) ->
+                NewStatus = gen_fsm:sync_send_event(Pid, {index, [{I,F,T,V,P,K}]}, Timeout),
+                case Status of
+                    ok ->
+                        NewStatus;
+                    _ ->
+                        Status
+                end
+        end,
+    lists:foldl(F, ok, Terms).
 
 %% Signal we are done and wait for the FSM to complete and exit
 -spec done(pid()) -> ok.
@@ -120,7 +133,7 @@ idle(done, _From, #state{terms = []} = State) ->
 %% @private
 %% handle gen_fsm:send_event
 -spec receiving(event(),#state{}) -> {next_state, statename(), #state{}}.
-receiving({Ref, {indexed, _Node}}, #state{ref = Ref}=State) ->
+receiving({Ref, {indexed, _Node}}, #state{acks = Acks, ref = Ref}=State) ->
     %% Reply for the current batch
     case State#state.replies_left - 1 of
         0 ->
@@ -128,15 +141,17 @@ receiving({Ref, {indexed, _Node}}, #state{ref = Ref}=State) ->
             {StateName, NewState} = send_batch(State),
             {next_state, StateName, NewState};
         RepliesLeft ->
-            {next_state, receiving, State#state{replies_left = RepliesLeft}}
+            {next_state, receiving, State#state{acks = Acks + 1,
+                                                replies_left = RepliesLeft}}
     end;
-receiving({Ref, recv_timeout}, #state{ref=Ref} = State) ->    
+receiving({Ref, recv_timeout}, #state{timeouts=Timeouts,ref=Ref} = State) ->    
     %% Receive timeout for current batch - for now just continue
     %% on to the next batch
-    {StateName, NewState} = send_batch(State#state{timer=undefined}),
+    {StateName, NewState} = send_batch(State#state{timeouts=Timeouts+1,
+                                                   timer=undefined}),
     {next_state, StateName, NewState};
 
-receiving({_Ref, {indexed, _Partition}}, State) ->
+receiving({_Ref, {indexed, _Node}}, State) ->
     %% Ignore stale reply from previous batch
     {next_state, receiving, State};
 receiving(empty, State) ->
@@ -183,7 +198,8 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 -spec add_terms(index_terms(), term(), #state{}) -> {overload_state(), #state{}}.
 add_terms(NewTerms, From, State) ->
     UpdTerms = State#state.terms ++ NewTerms,
-    UpdNumTerms = State#state.num_terms + length(NewTerms),
+    NumNewTerms = length(NewTerms),
+    UpdNumTerms = State#state.num_terms + NumNewTerms,
     case UpdNumTerms < State#state.overload_thresh of
         true ->
             {ok, State#state{terms = UpdTerms,
@@ -200,8 +216,9 @@ add_terms(NewTerms, From, State) ->
 %% Send the next batch of terms
 -spec send_batch(#state{}) -> {statename(), #state{}}.
 send_batch(#state{terms=[]}=State) ->
+    [gen_fsm:reply(From, ok) || From <- State#state.overload_waiters],
     gen_fsm:send_event(self(), empty),
-    {idle, State};
+    {idle, State#state{overload_waiters=[]}};
 send_batch(State) ->
     {Rest, PlTerms, TermCount} = lookup_preflist(State#state.batch_size,
                                                  0,
@@ -215,7 +232,8 @@ send_batch(State) ->
                         end, 0, PlTerms),
     Timer = gen_fsm:send_event_after(?RECV_TIMEOUT_USECS, {Ref, recv_timeout}),
     UpdNumTerms = State#state.num_terms - TermCount,
-    State1 = State#state{terms = Rest,
+    State1 = State#state{total = State#state.total + TermCount,
+                         terms = Rest,
                          num_terms = UpdNumTerms,
                          ref = Ref,
                          replies_left = Sent,
@@ -246,7 +264,7 @@ lookup_preflist(_BatchLeft, TermCount, [], PlTerms, _N) ->
 lookup_preflist(BatchLeft, TermCount, [IFTVP|Terms], PlTerms, N) ->
     {Index,Field,Term,_Value,_Props,_KeyClock} = IFTVP,
     Partition = riak_search_utils:calc_partition(Index, Field, Term),
-    Preflist = riak_core_apl:get_apl(Partition, N),
+    Preflist = riak_core_apl:get_apl(Partition, N, riak_search),
     NewPlTerms = lists:foldl(fun(Pl,PlTermsAcc) ->
                                      orddict:append_list(Pl,[IFTVP],PlTermsAcc)
                              end, PlTerms, Preflist),

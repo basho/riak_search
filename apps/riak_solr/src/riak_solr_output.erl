@@ -21,7 +21,9 @@
 -define(XML_PROLOG, {prolog, ["<?xml version=\"1.0\" encoding=\"UTF-8\"?>"]}).
 
 
-xml_response(Schema, _SortBy, ElapsedTime, SQuery, NumFound, MaxScore, Docs) ->
+xml_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, Docs0) ->
+    Docs = riak_solr_sort:sort(Docs0, SortBy),
+
     RenderedParams = render_xml_params(NumFound, Schema, SQuery),
     RenderedDocs = lists:flatten([render_xml_doc(Schema, Doc) || Doc <- Docs]),
     XML = [xml_nl(),

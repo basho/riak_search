@@ -131,7 +131,7 @@ index_term(Index, Field, Term, Value, Props) ->
 
 delete_term(Index, Field, Term, DocId) ->
     {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
-    Preflist = riak_core_apl:get_apl(Partition, N),
+    Preflist = riak_core_apl:get_apl(Partition, N, riak_search),
     riak_search_vnode:delete_term(Preflist, Index, Field, Term, DocId).
 
 truncate_list(QueryStart, QueryRows, List) ->
