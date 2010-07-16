@@ -8,10 +8,6 @@
 
 -behaviour(gen_server).
 
--include("raptor_pb.hrl").
-
--define(RECV_TIMEOUT, 3000).
-
 %% API
 -export([start_link/0,
          close/1,
@@ -30,8 +26,23 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--define(SERVER, ?MODULE).
+-include("raptor_pb.hrl").
+
+-define(RECV_TIMEOUT, 3000).
 -define(TIMEOUT, 30000).
+
+-define(MSG_INDEX,  0).
+-define(MSG_STREAM, 1).
+-define(MSG_INFO,   2).
+-define(MSG_INFORANGE, 3).
+-define(MSG_CATALOG_QUERY, 4).
+-define(MSG_MULTISTREAM, 5).
+-define(MSG_COMMAND, 6).
+-define(MSG_DELETE_ENTRY, 7).
+-define(MSG_STREAM_RESPONSE, 8).
+-define(MSG_INFO_RESPONSE, 9).
+-define(MSG_CATALOG_QUERY_RESPONSE, 10).
+-define(MSG_COMMAND_RESPONSE, 11).
 
 -record(state, {sock, caller, req_type, reqid, dest,
                 reply_to}). % process to reply to for delayed call() replies
@@ -40,65 +51,53 @@ close(ConnPid) ->
     gen_server:call(ConnPid, close_conn).
 
 index(ConnPid, IndexName, FieldName, Term, Value, Partition, Props, KeyClock) ->
-    MessageType = <<"1">>,
     IndexRec = #index{index=IndexName, field=FieldName,
                       term=Term, value=Value,
                       partition=Partition,
-                      message_type=MessageType,
+                      ifnewer=false,
                       props=Props,
                       key_clock=KeyClock},
     gen_server:call(ConnPid, {index, IndexRec}, ?TIMEOUT).
 
 index_if_newer(ConnPid, IndexName, FieldName, Term, Value, Partition, Props, KeyClock) ->
-    MessageType = <<"2">>,
     IndexRec = #index{index=IndexName, field=FieldName,
                       term=Term, value=Value,
                       partition=Partition,
-                      message_type=MessageType,
+                      ifnewer=true,
                       props=Props,
                       key_clock=KeyClock},
     gen_server:call(ConnPid, {index, IndexRec}, ?TIMEOUT).
 
 delete_entry(ConnPid, IndexName, FieldName, Term, DocId, Partition) ->
-    MessageType = <<"3">>,
     DeleteEntryRec = #deleteentry{index=IndexName, field=FieldName,
                                   term=Term, doc_id=DocId,
-                                  partition=Partition,
-                                  message_type=MessageType},
+                                  partition=Partition},
     gen_server:call(ConnPid, {deleteentry, DeleteEntryRec}, ?TIMEOUT).
 
 stream(ConnPid, IndexName, FieldName, Term, Partition) ->
-    MessageType = <<"4">>,
     StreamRec = #stream{index=IndexName, field=FieldName,
-                        term=Term, partition=Partition,
-                        message_type=MessageType},
+                        term=Term, partition=Partition},
     Ref = erlang:make_ref(),
     gen_server:call(ConnPid, {stream, self(), Ref, StreamRec}, ?TIMEOUT).
 
 multi_stream(ConnPid, TermArg) ->
     %io:format("raptor_conn: multi_stream: ConnPid = ~p, TermArg = ~p~n",
     %    [ConnPid, TermArg]),
-    MessageType = <<"5">>,
-    MultiStreamRec = #multistream{term_list=TermArg,
-                                  message_type=MessageType},
+    MultiStreamRec = #multistream{term_list=TermArg},
     Ref = erlang:make_ref(),
     gen_server:call(ConnPid, {multistream, self(), Ref, MultiStreamRec}, ?TIMEOUT).
 
 info(ConnPid, IndexName, FieldName, Term, Partition) ->
-    MessageType = <<"6">>,
     InfoRec = #info{index=IndexName, field=FieldName, term=Term,
-                    partition=Partition,
-                    message_type=MessageType},
+                    partition=Partition},
     Ref = erlang:make_ref(),
     gen_server:call(ConnPid, {info, self(), Ref, InfoRec}, ?TIMEOUT).
 
 info_range(ConnPid, IndexName, FieldName, StartTerm,
            EndTerm, Partition) ->
-    MessageType = <<"7">>,
     InfoRangeRec = #inforange{index=IndexName, field=FieldName,
                               start_term=StartTerm, end_term=EndTerm,
-                              partition=Partition,
-                              message_type=MessageType},
+                              partition=Partition},
     Ref = erlang:make_ref(),
     gen_server:call(ConnPid, {info_range, self(), Ref, InfoRangeRec}, ?TIMEOUT).
 
@@ -106,20 +105,16 @@ catalog_query(ConnPid, SearchQuery) ->
     catalog_query(ConnPid, SearchQuery, 0).
 
 catalog_query(ConnPid, SearchQuery, MaxResults) ->
-    MessageType = <<"8">>,
     CatalogQueryRec = #catalogquery{search_query=SearchQuery,
-                                    max_results=MaxResults,
-                                    message_type=MessageType},
+                                    max_results=MaxResults},
     Ref = erlang:make_ref(),
     gen_server:call(ConnPid, {catalog_query, self(), Ref, CatalogQueryRec}, ?TIMEOUT).
 
 command(ConnPid, Command, Arg1, Arg2, Arg3) ->
-    MessageType = <<"9">>,
     CommandRec = #command{command=Command,
                           arg1=Arg1,
                           arg2=Arg2,
-                          arg3=Arg3,
-                          message_type=MessageType},
+                          arg3=Arg3},
     Ref = erlang:make_ref(),
     gen_server:call(ConnPid, {command, self(), Ref, CommandRec}, ?TIMEOUT).
 
@@ -149,50 +144,42 @@ handle_call(close_conn, _From, State) ->
 
 handle_call({index, IndexRec}, From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_index(IndexRec),
-    gen_tcp:send(Sock, Data),
-    inet:setopts(Sock, [{active, once}]),
+    send(Sock, ?MSG_INDEX, Data),
     {noreply, State#state{req_type=index, reply_to=From}, ?RECV_TIMEOUT};
 
 handle_call({deleteentry, DeleteEntryRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_deleteentry(DeleteEntryRec),
-    gen_tcp:send(Sock, Data),
-    inet:setopts(Sock, [{active, once}]),
+    send(Sock, ?MSG_DELETE_ENTRY, Data),
     {reply, ok, State};
 
 handle_call({stream, Caller, ReqId, StreamRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_stream(StreamRec),
-    gen_tcp:send(Sock, Data),
-    inet:setopts(Sock, [{active, once}]),
+    send(Sock, ?MSG_STREAM, Data),
     {reply, {ok, ReqId}, State#state{req_type=stream, reqid=ReqId, dest=Caller}, ?RECV_TIMEOUT};
 
 handle_call({multistream, Caller, ReqId, MultiStreamRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_multistream(MultiStreamRec),
-    gen_tcp:send(Sock, Data),
-    inet:setopts(Sock, [{active, once}]),
+    send(Sock, ?MSG_MULTISTREAM, Data),
     {reply, {ok, ReqId}, State#state{req_type=stream, reqid=ReqId, dest=Caller}};
 
 handle_call({info, Caller, ReqId, InfoRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_info(InfoRec),
-    gen_tcp:send(Sock, Data),
-    inet:setopts(Sock, [{active, once}]),
+    send(Sock, ?MSG_INFO, Data),
     {reply, {ok, ReqId}, State#state{req_type=info, reqid=ReqId, dest=Caller}, ?RECV_TIMEOUT};
 
 handle_call({info_range, Caller, ReqId, InfoRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_inforange(InfoRec),
-    gen_tcp:send(Sock, Data),
-    inet:setopts(Sock, [{active, once}]),
+    send(Sock, ?MSG_INFORANGE, Data),
     {reply, {ok, ReqId}, State#state{req_type=info, reqid=ReqId, dest=Caller}, ?RECV_TIMEOUT};
 
 handle_call({catalog_query, Caller, ReqId, CatalogQueryRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_catalogquery(CatalogQueryRec),
-    gen_tcp:send(Sock, Data),
-    inet:setopts(Sock, [{active, once}]),
+    send(Sock, ?MSG_CATALOG_QUERY, Data),
     {reply, {ok, ReqId}, State#state{req_type=catalogquery, reqid=ReqId, dest=Caller}, ?RECV_TIMEOUT};
 
 handle_call({command, Caller, ReqId, CommandRec}, _From, #state{sock=Sock}=State) ->
     Data = raptor_pb:encode_command(CommandRec),
-    gen_tcp:send(Sock, Data),
-    inet:setopts(Sock, [{active, once}]),
+    send(Sock, ?MSG_COMMAND, Data),
     {reply, {ok, ReqId}, State#state{req_type=command, reqid=ReqId, dest=Caller}, ?RECV_TIMEOUT};
 
 handle_call(_Request, _From, State) ->
@@ -223,7 +210,7 @@ handle_info({tcp, Sock, _Data}, #state{req_type=index}=State) ->
 %%  (i.e., StreamResponse messages).  If they get split apart, make sure the code
 %% for handling timeouts in riak_search_raptor_backend is adjusted for the new req_type.
 %%
-handle_info({tcp, Sock, Data}, #state{req_type=stream, reqid=ReqId, dest=Dest}=State) ->
+handle_info({tcp, Sock, <<_:16, Data/binary>>}, #state{req_type=stream, reqid=ReqId, dest=Dest}=State) ->
     StreamResponse = raptor_pb:decode_streamresponse(Data),
     Dest ! {stream, ReqId, StreamResponse#streamresponse.value, 
                            StreamResponse#streamresponse.props,
@@ -239,7 +226,7 @@ handle_info({tcp, Sock, Data}, #state{req_type=stream, reqid=ReqId, dest=Dest}=S
                end,
     {noreply, NewState};
 
-handle_info({tcp, Sock, Data}, #state{req_type=info, reqid=ReqId, dest=Dest}=State) ->
+handle_info({tcp, Sock, <<_:16, Data/binary>>}, #state{req_type=info, reqid=ReqId, dest=Dest}=State) ->
     InfoResponse = raptor_pb:decode_inforesponse(Data),
     Dest ! {info, ReqId, InfoResponse#inforesponse.term, InfoResponse#inforesponse.count},
     NewState = if
@@ -253,7 +240,7 @@ handle_info({tcp, Sock, Data}, #state{req_type=info, reqid=ReqId, dest=Dest}=Sta
                end,
     {noreply, NewState};
 
-handle_info({tcp, Sock, Data}, #state{req_type=catalogquery, reqid=ReqId, dest=Dest}=State) ->
+handle_info({tcp, Sock, <<_:16, Data/binary>>}, #state{req_type=catalogquery, reqid=ReqId, dest=Dest}=State) ->
     CatalogQueryResponse = raptor_pb:decode_catalogqueryresponse(Data),
     Dest ! {catalog_query, ReqId, CatalogQueryResponse#catalogqueryresponse.partition,
                                   CatalogQueryResponse#catalogqueryresponse.index,
@@ -271,7 +258,7 @@ handle_info({tcp, Sock, Data}, #state{req_type=catalogquery, reqid=ReqId, dest=D
                end,
     {noreply, NewState};
 
-handle_info({tcp, Sock, Data}, #state{req_type=command, reqid=ReqId, dest=Dest}=State) ->
+handle_info({tcp, Sock, <<_:16, Data/binary>>}, #state{req_type=command, reqid=ReqId, dest=Dest}=State) ->
     CommandResponse = raptor_pb:decode_commandresponse(Data),
     Dest ! {command, ReqId, CommandResponse#commandresponse.response},
     inet:setopts(Sock, [{active, once}]),
@@ -300,3 +287,8 @@ raptor_connect(Port) ->
                                         {linger, {true, 0}},
                                         {keepalive, true},
                                         {nodelay, true}], 250).
+
+
+send(Sock, MsgType, Message) ->
+    gen_tcp:send(Sock, [<<MsgType:16/unsigned>>, Message]),
+    inet:setopts(Sock, [{active, once}]).
