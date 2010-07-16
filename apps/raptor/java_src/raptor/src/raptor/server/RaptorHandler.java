@@ -6,16 +6,39 @@
 
 package raptor.server;
 
-import com.google.protobuf.ByteString;
+import java.nio.ByteBuffer;
+
 import org.apache.log4j.Logger;
 import org.jboss.netty.buffer.ChannelBuffer;
-import org.jboss.netty.channel.*;
+import org.jboss.netty.buffer.ChannelBuffers;
+import org.jboss.netty.channel.Channel;
+import org.jboss.netty.channel.ChannelFuture;
+import org.jboss.netty.channel.ChannelFutureListener;
+import org.jboss.netty.channel.ChannelHandlerContext;
+import org.jboss.netty.channel.ChannelPipelineCoverage;
+import org.jboss.netty.channel.ChannelStateEvent;
+import org.jboss.netty.channel.MessageEvent;
+import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
 import org.json.JSONArray;
 import org.json.JSONObject;
-import raptor.protobuf.Messages.*;
+
+import raptor.protobuf.Messages.CatalogQuery;
+import raptor.protobuf.Messages.CatalogQueryResponse;
+import raptor.protobuf.Messages.Command;
+import raptor.protobuf.Messages.CommandResponse;
+import raptor.protobuf.Messages.DeleteEntry;
+import raptor.protobuf.Messages.Index;
+import raptor.protobuf.Messages.Info;
+import raptor.protobuf.Messages.InfoRange;
+import raptor.protobuf.Messages.InfoResponse;
+import raptor.protobuf.Messages.MultiStream;
+import raptor.protobuf.Messages.Stream;
+import raptor.protobuf.Messages.StreamResponse;
 import raptor.store.handlers.ResultHandler;
 
-import java.nio.ByteBuffer;
+import com.google.protobuf.ByteString;
+import com.google.protobuf.InvalidProtocolBufferException;
+import com.google.protobuf.MessageLite;
 
 @ChannelPipelineCoverage("all")
 public class RaptorHandler extends SimpleChannelUpstreamHandler {
@@ -23,15 +46,18 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
             Logger.getLogger(RaptorHandler.class);
 
     /* see raptor_conn.erl for sender values */
-    final private static String MSG_INDEX = "1";
-    final private static String MSG_INDEX_IF_NEWER = "2";
-    final private static String MSG_DELETE_ENTRY = "3";
-    final private static String MSG_STREAM = "4";
-    final private static String MSG_MULTISTREAM = "5";
-    final private static String MSG_INFO = "6";
-    final private static String MSG_INFORANGE = "7";
-    final private static String MSG_CATALOG_QUERY = "8";
-    final private static String MSG_COMMAND = "9";
+    final private static short MSG_INDEX                   = 0;
+    final private static short MSG_STREAM                  = 1;
+    final private static short MSG_INFO                    = 2;
+    final private static short MSG_INFORANGE               = 3;
+    final private static short MSG_CATALOG_QUERY           = 4;
+    final private static short MSG_MULTISTREAM             = 5;
+    final private static short MSG_COMMAND                 = 6;
+    final private static short MSG_DELETE_ENTRY            = 7;
+    final private static short MSG_STREAM_RESPONSE         = 8;
+    final private static short MSG_INFO_RESPONSE           = 9;
+    final private static short MSG_CATALOG_QUERY_RESPONSE  = 10;
+    final private static short MSG_COMMAND_RESPONSE        = 11;
 
     @Override
     public void channelConnected(ChannelHandlerContext ctx,
@@ -50,163 +76,86 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
             quitFuture.addListener(ChannelFutureListener.CLOSE);
             return;
         }
+        
         ByteBuffer bbuf = ((ChannelBuffer) e.getMessage()).toByteBuffer();
         if (bbuf.hasArray()) {
-            byte[] b_ar = bbuf.array();
-
-            // index
-            try {
-                Index index = Index.newBuilder().mergeFrom(b_ar).build();
-                if (index.getMessageType().equals(MSG_INDEX)) {
-                    processIndexMessage(e, index);
-                    return;
-                } else if (index.getMessageType().equals(MSG_INDEX_IF_NEWER)) {
-                    processIndexIfNewerMessage(e, index);
-                    return;
-                }
-            } catch (com.google.protobuf.UninitializedMessageException ex) {
-            }
-            catch (com.google.protobuf.InvalidProtocolBufferException ex) {
-            }
-
-            // delete
-            try {
-                DeleteEntry deleteEntry = DeleteEntry.newBuilder().mergeFrom(b_ar).build();
-                if (deleteEntry.getMessageType().equals(MSG_DELETE_ENTRY)) {
-                    processDeleteEntryMessage(deleteEntry);
-                    return;
-                }
-            } catch (com.google.protobuf.UninitializedMessageException ex) {
-            }
-            catch (com.google.protobuf.InvalidProtocolBufferException ex) {
-            }
-
-            // stream
-            try {
-                Stream stream = Stream.newBuilder().mergeFrom(b_ar).build();
-                if (stream.getMessageType().equals(MSG_STREAM)) {
-                    if (RaptorServer.debugging) log.info("stream: " + stream);
-                    processStreamMessage(e, stream);
-                    return;
-                }
-            } catch (com.google.protobuf.UninitializedMessageException ex) {
-            }
-            catch (com.google.protobuf.InvalidProtocolBufferException ex) {
-            }
-
-            // multi_stream
-            try {
-                MultiStream multistream = MultiStream.newBuilder().mergeFrom(b_ar).build();
-                if (multistream.getMessageType().equals(MSG_MULTISTREAM)) {
-                    if (RaptorServer.debugging) log.info("multistream: " + multistream);
-                    processMultiStreamMessage(e, multistream);
-                    return;
-                }
-            } catch (com.google.protobuf.UninitializedMessageException ex) {
-            }
-            catch (com.google.protobuf.InvalidProtocolBufferException ex) {
-            }
-
-            // info
-            try {
-                Info info = Info.newBuilder().mergeFrom(b_ar).build();
-                if (info.getMessageType().equals(MSG_INFO)) {
-                    if (RaptorServer.debugging) log.info("info = " + info);
-                    processInfoMessage(e, info);
-                    return;
-                }
-            } catch (com.google.protobuf.UninitializedMessageException ex) {
-            }
-            catch (com.google.protobuf.InvalidProtocolBufferException ex) {
-            }
-
-            // info_range
-            try {
-                InfoRange infoRange = InfoRange.newBuilder().mergeFrom(b_ar).build();
-                if (infoRange.getMessageType().equals(MSG_INFORANGE)) {
-                    if (RaptorServer.debugging) log.info("infoRange = " + infoRange);
-                    processInfoRangeMessage(e, infoRange);
-                    return;
-                }
-            } catch (com.google.protobuf.UninitializedMessageException ex) {
-            }
-            catch (com.google.protobuf.InvalidProtocolBufferException ex) {
-            }
-
-            // catalog_query
-            try {
-                CatalogQuery catalogQuery =
-                        CatalogQuery.newBuilder().mergeFrom(b_ar).build();
-                if (catalogQuery.getMessageType().equals(MSG_CATALOG_QUERY)) {
-                    if (RaptorServer.debugging) log.info("catalogQuery: " + catalogQuery);
-                    processCatalogQueryMessage(e, catalogQuery);
-                    return;
-                }
-            } catch (com.google.protobuf.UninitializedMessageException ex) {
-            }
-            catch (com.google.protobuf.InvalidProtocolBufferException ex) {
-            }
-
-            // command ("sys-ex")
-            try {
-                Command command =
-                        Command.newBuilder().mergeFrom(b_ar).build();
-                if (command.getMessageType().equals(MSG_COMMAND)) {
-                    log.info("command: " + command);
-                    processCommandMessage(e, command);
-                    return;
-                }
-            } catch (com.google.protobuf.UninitializedMessageException ex) {
-            }
-            catch (com.google.protobuf.InvalidProtocolBufferException ex) {
-            }
-
-            try {
-                log.info("unknown message: b_ar = " + new String(b_ar, "UTF-8"));
-            } catch (Exception ex) {
-                ex.printStackTrace();
-            }
-
+        	short msgType = bbuf.getShort();
+        	byte[] msgBytes = new byte[bbuf.remaining()];
+        	bbuf.get(msgBytes);
+        	
+        	try {
+	        	switch(msgType)
+	        	{
+	        	case MSG_INDEX:
+	        		processIndexMessage(e, Index.parseFrom(msgBytes));
+	        		break;
+	        	case MSG_DELETE_ENTRY:
+	        		processDeleteEntryMessage(DeleteEntry.parseFrom(msgBytes));
+	        		break;
+	        	case MSG_STREAM:
+	        		processStreamMessage(e, Stream.parseFrom(msgBytes));
+	        		break;
+	        	case MSG_MULTISTREAM:
+	        		processMultiStreamMessage(e, MultiStream.parseFrom(msgBytes));
+	        		break;
+	        	case MSG_INFO:
+	        		processInfoMessage(e, Info.parseFrom(msgBytes));
+	        		break;
+	        	case MSG_INFORANGE:
+	        		processInfoRangeMessage(e, InfoRange.parseFrom(msgBytes));
+	        		break;
+	        	case MSG_CATALOG_QUERY:
+	        		processCatalogQueryMessage(e, CatalogQuery.parseFrom(msgBytes));
+	        		break;
+	        	case MSG_COMMAND:
+	        		processCommandMessage(e, Command.parseFrom(msgBytes));
+	        		break;
+	        	default:
+	        		log.error("Ignoring unknown message type: " + msgType);
+	        	}
+	        }
+        	catch (InvalidProtocolBufferException ex) {
+        		log.error("Error decoding message type: " + msgType, ex);
+        	}
         }
+    }
+    
+    private void sendMessage(Channel chan, short msgType, MessageLite msg)
+    {
+    	ChannelBuffer buffer = ChannelBuffers.dynamicBuffer();
+    	buffer.writeShort(msgType);
+    	buffer.writeBytes(msg.toByteArray());
+    	chan.write(buffer);
     }
 
     private void processIndexMessage(MessageEvent e, Index msg) {
-        try {
-            CommandResponse.Builder response =
-                    CommandResponse.newBuilder();
-            final Channel chan = e.getChannel();
-            RaptorServer.idx.index(msg.getIndex(),
-                    msg.getField(),
-                    msg.getTerm(),
-                    msg.getValue(),
-                    msg.getPartition(),
-                    msg.getProps().toByteArray(),
-                    msg.getKeyClock());
+        try 
+        {
+        	if (msg.getIfnewer())
+        	{
+        		RaptorServer.idx.indexIfNewer(msg.getIndex(),
+                        msg.getField(),
+                        msg.getTerm(),
+                        msg.getValue(),
+                        msg.getPartition(),
+                        msg.getProps().toByteArray(),
+                        msg.getKeyClock());
+        	}
+        	else
+        	{
+        		RaptorServer.idx.index(msg.getIndex(),
+                         msg.getField(),
+                         msg.getTerm(),
+                         msg.getValue(),
+                         msg.getPartition(),
+                         msg.getProps().toByteArray(),
+                         msg.getKeyClock());
+        	}
+            CommandResponse.Builder response = CommandResponse.newBuilder();
             response.setResponse("");
-            CommandResponse r = response.build();
-            chan.write(r);
+            sendMessage(e.getChannel(), MSG_COMMAND_RESPONSE, response.build());
         } catch (Exception ex) {
             log.error("Error handling index request", ex);
-        }
-    }
-
-    private void processIndexIfNewerMessage(MessageEvent e, Index msg) {
-        try {
-            CommandResponse.Builder response =
-                    CommandResponse.newBuilder();
-            final Channel chan = e.getChannel();
-            RaptorServer.idx.indexIfNewer(msg.getIndex(),
-                    msg.getField(),
-                    msg.getTerm(),
-                    msg.getValue(),
-                    msg.getPartition(),
-                    msg.getProps().toByteArray(),
-                    msg.getKeyClock());
-            response.setResponse("");
-            CommandResponse r = response.build();
-            chan.write(r);
-        } catch (Exception ex) {
-            log.error("Error handling index if newer request", ex);
         }
     }
 
@@ -223,6 +172,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
     }
 
     private void processStreamMessage(MessageEvent e, Stream msg) {
+    	if (RaptorServer.debugging) log.info("stream: " + msg);
         try {
             final Channel chan = e.getChannel();
             RaptorServer.idx.stream(msg.getIndex(),
@@ -238,7 +188,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
                                 response.setValue(new String(key, "UTF-8"))
                                         .setProps(ByteString.copyFrom(value))
                                         .setKeyClock(ByteString.copyFrom(key_clock));
-                                chan.write(response.build());
+                                sendMessage(chan, MSG_STREAM_RESPONSE, response.build());
                             } catch (Exception ex) {
                                 ex.printStackTrace();
                             }
@@ -254,7 +204,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
                                                 value.getBytes("UTF-8")))
                                         .setKeyClock(ByteString.copyFrom(
                                                 key_clock.getBytes("UTF-8")));
-                                chan.write(response.build());
+                                sendMessage(chan, MSG_STREAM_RESPONSE, response.build());
                             } catch (Exception ex) {
                                 ex.printStackTrace();
                             }
@@ -266,6 +216,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
     }
 
     private void processMultiStreamMessage(MessageEvent e, MultiStream msg) {
+        if (RaptorServer.debugging) log.info("multistream: " + msg);
         try {
             final Channel chan = e.getChannel();
             String[] iftStrings = msg.getTermList().split("\\`");
@@ -286,7 +237,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
                                         StreamResponse.newBuilder();
                                 response.setValue(new String(key, "UTF-8"))
                                         .setProps(ByteString.copyFrom(value));
-                                chan.write(response.build());
+                                sendMessage(chan, MSG_STREAM_RESPONSE, response.build());
                             } catch (Exception ex) {
                                 ex.printStackTrace();
                             }
@@ -312,8 +263,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
                                     InfoResponse.newBuilder();
                             response.setTerm(term)
                                     .setCount(count);
-                            chan.write(response.build());
-
+                            sendMessage(chan, MSG_INFO_RESPONSE, response.build());
                         }
                     });
         } catch (Exception ex) {
@@ -336,7 +286,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
                                     InfoResponse.newBuilder();
                             response.setTerm(bucket)
                                     .setCount(count);
-                            chan.write(response.build());
+                            sendMessage(chan, MSG_INFO_RESPONSE, response.build());
                         }
                     });
         } catch (Exception ex) {
@@ -363,7 +313,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
                                 obj.remove("field");
                                 obj.remove("term");
                                 response.setJsonProps(obj.toString());
-                                chan.write(response.build());
+                                sendMessage(chan, MSG_CATALOG_QUERY_RESPONSE, response.build());
                             } catch (org.json.JSONException ex) {
                                 ex.printStackTrace();
                             }
@@ -375,7 +325,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
                                     InfoResponse.newBuilder();
                             response.setTerm(bucket)
                                     .setCount(count);
-                            chan.write(response.build());
+                            sendMessage(chan, MSG_INFO_RESPONSE, response.build());
                         }
                     });
         } catch (Exception ex) {
@@ -431,9 +381,7 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
                 log.info("shutdown issued by riak_search");
                 response.setResponse("shutting_down");
 
-                CommandResponse r = response.build();
-                log.info("CommandResponse = " + r);
-                chan.write(r);
+                sendMessage(chan, MSG_COMMAND_RESPONSE, response.build());
                 RaptorServer.shuttingDown = true;
                 RaptorServer.idx.sync();
                 System.exit(0);
@@ -453,22 +401,10 @@ public class RaptorHandler extends SimpleChannelUpstreamHandler {
                 response.setResponse("Unknown command: " + cmd);
             }
 
-            CommandResponse r = response.build();
-            log.info("CommandResponse = " + r);
-            chan.write(r);
+            sendMessage(chan, MSG_COMMAND_RESPONSE, response.build());
         } catch (Exception ex) {
             ex.printStackTrace();
         }
-    }
-
-    public void exceptionCaught(ChannelHandlerContext ctx,
-                                ExceptionEvent e) throws Exception {
-        Throwable ex = e.getCause();
-        if (ex instanceof java.io.IOException) return;
-        log.info("exceptionCaught: " + ex.toString());
-        log.info("ExceptionEvent e = " + e.toString());
-        ex.printStackTrace();
-        log.info("----");
     }
 }
 
