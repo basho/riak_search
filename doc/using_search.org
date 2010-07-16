@@ -29,13 +29,13 @@
 
     This archive contains a pre-built version of BDB Java Edition.
 
-    If you are using a pre-built Riak Search package, unzip the BDB
+    If you are installing a pre-built Riak Search package, unzip the BDB
     archive and copy =lib/je-4.0.103.jar= to your Riak Search
     installation under =lib/raptor/priv/=.
 
-    If you are building Riak Search from source, unzip the BDB archive
-    and copy =lib/je-4.0.103.jar= to your Riak Search directory, under
-    =apps/raptor/java_src/raptor/lib/=.
+    If you are installing Riak Search from source, unzip the BDB
+    archive and copy =lib/je-4.0.103.jar= to your Riak Search
+    directory, under =apps/raptor/java_src/raptor/lib/=.
 
 
 *** Unzip and install Riak Search*
