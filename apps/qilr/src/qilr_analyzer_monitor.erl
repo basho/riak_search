@@ -37,6 +37,7 @@ init([]) ->
             CmdDir = filename:join([priv_dir(), "analysis_server"]),
             Cmd = filename:join([CmdDir, "analysis_server.sh"]),
             case catch erlang:open_port({spawn_executable, Cmd}, [stderr_to_stdout,
+                                                                  {env, build_env()},
                                                                   {args, [integer_to_list(PortNum)]},
                                                                   {cd, CmdDir}]) of
                 {'EXIT', Error} ->
@@ -99,3 +100,11 @@ priv_dir() ->
 restart(State) ->
     error_logger:warning_msg("Restarting analysis server monitor (~p)~n", [self()]),
     {stop, normal, State}.
+
+build_env() ->
+    case application:get_env(riak_search, java_home) of
+        undefined ->
+            throw({error, missing_java_home});
+        {ok, JH} ->
+            [{"JAVA_HOME", JH}]
+    end.

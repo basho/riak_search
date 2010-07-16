@@ -38,6 +38,7 @@ init([]) ->
                                                                   integer_to_list(PortNum),
                                                                   DataDir]},
                                                           {line, 2048},
+                                                          {env, build_env()},
                                                           {cd, CmdDir}]) of
         {'EXIT', Error} ->
             {stop, Error};
@@ -110,3 +111,11 @@ priv_dir() ->
 restart(State) ->
     error_logger:warning_msg("Restarting Raptor monitor (~p)~n", [self()]),
     {stop, normal, State}.
+
+build_env() ->
+    case application:get_env(riak_search, java_home) of
+        undefined ->
+            throw({error, missing_java_home});
+        {ok, JH} ->
+            [{"JAVA_HOME", JH}]
+    end.
