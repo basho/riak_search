@@ -18,32 +18,17 @@
    + Java 1.6.x
    + Ant
    + gcc toolchain
-   + BDB 5.0.21 - (Installation instructions below.)
+   + BDB Java Edition 4.0.103 - (Installation instructions below.)
 
 ** Installation
    
 *** Install BerkeleyDB
    
-    Download the source code for v. 5.0.21:
-    http://download.oracle.com/berkeley-db/db-5.0.21.NC.tar.gz
+    Download the distribution file from:
+    http://download.oracle.com/berkeley-db/je-4.0.103.tar.gz
 
-    If you are running on a Mac, set build flags and copy header
-    files to necessary locations:
-
-    : export CC=gcc
-    : export CFLAGS="-arch x86_64 -m64"
-    : export CXXFLAGS="-arch x86_64 -m64"
-    : export LDFLAGS="-arch x86_64 -m64"
-    : sudo cp /System/Library/Frameworks/JavaVM.framework/Versions/1.6.0/Headers/*.h /usr/include/.
-
-    Finally, extract, build, and install BerkeleyDB:
-
-    : tar -zxvf db-5.0.21.NC.tar.gz
-    : cd db-5.0.21.NC
-    : cd build_unix
-    : ../dist/configure --enable-java
-    : make
-    : sudo make install
+    Copy the lib/je-4.0.103.jar into
+    rel/riaksearch/lib/raptor/priv/raptor_server
 
 *** Unzip and install Riak Search*
 
