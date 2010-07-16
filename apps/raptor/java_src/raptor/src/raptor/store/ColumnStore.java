@@ -25,21 +25,37 @@
 
 package raptor.store;
 
-import com.sleepycat.bind.tuple.TupleInput;
-import com.sleepycat.db.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
 import org.apache.log4j.Logger;
+
 import raptor.store.column.ColumnKey;
 import raptor.store.column.ColumnKeyTupleBinding;
 import raptor.store.handlers.ResultHandler;
 import raptor.util.ConsistentHash;
 import raptor.util.RaptorUtils;
 
-import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
+import com.sleepycat.bind.tuple.TupleInput;
+import com.sleepycat.je.CheckpointConfig;
+import com.sleepycat.je.Database;
+import com.sleepycat.je.DatabaseEntry;
+import com.sleepycat.je.Environment;
+import com.sleepycat.je.Sequence;
+import com.sleepycat.je.SequenceConfig;
+import com.sleepycat.je.SequenceStats;
+import com.sleepycat.je.StatsConfig;
 
-public class ColumnStore implements Runnable {
+public class ColumnStore {
     final private static Logger log =
             Logger.getLogger(ColumnStore.class);
     final private static int DEFAULT_PARTITIONS = 4;
@@ -57,7 +73,6 @@ public class ColumnStore implements Runnable {
     private BdbStore entryMetadata;
     private Lock metadataLock = new ReentrantLock();
     private Lock entryMetadataLock = new ReentrantLock();
-    private Environment env;
     private String directory;
     private String logDirectory;
 
@@ -66,48 +81,33 @@ public class ColumnStore implements Runnable {
     final private static String __TABLE_DOCID_SEP__ = "`";
 
     public ColumnStore(String directory) throws Exception {
-        this(directory, directory, DEFAULT_PARTITIONS);
+        this(directory, DEFAULT_PARTITIONS);
     }
 
-    public ColumnStore(String directory, String logDirectory, int partitions)
+    public ColumnStore(String directory, int partitions)
             throws Exception {
-        open(directory, logDirectory, partitions);
-    }
-
-    private void open() throws Exception {
-        open(this.directory, this.logDirectory, this.partitions);
-    }
-
-    private void open(String directory, String logDirectory, int partitions) throws Exception {
         this.directory = directory;
-        this.logDirectory = logDirectory;
         this.partitions = partitions;
+        
         log.info("ensureDirectory(" + directory + ")");
         RaptorUtils.ensureDirectory(directory);
-        env = BdbStore.getDefaultEnvironment(directory, logDirectory);
+        
+        // Initialize BDB
+        BdbStore.initEnvironment(directory);
+        
+        // Setup a BDB instance for each partition
         tableHash = RaptorUtils.createConsistentHash(DB_PFX, partitions);
         for (int i = 0; i < partitions; i++) {
             log.info("Opening " + DB_PFX + i + ".column");
-            BdbStore store = new BdbStore(
-                    env,
-                    DB_PFX + i + ".column", DB_PFX + i);
+            BdbStore store = new BdbStore(DB_PFX + i + ".column");
             stores.put(DB_PFX + i, store);
         }
-        log.info("Opening metadata.hash");
-        metadata = new BdbStore(env, "metadata.hash", "metadata");
-        log.info("Opening entry_metadata.hash");
-        entryMetadata = new BdbStore(env, "entry_metadata.hash", "entry_metadata");
-    }
-
-    public void run() {
-        while (true) {
-            try {
-                Thread.sleep(10000);
-                sync();
-            } catch (Exception ex) {
-                ex.printStackTrace();
-            }
-        }
+        
+        // Setup BDB storage for metadata
+        log.info("Opening metadata");
+        metadata = new BdbStore("metadata");
+        log.info("Opening entry_metadata");
+        entryMetadata = new BdbStore("entry_metadata");
     }
 
     private byte[] getColumnKey(String table, String key)
@@ -410,33 +410,13 @@ public class ColumnStore implements Runnable {
         return getKeys(__TABLES__);
     }
 
-    public void sync() throws Exception {
-        for (BdbStore store : stores.values()) {
-            store.sync();
-        }
-        metadata.sync();
-        entryMetadata.sync();
-    }
-
-    public void checkpoint() throws Exception {
-        CheckpointConfig config = new CheckpointConfig();
-        config.setKBytes(1000);
-        config.setForce(true);
-        env.checkpoint(config);
-    }
-
     public void close() throws Exception {
-        //metadataLock.lock();
-        try {
-            for (BdbStore store : stores.values()) {
-                store.close();
-            }
-            metadata.close();
-            entryMetadata.close();
-            env.close();
-        } finally {
-            //metadataLock.unlock();
+        for (BdbStore store : stores.values()) {
+            store.close();
         }
+        metadata.close();
+        entryMetadata.close();
+        BdbStore.closeEnvironment();
     }
 
     public long count(String table) throws Exception {
@@ -607,86 +587,6 @@ public class ColumnStore implements Runnable {
         return table +
                 __TABLE_DOCID_SEP__ +
                 term;
-    }
-
-    public void incrementSequence(String table)
-            throws Exception {
-        incrementSequence(table, 1);
-    }
-
-    public void incrementSequence(String table, int delta)
-            throws Exception {
-        Sequence seq = getSequence(table);
-        seq.get(null, delta);
-    }
-
-    private Sequence getSequence(String table)
-            throws Exception {
-        BdbStore store = stores.get(tableHash.get(table));
-        return getSequence(store, table);
-    }
-
-    private Sequence getSequence(BdbStore store, String table)
-            throws Exception {
-        SequenceConfig sequenceConfig = new SequenceConfig();
-        sequenceConfig.setAllowCreate(true);
-        sequenceConfig.setAutoCommitNoSync(true);
-        sequenceConfig.setRange(0, Long.MAX_VALUE);
-        sequenceConfig.setWrap(false);
-        sequenceConfig.setInitialValue(0);
-        sequenceConfig.setDecrement(false);
-        Database db = store.getDatabase();
-        DatabaseEntry tableSeqKey = new DatabaseEntry(table.getBytes("UTF-8"));
-        return db.openSequence(null, tableSeqKey, sequenceConfig);
-    }
-
-    public long getSequenceValue(String table)
-            throws Exception {
-        BdbStore store = stores.get(tableHash.get(table));
-        return getSequenceValue(store, table);
-    }
-
-    private long getSequenceValue(BdbStore store, String table)
-            throws Exception {
-        Sequence sequence = getSequence(store, table);
-        StatsConfig statsConfig = new StatsConfig();
-        statsConfig.setClear(false);
-        statsConfig.setFast(true);
-        SequenceStats stats = sequence.getStats(statsConfig);
-        long count = stats.getCurrent();
-        sequence.close();
-        return count;
-    }
-
-    public static void main(String args[]) throws Exception {
-        ColumnStore store = new ColumnStore("test.column2", "bdb-log2", 8);
-        log.info("tableExists(xyzzy): " + store.tableExists("xyzzy"));
-        store.put("fruits", "apple", "fruit: apple");
-        store.put("fruits", "banana", "fruit: banana");
-        store.put("fruits", "carrot", "vegetable: carrot");
-        store.put("fruits", "potato", "vegetable: potato");
-        store.put("fruits", "pineapple", "fruit: pineapple");
-        log.info("tableExists(fruits): " + store.tableExists("fruits"));
-        log.info("getRange(fruits, a, p, true, true) = ");
-        Map<String, String> r = store.getRange("fruits", "a", "p", true, true);
-        for (String k : r.keySet()) {
-            log.info("getRange: " + k + " -> " + r.get(k));
-        }
-        log.info("getRangeKeys(fruits, a, p, true, true) = " +
-                store.getRangeKeys("fruits", "a", "p", true, true));
-        log.info("getKeys(fruits) = " +
-                store.getKeys("fruits"));
-        log.info("");
-
-        log.info("store.get(fruits, potato): " + store.get("fruits", "potato"));
-        log.info("store.exists(fruits, potato): " + store.exists("fruits", "potato"));
-        log.info("store.exists(fruits, carrot): " + store.exists("fruits", "carrot"));
-        log.info("store.exists(fruits, pineapple): " + store.exists("fruits", "pineapple"));
-        log.info("store.delete(fruits, banana): " + store.delete("fruits", "banana"));
-        log.info("store.exists(fruits, banana): " + store.exists("fruits", "banana"));
-        log.info("store.count(fruits): " + store.count("fruits"));
-
-        store.close();
     }
 }
 

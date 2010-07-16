@@ -37,88 +37,49 @@ import org.apache.log4j.Logger;
 import raptor.store.handlers.ResultHandler;
 import raptor.util.RaptorUtils;
 
-import com.sleepycat.db.Cursor;
-import com.sleepycat.db.Database;
-import com.sleepycat.db.DatabaseConfig;
-import com.sleepycat.db.DatabaseEntry;
-import com.sleepycat.db.DatabaseType;
-import com.sleepycat.db.Environment;
-import com.sleepycat.db.EnvironmentConfig;
-import com.sleepycat.db.LockMode;
-import com.sleepycat.db.OperationStatus;
+import com.sleepycat.je.Cursor;
+import com.sleepycat.je.Database;
+import com.sleepycat.je.DatabaseConfig;
+import com.sleepycat.je.DatabaseEntry;
+import com.sleepycat.je.DatabaseException;
+import com.sleepycat.je.Durability;
+import com.sleepycat.je.Environment;
+import com.sleepycat.je.EnvironmentConfig;
+import com.sleepycat.je.LockMode;
+import com.sleepycat.je.OperationStatus;
 
 public class BdbStore {
     final private static Logger log =
             Logger.getLogger(BdbStore.class);
 
-    private final DatabaseConfig databaseConfig;
     private Database db;
-    private final Environment env;
-
-    public BdbStore(String filename,
-                      String name) throws Exception {
-        this(getDefaultEnvironment(".", "."), filename, name);
+    
+    private static Environment env;
+    
+    public static void initEnvironment(String directory) throws Exception {
+        RaptorUtils.ensureDirectory(directory);
+    	log.info("Initializing BDB environment in " + directory);
+    	
+    	EnvironmentConfig envConfig = new EnvironmentConfig();
+    	envConfig.setAllowCreate(true);
+    	envConfig.setCacheSize(218435456);
+    	envConfig.setTransactional(true);
+    	envConfig.setDurability(Durability.COMMIT_WRITE_NO_SYNC);
+    	
+    	env = new Environment(new File(directory), envConfig);
+    }
+    
+    public static void closeEnvironment()
+    {
+    	env.close();
     }
 
-    public BdbStore(String filename,
-                      String directory,
-                      String name) throws Exception {
-        this(getDefaultEnvironment(directory, directory), filename, name);
-    }
-
-    public BdbStore(String filename,
-                      String directory,
-                      String logDirectory,
-                      String name) throws Exception {
-        this(getDefaultEnvironment(directory, logDirectory), filename, name);
-    }
-
-    public BdbStore(Environment env,
-                      String filename,
-                      String name) throws Exception {
-        this.env = env;
-
-        databaseConfig = new DatabaseConfig();
-        databaseConfig.setAllowCreate(true);
-        databaseConfig.setErrorStream(System.err);
-        databaseConfig.setErrorPrefix("<" + filename + ": " + name + "> ");
-        databaseConfig.setType(DatabaseType.BTREE);
-        databaseConfig.setReverseSplitOff(true);
-        databaseConfig.setChecksum(true);
-        databaseConfig.setSortedDuplicates(false);
-        databaseConfig.setTransactional(true);
-        databaseConfig.setReadUncommitted(true);
-        db = this.env.openDatabase(null, filename, name, databaseConfig);
-    }
-
-    protected static Environment getDefaultEnvironment(String directory,
-                                                       String logDirectory) {
-        EnvironmentConfig envConf = new EnvironmentConfig();
-        envConf.setAllowCreate(true);
-        envConf.setInitializeLogging(true);
-        envConf.setRunRecovery(true);
-        envConf.setLogDirectory(new File(logDirectory));
-        envConf.setCacheSize(218435456);
-        envConf.setInitializeCache(true);
-        envConf.setMMapSize(100000000);
-        envConf.setMaxLogFileSize(64 * 1048576); // 64 MB
-        envConf.setLogAutoRemove(true);
-        envConf.setMessageStream(System.err);
-        envConf.setPrivate(true);
-        envConf.setTxnWriteNoSync(true);
-        envConf.setTransactional(true);
-        try {
-            log.info("ensureDirectory(" + directory + ")");
-            RaptorUtils.ensureDirectory(directory);
-            log.info("ensureDirectory(" + directory + "/" + logDirectory + ")");
-            RaptorUtils.ensureDirectory(directory + "/" + logDirectory);
-            Environment env = new Environment(new File(directory), envConf);
-            return env;
-        } catch (Exception ex) {
-            log.error("error getting default environment", ex);
-            ex.printStackTrace();
-        }
-        return null;
+    public BdbStore(String filename) throws Exception {
+        DatabaseConfig dbConfig = new DatabaseConfig();
+        dbConfig.setAllowCreate(true);
+        dbConfig.setSortedDuplicates(false);
+        dbConfig.setTransactional(true);
+        db = env.openDatabase(null, filename, dbConfig);
     }
 
     public void close() throws Exception {
@@ -205,7 +166,7 @@ public class BdbStore {
                     retVal = cursor.getNext(dbKey, dbVal, LockMode.DEFAULT);
                 }
             }
-        } catch (com.sleepycat.db.DatabaseException ex) {
+        } catch (DatabaseException ex) {
             log.info("com.sleepycat.db.DatabaseException: " + ex.toString());
         } finally {
             if (cursor != null) cursor.close();
@@ -304,43 +265,11 @@ public class BdbStore {
     }
 
     public boolean exists(byte[] key) throws Exception {
-    	return (db.exists(null, new DatabaseEntry(key)) ==
+    	// BDB-JE doesn't seem to have a simple existence query. Emulate one by
+    	// using the partial retrieval functionality to avoid loading the data.
+    	DatabaseEntry value = new DatabaseEntry();
+    	value.setPartial(0, 0, true);
+    	return (db.get(null, new DatabaseEntry(key), value, LockMode.READ_UNCOMMITTED) ==
                 OperationStatus.SUCCESS);
-    }
-
-    protected Database getDatabase() {
-        return db;
-    }
-
-    protected Environment getEnvironment() {
-        return env;
-    }
-
-    public static void main(String args[]) throws Exception {
-        BdbStore store = new BdbStore("test.btree", "test");
-        store.put("apple", "fruit: apple");
-        store.put("banana", "fruit: banana");
-        store.put("carrot", "vegetable: carrot");
-        store.put("potato", "vegetable: potato");
-        store.put("pineapple", "fruit: pineapple");
-
-        Random r = new Random();
-        long startTime = System.currentTimeMillis();
-        for (int i = 0; i < 1000000; i++) {
-            String k = "k" + i;
-            String v = "v" + r.nextInt(1929398);
-            store.put(k, v);
-        }
-        log.info("100k writes in " + ((System.currentTimeMillis() - startTime) / 1000) + " sec");
-        log.info("starting reads...");
-        startTime = System.currentTimeMillis();
-        for (int i = 0; i < 100000; i++) {
-            String k = "k" + i;
-            store.get(k);
-        }
-        log.info("100k reads in " + ((System.currentTimeMillis() - startTime) / 1000) + " sec");
-
-        log.info("store.get(potato): " + store.get("potato"));
-        store.close();
     }
 }
