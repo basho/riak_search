@@ -36,16 +36,13 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class LuceneStore {
     final private static Logger log = Logger.getLogger(LuceneStore.class);
+    
     final private static int LUCENE_MERGE_FACTOR = 10;
     final private static boolean IDX_TRACE = false;
     final private static int MAX_RESULTS = 50000; // todo: configurable
 
     private IndexWriter luceneWriter;
-    private IndexReader luceneReader;
-    private Searcher searcher;
-    final private static Lock luceneLock = new ReentrantLock();
 
-    @SuppressWarnings("deprecation")
     public LuceneStore(String directory) throws Exception {
         File luceneFS = RaptorUtils.ensureDirectory(directory);
         NIOFSDirectory luceneDirectory = new NIOFSDirectory(luceneFS);
@@ -59,73 +56,19 @@ public class LuceneStore {
         luceneWriter.setRAMBufferSizeMB(500.0);
         luceneWriter.setMergeFactor(LUCENE_MERGE_FACTOR); // todo: config
         if (IDX_TRACE) luceneWriter.setInfoStream(System.err); // todo: config
-        luceneReader = luceneWriter.getReader();
-        searcher = new IndexSearcher(luceneReader);
     }
 
     public void addDocument(Document doc) throws Exception {
-        luceneLock.lock();
-        try {
-            luceneWriter.addDocument(doc);
-        } finally {
-            luceneLock.unlock();
-        }
+    	luceneWriter.addDocument(doc);
     }
 
     public void close() throws Exception {
-        if (luceneLock.tryLock(120, TimeUnit.SECONDS)) {
-            try {
-                luceneWriter.commit();
-                searcher.close();
-                luceneReader.close();
-                luceneWriter.close();
-            } finally {
-                luceneLock.unlock();
-            }
-        } else {
-            throw new Exception("close: timed out (2 minutes)");
-        }
+    	luceneWriter.close();
     }
 
     public void sync() throws Exception {
-        Thread t = new Thread(new Runnable() {
-            public void run() {
-                try {
-                    if (luceneLock.tryLock(5, TimeUnit.SECONDS)) {
-                        try {
-                            luceneWriter.waitForMerges();
-                            luceneWriter.commit();
-                            //luceneWriter.optimize(2);
-                            searcher.close();
-                            luceneReader.close();
-                            luceneReader = luceneWriter.getReader();
-                            searcher = new IndexSearcher(luceneReader);
-                        } catch (Exception ex) {
-                            log.info("* lucene.sync(): exception: ");
-                            ex.printStackTrace();
-                        } finally {
-                            luceneLock.unlock();
-                        }
-                    } else {
-                        log.info("* lucene.sync(): lock timeout.");
-                    }
-                } catch (java.lang.InterruptedException ex) {
-                    ex.printStackTrace();
-                }
-            }
-        });
-        t.start();
-    }
-
-    public void optimize(int segment_count) throws Exception {
-        log.info("optimize(" + segment_count + ")");
-        luceneLock.lock();
-        try {
-            luceneWriter.optimize(segment_count, false);
-        } finally {
-            luceneLock.unlock();
-        }
-        sync();
+    	luceneWriter.waitForMerges();
+    	luceneWriter.commit();
     }
 
     public boolean documentsExist(String query)
@@ -142,13 +85,20 @@ public class LuceneStore {
     protected boolean documentsExist(Filter f1) throws Exception {
         TopDocs hits;
         Filter f = new CachingWrapperFilter(f1);
-        luceneLock.lock();
-        try {
+        IndexReader reader = null;
+        IndexSearcher searcher = null;
+        try
+        {
+            reader = luceneWriter.getReader();
+            searcher = new IndexSearcher(reader);
             hits = searcher.search(new org.apache.lucene.search.MatchAllDocsQuery(), f, 1);
-        } finally {
-            luceneLock.unlock();
+            return hits.scoreDocs.length > 0;
         }
-        return hits.scoreDocs.length > 0;
+        finally
+        {
+        	if (searcher != null) { searcher.close(); }
+        	if (reader != null) { reader.close(); }
+        }
     }
 
     public List<Document> query(String query)
@@ -165,9 +115,14 @@ public class LuceneStore {
         qp.setAllowLeadingWildcard(true);
         Query l_query = qp.parse(query);
         Filter l_filter = new CachingWrapperFilter(new QueryWrapperFilter(l_query));
+        
+        IndexReader reader = null;
+        IndexSearcher searcher = null;
 
-        luceneLock.lock();
         try {
+            reader = luceneWriter.getReader();
+            searcher = new IndexSearcher(reader);
+
             searcher.search(
                     new MatchAllDocsQuery(),
                     l_filter,
@@ -201,12 +156,14 @@ public class LuceneStore {
                         }
                     }
             );
-        } finally {
-            luceneLock.unlock();
+        } 
+        finally 
+        {
+        	if (searcher != null) { searcher.close(); }
+        	if (reader != null) { reader.close(); }
         }
     }
 
-    @SuppressWarnings("deprecation")
     public List<Document> query(String query, int maxResults)
             throws Exception {
         List<Document> matches = new ArrayList<Document>();
@@ -216,8 +173,12 @@ public class LuceneStore {
         Query l_query = qp.parse(query);
         Filter l_filter = new CachingWrapperFilter(new QueryWrapperFilter(l_query));
 
-        luceneLock.lock();
+        IndexReader reader = null;
+        IndexSearcher searcher = null;
         try {
+            reader = luceneWriter.getReader();
+            searcher = new IndexSearcher(reader);
+
             TopDocs hits;
             if (maxResults == 0) {
                 hits = searcher.search(new MatchAllDocsQuery(), l_filter, Integer.MAX_VALUE - 1);
@@ -229,8 +190,11 @@ public class LuceneStore {
                 Document d = searcher.doc(docId);
                 matches.add(d);
             }
-        } finally {
-            luceneLock.unlock();
+        } 
+        finally 
+        {
+        	if (searcher != null) { searcher.close(); }
+        	if (reader != null) { reader.close(); }
         }
         return matches;
     }
