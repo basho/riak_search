@@ -47,6 +47,7 @@ public class AnalysisHandler extends SimpleChannelUpstreamHandler {
       if (request.hasAnalyzerFactory()) {
          analyzerFactory = request.getAnalyzerFactory();
       }
+      /*
       try {
          String message = "Calling " + analyzerFactory + "\n";
          FileOutputStream fout = new FileOutputStream("/tmp/analyzer_out.txt", true);
@@ -56,7 +57,7 @@ public class AnalysisHandler extends SimpleChannelUpstreamHandler {
          fout.close();
       }
       catch (Exception ex) {}
-
+      */
       Channel chan = e.getChannel();
       try {
          List<String> tokens = TextAnalyzer.analyze(text, analyzerFactory);
