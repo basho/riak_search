@@ -67,4 +67,35 @@
     <field name="dyn_facet">million</field>
     <field name="facet_dyn">million</field>
   </doc>
+  <doc>
+    <field name="id">-1</field>
+    <field name="key">negativeone</field>
+    <field name="value">negativeone</field>
+    <field name="whitespace">negativeone</field>
+    <field name="int2">-1</field>
+    <field name="int4">-1</field>
+    <field name="dyn_i">-1</field>
+    <field name="i_dyn">-1</field>
+    <field name="order1_int">-1</field>
+    <field name="order2_int">-1</field>
+  </doc>
+  <doc>
+    <field name="id">-2</field>
+    <field name="key">negativetwo</field>
+    <field name="value">negativetwo</field>
+    <field name="whitespace">negativetwo</field>
+    <field name="int2">-2</field>
+    <field name="int4">-2</field>
+    <field name="dyn_i">-2</field>
+    <field name="i_dyn">-2</field>
+  </doc>
+  <doc>
+    <field name="id">-20</field>
+    <field name="key">negativetwenty</field>
+    <field name="value">negativetwenty</field>
+    <field name="whitespace">negativetwenty</field>
+    <field name="int4">-20</field>
+    <field name="dyn_i">-20</field>
+    <field name="i_dyn">-20</field>
+  </doc>
 </add>
