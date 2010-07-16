@@ -1,3 +1,9 @@
+// -------------------------------------------------------------------
+//
+// Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+//
+// -------------------------------------------------------------------
+
 package raptor.store.handlers;
 
 import org.json.JSONObject;

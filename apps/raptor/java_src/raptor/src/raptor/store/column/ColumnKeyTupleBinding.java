@@ -1,3 +1,9 @@
+// -------------------------------------------------------------------
+//
+// Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+//
+// -------------------------------------------------------------------
+
 package raptor.store.column;
 
 import com.sleepycat.bind.tuple.TupleBinding;
