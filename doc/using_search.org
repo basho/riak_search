@@ -27,8 +27,12 @@
     Download the distribution file from:
     http://download.oracle.com/berkeley-db/je-4.0.103.tar.gz
 
-    Copy the lib/je-4.0.103.jar into
-    rel/riaksearch/lib/raptor/priv/raptor_server
+    If you are compiling from source, copy lib/je-4.0.103.jar to your
+    Riak Search directory, under apps/raptor/java_src/raptor/lib/.
+
+    If you are using a pre-built Riak Search package, copy
+    lib/je-4.0.103.jar to your Riak Search installation under
+    lib/raptor/priv/.
 
 *** Unzip and install Riak Search*
 
