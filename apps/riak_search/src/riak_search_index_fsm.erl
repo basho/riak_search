@@ -246,7 +246,7 @@ lookup_preflist(_BatchLeft, TermCount, [], PlTerms, _N) ->
 lookup_preflist(BatchLeft, TermCount, [IFTVP|Terms], PlTerms, N) ->
     {Index,Field,Term,_Value,_Props,_KeyClock} = IFTVP,
     Partition = riak_search_utils:calc_partition(Index, Field, Term),
-    Preflist = riak_core_apl:get_apl(Partition, N),
+    Preflist = riak_core_apl:get_apl(Partition, N, riak_search),
     NewPlTerms = lists:foldl(fun(Pl,PlTermsAcc) ->
                                      orddict:append_list(Pl,[IFTVP],PlTermsAcc)
                              end, PlTerms, Preflist),
