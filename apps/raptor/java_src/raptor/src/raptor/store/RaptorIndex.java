@@ -65,12 +65,12 @@ public class RaptorIndex {
                 .concurrencyLevel(Runtime.getRuntime().availableProcessors() * 4)
                 .build();
         log.info("opening raptor-db & log");
-        store = new ColumnStore(dataDir + "/raptor-db", "log", 1);
+        store = new ColumnStore(dataDir + "/raptor-db", 1);
         log.info("opening raptor-catalog");
         lucene = new LuceneStore(dataDir + "/raptor-catalog");
         Thread t = new Thread(new Runnable() {
             public void run() {
-                log.info("starting checkpoint thread");
+                log.info("starting lucene sync thread");
                 int store_commit_ct = 0;
                 while (true) {
                     try {
@@ -78,11 +78,6 @@ public class RaptorIndex {
                             log.info("shutting down, terminating RaptorIndex thread");
                             return;
                         }
-                        long cpt = System.currentTimeMillis();
-                        log.info("starting checkpoint");
-                        store.checkpoint();
-                        log.info("checkpoint complete (" +
-                                (System.currentTimeMillis() - cpt) + ")");
                         store_commit_ct++;
                         if (STORE_COMMIT_INTERVAL * store_commit_ct >=
                                 LUCENE_COMMIT_INTERVAL) {
@@ -354,7 +349,6 @@ public class RaptorIndex {
     // only supposed to be used externally
     public synchronized void sync() throws Exception {
         lucene.sync();
-        store.sync();
     }
 
     // deletes a partition and its keys
