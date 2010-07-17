@@ -1,7 +1,7 @@
 {application, riak_solr,
  [
   {description, "Riak Search Solr API"},
-  {vsn, "0.12.0rc3"},
+  {vsn, "0.12.0rc4"},
   {modules, [
              riak_solr_app,
              riak_solr_sup,
