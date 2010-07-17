@@ -112,7 +112,7 @@ stop_index_fsm(Pid) ->
 
 %% Index a specified #riak_idx_doc
 index_doc(IdxDoc, AnalyzerPid) ->
-    IndexPid = get_index_fsm(),
+    {ok, IndexPid} = get_index_fsm(),
     try
         index_doc(IdxDoc, AnalyzerPid, IndexPid)
     after

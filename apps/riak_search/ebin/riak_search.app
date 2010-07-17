@@ -44,7 +44,8 @@
              riak_search_operators_qc,
              riak_search_op_mockterm,
              riak_search_optimizer,
-             riak_search_ets_backend
+             riak_search_ets_backend,
+             basho_bench_driver_riaksearch
             ]},
   {registered, []},
   {applications, [

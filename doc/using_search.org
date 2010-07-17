@@ -31,7 +31,7 @@
 
     If you are installing a pre-built Riak Search package, unzip the BDB
     archive and copy =lib/je-4.0.103.jar= to your Riak Search
-    installation under =lib/raptor/priv/=.
+    installation under =lib/raptor-VERSION/priv/raptor_server=.
 
     If you are installing Riak Search from source, unzip the BDB
     archive and copy =lib/je-4.0.103.jar= to your Riak Search
