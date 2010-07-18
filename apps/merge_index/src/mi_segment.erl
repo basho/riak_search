@@ -185,7 +185,7 @@ iterator_fun_1(FH, CurrentKey, EndIFT, Acc) ->
         {key, Key} when Key > EndIFT ->
             file:close(FH),
             {CurrentKey, lists:reverse([eof|Acc])};
-        {value, {Value, Props}, TS} ->
+        {value, {Value, Props, TS}} ->
             Term = {CurrentKey, Value, Props, TS},
             iterator_fun_1(FH, CurrentKey, EndIFT, [Term|Acc]);
         eof ->
@@ -227,7 +227,7 @@ repair_offsets_inner(FH, Offset, Count, LastIFT, Table) ->
         {key, IFT} when LastIFT /= undefined ->
             ets:insert(Table, {LastIFT, {Offset, Count}}),
             repair_offsets_inner(FH, Pos, 0, IFT, Table);
-        {value, _, _} ->
+        {value, _} ->
             repair_offsets_inner(FH, Offset, Count + 1, LastIFT, Table);
         eof when LastIFT == undefined ->
             ok;
@@ -249,8 +249,8 @@ read_seg_value(FH) ->
             {ok, B} = file:read(FH, Size),
             {key, B};
         {ok, <<0:1/integer, Size:15/integer>>} ->
-            {ok, <<TS:64/integer, B/binary>>} = file:read(FH, Size),
-            {value, binary_to_term(B), TS};
+            {ok, <<B/binary>>} = file:read(FH, Size),
+            {value, binary_to_term(B)};
         eof ->
             eof
     end.
@@ -261,10 +261,9 @@ write_key(FH, Key) ->
     Size + 2.
 
 write_seg_value(FH, Value, Props, TS) ->
-    B1 = term_to_binary({Value, Props}),
-    B2 = <<TS:64/integer, B1/binary>>,
-    Size = erlang:size(B2),
-    file:write(FH, <<0:1/integer, Size:15/integer, B2/binary>>),
+    B = term_to_binary({Value, Props, TS}),
+    Size = erlang:size(B),
+    file:write(FH, <<0:1/integer, Size:15/integer, B/binary>>),
     Size + 2.
 
 data_file(Segment) when is_record(Segment, segment) ->

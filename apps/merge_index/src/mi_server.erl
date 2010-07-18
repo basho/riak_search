@@ -196,14 +196,14 @@ handle_call({buffer_to_segment, Buffer, Segment}, _From, State) ->
         segments=NewSegments
     },
 
-    case not IsCompacting andalso length(NewSegments) >= 10 of
+    case not IsCompacting andalso length(NewSegments) >= 4 of
         true ->
 
             %% Get which segments to compact. Do this by getting
             %% filesizes, and then lopping off the four biggest
             %% files. This could be optimized with tuning, but
             %% probably a good enough solution.
-            SegmentsToCompact = get_smallest_files(NewSegments, 4),
+            SegmentsToCompact = get_smallest_files(NewSegments, 1),
             
             %% Create the new compaction segment...
             {StartNum, EndNum} = get_id_range(SegmentsToCompact),

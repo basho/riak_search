@@ -30,13 +30,13 @@
 %%% sorted iterator.
 
 %% Open a new buffer. Returns a buffer structure.
-open(Filename, _Options) ->
+open(Filename, Options) ->
     %% Open the existing buffer file...
     filelib:ensure_dir(Filename),
-    %ReadBuffer = 1024 * 1024,
-    %WriteInterval = proplists:get_value(write_interval, Options, 2 * 1000),
-    %WriteBuffer = proplists:get_value(write_buffer, Options, 1024 * 1024),
-    {ok, FH} = file:open(Filename, [read, write, raw, binary]),
+    ReadBuffer = 1024 * 1024,
+    WriteInterval = proplists:get_value(write_interval, Options, 2 * 1000),
+    WriteBuffer = proplists:get_value(write_buffer, Options, 1024 * 1024),
+    {ok, FH} = file:open(Filename, [read, {read_ahead, ReadBuffer}, write, {delayed_write, WriteBuffer, WriteInterval}, raw, binary]),
 
     %% Read into an ets table...
     Table = ets:new(buffer, [ordered_set, public]),
@@ -78,32 +78,34 @@ size(Buffer) ->
 write(IFT, Value, Props, TS, Buffer) ->
     %% Write to file...
     FH = Buffer#buffer.handle,
-    mi_utils:write_value(FH, {IFT, Value, Props, TS}),
+    BytesWritten = mi_utils:write_value(FH, {IFT, Value, Props, TS}),
 
     %% Return a new buffer with a new tree and size...
     write_1(IFT, Value, Props, TS, Buffer#buffer.table),
-    {ok, NewSize} = file:position(FH, cur),
+
+    %% Return the new buffer.
     Buffer#buffer {
-        size = NewSize
+        size = (BytesWritten + Buffer#buffer.size)
     }.
 
 write_1(IFT, Value, Props, TS, Table) ->
     %% Update and return the tree...
+    Item = {Value, {Props, TS}},
     case ets:lookup(Table, IFT) of
-        [{IFT, Values}] ->
-            case gb_trees:lookup(Value, Values) of
-                {value, {_, OldTS}} when OldTS < TS ->
-                    NewValues = gb_trees:update(Value, {Props, TS}, Values),
-                    ets:insert(Table, {IFT, NewValues});
-                {value, {_, OldTS}} when OldTS >= TS ->
-                    ok;
-                none ->
-                    NewValues = gb_trees:insert(Value, {Props, TS}, Values),
-                    ets:insert(Table, {IFT, NewValues})
-            end;
         [] ->
-            NewValues = gb_trees:from_orddict([{Value, {Props, TS}}]),
-            ets:insert(Table, {IFT, NewValues})
+            ets:insert(Table, {IFT, [Item]});
+        [{IFT, Items}] ->
+            case lists:keytake(Value, 1, Items) of
+                false ->
+                    %% Not found, insert the item.
+                    ets:insert(Table, {IFT, [Item|Items]});
+                {value, {_, {_, OldTS}}, NewItems} when OldTS < TS ->
+                    %% Found, existing item removed, insert the new item.
+                    ets:insert(Table, {IFT, [Item|NewItems]});
+                {value, {_, {_, OldTS}}, _NewItems} when OldTS >= TS ->
+                    %% Found, but we want to keep the existing item.
+                    ok
+            end
     end.
 
 %% Return the number of results under this IFT.
@@ -111,7 +113,7 @@ info(IFT, Buffer) ->
     Table = Buffer#buffer.table,
     case ets:lookup(Table, IFT) of
         [{IFT, Values}] ->
-            gb_trees:size(Values);
+            length(Values);
         [] ->
             0
     end.
@@ -130,7 +132,7 @@ when IFT == '$end_of_table' orelse (EndIFT /= all andalso IFT > EndIFT) ->
 info_1(Table, IFT, EndIFT, Count) ->
     [{IFT, Values}] = ets:lookup(Table, IFT),
     NextIFT = ets:next(Table, IFT),
-    info_1(Table, NextIFT, EndIFT, Count + gb_trees:size(Values)).
+    info_1(Table, NextIFT, EndIFT, Count + length(Values)).
 
 %% Return an iterator function.
 %% Returns Fun/0, which then returns {Term, NewFun} or eof.
@@ -151,19 +153,18 @@ when IFT == '$end_of_table' orelse (EndIFT /= all andalso IFT > EndIFT) ->
     eof;
 iterator_1({Table, IFT, EndIFT}) ->
     [{IFT, Values}] = ets:lookup(Table, IFT),
-    ValuesIterator = gb_trees:next(gb_trees:iterator(Values)),
     NextIFT = ets:next(Table, IFT),
-    iterator_2(IFT, ValuesIterator, {Table, NextIFT, EndIFT}).
+    iterator_2(IFT, Values, {Table, NextIFT, EndIFT}).
 %% Dialyzer says this clause is impossible.
 %% iterator_1('$end_of_table') ->
 %%    eof.
 
 %% Iterate through values. at a values level...
-iterator_2(IFT, {Value, {Props, TS}, Iter}, Continuation) ->
+iterator_2(IFT, [{Value, {Props, TS}}|Values], Continuation) ->
     Term = {IFT, Value, Props, TS},
-    F = fun() -> iterator_2(IFT, gb_trees:next(Iter), Continuation) end,
+    F = fun() -> iterator_2(IFT, Values, Continuation) end,
     {Term, F};
-iterator_2(_IFT, none, Continuation) ->
+iterator_2(_IFT, [], Continuation) ->
     iterator_1(Continuation).
 
 test() ->

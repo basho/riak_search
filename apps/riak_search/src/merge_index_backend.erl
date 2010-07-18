@@ -5,11 +5,26 @@
 %% -------------------------------------------------------------------
 
 -module(merge_index_backend).
--export([start/2,stop/1,get/2,put/3,list/1,list_bucket/2,delete/2]).
--export([fold/3, drop/1, is_empty/1]).
+-behavior(riak_search_backend).
 
--include_lib("eunit/include/eunit.hrl").
--include("riak_search.hrl").
+-export([
+    start/2,
+    stop/1,
+    index_if_newer/7,
+    multi_index/2,
+    delete_entry/5,
+    stream/6,
+    multi_stream/4,
+    info/5,
+    info_range/7,
+    catalog_query/3,
+    fold/3,
+    is_empty/1,
+    drop/1
+]).
+
+-include_lib("riak_search/include/riak_search.hrl").
+
 % @type state() = term().
 -record(state, {partition, pid}).
 
@@ -28,114 +43,103 @@ stop(State) ->
     Pid = State#state.pid,
     ok = merge_index:stop(Pid).
 
-%% @spec put(state(), BKey :: riak_object:bkey(), Val :: binary()) ->
-%%         ok | {error, Reason :: term()}
-%% @doc Route all commands through the object's value.
-put(State, _BKey, ObjBin) ->
-    Obj = binary_to_term(ObjBin),
-    Command = riak_object:get_value(Obj),
-    handle_command(State, Command).
-
-handle_command(State, {index, Index, Field, Term, Value, Props, Timestamp}) ->
+index_if_newer(Index, Field, Term, DocId, Props, KeyClock, State) ->
     %% Put with properties.
     Pid = State#state.pid,
-    merge_index:index(Pid, Index, Field, Term, Value, Props, Timestamp),
-    ok;
+    merge_index:index(Pid, Index, Field, Term, DocId, Props, KeyClock),
+    noreply.
 
-handle_command(State, {index, Index, Field, Term, Value, Props}) ->
-    %% io:format("Got a put: ~p ~p ~p~n", [BucketName, Value, Props]),
-    %% Put with properties.
-    Pid = State#state.pid,
-    TS = mi_utils:now_to_timestamp(erlang:now()),
-    merge_index:index(Pid, Index, Field, Term, Value, Props, TS),
-    ok;
-
-handle_command(State, {init_stream, OutputPid, OutputRef}) ->
-    %% Do some handshaking so that we only stream results from one partition/node.
-    Partition = State#state.partition,
-    OutputPid!{stream_ready, Partition, node(), OutputRef},
-    ok;
-
-handle_command(State, {stream, Index, Field, Term, OutputPid, OutputRef, Partition, Node, FilterFun}) ->
-    Pid = State#state.pid,
-    case Partition == State#state.partition andalso Node == node() of
-        true ->
-            %% Stream some results.
-            merge_index:stream(Pid, Index, Field, Term, OutputPid, OutputRef, FilterFun);
-        false ->
-            %% The requester doesn't want results from this node, so
-            %% ignore. This is a hack, to get around the fact that
-            %% there is no way to send a put or other command to a
-            %% specific v-node.
-            ignore
+multi_index(IFTVPKList, State) ->
+    F = fun(IFTVPK) ->
+        {Index, Field, Term, DocId, Props, KeyClock} = IFTVPK,
+        index_if_newer(Index, Field, Term, DocId, Props, KeyClock, State)
     end,
-    ok;
+    [F(X) || X <- IFTVPKList],
+    {reply, {indexed, node()}, State}.
 
-handle_command(State, {info, Index, Field, Term, OutputPid, OutputRef}) ->
+delete_entry(Index, Field, Term, DocId, State) ->
+    KeyClock = riak_search_utils:current_key_clock(),
+    index_if_newer(Index, Field, Term, DocId, undefined, KeyClock, State),
+    noreply.
+
+info(Index, Field, Term, Sender, State) ->
     Pid = State#state.pid,
     {ok, Info} = merge_index:info(Pid, Index, Field, Term),
     Info1 = [{Term, node(), Count} || {_, Count} <- Info],
-    OutputPid!{info_response, Info1, OutputRef},
-    ok;
+    riak_search_backend:info_response(Sender, Info1),
+    noreply.
 
-handle_command(State, {info_range, Index, Field, StartTerm, EndTerm, Size, OutputPid, OutputRef}) ->
+info_range(Index, Field, StartTerm, EndTerm, Size, Sender, State) ->
     Pid = State#state.pid,
     {ok, Info} = merge_index:info_range(Pid, Index, Field, StartTerm, EndTerm, Size),
     Info1 = [{Term, node(), Count} || {Term, Count} <- Info],
-    OutputPid!{info_response, Info1, OutputRef},
-    ok;
+    riak_search_backend:info_response(Sender, Info1),
+    noreply.
 
-handle_command(_State, Other) ->
-    throw({unexpected_operation, Other}).
+stream(Index, Field, Term, FilterFun, Sender, State) ->
+    %% Hack... we index incoming terms as binaries, but search as lists.
+    TermB = riak_search_utils:to_binary(Term),
+    Pid = State#state.pid,
+    OutputRef = make_ref(),
+    OutputPid = spawn_link(fun() -> stream_loop(OutputRef, Sender) end),
+    merge_index:stream(Pid, Index, Field, TermB, OutputPid, OutputRef, FilterFun),
+    noreply.
+
+stream_loop(Ref, Sender) ->
+    receive
+        {result, {Value, Props}, Ref} ->
+            riak_search_backend:stream_response_results(Sender, [{Value, Props}]),
+            stream_loop(Ref, Sender);
+        {result, '$end_of_table', Ref} ->
+            riak_search_backend:stream_response_done(Sender);
+        Other ->
+            ?PRINT({unexpected_result, Other}),
+            stream_loop(Ref, Sender)
+    end.
+
+multi_stream(_IFTList, _FilterFun, _Sender, _State) ->
+    throw({merge_index_backend, not_yet_implemented}).
 
 
+%% Code taken from riak_search_ets_backend.
+%% TODO: hack up this function or change the implementation of
+%%       riak_search:do_catalog_query/3, such that catalog_queries
+%%       are performed on all vnodes, not just one per node
+catalog_query(_CatalogQuery, _Sender, _State) ->
+    throw({merge_index_backend, not_yet_implemented}).
 
-%% @spec get(state(), BKey :: riak_object:bkey()) ->
-%%         {ok, Val :: binary()} | {error, Reason :: term()}
-%% @doc Get the object stored at the given bucket/key pair. The merge
-%% backend does not support key-based lookups, so always return
-%% {error, notfound}.
-get(_State, _BKey) ->
-    {error, notfound}.
 
 is_empty(State) ->
     Pid = State#state.pid,
     merge_index:is_empty(Pid).
 
-fold(State, Fun, Acc) ->
-    %% The supplied function expects a BKey and an Object. Wrap this
-    %% So that we can use the format that merge_index expects.
-    WrappedFun = fun(Index, Field, Term, Value, Props, TS, AccIn) ->
-        %% Construct the object...
-        IndexBin = riak_search_utils:to_binary(Index),
-        FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-        Payload = {index, Index, Field, Term, Value, Props, TS},
-        BObj = term_to_binary(riak_object:new(IndexBin, FieldTermBin, Payload)),
-        Fun({IndexBin, FieldTermBin}, BObj, AccIn)
-    end,
+fold(FoldFun, Acc, State) ->
+    %% Copied almost verbatim from riak_search_ets_backend.
+    Fun = fun
+        (I,F,T,V,P,K, {OuterAcc, {{I,{F,T}},InnerAcc}}) ->
+            %% same IFT, just accumulate doc/props/clock
+            {OuterAcc, {{I,{F,T}},[{V,P,K}|InnerAcc]}};
+        (I,F,T,V,P,K, {OuterAcc, {FoldKey, VPKList}}) ->
+            %% finished a string of IFT, send it off
+            %% (sorted order is assumed)
+            NewOuterAcc = FoldFun(FoldKey, VPKList, OuterAcc),
+            {NewOuterAcc, {{I,{F,T}},[{V,P,K}]}};
+        (I,F,T,V,P,K, {OuterAcc, undefined}) ->
+            %% first round through the fold - just start building
+            {OuterAcc, {{I,{F,T}},[{V,P,K}]}}
+        end,
     Pid = State#state.pid,
-    {ok, FoldResult} = merge_index:fold(Pid, WrappedFun, Acc),
-    FoldResult.
+    {OuterAcc0, Final} = merge_index:fold(Pid, Fun, {Acc, undefined}),
+    OuterAcc = case Final of
+        {FoldKey, VPKList} ->
+            %% one last IFT to send off
+            FoldFun(FoldKey, VPKList, OuterAcc0);
+        undefined ->
+            %% this partition was empty
+            OuterAcc0
+    end,
+    {reply, OuterAcc, State}.
 
 drop(State) ->
     Pid = State#state.pid,
     merge_index:drop(Pid).
-
-%% @spec delete(state(), BKey :: riak_object:bkey()) ->
-%%          ok | {error, Reason :: term()}
-%% @doc Writes are not supported.
-delete(_State, _BKey) ->
-    {error, not_supported}.
-
-%% @spec list(state()) -> [{Bucket :: riak_object:bucket(),
-%%                          Key :: riak_object:key()}]
-%% @doc Get a list of all bucket/key pairs stored by this backend
-list(_State) ->
-    throw({error, not_supported}).
-
-
-%% @spec list_bucket(state(), riak_object:bucket()) ->
-%%           [riak_object:key()]
-%% @doc Get a list of the keys in a bucket
-list_bucket(_State, _Bucket) ->
-    throw({error, not_supported}).
