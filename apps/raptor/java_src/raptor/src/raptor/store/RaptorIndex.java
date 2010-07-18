@@ -27,7 +27,6 @@ public class RaptorIndex {
     final private static int LUCENE_COMMIT_INTERVAL = 5000; /* ms; todo: configurable?  */
     final private ColumnStore store;
     final private LuceneStore lucene;
-    final private Map<String, List<JSONObject>> catalogCache;
     public static long stat_index_c = 0;
 
     // entry metadata labels
@@ -40,12 +39,7 @@ public class RaptorIndex {
     final private static String EMPTY_STRING = "";
 
     public RaptorIndex(String dataDir) throws Exception {
-        catalogCache = new Builder<String, List<JSONObject>>()
-                .initialCapacity(150000)
-                .maximumWeightedCapacity(150000)
-                .concurrencyLevel(Runtime.getRuntime().availableProcessors() * 4)
-                .build();
-        log.info("opening raptor-db & log");
+    	log.info("opening raptor-db & log");
         store = new ColumnStore(dataDir + "/raptor-db", 1);
         log.info("opening raptor-catalog");
         lucene = new LuceneStore(dataDir + "/raptor-catalog");
@@ -216,18 +210,13 @@ public class RaptorIndex {
         }
         String query = sb.toString();
         final List<JSONObject> catalogEntries;
-        if (catalogCache.get(query) == null) {
-            catalogEntries = new ArrayList<JSONObject>();
-            lucene.query(query, new ResultHandler() {
-                public void handleCatalogResult(JSONObject obj) {
-                    catalogEntries.add(obj); // partition_id, index, field, term
+        catalogEntries = new ArrayList<JSONObject>();
+        lucene.query(query, new ResultHandler() {
+        	public void handleCatalogResult(JSONObject obj) {
+        		catalogEntries.add(obj); // partition_id, index, field, term
                 }
-            });
-            catalogCache.put(query, catalogEntries);
-        } else {
-            catalogEntries = catalogCache.get(query);
-        }
-
+            });	
+ 
         log.info("catalogTime = " + (System.currentTimeMillis() - ctime));
         HashSet<String> completeTerms = new HashSet<String>();
         List<String> tables = new ArrayList<String>();
