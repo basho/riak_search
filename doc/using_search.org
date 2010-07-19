@@ -1,5 +1,5 @@
 #+SETUPFILE: "basho-search-doc-style.iorg"
-#+TITLE: Riak Search Manual - DRAFT
+#+TITLE: Riak Search 0.12 Manual
 
 * Introduction
 
@@ -794,10 +794,11 @@
 
     6. If you see this, upgrade to Java 1.6:
 
-       : [javac] bad class file: ...snip.../db.jar(com/sleepycat/db/Environment.class)
+       : [javac] bad class file: ...snip.../db.jar(com/sleepycat/db/
+       : Environment.class)
        : [javac] class file has wrong version 50.0, should be 49.0
-       : [javac] Please remove or make sure it appears in the correct subdirectory of the
-       : classpath.
+       : [javac] Please remove or make sure it appears in the correct
+       : subdirectory of the classpath.
        : [javac]     private Environment env;
        : [javac]             ^
        : [javac] 1 error
