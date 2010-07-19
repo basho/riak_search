@@ -127,6 +127,8 @@
 
    + *FIELDNAME\_num* - Numeric field. Uses Whitespace analyzer.
 
+   + *FIELDNAME\_dt* - Date field. Uses Whitespace analyzer. 
+
    + All other fields are treated as Strings and use the Standard analyzer.
 
    The default field is named *value*.
@@ -175,6 +177,10 @@
    :             {name, "title"},
    :             {required, true},
    :             {type, string}
+   :         ]},
+   :         {field, [
+   :             {name, "published"},
+   :             {type, date}
    :         ]},
    :         {dynamic_field, [
    :             {name, "*_text"},
