@@ -153,11 +153,9 @@ when IFT == '$end_of_table' orelse (EndIFT /= all andalso IFT > EndIFT) ->
     eof;
 iterator_1({Table, IFT, EndIFT}) ->
     [{IFT, Values}] = ets:lookup(Table, IFT),
+    SortedValues = lists:sort(Values),
     NextIFT = ets:next(Table, IFT),
-    iterator_2(IFT, Values, {Table, NextIFT, EndIFT}).
-%% Dialyzer says this clause is impossible.
-%% iterator_1('$end_of_table') ->
-%%    eof.
+    iterator_2(IFT, SortedValues, {Table, NextIFT, EndIFT}).
 
 %% Iterate through values. at a values level...
 iterator_2(IFT, [{Value, {Props, TS}}|Values], Continuation) ->

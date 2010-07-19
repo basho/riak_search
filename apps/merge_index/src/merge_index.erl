@@ -19,7 +19,8 @@
     info_range/6,
     is_empty/1,
     fold/3,
-    drop/1
+    drop/1,
+    compact/1
 ]).
 
 start_link(Root, Config) ->
@@ -51,3 +52,14 @@ fold(ServerPid, Fun, Acc) ->
 
 drop(ServerPid) ->
     gen_server:call(ServerPid, drop, infinity).
+
+compact(ServerPid) ->
+    {ok, Ref} = gen_server:call(ServerPid, {start_compaction, self()}, infinity),
+
+    %% TODO - This is shaky, but good enough for version one. If the
+    %% compaction process crashes, then we sit here waiting forever.
+    receive 
+        {compaction_complete, Ref} -> 
+            ok 
+    end.
+    

@@ -34,20 +34,17 @@ now_to_timestamp({Mega, Sec, Micro}) ->
     TS.
 
 run(index, KeyGen, ValueGen, State) ->
-%%     ?PRINT(index),
     #state { pid=Pid } = State,
     TS = now_to_timestamp(now()),
     merge_index:index(Pid, ?INDEX, ?FIELD, KeyGen(), ValueGen(), [], TS),
     {ok, State};
 
 run(info, KeyGen, _ValueGen, State) ->
-%%     ?PRINT(info),
     #state { pid=Pid } = State,
     merge_index:info(Pid, ?INDEX, ?FIELD, KeyGen()),
     {ok, State};
 
 run(stream, KeyGen, _ValueGen, State) ->
-%%     ?PRINT(stream),
     #state { pid=Pid } = State,
     Ref = make_ref(),
     F = fun(_X, _Y) -> true end,
@@ -58,7 +55,6 @@ run(stream, KeyGen, _ValueGen, State) ->
 collect_stream(Ref, Count, LastKey) ->
     receive 
         {result, '$end_of_table', Ref} ->
-            %% ?PRINT({stream_count, Count}),
             ok;
         {result, {Key, _Props}, Ref} when (LastKey == undefined orelse LastKey =< Key) ->
             collect_stream(Ref, Count + 1, Key);

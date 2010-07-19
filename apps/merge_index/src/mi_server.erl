@@ -178,7 +178,7 @@ handle_call({index, Index, Field, Term, Value, Props, TS}, _From, State) ->
     end;
 
 handle_call({buffer_to_segment, Buffer, Segment}, _From, State) ->
-    #state { locks=Locks, buffers=Buffers, segments=Segments, is_compacting=IsCompacting } = State,
+    #state { locks=Locks, buffers=Buffers, segments=Segments } = State,
 
     %% Clean up by clearing delete flag on the segment, adding delete
     %% flag to the buffer, and telling the system to delete the buffer
@@ -196,37 +196,45 @@ handle_call({buffer_to_segment, Buffer, Segment}, _From, State) ->
         segments=NewSegments
     },
 
-    case not IsCompacting andalso length(NewSegments) >= 4 of
-        true ->
+    %% Give us the opportunity to do a merge...
+    mi_scheduler:schedule_compaction(self()),
+    
+    %% Return.
+    {reply, ok, NewState};
 
-            %% Get which segments to compact. Do this by getting
-            %% filesizes, and then lopping off the four biggest
-            %% files. This could be optimized with tuning, but
-            %% probably a good enough solution.
-            SegmentsToCompact = get_smallest_files(NewSegments, 1),
-            
-            %% Create the new compaction segment...
-            {StartNum, EndNum} = get_id_range(SegmentsToCompact),
-            SName = join(State, io_lib:format("segment.~p-~p", [StartNum, EndNum])),
-            set_deleteme_flag(SName),
-            CompactSegment = mi_segment:open(SName),
-            
-            %% Spawn a function to merge a bunch of segments into one...
-            Pid = self(),
-            spawn_link(fun() ->
-                StartIFT = mi_utils:ift_pack(0, 0, 0),
-                EndIFT = all,
-                SegmentIterators = [mi_segment:iterator(StartIFT, EndIFT, X) || X <- SegmentsToCompact],
-                GroupIterator = build_group_iterator(SegmentIterators),
-                mi_segment:from_iterator(GroupIterator, CompactSegment),
-                gen_server:call(Pid, {compacted, CompactSegment, SegmentsToCompact}, infinity)
-            end),
-            {reply, ok, NewState#state { is_compacting=true }};
-        false ->
-            {reply, ok, NewState}
-    end;
+handle_call({start_compaction, CallingPid}, _From, State) 
+  when State#state.is_compacting == true orelse length(State#state.segments) < 4 ->
+    %% Don't compact if we are already compacting, or if we have fewer
+    %% than four open segments.
+    Ref = make_ref(),
+    CallingPid ! {compaction_complete, Ref},
+    {reply, {ok, Ref}, State};
 
-handle_call({compacted, CompactSegment, OldSegments}, _From, State) ->
+handle_call({start_compaction, CallingPid}, _From, State) ->
+    %% Get list of segments to compact. Do this by getting filesizes,
+    %% and then lopping off the four biggest files. This could be
+    %% optimized with tuning, but probably a good enough solution.
+    Segments = State#state.segments,
+    SegmentsToCompact = get_smallest_files(Segments, 1),
+    
+    %% Create the new compaction segment...
+    <<MD5:128/integer>> = erlang:md5(term_to_binary({now, make_ref()})),
+    SName = join(State, io_lib:format("segment.~.16B", [MD5])),
+    set_deleteme_flag(SName),
+    CompactSegment = mi_segment:open(SName),
+    
+    %% Spawn a function to merge a bunch of segments into one...
+    Pid = self(),
+    CallingRef = make_ref(),
+    spawn_link(fun() ->
+        SegmentIterators = [mi_segment:iterator(X) || X <- SegmentsToCompact],
+        GroupIterator = build_group_iterator(SegmentIterators),
+        mi_segment:from_iterator(GroupIterator, CompactSegment),
+        gen_server:call(Pid, {compacted, CompactSegment, SegmentsToCompact, CallingPid, CallingRef}, infinity)
+    end),
+    {reply, {ok, CallingRef}, State#state { is_compacting=true }};
+
+handle_call({compacted, CompactSegment, OldSegments, CallingPid, CallingRef}, _From, State) ->
     #state { locks=Locks, segments=Segments } = State,
 
     %% Clean up. Remove delete flag on the new segment. Add delete
@@ -245,6 +253,9 @@ handle_call({compacted, CompactSegment, OldSegments}, _From, State) ->
         segments=[CompactSegment|(Segments -- OldSegments)],
         is_compacting=false
     },
+
+    %% Tell the awaiting process that we've finished compaction.
+    CallingPid ! {compaction_complete, CallingRef},
     {reply, ok, NewState};
 
 handle_call({info, Index, Field, Term}, _From, State) ->
@@ -286,6 +297,13 @@ handle_call({stream, Index, Field, Term, Pid, Ref, FilterFun}, _From, State) ->
     IndexID = mi_incdex:lookup_nocreate(Index, Indexes),
     FieldID = mi_incdex:lookup_nocreate(Field, Fields),
     TermID = mi_incdex:lookup_nocreate(Term, Terms),
+
+    %% TODO - These next two lines are indicitive of vestigal code
+    %% from when merge_index used the fated subtype/subterm
+    %% structure. We no longer need a StartIFT and EndIFT, we just
+    %% need the IFT to stream. As a result, there are simplifications
+    %% we could make in mi_buffer and mi_segment. Not making them now
+    %% due to time pressure. - RTK
     StartIFT = mi_utils:ift_pack(IndexID, FieldID, TermID),
     EndIFT = mi_utils:ift_pack(IndexID, FieldID, TermID),
 
@@ -472,14 +490,6 @@ compare_fun({IFT1, Value1, _, TS1}, {IFT2, Value2, _, TS2}) ->
     (IFT1 < IFT2) orelse
     ((IFT1 == IFT2) andalso (Value1 < Value2)) orelse
     ((IFT1 == IFT2) andalso (Value1 == Value2) andalso (TS1 > TS2)).
-
-
-%% Return the starting and ending segment number in the list of
-%% segments, accounting for compaction segments which have a "1-5"
-%% type numbering.
-get_id_range(Segments) when is_list(Segments)->
-    Numbers = lists:flatten([get_id_number(X) || X <- Segments]),
-    {lists:min(Numbers), lists:max(Numbers)}.
 
 %% Return the ID number of a Segment/Buffer/Filename...
 %% Files can be named:

@@ -18,6 +18,7 @@
     from_iterator/2,
     info/2,
     info/3,
+    iterator/1,
     iterator/3,
     test/0
 ]).
@@ -76,7 +77,9 @@ from_buffer(Buffer, Segment) ->
 from_iterator(Iterator, Segment) ->
     %% Write to segment file in order...
     Table = Segment#segment.table,
-    {ok, FH} = file:open(data_file(Segment), [write, raw, binary]),
+    WriteInterval = 5 * 1000,
+    WriteBuffer = 5 * 1024 * 1024,
+    {ok, FH} = file:open(data_file(Segment), [write, {delayed_write, WriteBuffer, WriteInterval}, raw, binary]),
     from_iterator_inner(FH, 0, 0, 0, undefined, undefined, Iterator(), Table),
     file:close(FH),
 
@@ -145,6 +148,12 @@ info_1(Table, IFT, EndIFT, Count) ->
     info_1(Table, NextIFT, EndIFT, Count + NewCount).
     
 
+%% Create an iterator over the entire segment.
+iterator(Segment) ->
+    ReadBuffer = 5 * 1024 * 1024,
+    {ok, FH} = file:open(data_file(Segment), [read, {read_ahead, ReadBuffer}, raw, binary]),
+    fun() -> iterator_fun(FH, undefined, all, []) end.
+
 %% Create a value iterator starting at StartIFT and stopping at
 %% EndIFT. Returns an IteratorFun of arity zero that returns {Term,
 %% NewIteratorFun} or 'eof' when called.
@@ -210,7 +219,8 @@ read_offsets(Root) ->
 repair_offsets(Root) ->
     case filelib:is_file(data_file(Root)) of
         true -> 
-            {ok, FH} = file:open(data_file(Root), [read, raw, binary]),
+            ReadBuffer = 1024 * 1024,
+            {ok, FH} = file:open(data_file(Root), [read, {read_ahead, ReadBuffer}, raw, binary]),
             Table = ets:new(segment, [ordered_set, public]),
             repair_offsets_inner(FH, 0, 0, undefined, Table),
             file:close(FH),
