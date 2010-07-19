@@ -460,7 +460,9 @@
 ** Query Syntax
 
    Riak Search follows the same query syntax as Lucene, detailed
-   here:  http://lucene.apache.org/java/2_4_0/queryparsersyntax.html
+   here:
+
+   http://lucene.apache.org/java/2_4_0/queryparsersyntax.html
 
 *** Terms and Phrases
 
@@ -728,9 +730,10 @@
 * Operations and Troubleshooting
 
   Riak Search has all of the same operational properties as
-  Riak. Refer to the Riak wiki
-  [[https://wiki.basho.com/display/RIAK/Home]] for more information on
+  Riak. Refer to the Riak wiki (see below) for more information on
   running Riak in a clustered environment.
+
+  [[https://wiki.basho.com/display/RIAK/Home]]
 
 ** Default Ports
 
@@ -781,9 +784,11 @@
 
     4. If you wish to keep the BDB native library in somewhere other
        than it's installed location, change the following command line
-       option in start.sh to reflect the new location:
+       option in start.sh to reflect the new location (wrapped for
+       line-length, enter without spaces):
 
-       : -Djava.library.path=/usr/local/lib:java.library.path=/usr/local/lib:/usr/local/BerkeleyDB.4.8/lib
+       : -Djava.library.path=/usr/local/lib:
+       : java.library.path=/usr/local/lib:/usr/local/BerkeleyDB.4.8/lib
 
     5. Raptor has only been tested on Mac OS X and Linux.
 
@@ -791,7 +796,8 @@
 
        : [javac] bad class file: ...snip.../db.jar(com/sleepycat/db/Environment.class)
        : [javac] class file has wrong version 50.0, should be 49.0
-       : [javac] Please remove or make sure it appears in the correct subdirectory of the classpath.
+       : [javac] Please remove or make sure it appears in the correct subdirectory of the
+       : classpath.
        : [javac]     private Environment env;
        : [javac]             ^
        : [javac] 1 error
