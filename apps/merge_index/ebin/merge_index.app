@@ -1,6 +1,6 @@
 {application, merge_index,
     [{description, "Merge Index"},
-        {vsn, "0.12.0rc4"},
+        {vsn, "0.12.0rc5"},
         {modules, [
             merge_index,
             mi_buffer,
