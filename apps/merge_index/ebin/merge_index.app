@@ -9,6 +9,7 @@
             mi_server,
             mi_utils,
             mi_locks,
+            mi_scheduler,
             sync,
             test,
             basho_bench_driver_merge_index
