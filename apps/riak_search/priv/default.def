@@ -20,14 +20,6 @@
             {type, date}
         ]},
 
-        %% Anything ending in "_facet" will be treated
-        %% as a facet
-        {dynamic_field, [
-            {name, "*_facet"},
-            {type, string},
-            {facet, true}
-        ]},
-
         %% Everything else is a string
         {dynamic_field, [
             {name, "*"},
