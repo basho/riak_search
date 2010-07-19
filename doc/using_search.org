@@ -1,5 +1,7 @@
 #+SETUPFILE: "basho-search-doc-style.iorg"
 #+TITLE: Riak Search 0.12 Manual
+#+AUTHOR: Basho Technologies
+#+DATE: 20 July 2010
 
 * Introduction
 
