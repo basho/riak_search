@@ -1,7 +1,7 @@
 % -*- mode: erlang -*-
 {application, raptor,
  [{description,  "Interface to Raptor indexing engine"},
-  {vsn,          "0.12.0rc5"},
+  {vsn,          "0.12.0"},
   {modules,      [raptor_pb,
                   raptor_conn,
                   raptor_conn_sup,
