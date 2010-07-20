@@ -46,7 +46,11 @@ stop(State) ->
 index_if_newer(Index, Field, Term, DocId, Props, KeyClock, State) ->
     %% Put with properties.
     Pid = State#state.pid,
-    merge_index:index(Pid, Index, Field, Term, DocId, Props, KeyClock),
+
+    %% Why do we pass this as a string? This should be an int.
+    TS = list_to_integer(binary_to_list(KeyClock)),
+
+    merge_index:index(Pid, Index, Field, Term, DocId, Props, TS),
     noreply.
 
 multi_index(IFTVPKList, State) ->

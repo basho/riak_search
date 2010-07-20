@@ -29,6 +29,7 @@
     buffers,
     config,
     next_id,
+    scheduled_compaction,
     is_compacting
 }).
 
@@ -56,6 +57,7 @@ init([Root, Config]) ->
         segments = Segments,
         config   = Config,
         next_id  = NextID,
+        scheduled_compaction = false,
         is_compacting = false
     },
 
@@ -146,6 +148,20 @@ handle_call({index, Index, Field, Term, Value, Props, TS}, _From, State) ->
         buffers=[CurrentBuffer|Buffers]
     },
 
+    %% Add a small delay if we are sitting on too many segments. This
+    %% provides a sort of automated throttling, giving the compactor
+    %% time to merge segments.
+    %% TODO - Make this configurable. It would be useful to
+    %% turn this off for bulk loading.
+    NumSegments = length(State#state.segments),
+    case NumSegments > 10 of
+        true ->
+            Delay = 1 + trunc(NumSegments / 10),
+            timer:sleep(Delay);
+        false -> 
+            ignore
+    end,
+
     %% Possibly dump buffer to a new segment...
     case mi_buffer:size(CurrentBuffer) > ?ROLLOVER_SIZE(NewState) of
         true ->
@@ -178,7 +194,7 @@ handle_call({index, Index, Field, Term, Value, Props, TS}, _From, State) ->
     end;
 
 handle_call({buffer_to_segment, Buffer, Segment}, _From, State) ->
-    #state { locks=Locks, buffers=Buffers, segments=Segments } = State,
+    #state { locks=Locks, buffers=Buffers, segments=Segments, scheduled_compaction=ScheduledCompaction } = State,
 
     %% Clean up by clearing delete flag on the segment, adding delete
     %% flag to the buffer, and telling the system to delete the buffer
@@ -190,32 +206,38 @@ handle_call({buffer_to_segment, Buffer, Segment}, _From, State) ->
 
     %% Update state...
     NewSegments = [Segment|Segments],
-    NewState = State#state {
+    NewState1 = State#state {
         locks=NewLocks,
         buffers=Buffers -- [Buffer],
         segments=NewSegments
     },
 
     %% Give us the opportunity to do a merge...
-    mi_scheduler:schedule_compaction(self()),
+    case length(get_segments_to_merge(NewSegments)) of
+        Num when Num =< 2 orelse ScheduledCompaction == true-> 
+            NewState2 = NewState1;
+        _ -> 
+            mi_scheduler:schedule_compaction(self()),
+            NewState2 = NewState1#state { scheduled_compaction=true }
+    end,
     
     %% Return.
-    {reply, ok, NewState};
+    {reply, ok, NewState2};
 
 handle_call({start_compaction, CallingPid}, _From, State) 
-  when State#state.is_compacting == true orelse length(State#state.segments) < 4 ->
+  when State#state.is_compacting == true orelse length(State#state.segments) =< 5 ->
     %% Don't compact if we are already compacting, or if we have fewer
     %% than four open segments.
     Ref = make_ref(),
     CallingPid ! {compaction_complete, Ref},
-    {reply, {ok, Ref}, State};
+    {reply, {ok, Ref}, State#state { scheduled_compaction=false }};
 
 handle_call({start_compaction, CallingPid}, _From, State) ->
     %% Get list of segments to compact. Do this by getting filesizes,
     %% and then lopping off the four biggest files. This could be
     %% optimized with tuning, but probably a good enough solution.
     Segments = State#state.segments,
-    SegmentsToCompact = get_smallest_files(Segments, 1),
+    SegmentsToCompact = get_segments_to_merge(Segments),
     
     %% Create the new compaction segment...
     <<MD5:128/integer>> = erlang:md5(term_to_binary({now, make_ref()})),
@@ -227,6 +249,7 @@ handle_call({start_compaction, CallingPid}, _From, State) ->
     Pid = self(),
     CallingRef = make_ref(),
     spawn_link(fun() ->
+        process_flag(priority, high),
         SegmentIterators = [mi_segment:iterator(X) || X <- SegmentsToCompact],
         GroupIterator = build_group_iterator(SegmentIterators),
         mi_segment:from_iterator(GroupIterator, CompactSegment),
@@ -251,6 +274,7 @@ handle_call({compacted, CompactSegment, OldSegments, CallingPid, CallingRef}, _F
     NewState = State#state {
         locks=NewLocks,
         segments=[CompactSegment|(Segments -- OldSegments)],
+        scheduled_compaction=false,
         is_compacting=false
     },
 
@@ -528,26 +552,25 @@ set_deleteme_flag(Filename) ->
 clear_deleteme_flag(Filename) ->
     file:delete(Filename ++ ".deleted").
 
-%% Collect the smallest existing files for a merge. Get the file
-%% sizes. If the biggest is less than twice the smallest, they are
-%% roughly the same size, so merge them all. Otherwise, drop off the
-%% first N biggest files, and merge the rest.
-get_smallest_files(Segments, N) ->
-    F = fun(X) ->
+%% Figure out which files to merge. Take the average of file sizes,
+%% return anything smaller than the average for merging.
+get_segments_to_merge(Segments) ->
+    %% Get all segment sizes...
+    F1 = fun(X) ->
         {ok, FileInfo} = file:read_file_info(mi_segment:data_file(X)),
         {FileInfo#file_info.size, X}
     end,
-    SizesAsc = lists:sort([F(X) || X <- Segments]),
-    SizesDec = lists:reverse(SizesAsc),
-    BiggestSize = element(1, hd(SizesDec)),
-    SmallestSize = element(1, hd(SizesAsc)),
-    case BiggestSize < SmallestSize * 2 of
-        true  -> 
-            Segments;
-        false ->
-            {_, SmallestSegments} = lists:split(N, SizesDec),
-            [X || {_, X} <- SmallestSegments]
-    end.
+    Sizes = [F1(X) || X <- Segments],
+    Avg = lists:sum([Size || {Size, _} <- Sizes]) / length(Segments),
+
+    %% Return segments to merge...
+    F2 = fun({Size, Segment}, Acc) ->
+        case Size < Avg of
+            true -> [Segment|Acc];
+            false -> Acc
+        end
+    end,
+    lists:foldl(F2, [], Sizes).
 
 fold(_Fun, Acc, eof) -> 
     Acc;
