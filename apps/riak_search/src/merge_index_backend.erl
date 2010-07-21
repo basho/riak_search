@@ -23,6 +23,10 @@
     drop/1
 ]).
 
+-import(riak_search_utils, [to_binary/1]).
+
+
+
 -include_lib("riak_search/include/riak_search.hrl").
 
 % @type state() = term().
@@ -47,10 +51,10 @@ index_if_newer(Index, Field, Term, DocId, Props, KeyClock, State) ->
     %% Put with properties.
     Pid = State#state.pid,
 
+    %% RAPTOR-ONLY OPTIMIZATION
     %% Why do we pass this as a string? This should be an int.
     TS = list_to_integer(binary_to_list(KeyClock)),
-
-    merge_index:index(Pid, Index, Field, Term, DocId, Props, TS),
+    merge_index:index(Pid, to_binary(Index), to_binary(Field), to_binary(Term), to_binary(DocId), Props, TS),
     noreply.
 
 multi_index(IFTVPKList, State) ->
@@ -68,25 +72,23 @@ delete_entry(Index, Field, Term, DocId, State) ->
 
 info(Index, Field, Term, Sender, State) ->
     Pid = State#state.pid,
-    {ok, Info} = merge_index:info(Pid, Index, Field, Term),
+    {ok, Info} = merge_index:info(Pid, to_binary(Index), to_binary(Field), to_binary(Term)),
     Info1 = [{Term, node(), Count} || {_, Count} <- Info],
     riak_search_backend:info_response(Sender, Info1),
     noreply.
 
 info_range(Index, Field, StartTerm, EndTerm, Size, Sender, State) ->
     Pid = State#state.pid,
-    {ok, Info} = merge_index:info_range(Pid, Index, Field, StartTerm, EndTerm, Size),
+    {ok, Info} = merge_index:info_range(Pid, to_binary(Index), to_binary(Field), to_binary(StartTerm), to_binary(EndTerm), Size),
     Info1 = [{Term, node(), Count} || {Term, Count} <- Info],
     riak_search_backend:info_response(Sender, Info1),
     noreply.
 
 stream(Index, Field, Term, FilterFun, Sender, State) ->
-    %% Hack... we index incoming terms as binaries, but search as lists.
-    TermB = riak_search_utils:to_binary(Term),
     Pid = State#state.pid,
     OutputRef = make_ref(),
     OutputPid = spawn_link(fun() -> stream_loop(OutputRef, Sender) end),
-    merge_index:stream(Pid, Index, Field, TermB, OutputPid, OutputRef, FilterFun),
+    merge_index:stream(Pid, to_binary(Index), to_binary(Field), to_binary(Term), OutputPid, OutputRef, FilterFun),
     noreply.
 
 stream_loop(Ref, Sender) ->

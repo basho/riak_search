@@ -312,8 +312,9 @@ handle_call({info_range, Index, Field, StartTerm, EndTerm, Size}, _From, State) 
         SegmentCount = lists:sum([mi_segment:info(StartIFT, EndIFT, X) || X <- Segments]),
         {Term, BufferCount + SegmentCount}
     end,
-    Counts = [F(X) || X <- TermIDs],
-    {reply, {ok, Counts}, State};
+    Counts1 = [F(X) || X <- TermIDs],
+    Counts2 = [{Term, Count} || {Term, Count} <- Counts1, Count > 0],
+    {reply, {ok, Counts2}, State};
 
 handle_call({stream, Index, Field, Term, Pid, Ref, FilterFun}, _From, State) ->
     %% Get the IDs...
@@ -348,8 +349,10 @@ handle_call({stream, Index, Field, Term, Pid, Ref, FilterFun}, _From, State) ->
     spawn_link(fun() -> 
         F = fun(_IFT, Value, Props, _TS) ->
             case FilterFun(Value, Props) of
-                true -> Pid!{result, {Value, Props}, Ref};
-                _ -> skip
+                true -> 
+                    Pid!{result, {Value, Props}, Ref};
+                _ -> 
+                    skip
             end
         end,
         stream(StartIFT, EndIFT, F, Buffers, Segments),

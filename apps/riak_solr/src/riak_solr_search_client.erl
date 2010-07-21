@@ -79,7 +79,7 @@ run_solr_command(_, _, []) ->
 run_solr_command(Schema, add, [{IdxDoc, Terms}|Docs]) ->
     %% If there is an old document, then delete it.
     ensure_deleted(Schema:name(), IdxDoc#riak_idx_doc.id),
-
+    
     %% Store the terms...
     SearchClient:index_terms(Terms),
 

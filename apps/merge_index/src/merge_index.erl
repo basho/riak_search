@@ -62,4 +62,3 @@ compact(ServerPid) ->
         {compaction_complete, Ref} -> 
             ok 
     end.
-    
