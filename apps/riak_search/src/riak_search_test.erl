@@ -209,6 +209,16 @@ validate_results_inner(_Length, Results, {property, Key, Value}) ->
         false ->
             {fail, io_lib:format("Missing property: ~s -> ~s", [Key, Value])}
     end;
+validate_results_inner(_Length, Results, {docids, DocIds}) ->
+    %% Check the returned docids exactly matches the list provided
+    case Results of
+        DocIds ->
+            pass;
+        _ ->
+            {fail, io_lib:format("Results do not match expected doc ids\n" ++
+                                 "    Expected: ~p\n" ++
+                                 "    Results:  ~p\n", [DocIds, Results])}
+    end;
 validate_results_inner(_Length, _Results, Other) ->
     io:format("Unexpected test validator: ~p~n", [Other]),
     throw({unexpected_test_validator, Other}).

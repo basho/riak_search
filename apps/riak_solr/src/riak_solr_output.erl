@@ -22,7 +22,7 @@
 
 
 xml_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, Docs0) ->
-    Docs = riak_solr_sort:sort(Docs0, SortBy),
+    Docs = riak_solr_sort:sort(Docs0, SortBy, Schema),
 
     RenderedParams = render_xml_params(NumFound, Schema, SQuery),
     RenderedDocs = lists:flatten([render_xml_doc(Schema, Doc) || Doc <- Docs]),
@@ -69,7 +69,7 @@ json_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, Docs0) ->
         end,
         convert_type(Value, Type)
     end,
-    Docs = riak_solr_sort:sort(Docs0, SortBy),
+    Docs = riak_solr_sort:sort(Docs0, SortBy, Schema),
     Response = [{<<"responseHeader">>,
                  {struct, [{<<"status">>, 0},
                            {<<"QTime">>, ElapsedTime},
