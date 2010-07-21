@@ -1,5 +1,7 @@
 #+SETUPFILE: "basho-search-doc-style.iorg"
-#+TITLE: Riak Search Manual - DRAFT
+#+TITLE: Riak Search 0.12 Manual
+#+AUTHOR: Basho Technologies
+#+DATE: 20 July 2010
 
 * Introduction
 
@@ -21,9 +23,9 @@
    + BDB Java Edition 4.0.103 - (Installation instructions below.)
 
 ** Installation
-   
+
 *** Install BerkeleyDB
-   
+
     Download the distribution file from:
     http://download.oracle.com/berkeley-db/je-4.0.103.tar.gz
 
@@ -44,7 +46,7 @@
 
     : make
     : make rel
-    
+
     Change to the rel/riaksearch directory
 
     : cd rel/riaksearch
@@ -53,22 +55,22 @@
 
     If you are running on a Mac, set JAVA\_HOME and increase your
     filehandle limit:
-    
+
     : export JAVA_HOME=/System/Library/Frameworks/JavaVM.framework/Versions/1.6/Home
     : ulimit -n 1024
-    
+
     From within the rel/riaksearch directory, start Riak:
-    
+
     : bin/riaksearch console
-    
+
     Or, use =bin/riaksearch start= to start riak\_search in the background.
 
 
 ** Major Components
-   
+
    Riak Search is comprised of:
 
-   + *Riak Core* -  Dynamo-inspired 
+   + *Riak Core* -  Dynamo-inspired distributed-systems framework
    + *Riak KV* - Distributed Key/Value store inspired by Amazon's Dynamo.
    + *Bitcask* -  Storage backend used by Riak KV.
    + *Riak Search* - Distributed index and full-text search engine.
@@ -114,12 +116,12 @@
   Riak Search was designed to work seamlessly with Riak. As a result,
   it retains many of the same properties as Riak, including a
   schema-free design. In other words, you can start adding data to a
-  new index without having to explicitly define the index fields. 
+  new index without having to explicitly define the index fields.
 
   That said, Search does provide the ability to define a custom
   schema. This allows you to specify required fields and custom
   analyzer factories, among other things.
-   
+
 ** The Default Schema
 
    The default schema treats all fields as strings, unless you suffix
@@ -127,15 +129,15 @@
 
    + *FIELDNAME\_num* - Numeric field. Uses Whitespace analyzer.
 
-   + *FIELDNAME\_facet* - Facet field. Uses Whitespace analyzer.
+   + *FIELDNAME\_dt* - Date field. Uses Whitespace analyzer. 
 
    + All other fields are treated as Strings and use the Standard analyzer.
-  
+
    The default field is named *value*.
 
 ** Defining a Schema
 
-   The schema definition for an index for an are stored in the Riak
+   The schema definition for an index is stored in the Riak
    bucket of the same name as the index, under the key
    =_rs_schema=. For example, the schema for the "books" index is
    stored under =books/_rs_schema=.
@@ -145,13 +147,13 @@
 
    : # Set an index schema.
    : bin/search-cmd set_schema Index SchemaFile
-   : 
+   :
    : # View the schema for an Index.
    : bin/search-cmd show_schema Index
 
    Note that changes to the Schema File *will not* affect previously
    indexed data. It is recommended that if you change field
-   definitions, especially settings such as /facet/ or /type/, that
+   definitions, especially settings such as /type/, that
    you re-index your documents.
 
    Below is an example schema file. The schema is formatted as an
@@ -161,7 +163,7 @@
    after the last brace:
 
    : {
-   :     schema, 
+   :     schema,
    :     [
    :         {version, "1.1"},
    :         {default_field, "value"},
@@ -178,6 +180,10 @@
    :             {required, true},
    :             {type, string}
    :         ]},
+   :         {field, [
+   :             {name, "published"},
+   :             {type, date}
+   :         ]},
    :         {dynamic_field, [
    :             {name, "*_text"},
    :             {type, string}
@@ -193,14 +199,13 @@
    :             {padding_size, 10}
    :         ]},
    :         {field, [
-   :             {name, "category"},
-   :             {facet, true}
+   :             {name, "category"}
    :         ]}
    :     ]
    : }.
 
 *** Schema-level properties:
-      
+
     The following properties are defined at a schema level:
 
     + *version* - Required. A version number, currently unused.
@@ -227,7 +232,7 @@
     the field, but it usually occurs at the beginning or end. (The
     default schema, described above, uses dynamic fields, allowing you
     to use fieldname suffixes to create fields of different data
-    types.) 
+    types.)
 
     Field matching occurs in the order of appearance in the schema
     definition. This allows you to create a number of static fields
@@ -258,9 +263,9 @@
       size. Defaults to 0 for string types, 10 for integer types.
 
 * Indexing
-  
+
   Indexing a document is the act of:
-  
+
   1. Reading a document.
   2. Splitting the document into one or more fields.
   3. Splitting the fields into one or more terms.
@@ -277,12 +282,12 @@
    : bin/search-cmd index <INDEX> <PATH>
 
    Parameters:
-   
+
    + *<INDEX>* - The name of an index.
-                
+
    + *<PATH>* - Relative or absolute path to the files or directories
                to recursively index. Wildcards are permitted.
-   
+
    For example:
 
    : bin/search-cmd index my_index files/to/index/*.txt
@@ -293,19 +298,19 @@
 
 
 ** Deleting via the Command Line
-   
+
    To remove previously indexed files from the command line, use the
    =search-cmd= command line tool:
 
    : bin/search-cmd delete <INDEX> <PATH>
 
    Parameters:
-   
+
    + *<INDEX>* - The name of an index.
-                
+
    + *<PATH>* - Relative or absolute path to the files or directories
                to recursively index. Wildcards are permitted.
-   
+
    For example:
 
    : bin/search-cmd delete my_index files/to/index/*.txt
@@ -323,9 +328,9 @@
    : search:index_dir(Index, Path).
 
    + *Index* - The name of the index.
-   
+
    + *Path* - Relative or absolute path to the files or directories to
-             recursively index. Wildcards are 
+             recursively index. Wildcards are
 
    For example:
 
@@ -337,11 +342,13 @@
 
    Alternatively, you can provide the fields of the document to index:
 
-   : search:index_doc(Index, Fields)
+   : search:index_doc(Index, DocId, Fields)
 
    Parameters:
 
    + *Index* - The name of the index.
+
+   + *DocId* - Document Id
 
    + *Fields* - A Key/Value list of fields to index. One of these
                fields must be either the atom 'id' or the string
@@ -349,7 +356,7 @@
 
    For example:
 
-   : search:index_doc(Index, [{id, ID}, {title, "The Title"}, {content, "The Content"}])
+   : search:index_doc(Index, DocId, [{title, "The Title"}, {content, "The Content"}])
 
 
 ** Deleting via the Erlang API
@@ -360,9 +367,9 @@
    : search:delete_dir(Index, Path).
 
    + *Index* - The name of the index.
-   
+
    + *Path* - Relative or absolute path to the files or directories to
-             recursively index. Wildcards are 
+             recursively index. Wildcards are
 
    For example:
 
@@ -420,7 +427,7 @@
      future queries is determined by the storage backend.
 
    By default, the update endpoint is located at
-   "http://hostname:8098/solr/update?index=INDEX". 
+   "http://hostname:8098/solr/update?index=INDEX".
 
    Alternatively, the index can be included in the URL, for example
    "http://hostname:8098/solr/INDEX/update".
@@ -436,7 +443,8 @@
 
 ** Deleting via the Solr Interface
 
-   Documents can also be deleted through the Solr interface via two methods, either by Document ID or by Query.
+   Documents can also be deleted through the Solr interface via two
+   methods, either by Document ID or by Query.
 
    To delete documents by document ID, post the following XML to the update endpoint:
 
@@ -462,10 +470,12 @@
 ** Query Syntax
 
    Riak Search follows the same query syntax as Lucene, detailed
-   here:  http://lucene.apache.org/java/2_4_0/queryparsersyntax.html
+   here:
+
+   http://lucene.apache.org/java/2_4_0/queryparsersyntax.html
 
 *** Terms and Phrases
-    
+
     A query can be as simple as a single term (ie: "red") or a series
     of terms surrounded by quotes called a phrase ("See spot
     run"). The term (or phrase) is analyzed using the default
@@ -480,7 +490,7 @@
 *** Fields
 
     You can specify a field to search by putting it in front of the
-    term or phrase to search. For example: 
+    term or phrase to search. For example:
 
     : color:red
 
@@ -507,20 +517,20 @@
     cases.
 
     For example:
-    
+
     + "bus*" will match "busy", "business", "busted", etc.
 
     + "bus?" will match "busy", "bust", "busk", etc.
 
 *** Fuzzy Searches
-    
+
     Fuzzy searching allows you to find terms with similar
     spelling. To specify a fuzzy search, use the tilde operator on a
     single term with an optional fuzziness argument. (If no fuzziness
     argument is specified, then 0.5 is used by default.)
 
     For example:
-    
+
     : bass~
 
     Is equivalent to:
@@ -546,7 +556,7 @@
     all within the same block of 20 words.
 
 *** Range Searches
-    
+
     Range searches allow you to find documents with terms in between
     a specific range. Ranges are calculated lexicographically.  Use
     square brackets to specify an inclusive range, and curly braces
@@ -555,8 +565,8 @@
     The following example will return documents with words containing
     "red" and "rum", plus any words in between.
 
-    : "field:[red TO rum]" 
-    
+    : "field:[red TO rum]"
+
     The following example will return documents with words in between
     "red" and "rum":
 
@@ -604,7 +614,7 @@
    : bin/search-cmd shell [INDEX]
 
    This launches an interactive console into which you can type search
-   commands. For help, type =h()=. 
+   commands. For help, type =h()=.
 
 
 ** Querying via the Command Line
@@ -627,14 +637,14 @@
 
    To run a query from the Erlang shell, use =search:search(Query)=
    or =search:search(Index, Query)=. For example:
-   
+
    : search:search("books", "author:joyce").
-   
+
    This will display a list of Document ID values matching the
    query. To conduct a document search, use
    =search:search_doc(Query)= or =search:search_doc(Index,
    Query)=. For example:
-   
+
    : search:search_doc("books", "author:joyce").
 
 ** Querying via the Solr Interface
@@ -676,7 +686,7 @@
    : curl "http://localhost:8098/solr/books/select?start=0&rows=10000&q=prog*"
 
 ** Faceted Queries via the Solr Interfae
-   
+
    *NOTE:* Facet querying through the Solr interface is not yet supported.
 
    Faceted search allows you to generate keywords (plus counts) to
@@ -715,8 +725,8 @@
 
 
 ** Query Scoring
-   
-   Documents are scored using roughly the same formulas described here: 
+
+   Documents are scored using roughly the same formulas described here:
 
    http://lucene.apache.org/java/3_0_2/api/core/org/apache/lucene/search/Similarity.html
 
@@ -730,9 +740,10 @@
 * Operations and Troubleshooting
 
   Riak Search has all of the same operational properties as
-  Riak. Refer to the Riak wiki
-  [[https://wiki.basho.com/display/RIAK/Home]] for more information on
+  Riak. Refer to the Riak wiki (see below) for more information on
   running Riak in a clustered environment.
+
+  [[https://wiki.basho.com/display/RIAK/Home]]
 
 ** Default Ports
 
@@ -760,19 +771,19 @@
     2. From the riak search console you can significantly decrease
        logging output (though not turn it off entirely) by using the
        command:
-        
+
        : raptor_index_backend:poke("toggle_debug").
 
 *** How do I delete all data from Raptor?
-    
+
     If you want to delete the data stored in Raptor, delete the
     "./data/raptor" directory.
 
 *** Notes
 
-    1. MMap and Cache memory use for both BDB and Lucene are currently hard 
-       coded while a good configuration system is being worked on.  In the 
-       meantime it is recommended you run Raptor on server with a MINIMUM 
+    1. MMap and Cache memory use for both BDB and Lucene are currently hard
+       coded while a good configuration system is being worked on.  In the
+       meantime it is recommended you run Raptor on server with a MINIMUM
        of 2G ram.
 
     2. You may use Raptor on 32-bit systems; change the command line
@@ -783,18 +794,22 @@
 
     4. If you wish to keep the BDB native library in somewhere other
        than it's installed location, change the following command line
-       option in start.sh to reflect the new location:
+       option in start.sh to reflect the new location (wrapped for
+       line-length, enter without spaces):
 
-       : -Djava.library.path=/usr/local/lib:java.library.path=/usr/local/lib:/usr/local/BerkeleyDB.4.8/lib
+       : -Djava.library.path=/usr/local/lib:
+       : java.library.path=/usr/local/lib:/usr/local/BerkeleyDB.4.8/lib
 
     5. Raptor has only been tested on Mac OS X and Linux.
 
     6. If you see this, upgrade to Java 1.6:
 
-       : [javac] bad class file: ...snip.../db.jar(com/sleepycat/db/Environment.class)
+       : [javac] bad class file: ...snip.../db.jar(com/sleepycat/db/
+       : Environment.class)
        : [javac] class file has wrong version 50.0, should be 49.0
-       : [javac] Please remove or make sure it appears in the correct subdirectory of the classpath.
+       : [javac] Please remove or make sure it appears in the correct
+       : subdirectory of the classpath.
        : [javac]     private Environment env;
        : [javac]             ^
        : [javac] 1 error
-         
+
