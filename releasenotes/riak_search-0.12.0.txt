@@ -1,0 +1,73 @@
+--------------------------------
+Riak Search 0.12.0 Release Notes
+--------------------------------
+
+Riak Search 0.12.0 introduces many important usability improvements,
+including packaged installs for Ubuntu, better documentation
+(doc/using_search.org), and a command line interface (search-cmd) for
+simple indexing and testing. 
+
+A greater subset of Lucene syntax is now supported, including fuzzy
+searches. The Solr interface now supports output in both XML and JSON,
+and supports Solr arguments for sorting and default operations and
+fields. Additionally, the schema has been updated to provide more
+flexibility, with per-field analyzers and dynamic fields. 
+
+The integration between Riak Search, the Lucene analyzers, and the
+backend has been improved, eliminating the need to start any
+applications separately from Riak Search. Riak Search now starts up
+any required dependencies, monitors them during operation, and cleanly
+shuts them down on exit.
+
+Please read the documentation (docs/using_search.org) for new installation 
+instructions.
+
+Enhancements
+------------
+ 90 - Added support for fuzzy search. (410) 
+ 99 - Added ranking and scoring to Raptor.
+165 - Improved Raptor performance and stability. (273, 308, 310, 327, 360, 372, 409)
+180 - Improved date-range queries.
+185 - Implemented generalized search vnodes and handoff. (328)
+187 - Added configurable text analyzers.
+189 - Added XML output to Solr interface.
+204 - Support deleting documents through Solr interface. (330)
+262 - Implement numeric field support.
+288 - Added schema API.
+303 - Support Solr's field sorting syntax.
+312 - Made integer padding configurable by field.
+315 - Solr interface supports dynamic fields. (352,353)
+317 - Analyzer factory now a field-level schema setting.
+318 - Add Search command line tools.
+320 - Added single-document indexing to riak_search_client.
+329 - Added search:delete_dir/2.
+418 - Improved partition transfer speed.
+432 - Automatically detect Java path.
+
+Bugs Fixed
+----------
+296 - Better support of unicode document encoding.
+304 - Improved query analysis performance and correctness. (371, 403)
+313 - Removed "boolean" and "float" types from schemas.
+319 - /bin scripts are now named "riaksearch" and "riaksearch-admin".
+335 - Fixed bugs in partition handoff.
+336 - Fixed phrase searching.
+342 - Improved support for proximity queries. (343, 359)
+394 - Improved operation of ets backend. (395)
+396 - Fixed Backend timeouts.
+400 - Fixed Solr default field and operation. (401)
+435 - Correctly invalidate backend cache.
+
+Known Issues
+------------
+186 - ISO8601 date searching not yet supported.
+290 - Multi-valued Solr fields not yet supported.
+311 - Integer searching not yet supported. (362, 363, 369)
+326 - Facet counts not yet supported.
+399 - In certain cases, partition handoff can lead to incorrect search results.
+406 - Changing schema, then deleting document can lead to incorrect search results.
+407 - Prohibited term and NOT queries have different semantics than Lucene. (411, 459)
+416 - Indexing timeouts occur with light-moderate load.
+419 - Scoring not calculated correctly on some multi-term searches.
+442 - Timeout errors during large partition handoff.
+448 - Some documents not returned on multi-term searches.
