@@ -342,11 +342,13 @@
 
    Alternatively, you can provide the fields of the document to index:
 
-   : search:index_doc(Index, Fields)
+   : search:index_doc(Index, DocId, Fields)
 
    Parameters:
 
    + *Index* - The name of the index.
+
+   + *DocId* - Document Id
 
    + *Fields* - A Key/Value list of fields to index. One of these
                fields must be either the atom 'id' or the string
@@ -354,7 +356,7 @@
 
    For example:
 
-   : search:index_doc(Index, [{id, ID}, {title, "The Title"}, {content, "The Content"}])
+   : search:index_doc(Index, DocId, [{title, "The Title"}, {content, "The Content"}])
 
 
 ** Deleting via the Erlang API
