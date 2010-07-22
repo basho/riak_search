@@ -7,7 +7,6 @@
 -module(mi_server).
 -author("Rusty Klophaus <rusty@basho.com>").
 -include("merge_index.hrl").
--include_lib("kernel/include/file.hrl").
 
 -export([
     %% GEN SERVER
@@ -121,7 +120,7 @@ read_buffers(Root, BufferOptions, [{BNum, BName}|Rest], NextID, Segments) ->
     Buffer = mi_buffer:open(BName, BufferOptions),
     mi_buffer:close_filehandle(Buffer),
     Size = mi_buffer:size(Buffer),
-    SegmentWO = mi_segment:open_write(SName, Size, Size),
+    SegmentWO = mi_segment:open_write(SName, Size, Size + 1),
     mi_segment:from_buffer(Buffer, SegmentWO),
     mi_buffer:delete(Buffer),
     clear_deleteme_flag(mi_segment:filename(SegmentWO)),
@@ -179,7 +178,7 @@ handle_call({index, Index, Field, Term, Value, Props, TS}, _From, State) ->
                 SName = join(Root, "segment." ++ integer_to_list(SNum)),
                 set_deleteme_flag(SName),
                 Size = mi_buffer:size(CurrentBuffer),
-                SegmentWO = mi_segment:open_write(SName, Size, Size),
+                SegmentWO = mi_segment:open_write(SName, Size, Size + 1),
                 mi_segment:from_buffer(CurrentBuffer, SegmentWO),
                 SegmentRO = mi_segment:open_read(SName),
                 gen_server:call(Pid, {buffer_to_segment, CurrentBuffer, SegmentRO}, infinity)
@@ -222,11 +221,13 @@ handle_call({buffer_to_segment, Buffer, SegmentWO}, _From, State) ->
     },
 
     %% Give us the opportunity to do a merge...
-    case length(get_segments_to_merge(NewSegments)) of
+    SegmentsToMerge = get_segments_to_merge(NewSegments),
+    case length(SegmentsToMerge) of
         Num when Num =< 2 orelse ScheduledCompaction == true-> 
             NewState2 = NewState1;
         _ -> 
-            mi_scheduler:schedule_compaction(self()),
+            AverageSize = get_average_segment_size(SegmentsToMerge),
+            mi_scheduler:schedule_compaction(AverageSize, self()),
             NewState2 = NewState1#state { scheduled_compaction=true }
     end,
     
@@ -580,8 +581,8 @@ clear_deleteme_flag(Filename) ->
 get_segments_to_merge(Segments) ->
     %% Get all segment sizes...
     F1 = fun(X) ->
-        {ok, FileInfo} = file:read_file_info(mi_segment:data_file(X)),
-        {FileInfo#file_info.size, X}
+        Size = mi_segment:filesize(X),
+        {Size, X}
     end,
     Sizes = [F1(X) || X <- Segments],
     Avg = lists:sum([Size || {Size, _} <- Sizes]) / length(Segments),
@@ -594,6 +595,10 @@ get_segments_to_merge(Segments) ->
         end
     end,
     lists:foldl(F2, [], Sizes).
+
+get_average_segment_size(Segments) ->
+    TotalSize = lists:sum([mi_segment:filesize(X) || X <- Segments]),
+    TotalSize / length(Segments).
 
 fold(_Fun, Acc, eof) -> 
     Acc;

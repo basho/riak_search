@@ -4,7 +4,7 @@
 -export([
     start_link/0,
     start/0,
-    schedule_compaction/1
+    schedule_compaction/2
 ]).
 
 -include("merge_index.hrl").
@@ -27,8 +27,8 @@ start_link() ->
 start() ->
     gen_server:start({local, ?MODULE}, ?MODULE, [], []).
 
-schedule_compaction(Pid) ->
-    gen_server:call(?MODULE, {schedule_compaction, Pid}).
+schedule_compaction(AvgSize, Pid) ->
+    gen_server:call(?MODULE, {schedule_compaction, AvgSize, Pid}).
     
 
 %% ====================================================================
@@ -45,35 +45,35 @@ init([]) ->
     %% a bunch of dup requests for the same directory.
     Self = self(),
     WorkerPid = spawn_link(fun() -> worker_loop(Self) end),
-    {ok, #state{ queue = queue:new(),
+    {ok, #state{ queue = [],
                  worker = WorkerPid }}.
 
-handle_call({schedule_compaction, Pid}, _From, #state { queue = Q } = State) ->
-    case queue:member(Pid, Q) of
-        true ->
-            {reply, already_queued, State};
+handle_call({schedule_compaction, AvgSize, Pid}, _From, #state { queue = Q } = State) ->
+    %% Run the smaller/quicker compactions first. Goal is to keep
+    %% total number of files low.
+    Q1 = lists:keydelete(Pid, 2, Q),
+    Q2 = lists:sort([{AvgSize, Pid}|Q1]),
+    case State#state.worker_ready of
+        true -> 
+            {_, Pid} = hd(Q2),
+            State#state.worker!{compaction, Pid},
+            {reply, ok, State#state { queue=tl(Q2), worker_ready=false }};
         false ->
-            case State#state.worker_ready of
-                true ->
-                    State#state.worker ! {compaction, Pid},
-                    {reply, ok, State};
-                false ->
-                    {reply, ok, State#state { queue = queue:in(Pid, Q) }}
-            end
+            {reply, ok, State#state { queue=Q2 }}
     end.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info(worker_ready, #state { queue = Q } = State) ->
-    case queue:is_empty(Q) of
+    case Q == [] of
         true ->
             {noreply, State#state { worker_ready = true }};
         false ->
-            {{value, Pid}, Q2} = queue:out(Q),
+            {_, Pid} = hd(Q),
+            NewQ = tl(Q),
             State#state.worker ! {compaction, Pid},
-            {noreply, State#state { queue = Q2,
-                                    worker_ready = false }}
+            {noreply, State#state { queue = NewQ, worker_ready = false }}
     end;
 handle_info({'EXIT', Pid, Reason}, #state { worker = Pid } = State) ->
     error_logger:error_msg("Compaction worker PID exited: ~p\n", [Reason]),

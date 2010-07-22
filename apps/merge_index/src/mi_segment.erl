@@ -7,11 +7,14 @@
 -module(mi_segment).
 -author("Rusty Klophaus <rusty@basho.com>").
 -include("merge_index.hrl").
+-include_lib("kernel/include/file.hrl").
+
 -export([
     exists/1,
     open_read/1,
     open_write/3,
     filename/1,
+    filesize/1,
     size/1,
     delete/1,
     data_file/1,
@@ -62,7 +65,7 @@ open_read(Root) ->
             throw({?MODULE, missing__file, Root})
     end.
 
-open_write(Root, EstimatedMin, EstimatedMax) ->
+open_write(Root, EstimatedMin, _EstimatedMax) ->
     %% Create the file if it doesn't exist...
     DataFileExists = filelib:is_file(data_file(Root)),
     OffsetsFileExists = filelib:is_file(offsets_file(Root)),
@@ -72,7 +75,7 @@ open_write(Root, EstimatedMin, EstimatedMax) ->
         false -> 
             mi_utils:create_empty_file(data_file(Root)),
             TableName = ?TABLENAME,
-            Options = [{access, read_write}, {min_no_slots, EstimatedMin}, {max_no_slots, EstimatedMax}],
+            Options = [{access, read_write}, {min_no_slots, EstimatedMin}, {ram_file, true}],
             Response = dets:open_file(TableName, [{file, offsets_file(Root)}] ++ Options),
             {ok, Table} = Response,
             #segment { 
@@ -83,6 +86,10 @@ open_write(Root, EstimatedMin, EstimatedMax) ->
 
 filename(Segment) ->
     Segment#segment.root.
+
+filesize(Segment) ->
+    {ok, FileInfo} = file:read_file_info(data_file(Segment)),
+    FileInfo#file_info.size.
 
 size(Segment) ->
     dets:info(Segment#segment.table, size).
