@@ -2,7 +2,7 @@
 %%
 %% mi: Merge-Index Data Store
 %%
-%% Copyright (c) 2010 Basho Technologies, Inc. All Rights Reserved.
+%% Copyright (c) 2007-2010 Basho Technologies, Inc. All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 -module(mi_sup).
