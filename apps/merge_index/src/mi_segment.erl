@@ -9,8 +9,10 @@
 -include("merge_index.hrl").
 -export([
     exists/1,
-    open/1,
+    open_read/1,
+    open_write/3,
     filename/1,
+    size/1,
     delete/1,
     data_file/1,
     offsets_file/1,
@@ -28,6 +30,8 @@
     table
 }).
 
+-define(TABLENAME, {now(), make_ref()}).
+
 %%% Creates a segment file, which is an disk-based ordered set with a
 %%% gb_tree based index. Supports merging new values into the index
 %%% (returns a new index) getting count information based on a key
@@ -44,27 +48,47 @@ exists(Root) ->
     filelib:is_file(data_file(Root)).
 
 %% Create and return a new segment structure.
-open(Root) ->
+open_read(Root) ->
     %% Create the file if it doesn't exist...
-    case filelib:is_file(data_file(Root)) of
-        true  -> ok;
-        false -> mi_utils:create_empty_file(data_file(Root))
-    end,
+    DataFileExists = filelib:is_file(data_file(Root)),
+    case DataFileExists of
+        true  -> 
+            Table = read_offsets(Root),
+            #segment { 
+                root=Root, 
+                table=Table
+            };
+        false ->
+            throw({?MODULE, missing__file, Root})
+    end.
 
-    %% Read the offsets...
-    Table = read_offsets(Root),
-
-    %% Return the new segment...
-    #segment { 
-        root=Root, 
-        table=Table
-    }.
+open_write(Root, EstimatedMin, EstimatedMax) ->
+    %% Create the file if it doesn't exist...
+    DataFileExists = filelib:is_file(data_file(Root)),
+    OffsetsFileExists = filelib:is_file(offsets_file(Root)),
+    case DataFileExists orelse OffsetsFileExists of
+        true  -> 
+            throw({?MODULE, segment_already_exists, Root});
+        false -> 
+            mi_utils:create_empty_file(data_file(Root)),
+            TableName = ?TABLENAME,
+            Options = [{access, read_write}, {min_no_slots, EstimatedMin}, {max_no_slots, EstimatedMax}],
+            Response = dets:open_file(TableName, [{file, offsets_file(Root)}] ++ Options),
+            {ok, Table} = Response,
+            #segment { 
+                root=Root, 
+                table=Table
+            }
+    end.
 
 filename(Segment) ->
     Segment#segment.root.
 
+size(Segment) ->
+    dets:info(Segment#segment.table, size).
+
 delete(Segment) ->
-    true = ets:delete(Segment#segment.table),
+    ok = dets:close(Segment#segment.table),
     [ok = file:delete(X) || X <- filelib:wildcard(Segment#segment.root ++ ".*")],
     ok.
 
@@ -91,7 +115,7 @@ from_iterator_inner(FH, Offset, Pos, Count, LastIFT, _LastValue, {{IFT, Value, P
 when LastIFT /= IFT ->
     %% Close the last keyspace if it existed...
     case Count > 0 of
-        true -> ets:insert(Table, {LastIFT, {Offset, Count}});
+        true -> ok = dets:insert(Table, {LastIFT, {Offset, Count}});
         false -> ignore
     end,
 
@@ -120,13 +144,13 @@ from_iterator_inner(_FH, 0, 0, 0, undefined, undefined, eof, _Table) ->
     ok;
 
 from_iterator_inner(_FH, Offset, _, Count, LastIFT, _LastValue, eof, Table) ->
-    ets:insert(Table, {LastIFT, {Offset, Count}}).
+    ok = dets:insert(Table, {LastIFT, {Offset, Count}}).
 
 
 %% return the number of results under this IFT.
 info(IFT, Segment) ->
     Table = Segment#segment.table,
-    case ets:lookup(Table, IFT) of
+    case dets:lookup(Table, IFT) of
         [{IFT, {_Offset, Count}}] -> 
             Count;
         [] ->
@@ -135,17 +159,29 @@ info(IFT, Segment) ->
 
 %% Return the number of results for IFTs between the StartIFT and
 %% StopIFT, inclusive.
-info(StartIFT, EndIFT, Segment) ->
+info(IFT, IFT, Segment) ->
     Table = Segment#segment.table,
-    IFT = mi_utils:ets_next(Table, StartIFT),
-    info_1(Table, IFT, EndIFT, 0).
-info_1(_Table, IFT, EndIFT, Count)
-when IFT == '$end_of_table' orelse (EndIFT /= all andalso IFT > EndIFT) ->
-    Count;
-info_1(Table, IFT, EndIFT, Count) ->
-    [{IFT, {_, NewCount}}] = ets:lookup(Table, IFT),
-    NextIFT = ets:next(Table, IFT),
-    info_1(Table, NextIFT, EndIFT, Count + NewCount).
+    case dets:lookup(Table, IFT) of
+        [{IFT, {_, Count}}] -> Count;
+        _ -> 0
+    end.
+    
+%% info(StartIFT, EndIFT, Segment) ->
+%%     Table = Segment#segment.table,
+%%     IFT = mi_utils:ets_next(Table, StartIFT),
+%%     info_1(Table, IFT, EndIFT, 0).
+%% info_1(_Table, IFT, EndIFT, Count)
+%% when IFT == '$end_of_table' orelse (EndIFT /= all andalso IFT > EndIFT) ->
+%%     Count;
+%% info_1(Table, IFT, EndIFT, Count) ->
+%%     %% TODO - Simplify this code. This is a holdover from previous
+%%     %% versions of merge-index. We no longer need to be able to
+%%     %% iterate across the backend.
+%%     throw({?MODULE, unexpected_path, info_1}).
+%%     [{IFT, {_, NewCount}}] = dets:lookup(Table, IFT),
+%%     throw
+%%     NextIFT = ets:next(Table, IFT),
+%%     info_1(Table, NextIFT, EndIFT, Count + NewCount).
     
 
 %% Create an iterator over the entire segment.
@@ -157,16 +193,23 @@ iterator(Segment) ->
 %% Create a value iterator starting at StartIFT and stopping at
 %% EndIFT. Returns an IteratorFun of arity zero that returns {Term,
 %% NewIteratorFun} or 'eof' when called.
-iterator(StartIFT, EndIFT, Segment) ->
+
+%% TODO - Clean this up. This is a holdover from legacy versions of
+%% merge-index. We now only iterate in two modes, either the whole
+%% table, or a single IFT.
+iterator(_IFT, all, Segment) ->
+    {ok, FH} = file:open(data_file(Segment), [read, raw, binary]),
+    file:position(FH, 0),
+    fun() -> iterator_fun(FH, undefined, all, []) end;
+iterator(IFT, IFT, Segment) ->
     %% Lookup the nearest key after StartIFT.
     Table = Segment#segment.table,
-    case mi_utils:ets_next(Table, StartIFT) of
-        IFT when IFT /= '$end_of_table' ->
-            [{IFT, {Offset, _}}] = ets:lookup(Table, IFT),
+    case dets:lookup(Table, IFT) of
+        [{IFT, {Offset, _}}] ->
             {ok, FH} = file:open(data_file(Segment), [read, raw, binary]),
             file:position(FH, Offset),
-            fun() -> iterator_fun(FH, undefined, EndIFT, []) end;
-        '$end_of_table' ->
+            fun() -> iterator_fun(FH, undefined, IFT, []) end;
+        [] ->
             fun() -> eof end
     end.
    
@@ -210,7 +253,7 @@ iterator_fun_1(FH, CurrentKey, EndIFT, Acc) ->
 read_offsets(Root) ->
     case filelib:is_file(offsets_file(Root)) of
         true ->
-            {ok, Table} = ets:file2tab(offsets_file(Root)),
+            {ok, Table} = dets:open_file(?TABLENAME, [{file, offsets_file(Root)}, {access, read}]),
             Table;
         false ->
             repair_offsets(Root)
@@ -221,12 +264,13 @@ repair_offsets(Root) ->
         true -> 
             ReadBuffer = 1024 * 1024,
             {ok, FH} = file:open(data_file(Root), [read, {read_ahead, ReadBuffer}, raw, binary]),
-            Table = ets:new(segment, [ordered_set, public]),
+            {ok, Table} = dets:open_file(?TABLENAME, [{file, offsets_file(Root)}, {access, read_write}]),
             repair_offsets_inner(FH, 0, 0, undefined, Table),
             file:close(FH),
-            Table;
+            dets:close(Table),
+            read_offsets(Root);
         false ->
-            ets:new(segment, [ordered_set, public])
+            throw({?MODULE, repair_offsets, not_found, data_file(Root)})
     end.
 
 repair_offsets_inner(FH, Offset, Count, LastIFT, Table) ->
@@ -235,20 +279,20 @@ repair_offsets_inner(FH, Offset, Count, LastIFT, Table) ->
         {key, IFT} when LastIFT == undefined ->
             repair_offsets_inner(FH, Pos, 0, IFT, Table);
         {key, IFT} when LastIFT /= undefined ->
-            ets:insert(Table, {LastIFT, {Offset, Count}}),
+            ok = dets:insert(Table, {LastIFT, {Offset, Count}}),
             repair_offsets_inner(FH, Pos, 0, IFT, Table);
         {value, _} ->
             repair_offsets_inner(FH, Offset, Count + 1, LastIFT, Table);
         eof when LastIFT == undefined ->
             ok;
         eof when LastIFT /= undefined ->
-            ets:insert(Table, {LastIFT, {Offset, Count}}),
+            ok = dets:insert(Table, {LastIFT, {Offset, Count}}),
             ok
     end.
                         
 write_offsets(Segment) ->
     Table = Segment#segment.table,
-    ok = ets:tab2file(Table, offsets_file(Segment)).
+    ok = dets:close(Table).
 
 %% Dialyzer says this clause is impossible.
 %% read_seg_value(undefined) ->
@@ -322,14 +366,14 @@ test() ->
     4 = info(<<2>>, <<4>>, SegmentA),
 
     %% Read from an existing segment...
-    SegmentB = open(SegmentA#segment.root),
+    SegmentB = open_read(SegmentA#segment.root),
     1 = info(<<2>>, SegmentB),
     2 = info(<<4>>, SegmentB),
     4 = info(<<2>>, <<4>>, SegmentB),
 
     %% Test offset repair...
     file:delete(offsets_file(SegmentA)),
-    SegmentC = open(SegmentA#segment.root),
+    SegmentC = open_read(SegmentA#segment.root),
     1 = info(<<2>>, SegmentC),
     2 = info(<<4>>, SegmentC),
     4 = info(<<2>>, <<4>>, SegmentC),

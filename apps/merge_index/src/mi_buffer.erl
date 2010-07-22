@@ -12,6 +12,7 @@
     filename/1,
     close_filehandle/1,
     delete/1,
+    filesize/1,
     size/1,
     write/5,
     info/2, info/3,
@@ -69,9 +70,11 @@ close_filehandle(Buffer) ->
     file:close(Buffer#buffer.handle).
 
 %% Return the current size of the buffer file.
-size(Buffer) ->
+filesize(Buffer) ->
     Buffer#buffer.size.
 
+size(Buffer) ->
+    ets:info(Buffer#buffer.table, size).
 
 %% Write the value to the buffer.
 %% Returns the new buffer structure.
