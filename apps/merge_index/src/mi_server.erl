@@ -262,8 +262,9 @@ handle_call({start_compaction, CallingPid}, _From, State) ->
         SName = join(State, io_lib:format("segment.~.16B", [MD5])),
         set_deleteme_flag(SName),
 
-        MinSize = lists:min([mi_segment:size(X) || X <- SegmentsToCompact]),
-        MaxSize = lists:max([mi_segment:size(X) || X <- SegmentsToCompact]) * 2,
+        %% Calculate min and max table slots based on incoming segments.
+        MinSize = lists:max([mi_segment:size(X) || X <- SegmentsToCompact]),
+        MaxSize = lists:sum([mi_segment:size(X) || X <- SegmentsToCompact]),
         CompactSegment = mi_segment:open_write(SName, MinSize, MaxSize),
         
         %% Run the compaction...
