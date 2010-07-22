@@ -116,7 +116,7 @@ select(StartKey, EndKey, Size, Incdex) ->
     Iterator = {Table, Key, EndKey},
     select_1(Iterator, Size, []).
 
-select_1({_Table, Key, EndKey}, Size, Acc)
+select_1({_Table, Key, EndKey}, _Size, Acc)
 when Key == '$end_of_table' orelse (EndKey /= all andalso Key > EndKey) ->
     lists:reverse(Acc);
 select_1({Table, Key, EndKey}, Size, Acc) ->
