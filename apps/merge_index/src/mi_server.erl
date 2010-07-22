@@ -180,8 +180,7 @@ handle_call({index, Index, Field, Term, Value, Props, TS}, _From, State) ->
                 Size = mi_buffer:size(CurrentBuffer),
                 SegmentWO = mi_segment:open_write(SName, Size, Size + 1),
                 mi_segment:from_buffer(CurrentBuffer, SegmentWO),
-                SegmentRO = mi_segment:open_read(SName),
-                gen_server:call(Pid, {buffer_to_segment, CurrentBuffer, SegmentRO}, infinity)
+                gen_server:call(Pid, {buffer_to_segment, CurrentBuffer, SegmentWO}, infinity)
             end),
             
             %% Create a new empty buffer...
