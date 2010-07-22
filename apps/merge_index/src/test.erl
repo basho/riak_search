@@ -21,7 +21,7 @@ ensure_pid() ->
 
 merge() ->
     Pid = ensure_pid(),
-    merge_index:merge(Pid).
+    merge_index:compact(Pid).
 
 write(N) ->
     Pid = ensure_pid(),
