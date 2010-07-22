@@ -57,7 +57,7 @@ start_link() ->
     gen_server:start_link(?MODULE, [], []).
 
 init([]) ->
-    case application:get_env(analysis_port) of
+    case application:get_env(qilr, analysis_port) of
         {ok, Port} when is_integer(Port) ->
             case service_connect(Port) of
                 {ok, Sock} ->
