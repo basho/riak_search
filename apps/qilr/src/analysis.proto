@@ -12,9 +12,9 @@ message AnalysisStop {
 }
 
 message AnalysisError {
-  required string message = 1;
+  required string error = 1;
   optional string description = 2;
-  optional int32 error_number = 3;
+  optional int32  error_number = 3;
 }
 
 message AnalysisResult {

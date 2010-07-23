@@ -727,12 +727,12 @@ public final class Analysis {
       return com.basho.search.proto.Analysis.internal_static_basho_search_analysis_AnalysisError_fieldAccessorTable;
     }
     
-    // required string message = 1;
-    public static final int MESSAGE_FIELD_NUMBER = 1;
-    private boolean hasMessage;
-    private java.lang.String message_ = "";
-    public boolean hasMessage() { return hasMessage; }
-    public java.lang.String getMessage() { return message_; }
+    // required string error = 1;
+    public static final int ERROR_FIELD_NUMBER = 1;
+    private boolean hasError;
+    private java.lang.String error_ = "";
+    public boolean hasError() { return hasError; }
+    public java.lang.String getError() { return error_; }
     
     // optional string description = 2;
     public static final int DESCRIPTION_FIELD_NUMBER = 2;
@@ -751,15 +751,15 @@ public final class Analysis {
     private void initFields() {
     }
     public final boolean isInitialized() {
-      if (!hasMessage) return false;
+      if (!hasError) return false;
       return true;
     }
     
     public void writeTo(com.google.protobuf.CodedOutputStream output)
                         throws java.io.IOException {
       getSerializedSize();
-      if (hasMessage()) {
-        output.writeString(1, getMessage());
+      if (hasError()) {
+        output.writeString(1, getError());
       }
       if (hasDescription()) {
         output.writeString(2, getDescription());
@@ -776,9 +776,9 @@ public final class Analysis {
       if (size != -1) return size;
     
       size = 0;
-      if (hasMessage()) {
+      if (hasError()) {
         size += com.google.protobuf.CodedOutputStream
-          .computeStringSize(1, getMessage());
+          .computeStringSize(1, getError());
       }
       if (hasDescription()) {
         size += com.google.protobuf.CodedOutputStream
@@ -946,8 +946,8 @@ public final class Analysis {
       
       public Builder mergeFrom(com.basho.search.proto.Analysis.AnalysisError other) {
         if (other == com.basho.search.proto.Analysis.AnalysisError.getDefaultInstance()) return this;
-        if (other.hasMessage()) {
-          setMessage(other.getMessage());
+        if (other.hasError()) {
+          setError(other.getError());
         }
         if (other.hasDescription()) {
           setDescription(other.getDescription());
@@ -981,7 +981,7 @@ public final class Analysis {
               break;
             }
             case 10: {
-              setMessage(input.readString());
+              setError(input.readString());
               break;
             }
             case 18: {
@@ -997,24 +997,24 @@ public final class Analysis {
       }
       
       
-      // required string message = 1;
-      public boolean hasMessage() {
-        return result.hasMessage();
+      // required string error = 1;
+      public boolean hasError() {
+        return result.hasError();
       }
-      public java.lang.String getMessage() {
-        return result.getMessage();
+      public java.lang.String getError() {
+        return result.getError();
       }
-      public Builder setMessage(java.lang.String value) {
+      public Builder setError(java.lang.String value) {
         if (value == null) {
     throw new NullPointerException();
   }
-  result.hasMessage = true;
-        result.message_ = value;
+  result.hasError = true;
+        result.error_ = value;
         return this;
       }
-      public Builder clearMessage() {
-        result.hasMessage = false;
-        result.message_ = getDefaultInstance().getMessage();
+      public Builder clearError() {
+        result.hasError = false;
+        result.error_ = getDefaultInstance().getError();
         return this;
       }
       
@@ -1428,11 +1428,11 @@ public final class Analysis {
       "\n\016analysis.proto\022\025basho.search.analysis\"" +
       "P\n\017AnalysisRequest\022\014\n\004text\030\001 \002(\t\022\030\n\020anal" +
       "yzer_factory\030\002 \001(\t\022\025\n\ranalyzer_args\030\003 \003(" +
-      "\t\"\034\n\014AnalysisStop\022\014\n\004wait\030\001 \001(\005\"K\n\rAnaly" +
-      "sisError\022\017\n\007message\030\001 \002(\t\022\023\n\013description" +
-      "\030\002 \001(\t\022\024\n\014error_number\030\003 \001(\005\"-\n\016Analysis" +
-      "Result\022\r\n\005token\030\001 \001(\t\022\014\n\004done\030\002 \002(\005B\030\n\026c" +
-      "om.basho.search.proto"
+      "\t\"\034\n\014AnalysisStop\022\014\n\004wait\030\001 \001(\005\"I\n\rAnaly" +
+      "sisError\022\r\n\005error\030\001 \002(\t\022\023\n\013description\030\002" +
+      " \001(\t\022\024\n\014error_number\030\003 \001(\005\"-\n\016AnalysisRe" +
+      "sult\022\r\n\005token\030\001 \001(\t\022\014\n\004done\030\002 \002(\005B\030\n\026com" +
+      ".basho.search.proto"
     };
     com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner assigner =
       new com.google.protobuf.Descriptors.FileDescriptor.InternalDescriptorAssigner() {
@@ -1460,7 +1460,7 @@ public final class Analysis {
           internal_static_basho_search_analysis_AnalysisError_fieldAccessorTable = new
             com.google.protobuf.GeneratedMessage.FieldAccessorTable(
               internal_static_basho_search_analysis_AnalysisError_descriptor,
-              new java.lang.String[] { "Message", "Description", "ErrorNumber", },
+              new java.lang.String[] { "Error", "Description", "ErrorNumber", },
               com.basho.search.proto.Analysis.AnalysisError.class,
               com.basho.search.proto.Analysis.AnalysisError.Builder.class);
           internal_static_basho_search_analysis_AnalysisResult_descriptor =
