@@ -27,10 +27,19 @@ public class IntegerPaddingFilter extends TokenFilter {
 	  public final boolean incrementToken() throws IOException {
 	    if (!input.incrementToken())
 	      return false;
-	    String token = new String(termAtt.termBuffer(), 0, termAtt.termLength());
-	    String padded = String.format(fmt, Integer.parseInt(token));
-	    termAtt.setTermBuffer(padded);
-	    return true;
+	    try
+	    {
+	    	String token = new String(termAtt.termBuffer(), 0, termAtt.termLength());
+	    	String padded = String.format(fmt, Integer.parseInt(token));
+	    	termAtt.setTermBuffer(padded);
+	    	return true;
+	    }
+	    // Skip over any badly formatted numbers.  The tokenizer allows
+	    // things like 123-456- through
+	    catch (java.lang.NumberFormatException e)
+	    {
+	    	return incrementToken();
+	    }
 	  }
 
 }
