@@ -50,4 +50,5 @@
                             required=false,
                             dynamic=false,
                             analyzer_factory,
+                            analyzer_args,
                             facet=false}).

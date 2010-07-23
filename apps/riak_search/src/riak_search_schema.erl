@@ -26,6 +26,7 @@
     padding_char/1,
     is_field_required/1,
     analyzer_factory/1,
+    analyzer_args/1,
     is_field_facet/1,
     field_types/0,
 
@@ -90,6 +91,9 @@ is_field_required(Field) ->
 
 analyzer_factory(Field) ->
     Field#riak_search_field.analyzer_factory.
+
+analyzer_args(Field) ->
+    Field#riak_search_field.analyzer_args.
 
 is_field_facet(Field) ->
     Field#riak_search_field.facet == true.

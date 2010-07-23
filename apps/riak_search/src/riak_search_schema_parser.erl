@@ -9,6 +9,9 @@
 
 -include_lib("qilr/include/qilr.hrl").
 -include("riak_search.hrl").
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 %% Given an Erlang term (see riak_search/priv/search.def for example)
 %% parse the term into a riak_search_schema parameterized module.
@@ -53,6 +56,7 @@ when FieldClass == field orelse FieldClass == dynamic_field ->
     PaddingChar = proplists:get_value(padding_char, FieldProps, DefaultPaddingChar),
     DefaultFieldAnalyzer = get_default_field_analyzer(Type, SchemaAnalyzer),
     FieldAnalyzer = proplists:get_value(analyzer_factory, FieldProps, DefaultFieldAnalyzer),
+    FieldAnalyzerArgs = proplists:get_value(analyzer_args, FieldProps, undefined),
     Facet = proplists:get_value(facet, FieldProps, false),
 
     %% Verify that name exists...
@@ -72,17 +76,19 @@ when FieldClass == field orelse FieldClass == dynamic_field ->
     end,
 
     %% Create the field...
-    Field = #riak_search_field {
+    Field0 = #riak_search_field {
       name=NewName, 
       type=Type, 
       padding_size=PaddingSize,
-      padding_char=PaddingChar,
+      padding_char=normalize_padding_char(PaddingChar, Name),
       required=IsRequired, 
       dynamic=IsDynamic, 
-      analyzer_factory=FieldAnalyzer, 
+      analyzer_factory=FieldAnalyzer,
+      analyzer_args=FieldAnalyzerArgs,
       facet=Facet
      },
-
+    Field = Field0#riak_search_field{analyzer_args = calculate_analyzer_args(Field0)},
+ 
     %% Add the field...
     parse_fields(T, SchemaAnalyzer, [Field|Fields]).
 
@@ -99,11 +105,9 @@ get_default_padding_char(Type) ->
     end.
 
 get_default_field_analyzer(Type, SchemaAnalyzer) ->
-    case Type of
-        integer ->
+    case Type == integer orelse Type == date of
+        true ->
             ?INTEGER_ANALYZER;
-        date ->
-            ?WHITESPACE_ANALYZER;
         _ ->
             SchemaAnalyzer
     end.
@@ -113,6 +117,15 @@ valid_type(string)  -> true;
 valid_type(integer) -> true;
 valid_type(date)    -> true;
 valid_type(_Other)  -> false.
+
+%% Single char string
+normalize_padding_char([Char], _Field) when is_integer(Char) ->
+    Char;
+%% $0 type entry
+normalize_padding_char(Char, _Field) when is_integer(Char) ->
+    Char;
+normalize_padding_char(_BadValue, Field) ->
+    throw({error, {bad_padding_char, Field}}).
 
 %% A name pattern can have one (and only one) wildcard. If we find a
 %% wildcard, replace it with a the regex ".*" So
@@ -132,3 +145,85 @@ calculate_name_pattern_1([$*|T]) ->
     [$.,$*|calculate_name_pattern_1(T)];
 calculate_name_pattern_1([H|T]) -> 
     [H|calculate_name_pattern_1(T)].
+
+%% Calculate the arguments to send across to qilr for the analyzer_factory
+calculate_analyzer_args(Field=#riak_search_field{analyzer_args=Args}) when 
+      Args =/= undefined ->
+    case is_list(Args) andalso lists:all(fun is_string/1, Args) of
+        true ->
+            Args;
+        false ->
+            throw({error, {analyzer_args_must_be_strings, Field#riak_search_field.name}})
+    end;
+calculate_analyzer_args(Field) ->
+    case Field#riak_search_field.analyzer_factory of
+        ?INTEGER_ANALYZER ->
+            case Field#riak_search_field.padding_char of
+                $0 ->
+                    [integer_to_list(Field#riak_search_field.padding_size)];
+                _ ->
+                    throw({error, {integer_fields_only_pads_with_zeros, 
+                                   Field#riak_search_field.name}})
+            end;
+        _ ->
+            undefined
+    end.
+
+is_string([]) ->
+    true;
+is_string([C|T]) when is_integer(C), C >= 0, C =< 255 ->
+    is_string(T);
+is_string(_) ->
+    false.
+
+-ifdef(TEST).
+
+is_string_test() ->
+    ?assertEqual(true, is_string("")),
+    ?assertEqual(true, is_string("a")),
+    ?assertEqual(true, is_string("a b c")),
+    ?assertEqual(false, is_string(undefined)),
+    ?assertEqual(false, is_string(["nested string"])),
+    ?assertEqual(false, is_string([0, 256])), % char out of range
+    ?assertEqual(false, is_string(<<"binaries are not strings">>)).
+
+calculate_analyzer_args_test() ->
+    ZeroArgs=#riak_search_field{analyzer_args=[]},
+    ?assertEqual([], calculate_analyzer_args(ZeroArgs)),
+
+    OneArgs=#riak_search_field{analyzer_args=["abc"]},
+    ?assertEqual(["abc"], calculate_analyzer_args(OneArgs)),
+
+    TwoArgs=#riak_search_field{analyzer_args=["abc","123"]},
+    ?assertEqual(["abc","123"], calculate_analyzer_args(TwoArgs)),
+
+
+    ?assertThrow({error, {analyzer_args_must_be_strings, _}},
+        calculate_analyzer_args(#riak_search_field{analyzer_args=atom})),
+
+    ?assertThrow({error, {analyzer_args_must_be_strings, _}},
+        calculate_analyzer_args(#riak_search_field{analyzer_args=[atomlist]})),
+
+    ?assertThrow({error, {analyzer_args_must_be_strings, _}},
+        calculate_analyzer_args(#riak_search_field{analyzer_args="barestr"})),
+
+    ?assertThrow({error, {analyzer_args_must_be_strings, _}},
+        calculate_analyzer_args(#riak_search_field{analyzer_args=123})),
+
+    ?assertThrow({error, {analyzer_args_must_be_strings, _}},
+        calculate_analyzer_args(#riak_search_field{analyzer_args= <<"bin">>})).
+    
+normalize_padding_char_test() ->
+    ?assertEqual($0, normalize_padding_char($0, fld)),
+    ?assertEqual($0, normalize_padding_char("0", fld)),
+
+    ?assertThrow({error, {bad_padding_char, _}},
+                 normalize_padding_char(a, fld)),
+    ?assertThrow({error, {bad_padding_char, fld}}, 
+                 normalize_padding_char(<<"0">>, fld)),
+    ?assertThrow({error, {bad_padding_char, fld}}, 
+                 normalize_padding_char("00", fld)).
+    
+
+
+-endif. % TEST

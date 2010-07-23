@@ -150,17 +150,11 @@ analyze_field(FieldName, FieldValue, Schema, AnalyzerPid) ->
     %% Get the field...
     Field = Schema:find_field(FieldName),
     AnalyzerFactory = Schema:analyzer_factory(Field),
-    PadSize = Schema:padding_size(Field),
-    PadChar = Schema:padding_char(Field),
+    AnalyzerArgs = Schema:analyzer_args(Field),
 
     %% Analyze the field...
-    {ok, Tokens} = qilr_analyzer:analyze(AnalyzerPid, FieldValue, AnalyzerFactory),
+    qilr_analyzer:analyze(AnalyzerPid, FieldValue, AnalyzerFactory, AnalyzerArgs).
 
-    %% Do left padding.
-    Tokens1 = [riak_search_text:left_pad(X, PadSize, PadChar) || X <- Tokens],
-    
-    %% Return.
-    {ok, Tokens1}.
 
 %% @private Given a list of tokens, build a gb_tree mapping words to a
 %% list of word positions.
