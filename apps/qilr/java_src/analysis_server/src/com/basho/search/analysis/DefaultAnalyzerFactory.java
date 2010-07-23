@@ -12,7 +12,7 @@ import org.apache.lucene.util.Version;
 
 public class DefaultAnalyzerFactory implements AnalyzerFactory {
 
-   public TokenStream makeStream(Version version, StringReader input) {
+   public TokenStream makeStream(Version version, StringReader input, String[] args) {
       TokenStream stream = new StandardTokenizer(version, input);
       stream = new LengthFilter(stream, 3, Integer.MAX_VALUE);
       stream = new LowerCaseFilter(stream);

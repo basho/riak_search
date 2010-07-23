@@ -282,19 +282,17 @@ analyze_term_text(FieldName, AnalyzerPid, Schema, Text0) ->
     %% Get the field....
     Field = Schema:find_field(FieldName1),
     AnalyzerFactory = Schema:analyzer_factory(Field),
-    PadSize = Schema:padding_size(Field),
-    PadChar = Schema:padding_char(Field),
+    AnalyzerArgs = Schema:analyzer_args(Field),
 
     %% Analyze the field...
-    {ok, Tokens} = qilr_analyzer:analyze(AnalyzerPid, Text, AnalyzerFactory),
-    Tokens1 = [riak_search_text:left_pad(X, PadSize, PadChar) || X <- Tokens, X /= ""],
-    case Tokens1 of
+    {ok, Tokens} = qilr_analyzer:analyze(AnalyzerPid, Text, AnalyzerFactory, AnalyzerArgs),
+    case Tokens of
         [] ->      % None
             none;
         [Token] -> % One
             {single, Token};
         _ ->       % Many
-            {multi, Tokens1}
+            {multi, Tokens}
     end.
 analyze_proximity_text(AnalyzerPid, TermText) ->
     {ok, Terms0} = qilr_analyzer:analyze(AnalyzerPid, TermText, ?WHITESPACE_ANALYZER),

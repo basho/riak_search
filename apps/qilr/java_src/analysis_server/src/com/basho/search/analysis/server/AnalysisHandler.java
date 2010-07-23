@@ -1,6 +1,5 @@
 package com.basho.search.analysis.server;
 
-import java.io.FileOutputStream;
 import java.util.Iterator;
 import java.util.List;
 import java.util.logging.Level;
@@ -49,7 +48,8 @@ public class AnalysisHandler extends SimpleChannelUpstreamHandler {
       }
       Channel chan = e.getChannel();
       try {
-         List<String> tokens = TextAnalyzer.analyze(text, analyzerFactory);
+         List<String> tokens = TextAnalyzer.analyze(text, analyzerFactory,
+        		 request.getAnalyzerArgsList().toArray(new String[0]));
          if (tokens.size() > 0) {
             StringBuilder buf = new StringBuilder();
             if (tokens.size() == 1) {

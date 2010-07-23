@@ -8,8 +8,8 @@ import org.apache.lucene.util.Version;
 
 public class WhitespaceAnalyzerFactory implements AnalyzerFactory {
 
-   public TokenStream makeStream(Version version, StringReader input) {
+   public TokenStream makeStream(Version version, StringReader input,
+		                         String[] args) {
       return new WhitespaceTokenizer(input);
    }
-
 }

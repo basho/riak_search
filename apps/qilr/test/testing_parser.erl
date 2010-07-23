@@ -8,7 +8,7 @@ parse(Query) ->
 parse(Query, Bool) ->
     Schema = riak_search_schema:new("search", undefined, "value",
                                     [{riak_search_field, ".*", string, 0,
-                                      undefined, false, true, undefined, false}],
+                                      undefined, false, true, undefined, undefined, false}],
                                     Bool, "com.basho.search.analysis.DefaultAnalyzerFactory"),
     qilr_parse:string(Query, Schema).
 
