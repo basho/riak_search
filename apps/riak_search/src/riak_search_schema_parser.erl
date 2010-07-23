@@ -99,9 +99,13 @@ get_default_padding_char(Type) ->
     end.
 
 get_default_field_analyzer(Type, SchemaAnalyzer) ->
-    case Type == integer orelse Type == date of
-        true  -> ?WHITESPACE_ANALYZER;
-        false -> SchemaAnalyzer
+    case Type of
+        integer ->
+            ?INTEGER_ANALYZER;
+        date ->
+            ?WHITESPACE_ANALYZER;
+        _ ->
+            SchemaAnalyzer
     end.
 
 %% Return true if this is a type we know and love.
