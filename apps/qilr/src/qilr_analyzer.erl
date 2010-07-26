@@ -12,6 +12,10 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-define(MSG_ANALYSIS_REQUEST, 1).
+-define(MSG_ANALYSIS_RESULT,  2).
+-define(MSG_ANALYSIS_ERROR,   3).
+
 %% API
 -export([start_link/0, analyze/2, analyze/3, analyze/4, close/1]).
 
@@ -80,7 +84,7 @@ handle_call(close, _From, #state{socket=Sock}=State) ->
     {stop, normal, ok, State};
 
 handle_call({analyze, Req}, From, #state{socket=Sock, caller=undefined}=State) ->
-    gen_tcp:send(Sock, analysis_pb:encode_analysisrequest(Req)),
+    gen_tcp:send(Sock, [<<(?MSG_ANALYSIS_REQUEST):16>>, analysis_pb:encode_analysisrequest(Req)]),
     inet:setopts(Sock, [{active, once}]),
     {noreply, State#state{caller=From}};
 
@@ -90,9 +94,17 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({tcp, _Sock, Data}, #state{caller=Caller}=State) ->
+handle_info({tcp, _Sock, <<(?MSG_ANALYSIS_RESULT):16, Data/binary>>}, 
+            #state{caller=Caller}=State) ->
     Res = analysis_pb:decode_analysisresult(Data),
     gen_server:reply(Caller, {ok, parse_results(Res#analysisresult.token)}),
+    {noreply, State#state{caller=undefined}};
+handle_info({tcp, _Sock, <<(?MSG_ANALYSIS_ERROR):16, Data/binary>>}, 
+            #state{caller=Caller}=State) ->
+    Res = analysis_pb:decode_analysiserror(Data),
+    gen_server:reply(Caller, {error, {Res#analysiserror.error,
+                                      Res#analysiserror.description,
+                                      Res#analysiserror.error_number}}),
     {noreply, State#state{caller=undefined}};
 
 handle_info(_Info, State) ->

@@ -146,6 +146,10 @@
     {search, "order2_int:1", [{length, 1}]},
     {search, "order2_int:0001", [{length, 1}]},
 
+    {echo,   "Verify integer search with non-integer terms."},
+    {search, "i_dyn:abc", [{length, 0}]},
+    {search, "i_dyn:\"-\"", [{length, 0}]},
+
     %%  %% Cleanup.
     {echo,   "De-indexing documents..."},
     {solr,   "./solr_delete.xml"},
