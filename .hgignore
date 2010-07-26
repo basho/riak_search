@@ -19,6 +19,7 @@ priv/log/.*
 priv/weblogs/.*
 ^priv/store
 ^priv/ringstate/*
+priv/.*\.so$
 ^client_lib/java/build/*
 ^client_lib/java/dist/*
 ^client_lib/java/javadoc/*
