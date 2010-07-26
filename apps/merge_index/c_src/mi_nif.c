@@ -25,6 +25,12 @@ typedef struct
     segidx_entry entries[0];
 } mi_nif_segidx_handle;
 
+typedef struct
+{
+    uint32_t total_bytes;
+    ErlNifMutex* lock;
+} mi_nif_segidx_global;
+
 // Prototypes
 ERL_NIF_TERM mi_nif_segidx_new(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 ERL_NIF_TERM mi_nif_segidx_lookup(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
@@ -32,6 +38,7 @@ ERL_NIF_TERM mi_nif_segidx_lookup_nearest(ErlNifEnv* env, int argc, const ERL_NI
 ERL_NIF_TERM mi_nif_segidx_entry_count(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 ERL_NIF_TERM mi_nif_segidx_ift_count(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 ERL_NIF_TERM mi_nif_segidx_ift_range_count(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
+ERL_NIF_TERM mi_nif_segidx_info(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]);
 
 static ErlNifFunc nif_funcs[] =
 {
@@ -40,7 +47,8 @@ static ErlNifFunc nif_funcs[] =
     {"segidx_lookup_nearest_bin", 2, mi_nif_segidx_lookup_nearest},
     {"segidx_entry_count", 1, mi_nif_segidx_entry_count},
     {"segidx_ift_count_bin", 2, mi_nif_segidx_ift_count},
-    {"segidx_ift_count_bin", 3, mi_nif_segidx_ift_range_count}
+    {"segidx_ift_count_bin", 3, mi_nif_segidx_ift_range_count},
+    {"segidx_info", 0, mi_nif_segidx_info}
 };
 
 ERL_NIF_TERM mi_nif_segidx_new(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
@@ -59,6 +67,12 @@ ERL_NIF_TERM mi_nif_segidx_new(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv
         // number of entries
         memcpy(handle->entries, index_bin.data, index_bin.size);
         handle->count = index_bin.size / sizeof(segidx_entry);
+
+        // Increment total_bytes on the global structure
+        mi_nif_segidx_global* global = (mi_nif_segidx_global*)enif_priv_data(env);
+        enif_mutex_lock(global->lock);
+        global->total_bytes += sizeof(mi_nif_segidx_handle) + index_bin.size;
+        enif_mutex_unlock(global->lock);
 
         // Hand off the resource back to the VM
         ERL_NIF_TERM result = enif_make_resource(env, handle);
@@ -243,10 +257,29 @@ ERL_NIF_TERM mi_nif_segidx_ift_range_count(ErlNifEnv* env, int argc, const ERL_N
     }
 }
 
+ERL_NIF_TERM mi_nif_segidx_info(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
+{
+    mi_nif_segidx_global* global = (mi_nif_segidx_global*)enif_priv_data(env);
+    enif_mutex_lock(global->lock);
+
+    ERL_NIF_TERM result = enif_make_tuple2(env,
+                                           enif_make_atom(env, "total_bytes"),
+                                           enif_make_ulong(env, global->total_bytes));
+
+    enif_mutex_unlock(global->lock);
+    return result;
+}
+
 static void mi_nif_segidx_cleanup(ErlNifEnv* env, void* arg)
 {
     // Delete any dynamically allocated memory stored in mi_nif_handle
-    // mi_nif_handle* handle = (mi_nif_handle*)arg;
+    mi_nif_segidx_handle* handle = (mi_nif_segidx_handle*)arg;
+
+    // Decrement total_bytes on the global structure
+    mi_nif_segidx_global* global = (mi_nif_segidx_global*)enif_priv_data(env);
+    enif_mutex_lock(global->lock);
+    global->total_bytes -= sizeof(mi_nif_segidx_handle) + (handle->count * sizeof(segidx_entry));
+    enif_mutex_unlock(global->lock);
 }
 
 static int on_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
@@ -255,7 +288,21 @@ static int on_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
                                                      &mi_nif_segidx_cleanup,
                                                      ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER,
                                                      0);
+
+    // Setup a global pointer for tracking # of bytes in all segidxs
+    mi_nif_segidx_global* global = enif_alloc(env, sizeof(mi_nif_segidx_global));
+    memset(global, '\0', sizeof(mi_nif_segidx_global));
+    global->lock = enif_mutex_create("mi_nif_segidx_global");
+    *priv_data = global;
+
     return 0;
 }
 
-ERL_NIF_INIT(mi_nif, nif_funcs, &on_load, NULL, NULL, NULL);
+static void on_unload(ErlNifEnv* env, void* priv_data)
+{
+    mi_nif_segidx_global* global = (mi_nif_segidx_global*)priv_data;
+    enif_mutex_destroy(global->lock);
+    enif_free(env, priv_data);
+}
+
+ERL_NIF_INIT(mi_nif, nif_funcs, &on_load, NULL, NULL, &on_unload);

@@ -11,7 +11,8 @@
          segidx_lookup/2,
          segidx_lookup_nearest/2,
          segidx_entry_count/1,
-         segidx_ift_count/2, segidx_ift_count/3]).
+         segidx_ift_count/2, segidx_ift_count/3,
+         segidx_info/0]).
 
 -on_load(init/0).
 
@@ -72,6 +73,9 @@ segidx_lookup_bin(_Ref, _IftBin) ->
     "NIF library not loaded".
 
 segidx_lookup_nearest_bin(_Ref, _IftBin) ->
+    "NIF library not loaded".
+
+segidx_info() ->
     "NIF library not loaded".
 
 %% ===================================================================
