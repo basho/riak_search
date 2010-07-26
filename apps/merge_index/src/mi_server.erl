@@ -425,20 +425,17 @@ handle_call({fold, Fun, Acc}, _From, State) ->
 
     %% Fold over each buffer...
     F1 = fun(Buffer, AccIn) ->
-        Begin = mi_utils:ift_pack(0, 0, 0),
-        End = all,
-        BufferIterator = mi_buffer:iterator(Begin, End, Buffer),
-        fold(WrappedFun, AccIn, BufferIterator())
-    end,
+                 Itr = mi_buffer:iterator(Buffer),
+                 fold(WrappedFun, AccIn, Itr())
+         end,
     Acc1 = lists:foldl(F1, Acc, Buffers),
 
     %% Fold over each segment...
     F2 = fun(Segment, AccIn) ->
-        Begin = mi_utils:ift_pack(0, 0, 0),
-        End = all,
-        SegmentIterator = mi_segment:iterator(Begin, End, Segment),
-        fold(WrappedFun, AccIn, SegmentIterator())
-    end,
+                 Itr = mi_segment:iterator(Segment),
+                 fold(WrappedFun, AccIn, Itr())
+         end,
+
     Acc2 = lists:foldl(F2, Acc1, Segments),
 
     %% Reply...
