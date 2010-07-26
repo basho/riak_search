@@ -80,5 +80,6 @@ ets_next(Table, Key) ->
 
 ets_info() ->
     L = [{ets:info(T, name), ets:info(T, memory) * erlang:system_info(wordsize)} || T <- ets:all()],
-    lists:keysort(2, lists:foldl(fun({Name, Size}, Acc) -> orddict:update_counter(Name, Size, Acc) end,
-                                 [], L)).
+    Grouped = lists:foldl(fun({Name, Size}, Acc) -> orddict:update_counter(Name, Size, Acc) end,
+                          [], L),
+    lists:reverse(lists:keysort(2, Grouped)).
