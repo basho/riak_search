@@ -38,7 +38,8 @@ open(Filename, Options) ->
     ReadBuffer = 1024 * 1024,
     WriteInterval = proplists:get_value(write_interval, Options, 2 * 1000),
     WriteBuffer = proplists:get_value(write_buffer, Options, 1024 * 1024),
-    {ok, FH} = file:open(Filename, [read, {read_ahead, ReadBuffer}, write, {delayed_write, WriteBuffer, WriteInterval}, raw, binary]),
+    {ok, FH} = file:open(Filename, [read, {read_ahead, ReadBuffer}, write,
+                                    {delayed_write, WriteBuffer, WriteInterval}, raw, binary]),
 
     %% Read into an ets table...
     Table = ets:new(buffer, [ordered_set, public]),
@@ -141,7 +142,7 @@ info_1(Table, IFT, EndIFT, Count) ->
 %% Return an iterator function.
 %% Returns Fun/0, which then returns {Term, NewFun} or eof.
 iterator(Buffer) ->
-    iterator(all, all, Buffer).
+    iterator(undefined, undefined, Buffer).
 
 %% Return an iterator function.
 %% Returns Fun/0, which then returns {Term, NewFun} or eof.
