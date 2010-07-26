@@ -231,7 +231,6 @@ read_offsets(Root) ->
             %% Loaded the blob from disk; check the CRC
             DataSz = erlang:size(Bin) - 4,
             <<Data:DataSz/binary, Crc:32/native-unsigned>> = Bin,
-            io:format(user, "Segidx size: ~p\n", [DataSz]),
             case erlang:crc32(Data) == Crc of
                 true ->
                     %% CRC check passed -- initialize segidx
