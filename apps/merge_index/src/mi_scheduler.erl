@@ -105,9 +105,15 @@ worker_loop(Parent) ->
             ElapsedSecs = timer:now_diff(now(), Start) / 1000000,
             case Result of
                 {ok, OldSegments, OldBytes} ->
-                    error_logger:info_msg(
-                      "Pid ~p compacted ~p segments for ~p bytes in ~p seconds, ~.2f MB/sec\n",
-                      [Pid, OldSegments, OldBytes, ElapsedSecs, OldBytes/ElapsedSecs/(1024*1024)]);
+                    case ElapsedSecs > 30 of
+                        true ->
+                            error_logger:info_msg(
+                              "Pid ~p compacted ~p segments for ~p bytes in ~p seconds, ~.2f MB/sec\n",
+                              [Pid, OldSegments, OldBytes, ElapsedSecs, OldBytes/ElapsedSecs/(1024*1024)]);
+                        false ->
+                            ok
+                    end;
+
                 {Error, Reason} when Error == error; Error == 'EXIT' ->
                     error_logger:error_msg("Failed to compact ~p: ~p\n",
                                            [Pid, Reason])
