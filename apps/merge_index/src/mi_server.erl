@@ -257,7 +257,11 @@ handle_call({start_compaction, CallingPid}, _From, State) ->
         set_deleteme_flag(SName),
 
         %% Calculate min and max table slots based on incoming segments.
-        MinSize = lists:max([mi_segment:size(X) || X <- SegmentsToCompact]),
+        MinSize = if SegmentsToCompact /= [] ->
+                          lists:max([mi_segment:size(X) || X <- SegmentsToCompact]);
+                     true ->
+                          0
+                  end,
         MaxSize = lists:sum([mi_segment:size(X) || X <- SegmentsToCompact]),
         CompactSegment = mi_segment:open_write(SName, MinSize, MaxSize),
         
