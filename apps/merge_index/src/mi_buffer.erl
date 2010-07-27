@@ -1,9 +1,10 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% mi: Merge-Index Data Store
+%%
+%% Copyright (c) 2007-2010 Basho Technologies, Inc. All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
-
 -module(mi_buffer).
 -author("Rusty Klophaus <rusty@basho.com>").
 -include("merge_index.hrl").
@@ -12,6 +13,7 @@
     filename/1,
     close_filehandle/1,
     delete/1,
+    filesize/1,
     size/1,
     write/5,
     info/2, info/3,
@@ -36,7 +38,8 @@ open(Filename, Options) ->
     ReadBuffer = 1024 * 1024,
     WriteInterval = proplists:get_value(write_interval, Options, 2 * 1000),
     WriteBuffer = proplists:get_value(write_buffer, Options, 1024 * 1024),
-    {ok, FH} = file:open(Filename, [read, {read_ahead, ReadBuffer}, write, {delayed_write, WriteBuffer, WriteInterval}, raw, binary]),
+    {ok, FH} = file:open(Filename, [read, {read_ahead, ReadBuffer}, write,
+                                    {delayed_write, WriteBuffer, WriteInterval}, raw, binary]),
 
     %% Read into an ets table...
     Table = ets:new(buffer, [ordered_set, public]),
@@ -69,9 +72,11 @@ close_filehandle(Buffer) ->
     file:close(Buffer#buffer.handle).
 
 %% Return the current size of the buffer file.
-size(Buffer) ->
+filesize(Buffer) ->
     Buffer#buffer.size.
 
+size(Buffer) ->
+    ets:info(Buffer#buffer.table, size).
 
 %% Write the value to the buffer.
 %% Returns the new buffer structure.
@@ -137,7 +142,7 @@ info_1(Table, IFT, EndIFT, Count) ->
 %% Return an iterator function.
 %% Returns Fun/0, which then returns {Term, NewFun} or eof.
 iterator(Buffer) ->
-    iterator(all, all, Buffer).
+    iterator(undefined, undefined, Buffer).
 
 %% Return an iterator function.
 %% Returns Fun/0, which then returns {Term, NewFun} or eof.

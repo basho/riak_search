@@ -1,9 +1,10 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% mi: Merge-Index Data Store
+%%
+%% Copyright (c) 2007-2010 Basho Technologies, Inc. All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
-
 -module(mi_utils).
 -author("Rusty Klophaus <rusty@basho.com>").
 -include("merge_index.hrl").
@@ -16,22 +17,18 @@
     file_exists/1,
     create_empty_file/1,
     now_to_timestamp/1,
-    ets_next/2
+    ets_next/2,
+    ets_info/0
 ]).
 
 ift_pack(IndexID, FieldID, TermID) ->
-    <<
-        IndexID:24/integer, 
-        FieldID:24/integer,
-        TermID:32/integer
-        >>.
+    <<Ift:64/unsigned>> = <<IndexID:16/integer,
+                            FieldID:16/integer,
+                            TermID:32/integer>>,
+    Ift.
 
-ift_unpack(IFT) ->
-    <<
-        IndexID:24/integer, 
-        FieldID:24/integer,
-        TermID:32/integer
-        >> = IFT,
+ift_unpack(Ift) ->
+    <<IndexID:16/integer, FieldID:16/integer, TermID:32/integer>> = <<Ift:64/unsigned>>,
     {IndexID, FieldID, TermID}.
 
 fold(F, Acc, Resource) ->
@@ -80,3 +77,9 @@ ets_next(Table, Key) ->
                     ets:next(Table, Key)
             end
     end.
+
+ets_info() ->
+    L = [{ets:info(T, name), ets:info(T, memory) * erlang:system_info(wordsize)} || T <- ets:all()],
+    Grouped = lists:foldl(fun({Name, Size}, Acc) -> orddict:update_counter(Name, Size, Acc) end,
+                          [], L),
+    lists:reverse(lists:keysort(2, Grouped)).

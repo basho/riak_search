@@ -17,6 +17,8 @@
 -export([idle/2, idle/3,
          receiving/2, receiving/3]).
 
+-include("riak_search.hrl").
+
 -define(RECV_TIMEOUT_USECS, 60000).
 -define(INDEX_TIMEOUT_USECS, 60000).
 

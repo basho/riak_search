@@ -10,6 +10,7 @@
          info_response/2, collect_info_response/3,
          catalog_query_response/6, catalog_query_done/1]).
 
+
 -spec behaviour_info(atom()) -> 'undefined' | [{atom(), arity()}].
 behaviour_info(callbacks) ->
     [{start,2},
