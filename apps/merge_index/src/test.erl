@@ -28,13 +28,16 @@ write(N) ->
     Pid = ensure_pid(),
     spawn_link(fun() -> write_inner(Pid, N) end).
 
-write_inner(_, 0) -> 
+write_inner(Pid, Count) ->
+    write_inner(Pid, Count, 0).
+
+write_inner(_, Count, Count) -> 
     io:format("finished write.~n");
-write_inner(Pid, N) ->
+write_inner(Pid, N, Stop) ->
     NB = list_to_binary(integer_to_list(N)),
     TS = mi_utils:now_to_timestamp(erlang:now()),
     merge_index:index(Pid, <<"a">>, <<"b">>, <<"c", NB/binary>>, N, [], TS),
-    write_inner(Pid, N - 1).
+    write_inner(Pid, N - 1, Stop).
 
 info(N) ->
     Pid = ensure_pid(),
