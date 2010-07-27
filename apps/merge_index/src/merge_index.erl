@@ -60,6 +60,6 @@ compact(ServerPid) ->
     %% TODO - This is shaky, but good enough for version one. If the
     %% compaction process crashes, then we sit here waiting forever.
     receive 
-        {compaction_complete, Ref} -> 
-            ok 
+        {compaction_complete, Ref, OldSegments, OldBytes} -> 
+            {ok, OldSegments, OldBytes}
     end.

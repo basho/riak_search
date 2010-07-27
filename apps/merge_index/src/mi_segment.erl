@@ -108,17 +108,23 @@ from_iterator(Iterator, Segment) ->
     WriteBuffer = 5 * 1024 * 1024,
     Opts = [write, {delayed_write, WriteBuffer, WriteInterval}, raw, binary],
     {ok, DataFile} = file:open(data_file(Segment), Opts),
+    mi_write_cache:setup(DataFile),
     {ok, OffsetsFile} = file:open(offsets_file(Segment), Opts),
+    mi_write_cache:setup(OffsetsFile),
     W = #writer { data_file = DataFile,
                   offsets_file = OffsetsFile },
     try
         Wfinal = from_iterator_inner(W, Iterator()),
+        mi_write_cache:flush(Wfinal#writer.data_file),
+        mi_write_cache:flush(Wfinal#writer.offsets_file),
 
         %% Write the final CRC out on the offsets file
         file:write(Wfinal#writer.offsets_file,
                    <<(Wfinal#writer.offsets_file_crc):32/native-unsigned>>)
 
     after
+        mi_write_cache:purge(W#writer.data_file),
+        mi_write_cache:purge(W#writer.offsets_file),
         file:close(W#writer.data_file),
         file:close(W#writer.offsets_file)
     end,
@@ -135,7 +141,7 @@ from_iterator_inner(W, {{IFT, Value, Props, TS}, Iterator})
                            (W#writer.offset):64/native-unsigned,
                            (W#writer.count):32/native-unsigned>>,
             OffsetCrc = erlang:crc32(W#writer.offsets_file_crc, OffsetInfo),
-            ok = file:write(W#writer.offsets_file, OffsetInfo);
+            ok = mi_write_cache:write(W#writer.offsets_file, OffsetInfo);
         false ->
             OffsetCrc = W#writer.offsets_file_crc
     end,
@@ -174,7 +180,7 @@ from_iterator_inner(W, eof) ->
                    (W#writer.offset):64/native-unsigned,
                    (W#writer.count):32/native-unsigned>>,
     OffsetCrc = erlang:crc32(W#writer.offsets_file_crc, OffsetInfo),
-    ok = file:write(W#writer.offsets_file, OffsetInfo),
+    ok = mi_write_cache:write(W#writer.offsets_file, OffsetInfo),
     W#writer { offsets_file_crc = OffsetCrc }.
 
 
@@ -259,13 +265,13 @@ read_seg_value(FH) ->
     end.
 
 write_key(FH, IFT) ->
-    file:write(FH, <<1:1/integer, 8:15/integer, IFT:64/unsigned>>),
+    ok = mi_write_cache:write(FH, <<1:1/integer, 8:15/integer, IFT:64/unsigned>>),
     10.
 
 write_seg_value(FH, Value, Props, TS) ->
     B = term_to_binary({Value, Props, TS}),
     Size = erlang:size(B),
-    file:write(FH, <<0:1/integer, Size:15/integer, B/binary>>),
+    ok = mi_write_cache:write(FH, <<0:1/integer, Size:15/integer, B/binary>>),
     Size + 2.
 
 data_file(Segment) when is_record(Segment, segment) ->

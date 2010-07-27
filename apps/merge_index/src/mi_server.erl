@@ -232,15 +232,22 @@ handle_call({start_compaction, CallingPid}, _From, State)
     %% Don't compact if we are already compacting, or if we have fewer
     %% than four open segments.
     Ref = make_ref(),
-    CallingPid ! {compaction_complete, Ref},
+    CallingPid ! {compaction_complete, Ref, 0, 0},
     {reply, {ok, Ref}, State#state { scheduled_compaction=false }};
 
 handle_call({start_compaction, CallingPid}, _From, State) ->
     %% Get list of segments to compact. Do this by getting filesizes,
-    %% and then lopping off the four biggest files. This could be
+    %% and then lopping off files larger than the average. This could be
     %% optimized with tuning, but probably a good enough solution.
     Segments = State#state.segments,
-    SegmentsToCompact = get_segments_to_merge(Segments),
+    MaxSegments = 500,
+    SegmentsToCompact = case get_segments_to_merge(Segments) of
+                            STC when length(STC) > MaxSegments ->
+                                lists:sublist(STC, MaxSegments);
+                            STC ->
+                                STC
+                        end,
+    BytesToCompact = lists:sum([mi_segment:filesize(X) || X <- SegmentsToCompact]),
     
     %% Spawn a function to merge a bunch of segments into one...
     Pid = self(),
@@ -267,11 +274,11 @@ handle_call({start_compaction, CallingPid}, _From, State) ->
         
         %% Run the compaction...
         mi_segment:from_iterator(GroupIterator, CompactSegment),
-        gen_server:call(Pid, {compacted, CompactSegment, SegmentsToCompact, CallingPid, CallingRef}, infinity)
+        gen_server:call(Pid, {compacted, CompactSegment, SegmentsToCompact, BytesToCompact, CallingPid, CallingRef}, infinity)
     end),
     {reply, {ok, CallingRef}, State#state { is_compacting=true }};
 
-handle_call({compacted, CompactSegmentWO, OldSegments, CallingPid, CallingRef}, _From, State) ->
+handle_call({compacted, CompactSegmentWO, OldSegments, OldBytes, CallingPid, CallingRef}, _From, State) ->
     #state { locks=Locks, segments=Segments } = State,
 
     %% Clean up. Remove delete flag on the new segment. Add delete
@@ -297,7 +304,7 @@ handle_call({compacted, CompactSegmentWO, OldSegments, CallingPid, CallingRef}, 
     },
 
     %% Tell the awaiting process that we've finished compaction.
-    CallingPid ! {compaction_complete, CallingRef},
+    CallingPid ! {compaction_complete, CallingRef, length(OldSegments), OldBytes},
     {reply, ok, NewState};
 
 handle_call({info, Index, Field, Term}, _From, State) ->
@@ -579,7 +586,7 @@ get_segments_to_merge(Segments) ->
         {Size, X}
     end,
     Sizes = [F1(X) || X <- Segments],
-    Avg = lists:sum([Size || {Size, _} <- Sizes]) / length(Segments),
+    Avg = lists:sum([Size || {Size, _} <- Sizes]) div length(Segments) + 1024,
 
     %% Return segments to merge...
     F2 = fun({Size, Segment}, Acc) ->

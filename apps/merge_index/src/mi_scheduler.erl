@@ -104,9 +104,10 @@ worker_loop(Parent) ->
             Result = merge_index:compact(Pid),
             ElapsedSecs = timer:now_diff(now(), Start) / 1000000,
             case Result of
-                ok ->
-                    error_logger:info_msg("Compacted pid ~p in ~p seconds.\n",
-                                          [Pid, ElapsedSecs]);
+                {ok, OldSegments, OldBytes} ->
+                    error_logger:info_msg(
+                      "Pid ~p compacted ~p segments for ~p bytes in ~p seconds, ~.2f MB/sec\n",
+                      [Pid, OldSegments, OldBytes, ElapsedSecs, OldBytes/ElapsedSecs/(1024*1024)]);
                 {Error, Reason} when Error == error; Error == 'EXIT' ->
                     error_logger:error_msg("Failed to compact ~p: ~p\n",
                                            [Pid, Reason])
