@@ -155,14 +155,7 @@ handle_call({index, Index, Field, Term, Value, Props, TS}, _From, State) ->
     %% time to merge segments.
     %% TODO - Make this configurable. It would be useful to
     %% turn this off for bulk loading.
-    NumSegments = length(State#state.segments),
-    case NumSegments > 10 of
-        true ->
-            Delay = 1 + trunc(NumSegments / 10),
-            timer:sleep(Delay);
-        false -> 
-            ignore
-    end,
+    %% TODO - Reevaluate whether sleeping here is a good idea.
 
     %% Possibly dump buffer to a new segment...
     case mi_buffer:filesize(CurrentBuffer) > ?ROLLOVER_SIZE(NewState) of
