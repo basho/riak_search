@@ -252,7 +252,7 @@ handle_call({start_compaction, CallingPid}, _From, State) ->
     %% Spawn a function to merge a bunch of segments into one...
     Pid = self(),
     CallingRef = make_ref(),
-    spawn_link(fun() ->
+    spawn_opt(fun() ->
         %% Create the group iterator...
         process_flag(priority, high),
         SegmentIterators = [mi_segment:iterator(X) || X <- SegmentsToCompact],
@@ -275,7 +275,7 @@ handle_call({start_compaction, CallingPid}, _From, State) ->
         %% Run the compaction...
         mi_segment:from_iterator(GroupIterator, CompactSegment),
         gen_server:call(Pid, {compacted, CompactSegment, SegmentsToCompact, BytesToCompact, CallingPid, CallingRef}, infinity)
-    end),
+    end, [link, {fullsweep_after, 0}]),
     {reply, {ok, CallingRef}, State#state { is_compacting=true }};
 
 handle_call({compacted, CompactSegmentWO, OldSegments, OldBytes, CallingPid, CallingRef}, _From, State) ->
