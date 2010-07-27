@@ -86,7 +86,7 @@ index_master_loop0(Index, Dir, StatusFn) ->
 
     %% Spawn a bunch of workers
     Self = self(),
-    [spawn_link(fun() -> index_worker_loop0(Self, Index) end) || _ <- lists:seq(1,16)],
+    [spawn_link(fun() -> index_worker_loop0(Self, Index) end) || _ <- lists:seq(1,32)],
 
     %% Initialize status and start processing files
     Status = #index_status {total_files = TotalFiles,
