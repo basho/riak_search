@@ -78,7 +78,7 @@ run_solr_command(_, _, []) ->
 %% Add a list of documents to the index...
 run_solr_command(Schema, add, [{IdxDoc, Terms}|Docs]) ->
     %% If there is an old document, then delete it.
-    ensure_deleted(Schema:name(), IdxDoc#riak_idx_doc.id),
+    delete_doc(Schema:name(), IdxDoc#riak_idx_doc.id),
     
     %% Store the terms...
     SearchClient:index_terms(Terms),
@@ -89,14 +89,14 @@ run_solr_command(Schema, add, [{IdxDoc, Terms}|Docs]) ->
 
 %% Delete a document by ID...
 run_solr_command(Schema, delete, [{'id', Index, ID}|IDs]) ->
-    SearchClient:delete_doc(Index, ID),
+    delete_doc(Index, ID),
     run_solr_command(Schema, delete, IDs);
 
 %% Delete documents by query...
 run_solr_command(Schema, delete, [{'query', QueryOps}|Queries]) ->
     Index = Schema:name(),
     {_NumFound, _MaxScore, Docs} = SearchClient:search_doc(Schema, QueryOps, 0, infinity, ?DEFAULT_TIMEOUT),
-    [SearchClient:delete_doc(Index, X#riak_idx_doc.id) || X <- Docs, X /= {error, notfound}],
+    [delete_doc(Index, X#riak_idx_doc.id) || X <- Docs, X /= {error, notfound}],
     run_solr_command(Schema, delete, Queries);
 
 %% Unknown command, so error...
@@ -104,13 +104,26 @@ run_solr_command(_Schema, Command, _Docs) ->
     error_logger:error_msg("Unknown solr command: ~p~n", [Command]),
     throw({unknown_solr_command, Command}).
 
+%% ensure_deleted(Index, DocID) ->
+%%     case riak_indexed_doc:get(RiakClient, Index, DocID) of
+%%         {error, notfound} -> 
+%%             ok;
+%%         _ ->
+%%             SearchClient:delete_doc(Index, DocID),
+%%             timer:sleep(10),
+%%             ensure_deleted(Index, DocID)
+%%     end.
 
-ensure_deleted(Index, DocID) ->
-    case riak_indexed_doc:get(RiakClient, Index, DocID) of
-        {error, notfound} -> 
-            ok;
-        _ ->
-            SearchClient:delete_doc(Index, DocID),
-            timer:sleep(10),
-            ensure_deleted(Index, DocID)
+delete_doc(Index, DocId) ->
+    case riak_indexed_doc:get(RiakClient, Index, DocId) of
+        {error, notfound} ->
+            {error, notfound};
+        IdxDoc ->
+            {ok, AnalyzerPid} = qilr:new_analyzer(),
+            try 
+                SearchClient:delete_doc(IdxDoc, AnalyzerPid)
+            after
+                qilr:close_analyzer(AnalyzerPid)
+            end,
+            ok
     end.

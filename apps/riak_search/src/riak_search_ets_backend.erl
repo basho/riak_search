@@ -11,7 +11,8 @@
          stop/1,
          index_if_newer/7,
          multi_index/2,
-         delete_entry/5,
+         delete_entry/6,
+         multi_delete/2,
          stream/6,
          multi_stream/4,
          info/5,
@@ -63,11 +64,31 @@ multi_index(IFTVPKList, #state{table=Table}=State) ->
 %%% TODO: why can't I {reply, ok} here? (cargo-cult raptor_backend)
 
 
-delete_entry(Index, Field, Term, DocId, State) ->
-    ets:match_delete(State#state.table,
-                     {{b(Index), b(Field), b(Term), b(DocId)},
-                      '_', '_'}),
+delete_entry(Index, Field, Term, DocId, KeyClock, State) ->
+    multi_delete([{Index, Field, Term, DocId, KeyClock}], State),
     noreply.
+
+multi_delete(IFTVKList, State) ->
+    Table = State#state.table,
+    lists:foreach(
+      fun({I, F, T, V, K}) ->
+              Key = {b(I), b(F), b(T), b(V)},
+              case ets:lookup(Table, Key) of
+                  [{Key, _Props, ExistingKeyClock}] ->
+                      if ExistingKeyClock > K ->
+                              %% stored data is newer
+                              ok;
+                         true ->
+                              %% stored data is older
+                              ets:delete(Table, Key)
+                      end;
+                  [] ->
+                      ok
+              end
+      end,
+      IFTVKList),
+    {reply, {deleted, node()}, State}.
+
 %%% TODO: why can't I {reply, ok} here? (cargo-cult raptor_backend)
 
 info(Index, Field, Term, Sender, State) ->
