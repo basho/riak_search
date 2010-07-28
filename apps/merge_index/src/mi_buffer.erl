@@ -17,9 +17,16 @@
     size/1,
     write/5,
     info/2, info/3,
-    iterator/1, iterator/3,
-    test/0
+    iterator/1, iterator/3
 ]).
+
+
+-ifdef(TEST).
+-ifdef(EQC).
+-include_lib("eqc/include/eqc.hrl").
+-endif.
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -record(buffer, {
     filename,
@@ -52,7 +59,7 @@ open(Filename, Options) ->
 open_inner(FH, Table) ->
     case mi_utils:read_value(FH) of
         {ok, {IFT, Value, Props, TS}} ->
-            write_1(IFT, Value, Props, TS, Table),
+            write_ets(IFT, Value, Props, TS, Table),
             open_inner(FH, Table);
         eof ->
             ok
@@ -86,112 +93,190 @@ write(IFT, Value, Props, TS, Buffer) ->
     BytesWritten = mi_utils:write_value(FH, {IFT, Value, Props, TS}),
 
     %% Return a new buffer with a new tree and size...
-    write_1(IFT, Value, Props, TS, Buffer#buffer.table),
+    write_ets(IFT, Value, Props, TS, Buffer#buffer.table),
 
     %% Return the new buffer.
     Buffer#buffer {
         size = (BytesWritten + Buffer#buffer.size)
     }.
 
-write_1(IFT, Value, Props, TS, Table) ->
-    %% Update and return the tree...
-    Item = {Value, {Props, TS}},
-    case ets:lookup(Table, IFT) of
-        [] ->
-            ets:insert(Table, {IFT, [Item]});
-        [{IFT, Items}] ->
-            case lists:keytake(Value, 1, Items) of
-                false ->
-                    %% Not found, insert the item.
-                    ets:insert(Table, {IFT, [Item|Items]});
-                {value, {_, {_, OldTS}}, NewItems} when OldTS < TS ->
-                    %% Found, existing item removed, insert the new item.
-                    ets:insert(Table, {IFT, [Item|NewItems]});
-                {value, {_, {_, OldTS}}, _NewItems} when OldTS >= TS ->
-                    %% Found, but we want to keep the existing item.
-                    ok
-            end
-    end.
-
 %% Return the number of results under this IFT.
 info(IFT, Buffer) ->
-    Table = Buffer#buffer.table,
-    case ets:lookup(Table, IFT) of
-        [{IFT, Values}] ->
-            length(Values);
-        [] ->
-            0
-    end.
-
+    Spec = [{{{IFT, '_'}, '_', '_'}, [], [true]}],
+    ets:select_count(Buffer#buffer.table, Spec).
 
 
 %% Return the number of results for IFTs between the StartIFT and
 %% StopIFT, inclusive.
 info(StartIFT, EndIFT, Buffer) ->
-    Table = Buffer#buffer.table,
-    IFT = mi_utils:ets_next(Table, StartIFT),
-    info_1(Table, IFT, EndIFT, 0).
-info_1(_Table, IFT, EndIFT, Count)
-when IFT == '$end_of_table' orelse (EndIFT /= all andalso IFT > EndIFT) ->
-    Count;
-info_1(Table, IFT, EndIFT, Count) ->
-    [{IFT, Values}] = ets:lookup(Table, IFT),
-    NextIFT = ets:next(Table, IFT),
-    info_1(Table, NextIFT, EndIFT, Count + length(Values)).
+    Spec = [{{{'$1', '_'}, '_', '_'},
+             [{'=<', StartIFT, '$1'}, {'=<', '$1', EndIFT}],
+             [true]}],
+    ets:select_count(Buffer#buffer.table, Spec).
 
-%% Return an iterator function.
-%% Returns Fun/0, which then returns {Term, NewFun} or eof.
+%%
+%% Return an iterator that traverses the entire buffer
+%%
 iterator(Buffer) ->
-    iterator(undefined, undefined, Buffer).
-
-%% Return an iterator function.
-%% Returns Fun/0, which then returns {Term, NewFun} or eof.
-iterator(StartIFT, EndIFT, Buffer) ->
     Table = Buffer#buffer.table,
-    IFT = mi_utils:ets_next(Table, StartIFT),
-    Iterator = {Table, IFT, EndIFT},
-    fun() -> iterator_1(Iterator) end.
+    fun() -> iterate_ets(ets:first(Table), undefined, Table) end.
 
-%% Iterate through IFTs...
-iterator_1({_Table, IFT, EndIFT})
-when IFT == '$end_of_table' orelse (EndIFT /= all andalso IFT > EndIFT) ->
+%%
+%% Return an iterator that traverses a range of the buffer
+%%
+iterator(StartIFT, StopIFT, Buffer) ->
+    Table = Buffer#buffer.table,
+    fun() -> iterate_ets(ets:next(Table, {StartIFT, <<>>}), StopIFT, Table) end.
+
+
+%% ===================================================================
+%% Internal functions
+%% ===================================================================
+
+write_ets(IFT, Value, Props, Tstamp, Table) ->
+    case ets:lookup(Table, {IFT, Value}) of
+        [] ->
+            ets:insert_new(Table, {{IFT, Value}, Props, Tstamp});
+        [{{IFT, Value}, _, ExistingTstamp}] ->
+            case ExistingTstamp > Tstamp of
+                true ->
+                    %% Keep existing tstamp; clearly newer
+                    ok;
+                false ->
+                    %% New value is >= existing value; take more recent write
+                    ets:insert(Table, {{IFT, Value}, Props, Tstamp})
+            end
+    end.
+
+iterate_ets('$end_of_table', _StopIFT, _Table) ->
     eof;
-iterator_1({Table, IFT, EndIFT}) ->
-    [{IFT, Values}] = ets:lookup(Table, IFT),
-    SortedValues = lists:sort(Values),
-    NextIFT = ets:next(Table, IFT),
-    iterator_2(IFT, SortedValues, {Table, NextIFT, EndIFT}).
+iterate_ets(CurrKey, StopIFT, Table) ->
+    case ets:lookup(Table, CurrKey) of
+        [{{IFT, Value} = Key, Props, Tstamp}] when IFT =< StopIFT ->
+            {{IFT, Value, Props, Tstamp},
+             fun() -> iterate_ets(ets:next(Table, Key), StopIFT, Table) end};
+        _->
+            eof
+    end.
 
-%% Iterate through values. at a values level...
-iterator_2(IFT, [{Value, {Props, TS}}|Values], Continuation) ->
-    Term = {IFT, Value, Props, TS},
-    F = fun() -> iterator_2(IFT, Values, Continuation) end,
-    {Term, F};
-iterator_2(_IFT, [], Continuation) ->
-    iterator_1(Continuation).
 
-test() ->
-    %% Write some stuff into the buffer...
-    file:delete("/tmp/test_buffer"),
-    Buffer = open("/tmp/test_buffer", []),
-    Buffer1 = write(3, 11, [], 1, Buffer),
-    Buffer2 = write(3, 11, [], 2, Buffer1),
-    Buffer3 = write(1, 12, [], 1, Buffer2),
-    Buffer4 = write(2, 13, [], 1, Buffer3),
-    Buffer5 = write(2, 14, [], 1, Buffer4),
 
-    %% Test iterator...
-    FA = iterator(Buffer5),
-    {{1, 12, [], 1}, FA1} = FA(),
-    {{2, 13, [], 1}, FA2} = FA1(),
-    {{2, 14, [], 1}, FA3} = FA2(),
-    {{3, 11, [], 2}, FA4} = FA3(),
-    eof = FA4(),
+%% ===================================================================
+%% EUnit tests
+%% ===================================================================
+-ifdef(TEST).
 
-    %% Test partial iterator...
-    FB = iterator(2, 2, Buffer5),
-    {{2, 13, [], 1}, FB1} = FB(),
-    {{2, 14, [], 1}, FB2} = FB1(),
-    eof = FB2(),
+-ifdef(EQC).
 
-    all_tests_passed.
+-define(QC_OUT(P),
+        eqc:on_output(fun(Str, Args) -> io:format(user, Str, Args) end, P)).
+
+-define(POW_2(N), trunc(math:pow(2, N))).
+
+-define(FMT(Str, Args), lists:flatten(io_lib:format(Str, Args))).
+
+g_ift() ->
+    choose(0, ?POW_2(62)).
+
+g_value() ->
+    non_empty(binary()).
+
+g_props() ->
+    list({oneof([word_pos, offset]), choose(0, ?POW_2(31))}).
+
+g_tstamp() ->
+    choose(0, ?POW_2(31)).
+
+g_ift_range(IFTs) ->
+    ?SUCHTHAT({Start, End}, {oneof(IFTs), oneof(IFTs)}, End >= Start).
+
+make_buffer([], B) ->
+    B;
+make_buffer([{Ift, Value, Props, Tstamp} | Rest], B0) ->
+    B = mi_buffer:write(Ift, Value, Props, Tstamp, B0),
+    make_buffer(Rest, B).
+
+fold_iterator(Itr, Fn, Acc0) ->
+    fold_iterator_inner(Itr(), Fn, Acc0).
+
+fold_iterator_inner(eof, _Fn, Acc) ->
+    lists:reverse(Acc);
+fold_iterator_inner({Term, NextItr}, Fn, Acc0) ->
+    Acc = Fn(Term, Acc0),
+    fold_iterator_inner(NextItr(), Fn, Acc).
+
+
+prop_basic_test(Root) ->
+    ?FORALL(Entries, list({g_ift(), g_value(), g_props(), g_tstamp()}),
+            begin
+                %% Delete old files
+                [file:delete(X) || X <- filelib:wildcard(filename:dirname(Root) ++ "/*")],
+
+                %% Create a buffer
+                Buffer = make_buffer(Entries, mi_buffer:open(Root ++ "_buffer", [write])),
+
+                %% Filter the generated entries such that each {IFT, Value} is only present
+                %% once and has the latest timestamp for that key
+                F = fun({IFT, Value, Props, Tstamp}, Acc) ->
+                            case orddict:find({IFT, Value}, Acc) of
+                                {ok, {_, ExistingTstamp}} when Tstamp >= ExistingTstamp ->
+                                    orddict:store({IFT, Value}, {Props, Tstamp}, Acc);
+                                error ->
+                                    orddict:store({IFT, Value}, {Props, Tstamp}, Acc);
+                                _ ->
+                                    Acc
+                            end
+                    end,
+                ExpectedEntries = [{IFT, Value, Props, Tstamp} ||
+                                      {{IFT, Value}, {Props, Tstamp}}
+                                          <- lists:foldl(F, [], Entries)],
+
+                %% Build a list of what was stored in the buffer
+                ActualEntries = fold_iterator(mi_buffer:iterator(Buffer),
+                                              fun(Item, Acc0) -> [Item | Acc0] end, []),
+                ?assertEqual(ExpectedEntries, ActualEntries),
+                true
+            end).
+
+prop_iter_range_test(Root) ->
+    ?LET(IFTs, non_empty(list(g_ift())),
+         ?FORALL({Entries, Range}, {list({oneof(IFTs), g_value(), g_props(), g_tstamp()}), g_ift_range(IFTs)},
+            begin
+                %% Delete old files
+                [file:delete(X) || X <- filelib:wildcard(filename:dirname(Root) ++ "/*")],
+
+                %% Create a buffer
+                Buffer = make_buffer(Entries, mi_buffer:open(Root ++ "_buffer", [write])),
+
+                %% Identify those values in the buffer that are in the generated range
+                {Start, End} = Range,
+                RangeEntries = fold_iterator(iterator(Start, End, Buffer),
+                                             fun(Item, Acc0) -> [Item | Acc0] end, []),
+
+                %% Verify that all IFTs within the actual entries satisfy the constraint
+                ?assertEqual([], [IFT || {IFT, _, _, _} <- RangeEntries,
+                                         IFT < Start, IFT > End]),
+
+                %% Check that the count for the range matches the length of the returned
+                %% range entries list
+                ?assertEqual(length(RangeEntries), info(Start, End, Buffer)),
+                true
+            end)).
+
+
+prop_basic_test_() ->
+    test_spec("/tmp/test/mi_buffer_basic", fun prop_basic_test/1).
+
+prop_iter_range_test_() ->
+    test_spec("/tmp/test/mi_buffer_iter", fun prop_iter_range_test/1).
+
+test_spec(Root, PropertyFn) ->
+    {timeout, 60, fun() ->
+                          os:cmd(?FMT("rm -rf ~s; mkdir -p ~s", [Root, Root])),
+                          ?assert(eqc:quickcheck(eqc:numtests(250, ?QC_OUT(PropertyFn(Root ++ "/t1")))))
+                  end}.
+
+
+
+-endif. %EQC
+-endif.
