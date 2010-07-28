@@ -1,0 +1,9 @@
+{application, merge_index,
+    [{description, "Merge-Index Data Store"},
+     {vsn, "0.12.0"},
+     {applications, [kernel,
+                     stdlib,
+                     sasl]},
+     {mod, {mi_app, []}},
+     {env, []}
+]}.

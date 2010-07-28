@@ -121,26 +121,7 @@ index_dir(Directory) ->
 
 %% Full text index the specified directory of plain text files.
 index_dir(Index, Directory) ->
-    {ok, Client} = riak_search:local_client(),
-    {ok, Schema} = riak_search_config:get_schema(Index),
-    DefaultField = Schema:default_field(),
-    {ok, AnalyzerPid} = qilr:new_analyzer(),
-    {ok, IndexPid} = Client:get_index_fsm(),
-    F = fun(DocID, Body) ->
-                Fields = [{DefaultField, binary_to_list(Body)}],
-                IdxDoc = riak_indexed_doc:new(DocID, Fields, [], Index),
-                Client:index_doc(IdxDoc, AnalyzerPid, IndexPid)
-        end,
-    try
-        riak_search_utils:index_recursive(F, Directory)
-    catch _: {{nocatch, Error}, Trace} ->
-            error_logger:error_msg("Indexing error: ~p~n", [Error]),
-            error_logger:error_msg("~p~n", [Trace])
-    after
-        Client:stop_index_fsm(IndexPid),
-        qilr:close_analyzer(AnalyzerPid)
-    end,
-    ok.
+    riak_search_dir_indexer:start_index(Index, Directory).
 
 delete_dir(Directory) ->
     delete_dir(?DEFAULT_INDEX, Directory).

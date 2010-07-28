@@ -1,3 +1,10 @@
+%% -------------------------------------------------------------------
+%%
+%% mi: Merge-Index Data Store
+%%
+%% Copyright (c) 2007-2010 Basho Technologies, Inc. All Rights Reserved.
+%%
+%% -------------------------------------------------------------------
 -module(mi_scheduler).
 
 %% API
@@ -58,7 +65,8 @@ handle_call({schedule_compaction, Pid}, _From, #state { queue = Q } = State) ->
                     State#state.worker ! {compaction, Pid},
                     {reply, ok, State};
                 false ->
-                    {reply, ok, State#state { queue = queue:in(Pid, Q) }}
+                    NewState = State#state { queue = queue:in(Pid, Q) },
+                    {reply, ok, NewState}
             end
     end.
 
@@ -70,10 +78,10 @@ handle_info(worker_ready, #state { queue = Q } = State) ->
         true ->
             {noreply, State#state { worker_ready = true }};
         false ->
-            {{value, Pid}, Q2} = queue:out(Q),
+            {{value, Pid}, NewQ} = queue:out(Q),
             State#state.worker ! {compaction, Pid},
-            {noreply, State#state { queue = Q2,
-                                    worker_ready = false }}
+            NewState = State#state { queue=NewQ, worker_ready=false },
+            {noreply, NewState}
     end;
 handle_info({'EXIT', Pid, Reason}, #state { worker = Pid } = State) ->
     error_logger:error_msg("Compaction worker PID exited: ~p\n", [Reason]),
@@ -97,9 +105,16 @@ worker_loop(Parent) ->
             Result = merge_index:compact(Pid),
             ElapsedSecs = timer:now_diff(now(), Start) / 1000000,
             case Result of
-                ok ->
-                    error_logger:info_msg("Compacted pid ~p in ~p seconds.\n",
-                                          [Pid, ElapsedSecs]);
+                {ok, OldSegments, OldBytes} ->
+                    case ElapsedSecs > 30 of
+                        true ->
+                            error_logger:info_msg(
+                              "Pid ~p compacted ~p segments for ~p bytes in ~p seconds, ~.2f MB/sec\n",
+                              [Pid, OldSegments, OldBytes, ElapsedSecs, OldBytes/ElapsedSecs/(1024*1024)]);
+                        false ->
+                            ok
+                    end;
+
                 {Error, Reason} when Error == error; Error == 'EXIT' ->
                     error_logger:error_msg("Failed to compact ~p: ~p\n",
                                            [Pid, Reason])

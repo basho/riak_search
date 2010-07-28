@@ -1,13 +1,13 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% mi: Merge-Index Data Store
+%%
+%% Copyright (c) 2007-2010 Basho Technologies, Inc. All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
-
 -module(mi_server).
 -author("Rusty Klophaus <rusty@basho.com>").
 -include("merge_index.hrl").
--include_lib("kernel/include/file.hrl").
 
 -export([
     %% GEN SERVER
@@ -97,7 +97,7 @@ read_segments([], _Segments) -> [];
 read_segments([SName|Rest], Segments) ->
     %% Read the segment from disk...
     io:format("Opening segment: '~s'~n", [SName]),
-    Segment = mi_segment:open(SName),
+    Segment = mi_segment:open_read(SName),
     [Segment|read_segments(Rest, Segments)].
 
 read_buffers(Root, BufferOptions, [], NextID, Segments) ->
@@ -118,15 +118,17 @@ read_buffers(Root, BufferOptions, [{BNum, BName}|Rest], NextID, Segments) ->
     io:format("Converting buffer: '~s' to segment.~n", [BName]),
     SName = join(Root, "segment." ++ integer_to_list(BNum)),
     set_deleteme_flag(SName),
-    Segment = mi_segment:open(SName),
     Buffer = mi_buffer:open(BName, BufferOptions),
     mi_buffer:close_filehandle(Buffer),
-    mi_segment:from_buffer(Buffer, Segment),
+    Size = mi_buffer:size(Buffer),
+    SegmentWO = mi_segment:open_write(SName, Size, Size + 1),
+    mi_segment:from_buffer(Buffer, SegmentWO),
     mi_buffer:delete(Buffer),
-    clear_deleteme_flag(mi_segment:filename(Segment)),
+    clear_deleteme_flag(mi_segment:filename(SegmentWO)),
+    SegmentRO = mi_segment:open_read(SName),
     
     %% Loop...
-    read_buffers(Root, BufferOptions, Rest, NextID, [Segment|Segments]).
+    read_buffers(Root, BufferOptions, Rest, NextID, [SegmentRO|Segments]).
 
 
 handle_call({index, Index, Field, Term, Value, Props, TS}, _From, State) ->
@@ -153,30 +155,26 @@ handle_call({index, Index, Field, Term, Value, Props, TS}, _From, State) ->
     %% time to merge segments.
     %% TODO - Make this configurable. It would be useful to
     %% turn this off for bulk loading.
-    NumSegments = length(State#state.segments),
-    case NumSegments > 10 of
-        true ->
-            Delay = 1 + trunc(NumSegments / 10),
-            timer:sleep(Delay);
-        false -> 
-            ignore
-    end,
+    %% TODO - Reevaluate whether sleeping here is a good idea.
 
     %% Possibly dump buffer to a new segment...
-    case mi_buffer:size(CurrentBuffer) > ?ROLLOVER_SIZE(NewState) of
+    case mi_buffer:filesize(CurrentBuffer) > ?ROLLOVER_SIZE(NewState) of
         true ->
             #state { root=Root, next_id=NextID } = NewState,
-
-            %% Start processing the latest buffer.
+            
+            %% Close the buffer filehandle. Needs to be done in the owner process.
             mi_buffer:close_filehandle(CurrentBuffer),
-            SNum  = get_id_number(mi_buffer:filename(CurrentBuffer)),
-            SName = join(Root, "segment." ++ integer_to_list(SNum)),
-            set_deleteme_flag(SName),
-            Segment = mi_segment:open(SName),
             Pid = self(),
+            
             spawn_link(fun() ->
-                mi_segment:from_buffer(CurrentBuffer, Segment),
-                gen_server:call(Pid, {buffer_to_segment, CurrentBuffer, Segment}, infinity)
+                %% Calculate the segment filename, open the segment, and convert.
+                SNum  = get_id_number(mi_buffer:filename(CurrentBuffer)),
+                SName = join(Root, "segment." ++ integer_to_list(SNum)),
+                set_deleteme_flag(SName),
+                Size = mi_buffer:size(CurrentBuffer),
+                SegmentWO = mi_segment:open_write(SName, Size, Size + 1),
+                mi_segment:from_buffer(CurrentBuffer, SegmentWO),
+                gen_server:call(Pid, {buffer_to_segment, CurrentBuffer, SegmentWO}, infinity)
             end),
             
             %% Create a new empty buffer...
@@ -193,19 +191,22 @@ handle_call({index, Index, Field, Term, Value, Props, TS}, _From, State) ->
             {reply, ok, NewState}
     end;
 
-handle_call({buffer_to_segment, Buffer, Segment}, _From, State) ->
+handle_call({buffer_to_segment, Buffer, SegmentWO}, _From, State) ->
     #state { locks=Locks, buffers=Buffers, segments=Segments, scheduled_compaction=ScheduledCompaction } = State,
 
     %% Clean up by clearing delete flag on the segment, adding delete
     %% flag to the buffer, and telling the system to delete the buffer
     %% as soon as the last lock is released.
-    clear_deleteme_flag(mi_segment:filename(Segment)),
+    clear_deleteme_flag(mi_segment:filename(SegmentWO)),
     BName = mi_buffer:filename(Buffer),
     set_deleteme_flag(BName),
     NewLocks = mi_locks:when_free(BName, fun() -> mi_buffer:delete(Buffer) end, Locks),
 
+    %% Open the segment as read only...
+    SegmentRO = mi_segment:open_read(mi_segment:filename(SegmentWO)),
+
     %% Update state...
-    NewSegments = [Segment|Segments],
+    NewSegments = [SegmentRO|Segments],
     NewState1 = State#state {
         locks=NewLocks,
         buffers=Buffers -- [Buffer],
@@ -213,7 +214,8 @@ handle_call({buffer_to_segment, Buffer, Segment}, _From, State) ->
     },
 
     %% Give us the opportunity to do a merge...
-    case length(get_segments_to_merge(NewSegments)) of
+    SegmentsToMerge = get_segments_to_merge(NewSegments),
+    case length(SegmentsToMerge) of
         Num when Num =< 2 orelse ScheduledCompaction == true-> 
             NewState2 = NewState1;
         _ -> 
@@ -229,41 +231,63 @@ handle_call({start_compaction, CallingPid}, _From, State)
     %% Don't compact if we are already compacting, or if we have fewer
     %% than four open segments.
     Ref = make_ref(),
-    CallingPid ! {compaction_complete, Ref},
+    CallingPid ! {compaction_complete, Ref, 0, 0},
     {reply, {ok, Ref}, State#state { scheduled_compaction=false }};
 
 handle_call({start_compaction, CallingPid}, _From, State) ->
     %% Get list of segments to compact. Do this by getting filesizes,
-    %% and then lopping off the four biggest files. This could be
+    %% and then lopping off files larger than the average. This could be
     %% optimized with tuning, but probably a good enough solution.
     Segments = State#state.segments,
-    SegmentsToCompact = get_segments_to_merge(Segments),
-    
-    %% Create the new compaction segment...
-    <<MD5:128/integer>> = erlang:md5(term_to_binary({now, make_ref()})),
-    SName = join(State, io_lib:format("segment.~.16B", [MD5])),
-    set_deleteme_flag(SName),
-    CompactSegment = mi_segment:open(SName),
+    MaxSegments = 500,
+    SegmentsToCompact = case get_segments_to_merge(Segments) of
+                            STC when length(STC) > MaxSegments ->
+                                lists:sublist(STC, MaxSegments);
+                            STC ->
+                                STC
+                        end,
+    BytesToCompact = lists:sum([mi_segment:filesize(X) || X <- SegmentsToCompact]),
     
     %% Spawn a function to merge a bunch of segments into one...
     Pid = self(),
     CallingRef = make_ref(),
-    spawn_link(fun() ->
+    spawn_opt(fun() ->
+        %% Create the group iterator...
         process_flag(priority, high),
         SegmentIterators = [mi_segment:iterator(X) || X <- SegmentsToCompact],
         GroupIterator = build_group_iterator(SegmentIterators),
+
+        %% Create the new compaction segment...
+        <<MD5:128/integer>> = erlang:md5(term_to_binary({now, make_ref()})),
+        SName = join(State, io_lib:format("segment.~.16B", [MD5])),
+        set_deleteme_flag(SName),
+
+        %% Calculate min and max table slots based on incoming segments.
+        MinSize = if SegmentsToCompact /= [] ->
+                          lists:max([mi_segment:size(X) || X <- SegmentsToCompact]);
+                     true ->
+                          0
+                  end,
+        MaxSize = lists:sum([mi_segment:size(X) || X <- SegmentsToCompact]),
+        CompactSegment = mi_segment:open_write(SName, MinSize, MaxSize),
+        
+        %% Run the compaction...
         mi_segment:from_iterator(GroupIterator, CompactSegment),
-        gen_server:call(Pid, {compacted, CompactSegment, SegmentsToCompact, CallingPid, CallingRef}, infinity)
-    end),
+        gen_server:call(Pid, {compacted, CompactSegment, SegmentsToCompact, BytesToCompact, CallingPid, CallingRef}, infinity)
+    end, [link, {fullsweep_after, 0}]),
     {reply, {ok, CallingRef}, State#state { is_compacting=true }};
 
-handle_call({compacted, CompactSegment, OldSegments, CallingPid, CallingRef}, _From, State) ->
+handle_call({compacted, CompactSegmentWO, OldSegments, OldBytes, CallingPid, CallingRef}, _From, State) ->
     #state { locks=Locks, segments=Segments } = State,
 
     %% Clean up. Remove delete flag on the new segment. Add delete
     %% flags to the old segments. Register to delete the old segments
     %% when the locks are freed.
-    clear_deleteme_flag(mi_segment:filename(CompactSegment)),
+    clear_deleteme_flag(mi_segment:filename(CompactSegmentWO)),
+
+    %% Open the segment as read only...
+    CompactSegmentRO = mi_segment:open_read(mi_segment:filename(CompactSegmentWO)),
+
     [set_deleteme_flag(mi_segment:filename(X)) || X <- OldSegments],
     F = fun(X, Acc) ->
         mi_locks:when_free(mi_segment:filename(X), fun() -> mi_segment:delete(X) end, Acc)
@@ -273,13 +297,13 @@ handle_call({compacted, CompactSegment, OldSegments, CallingPid, CallingRef}, _F
     %% Update State and return...
     NewState = State#state {
         locks=NewLocks,
-        segments=[CompactSegment|(Segments -- OldSegments)],
+        segments=[CompactSegmentRO|(Segments -- OldSegments)],
         scheduled_compaction=false,
         is_compacting=false
     },
 
     %% Tell the awaiting process that we've finished compaction.
-    CallingPid ! {compaction_complete, CallingRef},
+    CallingPid ! {compaction_complete, CallingRef, length(OldSegments), OldBytes},
     {reply, ok, NewState};
 
 handle_call({info, Index, Field, Term}, _From, State) ->
@@ -312,8 +336,9 @@ handle_call({info_range, Index, Field, StartTerm, EndTerm, Size}, _From, State) 
         SegmentCount = lists:sum([mi_segment:info(StartIFT, EndIFT, X) || X <- Segments]),
         {Term, BufferCount + SegmentCount}
     end,
-    Counts = [F(X) || X <- TermIDs],
-    {reply, {ok, Counts}, State};
+    Counts1 = [F(X) || X <- TermIDs],
+    Counts2 = [{Term, Count} || {Term, Count} <- Counts1, Count > 0],
+    {reply, {ok, Counts2}, State};
 
 handle_call({stream, Index, Field, Term, Pid, Ref, FilterFun}, _From, State) ->
     %% Get the IDs...
@@ -348,8 +373,10 @@ handle_call({stream, Index, Field, Term, Pid, Ref, FilterFun}, _From, State) ->
     spawn_link(fun() -> 
         F = fun(_IFT, Value, Props, _TS) ->
             case FilterFun(Value, Props) of
-                true -> Pid!{result, {Value, Props}, Ref};
-                _ -> skip
+                true -> 
+                    Pid!{result, {Value, Props}, Ref};
+                _ -> 
+                    skip
             end
         end,
         stream(StartIFT, EndIFT, F, Buffers, Segments),
@@ -401,20 +428,17 @@ handle_call({fold, Fun, Acc}, _From, State) ->
 
     %% Fold over each buffer...
     F1 = fun(Buffer, AccIn) ->
-        Begin = mi_utils:ift_pack(0, 0, 0),
-        End = all,
-        BufferIterator = mi_buffer:iterator(Begin, End, Buffer),
-        fold(WrappedFun, AccIn, BufferIterator())
-    end,
+                 Itr = mi_buffer:iterator(Buffer),
+                 fold(WrappedFun, AccIn, Itr())
+         end,
     Acc1 = lists:foldl(F1, Acc, Buffers),
 
     %% Fold over each segment...
     F2 = fun(Segment, AccIn) ->
-        Begin = mi_utils:ift_pack(0, 0, 0),
-        End = all,
-        SegmentIterator = mi_segment:iterator(Begin, End, Segment),
-        fold(WrappedFun, AccIn, SegmentIterator())
-    end,
+                 Itr = mi_segment:iterator(Segment),
+                 fold(WrappedFun, AccIn, Itr())
+         end,
+
     Acc2 = lists:foldl(F2, Acc1, Segments),
 
     %% Reply...
@@ -557,20 +581,20 @@ clear_deleteme_flag(Filename) ->
 get_segments_to_merge(Segments) ->
     %% Get all segment sizes...
     F1 = fun(X) ->
-        {ok, FileInfo} = file:read_file_info(mi_segment:data_file(X)),
-        {FileInfo#file_info.size, X}
+        Size = mi_segment:filesize(X),
+        {Size, X}
     end,
-    Sizes = [F1(X) || X <- Segments],
-    Avg = lists:sum([Size || {Size, _} <- Sizes]) / length(Segments),
+    SortedSizedSegments = lists:sort([F1(X) || X <- Segments]),
+    
+    %% Calculate the average...
+    Avg = lists:sum([Size || {Size, _} <- SortedSizedSegments]) div length(Segments) + 1024,
 
-    %% Return segments to merge...
-    F2 = fun({Size, Segment}, Acc) ->
-        case Size < Avg of
-            true -> [Segment|Acc];
-            false -> Acc
-        end
-    end,
-    lists:foldl(F2, [], Sizes).
+    %% Return segments less than average...
+    [Segment || {Size, Segment} <- SortedSizedSegments, Size < Avg].
+
+%% get_average_segment_size(Segments) ->
+%%     TotalSize = lists:sum([mi_segment:filesize(X) || X <- Segments]),
+%%     TotalSize / length(Segments).
 
 fold(_Fun, Acc, eof) -> 
     Acc;

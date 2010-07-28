@@ -48,8 +48,7 @@
                   stdlib,
                   sasl,
                   crypto,
-                  webmachine,
-		  raptor
+                  webmachine
                  ]},
   {mod, { riak_core_app, []}},
   {env, [

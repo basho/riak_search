@@ -1,9 +1,10 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% mi: Merge-Index Data Store
+%%
+%% Copyright (c) 2007-2010 Basho Technologies, Inc. All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
-
 -module(basho_bench_driver_merge_index).
 
 -export([new/1,

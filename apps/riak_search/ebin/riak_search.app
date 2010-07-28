@@ -12,6 +12,7 @@
              riak_search_backend,
              riak_search_config,
              riak_search_client,
+             riak_search_dir_indexer,
              riak_search_sup,
              riak_search_preplan,
              riak_search_facets,
@@ -55,10 +56,10 @@
                   riak_kv,
                   riak_search_core,
                   qilr,
-                  raptor
+                  merge_index
                  ]},
   {mod, { riak_search_app, []}},
-  {env, [{search_backend, riak_search_raptor_backend},
+  {env, [{search_backend, merge_index_backend},
          %% N value to use for indices
          {n_val, 2},
          %% How many index terms get sent in a batch to the vnodes
