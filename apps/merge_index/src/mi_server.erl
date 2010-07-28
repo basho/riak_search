@@ -219,8 +219,7 @@ handle_call({buffer_to_segment, Buffer, SegmentWO}, _From, State) ->
         Num when Num =< 2 orelse ScheduledCompaction == true-> 
             NewState2 = NewState1;
         _ -> 
-            AverageSize = get_average_segment_size(SegmentsToMerge),
-            mi_scheduler:schedule_compaction(AverageSize, self()),
+            mi_scheduler:schedule_compaction(self()),
             NewState2 = NewState1#state { scheduled_compaction=true }
     end,
     
@@ -585,21 +584,17 @@ get_segments_to_merge(Segments) ->
         Size = mi_segment:filesize(X),
         {Size, X}
     end,
-    Sizes = [F1(X) || X <- Segments],
-    Avg = lists:sum([Size || {Size, _} <- Sizes]) div length(Segments) + 1024,
+    SortedSizedSegments = lists:sort([F1(X) || X <- Segments]),
+    
+    %% Calculate the average...
+    Avg = lists:sum([Size || {Size, _} <- SortedSizedSegments]) div length(Segments) + 1024,
 
-    %% Return segments to merge...
-    F2 = fun({Size, Segment}, Acc) ->
-        case Size < Avg of
-            true -> [Segment|Acc];
-            false -> Acc
-        end
-    end,
-    lists:foldl(F2, [], Sizes).
+    %% Return segments less than average...
+    [Segment || {Size, Segment} <- SortedSizedSegments, Size < Avg].
 
-get_average_segment_size(Segments) ->
-    TotalSize = lists:sum([mi_segment:filesize(X) || X <- Segments]),
-    TotalSize / length(Segments).
+%% get_average_segment_size(Segments) ->
+%%     TotalSize = lists:sum([mi_segment:filesize(X) || X <- Segments]),
+%%     TotalSize / length(Segments).
 
 fold(_Fun, Acc, eof) -> 
     Acc;
