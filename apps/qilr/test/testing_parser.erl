@@ -10,7 +10,7 @@ parse(Query, Bool) ->
                                     [{riak_search_field, ".*", string, 0,
                                       undefined, false, true, undefined, undefined, false}],
                                     Bool, "com.basho.search.analysis.DefaultAnalyzerFactory"),
-    qilr_parse:string(Query, Schema).
+    qilr_parse:string(undefined, Query, Schema).
 
 multiple_terms_test_() ->
     [fun() ->
@@ -34,9 +34,15 @@ prefix_test_() ->
     [fun() ->
              ?assertMatch({ok, [{term, <<"planes">>, [required]}]}, parse("+planes")),
              ?assertMatch({ok, [{term, <<"planes">>, [prohibited]}]}, parse("-planes")),
-             ?assertMatch({ok,[{phrase,<<"\"planes trains\"">>, [required]}]},
+             ?assertMatch({ok,[{phrase,<<"\"planes trains\"">>,
+                               [{base_query,[{land,[{term,<<"planes">>,[required]},
+                                                    {term,<<"trains">>,[required]}]}]},
+                                required]}]},
                           parse("+\"planes trains\"")),
-             ?assertMatch({ok,[{phrase,<<"\"planes trains\"">>, [prohibited]}]},
+             ?assertMatch({ok,[{phrase,<<"\"planes trains\"">>,
+                                [{base_query, [{land, [{term, <<"planes">>, [prohibited]},
+                                                       {term, <<"trains">>, [prohibited]}]}]},
+                                  prohibited]}]},
                           parse("-\"planes trains\"")) end].
 
 suffix_test_() ->
@@ -46,19 +52,31 @@ suffix_test_() ->
              ?assertMatch({ok,[{term,<<"solar">>,[{fuzzy,"0.85"}]}]}, parse("solar~0.85")),
              ?assertMatch({ok, [{term, <<"solar">>, [{boost, "2"}]}]}, parse("solar^2")),
              ?assertMatch({ok, [{term, <<"solar">>, [{boost, "0.9"}]}]}, parse("solar^0.9")),
-             ?assertMatch({ok,[{phrase,<<"\"solar power\"">>, [{fuzzy, "0.5"}]}]},
+             ?assertMatch({ok,[{phrase, <<"\"solar power\"">>,
+                                [{base_query, [{land, [{term, <<"solar">>, [{fuzzy, "0.5"}]},
+                                                       {term, <<"power">>, [{fuzzy, "0.5"}]}]}]},
+                                 {fuzzy, "0.5"}]}]},
                           parse("\"solar power\"~")),
-             ?assertMatch({ok,[{phrase,<<"\"solar power\"">>, [{proximity_terms,[<<"solar">>,<<"power">>]},
-                                                               {proximity,"5"}]}]},
+             ?assertMatch({ok,[{phrase,<<"\"solar power\"">>,
+                                [{base_query, [{land, [{term, <<"solar">>, []},
+                                                       {term, <<"power">>, []}]}]},
+                                 {proximity_terms,[<<"solar">>,<<"power">>]},
+                                 {proximity,"5"}]}]},
                           parse("\"solar power\"~5")),
              ?assertMatch({ok,[{phrase,<<"\"solar power\"">>,
-                                [{fuzzy, "0.85"}]}]},
+                                [{base_query,[{land,[{term,<<"solar">>,[{fuzzy,"0.85"}]},
+                                                     {term,<<"power">>,[{fuzzy,"0.85"}]}]}]},
+                                 {fuzzy,"0.85"}]}]},
                           parse("\"solar power\"~0.85")),
              ?assertMatch({ok,[{phrase,<<"\"solar power\"">>,
-                                [{boost, "2"}]}]},
+                                [{base_query, [{land, [{term, <<"solar">>, [{boost, "2"}]},
+                                                       {term, <<"power">>, [{boost, "2"}]}]}]},
+                                {boost, "2"}]}]},
                            parse("\"solar power\"^2")),
              ?assertMatch({ok,[{phrase,<<"\"solar power\"">>,
-                                [{boost, "0.9"}]}]},
+                                [{base_query, [{land, [{term, <<"solar">>, [{boost, "0.9"}]},
+                                                       {term, <<"power">>, [{boost, "0.9"}]}]}]},
+                                {boost, "0.9"}]}]},
                            parse("\"solar power\"^0.9")) end].
 
 bool_test_() ->

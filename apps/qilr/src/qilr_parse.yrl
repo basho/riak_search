@@ -37,12 +37,33 @@ Expect 1.
 Rootsymbol query.
 
 query -> expr:
-      '$1'.
+    case prune_empty('$1', raw) of
+        ?EMPTY ->
+            {error, no_terms};
+        ASTNode ->
+            ASTNode
+    end.
 
 expr -> lparen expr entity_bool rparen:
-    set_default_op('$2' ++ '$3').
+    case prune_empty('$2' ++ '$3', raw) of
+        ?EMPTY ->
+            ?EMPTY;
+        ASTNode when length(ASTNode) == 1 ->
+            ASTNode;
+        ASTNode ->
+            set_default_op(ASTNode)
+    end.
+
 expr -> expr entity_bool:
-    set_default_op('$1' ++ '$2').
+    case prune_empty('$1' ++ '$2', raw) of
+        ?EMPTY ->
+            ?EMPTY;
+        ASTNode when length(ASTNode) == 1 ->
+            ASTNode;
+        ASTNode ->
+            set_default_op(ASTNode)
+    end.
+
 expr -> entity_bool:
     '$1'.
 
@@ -123,11 +144,11 @@ entity_bool -> lparen entity_bool rparen:
     end.
 
 entity_bool -> lnot entity_bool:
-    [{lnot, '$2'}].
+    prune_empty('$2', lnot).
 entity_bool -> entity_bool land entity_bool:
-    [{land, '$1' ++ '$3'}].
+    prune_empty('$1' ++ '$3', land).
 entity_bool -> entity_bool lor entity_bool:
-    [{lor, '$1' ++ '$3'}].
+    prune_empty('$1' ++ '$3', lor).
 entity_bool -> term:
     ['$1'].
 entity_bool -> field:
@@ -148,16 +169,24 @@ term_core -> phrase:
     make_term(phrase, '$1', []).
 
 Erlang code.
--export([string/1, string/2]).
+-define(EMPTY, {empty, '$empty', []}).
+-export([string/1, string/2, string/3]).
 
-string(Query, _) ->
-    string(Query).
 string(Query) ->
+    string(undefined, Query, undefined).
+
+string(Query, Schema) ->
+    {ok, Pid} = qilr:new_analyzer(),
+    string(Pid, Query, Schema).
+
+string(Pid, Query, Schema) ->
+    erlang:put(qilr_schema, Schema),
+    erlang:put(qilr_analyzer, Pid),
     case qilr_scan:string(Query) of
         {ok, Tokens, _} ->
             case parse(Tokens) of
 	        {ok, AST} ->
-                    {ok, qilr_post:process(AST)};
+                    {ok, AST};
                 {error, {_, _, [Message, [91, Err, 93]]}} ->
                     Msg = [list_to_integer(E) || E <- Err,
                                                  is_list(E)],
@@ -169,18 +198,36 @@ string(Query) ->
 
 %% Internal functions
 make_term(phrase, Phrase, Opts) ->
-    {phrase, list_to_binary(extract_text(Phrase)), Opts};
+    PhraseText = extract_text(Phrase),
+    case analyze_word(PhraseText) of
+        '$empty' ->
+            ?EMPTY;
+        AT ->
+	    Terms = [{term, T, Opts} || T <- AT],
+	    BaseQuery = [{land, Terms}],
+            {phrase, list_to_binary(PhraseText), [{base_query, BaseQuery}] ++ Opts}
+    end;
 make_term(term, Word, Opts0) ->
     WordText = extract_text(Word),
     [LC|Text0] = lists:reverse(WordText),
     Text = lists:reverse(Text0),
     {T, Opts} = case LC == $* of
                true ->
-                   {Text, [{wildcard, all}]};
+                   {list_to_binary(Text), [{wildcard, all}]};
                false ->
-                   {WordText, []}
+                   case analyze_word(WordText) of
+                       '$empty' ->
+                           {'$empty', []};
+                       [AT] ->
+                           {AT, []}
+                   end
            end,
-    {term, list_to_binary(T), Opts0 ++ Opts}.
+    if
+        T =:= '$empty' ->
+            ?EMPTY;
+        true ->
+            {term, T, Opts0 ++ Opts}
+    end.
 
 make_field(FieldName, FieldBody, Opts) ->
     {field, extract_text(FieldName), FieldBody, Opts}.
@@ -221,23 +268,34 @@ extract_text({word, _, Text}) ->
 extract_text({phrase, _, Text}) ->
     Text.
 
-add_options({TermType, Text, Existing}, Options) when is_list(Options),
+add_options({TermType, Body, Existing}, Options) when is_list(Options),
                                                       is_list(Existing) ->
     NewOptions = Existing ++ Options,
-    case TermType of
+    NewOpts1 = case TermType of
         phrase ->
             case proplists:get_value(proximity, NewOptions) /= undefined andalso
                  proplists:get_value(proximity_terms, NewOptions) =:= undefined of
                 true ->
-                    Terms = string:tokens(string:strip(binary_to_list(Text), both, 34), [$\ ]),
+                    Terms = string:tokens(string:strip(binary_to_list(Body), both, 34), [$\ ]),
                     PT = {proximity_terms, [list_to_binary(T) || T <- Terms]},
-                    {TermType, Text, [PT|NewOptions]};
+                    [PT|NewOptions];
                 false ->
-                    {TermType, Text, NewOptions}
+                    NewOptions
             end;
         _ ->
-            {TermType, Text, NewOptions}
+            NewOptions
+    end,
+    case proplists:get_value(base_query, NewOpts1, undefined) of
+        undefined ->
+            {TermType, Body, NewOpts1};
+        [{land, BQ}] ->
+	    NewOpts2 = remove_options([proximity, proximity_terms, base_query], NewOpts1),
+	    NewOpts3 = remove_options([base_query], NewOpts1),
+	    BQ1 = [{term, TBody, NewOpts2} || {term, TBody, _} <- BQ],
+            NewOpts4 = [{base_query, [{land, BQ1}]}|NewOpts3],
+	    {TermType, Body, NewOpts4}
     end;
+
 add_options({field, Name, Body, Existing}, Options) when is_list(Options),
                                                          is_list(Existing) ->
     {field, Name, Body, Existing ++ Options}.
@@ -257,11 +315,38 @@ set_default_op(Q) ->
     Q.
 
 default_op() ->
-    case erlang:get(qilr_default_op) of
+    case erlang:get(qilr_schema) of
         undefined ->
             lor;
-        Op ->
-            Op
+        Schema ->
+            case Schema:default_op() of
+	        'or' ->
+                    lor;
+                'and' ->
+                    land;
+                'not' ->
+                    lnot
+            end
+    end.
+
+analyze_word(Text) ->
+    Pid = erlang:get(qilr_analyzer),
+    Schema = erlang:get(qilr_schema),
+    case Pid =:= undefined orelse Schema =:= undefined of
+        true ->
+	    Text1 = string:strip(string:strip(Text, left, $\"), right, $\"),
+	    Tokens = string:tokens(Text1, " "),
+	    [list_to_binary(T) || T <- Tokens,
+	                          length(T) > 2];
+        false ->
+	    DefaultField = Schema:find_field(Schema:default_field()),
+            AnalyzerFactory = Schema:analyzer_factory(DefaultField),
+	    case qilr_analyzer:analyze(Pid, Text, AnalyzerFactory) of
+                {ok, []} ->
+                    '$empty';
+		{ok, T} ->
+                    T
+            end
     end.
 
 is_numeric(Word) ->
@@ -276,3 +361,38 @@ is_numeric(Word) ->
         _ ->
             true
     end.
+
+prune_empty(AST, Type) ->
+    AST1 = [Node || Node <- AST,
+                    Node /= ?EMPTY],
+    case length(AST1) of
+        0 ->
+            ?EMPTY;
+        1 ->
+            if
+	        Type =:= lnot ->
+                    emit_pruned_node(AST1, Type);
+                true ->
+                    AST1
+            end;
+        _ ->
+            case Type of
+                raw ->
+                    AST1;
+                _ ->
+                    emit_pruned_node(AST1, Type)
+            end
+    end.
+emit_pruned_node(AST1, lnot) ->
+    [{lnot, AST1}];
+emit_pruned_node(AST1, land) ->
+    [{land, AST1}];
+emit_pruned_node(AST1, lor) ->
+    [{lor, AST1}];
+emit_pruned_node(AST1, _) ->
+    AST1.
+
+remove_options([], Opts) ->
+    Opts;
+remove_options([H|T], Opts) ->
+    remove_options(T, proplists:delete(H, Opts)).
