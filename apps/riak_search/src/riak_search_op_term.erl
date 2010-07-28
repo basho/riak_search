@@ -17,6 +17,7 @@
 preplan_op(Op, _F) -> Op.
 
 chain_op(Op, OutputPid, OutputRef, QueryProps) ->
+    io:format("Op: ~p~n", [Op]),
     spawn_link(fun() -> start_loop(Op, OutputPid, OutputRef, QueryProps) end),
     {ok, 1}.
 

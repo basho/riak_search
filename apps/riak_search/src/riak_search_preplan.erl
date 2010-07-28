@@ -98,6 +98,17 @@ pass2(Op = #term {}, Schema) ->
     Options = Op#term.options,
     rewrite_term(NewQ, Options, Schema);
 
+pass2(#phrase{props=Props}=Op, Schema) ->
+    BQ = proplists:get_value(base_query, Props),
+    [BQ1] = case BQ of
+              #term{} ->
+                  pass2(BQ, Schema);
+              #land{} ->
+                  [pass2(BQ, Schema)]
+          end,
+    Props1 = proplists:delete(base_query, Props),
+    Op#phrase{props=[{base_query, BQ1}|Props1]};
+
 pass2(Op = #land {}, Schema) ->
     %% Collapse nested and operations.
     F = fun
@@ -517,7 +528,8 @@ get_preferred_node_inner(Op) when is_record(Op, term) ->
     [{Node, Weight} || {node_weight, Node, Weight} <- Op#term.options];
 get_preferred_node_inner(Op) when is_record(Op, mockterm) ->
     [];
-get_preferred_node_inner(#phrase{base_query={land, [Op|_]}}) ->
+get_preferred_node_inner(#phrase{props=Props}) ->
+    [{land, [Op|_]}] = Props,
     get_preferred_node_inner(Op);
 get_preferred_node_inner(Op) ->
     Ops = element(2, Op),
