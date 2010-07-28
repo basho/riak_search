@@ -69,13 +69,26 @@ delete_entry(Index, Field, Term, DocId, KeyClock, State) ->
     noreply.
 
 multi_delete(IFTVKList, State) ->
+    Table = State#state.table,
     lists:foreach(
-      fun({I, F, T, V, _K}) ->
+      fun({I, F, T, V, K}) ->
               Key = {b(I), b(F), b(T), b(V)},
-              ets:match_delete(State#state.table, {Key, '_', '_'})
+              case ets:lookup(Table, Key) of
+                  [{Key, _Props, ExistingKeyClock}] ->
+                      if ExistingKeyClock > K ->
+                              %% stored data is newer
+                              ok;
+                         true ->
+                              %% stored data is older
+                              ets:delete(Table, Key)
+                      end;
+                  [] ->
+                      ok
+              end
       end,
       IFTVKList),
-    noreply.
+    {reply, {deleted, node()}, State}.
+
 %%% TODO: why can't I {reply, ok} here? (cargo-cult raptor_backend)
 
 info(Index, Field, Term, Sender, State) ->
