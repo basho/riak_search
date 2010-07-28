@@ -7,6 +7,7 @@
                   qilr_app,
                   qilr_scan,
                   qilr_parse,
+                  qilr_post,
                   qilr_postprocess,
                   qilr_analyzer,
                   qilr_analyzer_sup,

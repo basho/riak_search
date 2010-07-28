@@ -11,47 +11,38 @@
 -include_lib("qilr/include/qilr.hrl").
 -include("riak_search.hrl").
 
-preplan_op(#phrase{phrase=Phrase0, base_query=BQ}=Op, F) ->
-    Phrase = [C || C <- Phrase0,
-                   C /= 34], %% double quotes
+preplan_op(#phrase{phrase=Phrase0, props=Props}=Op, F) ->
+    case proplists:get_value(op_mod, Props) of
+        undefined ->
+            Phrase = list_to_binary([C || C <- binary_to_list(Phrase0),
+                                          C /= 34]), %% double quotes
+            BQ = proplists:get_value(base_query, Props),
+            {Mod, BQ1} = case is_tuple(BQ) of
+                             true ->
+                                 {riak_search_op_term, BQ};
+                             false ->
+                                 case hd(BQ) of
+                                     {land, [Term]} ->
+                                         {riak_search_op_term, Term};
+                                     {land, Terms} ->
+                                         {riak_search_op_land, {land, Terms}}
+                                 end
+                         end,
+            BQ2 = Mod:preplan_op(BQ1, F),
+            Props1 = proplists:delete(base_query, Props),
+            Props2 = [{base_query, BQ2},
+                      {op_mod, Mod}] ++ Props1,
+            Op#phrase{phrase=Phrase, props=Props2};
+        _ ->
+            Op
+    end.
 
-    %% This is a temporary fix for Bugzilla #336
-    %%
-    %% Woven into the parser and preplanner is the assumption that when there is a single
-    %%  query component (e.g. "{term, ..}") it will not be enclosed in a list, therefore
-    %%  when a phrase query such as "the problem" comes through, "the" gets filtered out
-    %%  by the analyzer (which it should), but then becomes a single term not enclosed in
-    %%  a list so then never gets converted to a land operation; this would normally be fine
-    %%  except the way the query execution mechanism works, all phrases decompose to lands
-    %%  and expect as much as per the last line in this function.
-    %% The "fix" below detects the case where the phrase has, through the analyze process,
-    %%  decomposed to a single term, and therefore a malformed land operation, and
-    %%  "fixes" it.  This poses no real performance problem and doesn't have any further
-    %%  side effects, so if everyone is comfortable with it, we'll keep it.
-    %% If you are not comfortable with this fix, your answer lies in the guts of qilr's
-    %%  leex/yecc grammar and code and somewhere in the preplanner.
-    %%
-    %% e.g.,
-    %%   [{base_query,{term,<<"problem">>,[]}}]
-    %%  to:
-    %%   {land, [{term, "problem", []}]}
-    %%
-    %% Update: added another similar case for single-term decomps with proximity searches.
-    %%
-    BQ1 = case BQ of
-              BQ when is_tuple(BQ),
-                      size(BQ) == 3 orelse size(BQ) == 4 ->
-                  {land, [BQ]};
-              _ ->
-                  BQ
-          end,
-    Op#phrase{phrase=Phrase, base_query=riak_search_op_land:preplan_op(BQ1, F)}.
-
-chain_op(#phrase{phrase=Phrase, base_query=BaseQuery, props=Props}, OutputPid, OutputRef, QueryProps) ->
+chain_op(#phrase{phrase=Phrase, props=Props}, OutputPid, OutputRef, QueryProps) ->
+    BaseQuery = proplists:get_value(base_query, Props),
+    OpMod = proplists:get_value(op_mod, Props),
     {ok, Client} = riak:local_client(),
     IndexName = proplists:get_value(index_name, QueryProps),
-    DefaultField = proplists:get_value(default_field, QueryProps),
-    FieldName = get_query_field(DefaultField, BaseQuery),
+    FieldName = proplists:get_value(default_field, QueryProps),
     F = fun({DocId, _}) ->
                 {ok, Analyzer} = qilr:new_analyzer(),
                 try
@@ -86,15 +77,8 @@ chain_op(#phrase{phrase=Phrase, base_query=BaseQuery, props=Props}, OutputPid, O
                     qilr:close_analyzer(Analyzer)
                 end
         end,
-    riak_search_op_land:chain_op(BaseQuery, OutputPid, OutputRef, [{term_filter, F}|QueryProps]).
-
-get_query_field(DefaultField, {land, [Op|_]}) ->
-    case Op of
-        {field, FieldName, _, _} ->
-            FieldName;
-        _ ->
-            DefaultField
-    end.
+    io:format("Props: ~p~n", [Props]),
+    OpMod:chain_op(BaseQuery, OutputPid, OutputRef, [{term_filter, F}|QueryProps]).
 
 evaluate_proximity(_Value, _Distance, []) ->
     false;

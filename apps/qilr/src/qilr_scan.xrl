@@ -1,7 +1,7 @@
 Definitions.
 
 WHITESPACE  = [\b\f\n\r\t\s\v]*
-TERM = (\\\^.|\\.|[^\:^\{^\}^\(^\)^\[^\]^\+^\-^\!^\&^\|^\^^\~^\s])*
+WORD = (\\\^.|\\.|[^\:^\{^\}^\(^\)^\[^\]^\+^\-^\!^\&^\|^\^^\~^\s])*
 STRING = "(\\\^.|\\.|[^\"])*"
 Rules.
 
@@ -28,7 +28,7 @@ TO			: {token, {to, TokenLine, TokenChars}}.
 \^			: {token, {caret, TokenLine, TokenChars}}.
 \~			: {token, {tilde, TokenLine, TokenChars}}.
 {STRING}		: {token, {phrase, TokenLine, TokenChars}}.
-{TERM}			: {token, {term, TokenLine, TokenChars}}.
+{WORD}			: {token, {word, TokenLine, TokenChars}}.
 
 %% Without the next line, the scanner would hang on unrecognized tokens...
 .			: {error, lists:flatten(io_lib:format("invalid character \"~s\" at line ~p", [TokenChars, TokenLine]))}.

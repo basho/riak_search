@@ -24,7 +24,7 @@
 -record(lnot,             {ops}).
 
 -record(land,             {ops}).
--record(phrase,           {phrase, base_query, props=[]}).
+-record(phrase,           {phrase, props=[]}).
 -record(lor,              {ops}).
 -record(group,            {ops}).
 -record(field,            {field, ops}).
