@@ -38,8 +38,12 @@ init([]) ->
     IndexFsm = {riak_search_index_fsm_sup,
                 {riak_search_index_fsm_sup, start_link, []},
                 permanent, 5000, supervisor, [riak_search_index_fsm]},
+    DeleteFsm = {riak_search_delete_fsm_sup,
+                {riak_search_delete_fsm_sup, start_link, []},
+                permanent, 5000, supervisor, [riak_search_delete_fsm]},
     Processes = [Config,
                  VMaster,
-                 IndexFsm],
+                 IndexFsm,
+                 DeleteFsm],
     {ok, { {one_for_one, 5, 10}, Processes} }.
 

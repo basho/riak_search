@@ -12,7 +12,8 @@
     stop/1,
     index_if_newer/7,
     multi_index/2,
-    delete_entry/5,
+    delete_entry/6,
+    multi_delete/2,
     stream/6,
     multi_stream/4,
     info/5,
@@ -50,11 +51,7 @@ stop(State) ->
 index_if_newer(Index, Field, Term, DocId, Props, KeyClock, State) ->
     %% Put with properties.
     Pid = State#state.pid,
-
-    %% RAPTOR-ONLY OPTIMIZATION
-    %% Why do we pass this as a string? This should be an int.
-    TS = list_to_integer(binary_to_list(KeyClock)),
-    merge_index:index(Pid, to_binary(Index), to_binary(Field), to_binary(Term), to_binary(DocId), Props, TS),
+    merge_index:index(Pid, to_binary(Index), to_binary(Field), to_binary(Term), to_binary(DocId), Props, KeyClock),
     noreply.
 
 multi_index(IFTVPKList, State) ->
@@ -65,10 +62,17 @@ multi_index(IFTVPKList, State) ->
     [F(X) || X <- IFTVPKList],
     {reply, {indexed, node()}, State}.
 
-delete_entry(Index, Field, Term, DocId, State) ->
-    KeyClock = riak_search_utils:current_key_clock(),
+delete_entry(Index, Field, Term, DocId, KeyClock, State) ->
     index_if_newer(Index, Field, Term, DocId, undefined, KeyClock, State),
     noreply.
+
+multi_delete(IFTVKList, State) ->
+    F = fun(IFTVPK) ->
+        {Index, Field, Term, DocId, KeyClock} = IFTVPK,
+        delete_entry(Index, Field, Term, DocId, KeyClock, State)
+    end,
+    [F(X) || X <- IFTVKList],
+    {reply, {deleted, node()}, State}.
 
 info(Index, Field, Term, Sender, State) ->
     Pid = State#state.pid,

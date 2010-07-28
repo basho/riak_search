@@ -32,7 +32,10 @@
     index_term/5,
 
     %% Delete
-    delete_doc/2,
+    delete_terms/1, delete_terms/2,
+    get_delete_fsm/0,
+    stop_delete_fsm/1,
+    delete_doc/2, delete_doc/3,
     delete_term/4
 ]).
 
@@ -92,6 +95,10 @@ explain(IndexOrSchema, QueryOps) ->
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
     riak_search_preplan:preplan(QueryOps, Schema).
 
+%% Index the specified term - better to use the plural 'terms' interfaces
+index_term(Index, Field, Term, Value, Props) ->
+    index_terms([{Index, Field, Term, Value, Props}]).
+
 %% Create an index FSM, send the terms and shut it down
 index_terms(Terms) ->
     {ok, Pid} = get_index_fsm(),
@@ -125,14 +132,49 @@ index_doc(IdxDoc, AnalyzerPid, IndexPid) ->
     index_terms(IndexPid, Postings),
     riak_indexed_doc:put(RiakClient, IdxDoc).
 
-%% Index the specified term - better to use to plural 'terms' interfaces
-index_term(Index, Field, Term, Value, Props) ->
-    index_terms([{Index, Field, Term, Value, Props}]).
+%% Delete the specified term - better to use the plural 'terms' interfaces.
+delete_term(Index, Field, Term, Value) ->
+    delete_terms([{Index, Field, Term, Value}]).
 
-delete_term(Index, Field, Term, DocId) ->
-    {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
-    Preflist = riak_core_apl:get_apl(Partition, N, riak_search),
-    riak_search_vnode:delete_term(Preflist, Index, Field, Term, DocId).
+%% Create a delete FSM, send the terms and shut it down.
+delete_terms(Terms) ->
+    {ok, Pid} = get_delete_fsm(),
+    ok = delete_terms(Pid, Terms),
+    stop_delete_fsm(Pid).
+    
+%% Delete terms against a delete FSM.
+delete_terms(Pid, Terms) ->
+    riak_search_delete_fsm:delete_terms(Pid, Terms).
+
+%% Get a delete FSM
+get_delete_fsm() ->
+    riak_search_delete_fsm_sup:start_child().
+
+%% Tell a delete FSM deleting is complete and wait for it to shut
+%% down.
+stop_delete_fsm(Pid) ->
+    riak_search_delete_fsm:done(Pid).
+
+%% Delete a specified #riak_idx_doc.
+delete_doc(IdxDoc, AnalyzerPid) ->
+    {ok, DeletePid} = get_delete_fsm(),
+    try
+        delete_doc(IdxDoc, AnalyzerPid, DeletePid)
+    after
+        stop_delete_fsm(DeletePid)
+    end.
+
+delete_doc(IdxDoc, AnalyzerPid, DeletePid) ->
+    %% Analyze for postings, remove the Props as the delete interface doesn't
+    %% accept them. Then delete all of the postings.
+    {ok, Postings0} = riak_indexed_doc:analyze(IdxDoc, AnalyzerPid),
+    Postings = [{I,F,T,V} || {I,F,T,V,_} <- Postings0],
+    delete_terms(DeletePid, Postings),
+
+    %% Delete the doc...
+    Index = riak_indexed_doc:index(IdxDoc),
+    DocId = riak_indexed_doc:id(IdxDoc),
+    riak_indexed_doc:delete(RiakClient, Index, DocId).
 
 truncate_list(QueryStart, QueryRows, List) ->
     %% Remove the first QueryStart results...
@@ -253,22 +295,3 @@ calculate_scores(QueryNorm, NumTerms, [{Value, Props}|Results]) ->
     [{-1 * Score, Value, NewProps}|calculate_scores(QueryNorm, NumTerms, Results)];
 calculate_scores(_, _, []) ->
     [].
-
-delete_doc(Index, DocId) ->
-    case riak_indexed_doc:get(RiakClient, Index, DocId) of
-        {error, notfound} ->
-            {error, notfound};
-        IdxDoc ->
-            %% Get the postings...
-            {ok, Postings} = riak_indexed_doc:analyze(IdxDoc),
-
-            %% Delete the postings...
-            F = fun(X) ->
-                {Index, Field, Term, Value, _Props} = X,
-                delete_term(Index, Field, Term, Value)
-            end,
-            plists:map(F, Postings, {processes, 4}),
-
-            %% Delete the indexed doc.
-            riak_indexed_doc:delete(RiakClient, Index, DocId)
-    end.

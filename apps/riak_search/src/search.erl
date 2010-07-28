@@ -127,16 +127,27 @@ delete_dir(Directory) ->
     delete_dir(?DEFAULT_INDEX, Directory).
 
 delete_dir(Index, Directory) ->
-    {ok, Client} = riak_search:local_client(),
-    F = fun(DocID, _Body) ->
-                Client:delete_doc(Index, DocID)
-        end,
+    F = fun(DocId, _Body) ->
+        delete_doc(Index, DocId)
+    end,
     riak_search_utils:index_recursive(F, Directory),
     ok.
 
 delete_doc(DocID) ->
     delete_doc(?DEFAULT_INDEX, DocID).
 
-delete_doc(Index, DocID) ->
-    {ok, Client} = riak_search:local_client(),
-    Client:delete_doc(Index, DocID).
+delete_doc(Index, DocId) ->
+    {ok, RiakClient} = riak:local_client(),
+    case riak_indexed_doc:get(RiakClient, Index, DocId) of
+        {error, notfound} ->
+            {error, notfound};
+        IdxDoc ->
+            {ok, Client} = riak_search:local_client(),
+            {ok, AnalyzerPid} = qilr:new_analyzer(),
+            try 
+                Client:delete_doc(IdxDoc, AnalyzerPid)
+            after
+                qilr:close_analyzer(AnalyzerPid)
+            end,
+            ok
+    end.
