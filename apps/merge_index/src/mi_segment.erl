@@ -191,7 +191,7 @@ info(IFT, Segment) ->
 %% Return the number of results for IFTs between the StartIFT and
 %% StopIFT, inclusive.
 info(StartIFT, StopIFT, Segment) ->
-    mi_nif:segix_ift_count(Segment#segment.segidx, StartIFT, StopIFT).
+    mi_nif:segidx_ift_count(Segment#segment.segidx, StartIFT, StopIFT).
 
 %% Create an iterator over the entire segment.
 iterator(Segment) ->
