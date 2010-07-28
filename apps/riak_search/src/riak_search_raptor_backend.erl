@@ -98,7 +98,7 @@ delete_entry(Index, Field, Term, DocId, _KeyClock, State) ->
     after
         riak_sock_pool:checkin(?CONN_POOL, Conn)
     end,
-    noreply.
+    {reply, {deleted, State#state.partition}, State}.
 
 multi_delete(IFTVKList, State) ->
     [delete_entry(I, F, T, V, K, State) || {I, F, T, V, K} <- IFTVKList],
