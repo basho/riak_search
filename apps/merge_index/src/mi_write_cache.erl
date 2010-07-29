@@ -1,11 +1,10 @@
 %% -------------------------------------------------------------------
 %%
-%% mi_write_cache: Use memory buffer to avoid bizillions of prim_file calls.
+%% mi: Merge-Index Data Store
 %%
 %% Copyright (c) 2010 Basho Technologies, Inc. All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
-
 -module(mi_write_cache).
 
 -export([setup/1,
