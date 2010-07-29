@@ -405,7 +405,7 @@ handle_call({stream_finished, Buffers, Segments}, _From, State) ->
     %% Return...
     {reply, ok, State#state { locks=NewLocks1 }};
 
-handle_call({fold, Fun, Acc}, _From, State) ->
+handle_call({fold, FoldFun, Acc}, _From, State) ->
     #state { indexes=Indexes, fields=Fields, terms=Terms, buffers=Buffers, segments=Segments } = State,
     
     %% Reverse the incdexes. Normally, they map "Value" to ID.  The
@@ -414,35 +414,48 @@ handle_call({fold, Fun, Acc}, _From, State) ->
     InvertedFields = mi_incdex:invert(Fields),
     InvertedTerms = mi_incdex:invert(Terms),
 
-    %% Create the fold function.
-    WrappedFun = fun({IFT, Value, Props, TS}, AccIn) ->
-        %% Look up the Index, Field, and Term...
-        {IndexID, FieldID, TermID} = mi_utils:ift_unpack(IFT),
-        {value, Index} = gb_trees:lookup(IndexID, InvertedIndexes),
-        {value, Field} = gb_trees:lookup(FieldID, InvertedFields),
-        {value, Term} = gb_trees:lookup(TermID, InvertedTerms),
+    %% Create the fold function.  
 
-        %% Call the fold function...
-        Fun(Index, Field, Term, Value, Props, TS, AccIn)
+    %% Optimize by caching the last set of IndexID / FieldID / TermID
+    %% lookups, as we will hit a lot of the same values in a
+    %% row. LookupFun makes this easier.  LastPair is the last {ID,
+    %% Value} tuple, or 'none'.
+    LookupFun = fun(ID, LastPair, Tree) ->
+        case LastPair of
+            {ID, Value} ->
+                {Value, {ID, Value}};
+            _ -> 
+                {value, Value} = gb_trees:lookup(ID, Tree),
+                {Value, {ID, Value}}
+        end
     end,
 
-    %% Fold over each buffer...
-    F1 = fun(Buffer, AccIn) ->
-                 Itr = mi_buffer:iterator(Buffer),
-                 fold(WrappedFun, AccIn, Itr())
-         end,
-    Acc1 = lists:foldl(F1, Acc, Buffers),
+    %% Wrap the FoldFun so that we have a chance to do IndexID /
+    %% FieldID / TermID lookups
+    WrappedFun = fun({IFT, Value, Props, TS}, {AccIn, LastIndexLookup, LastFieldLookup, LastTermLookup}) ->
+        %% Look up the Index, Field, and Term...
+        {IndexID, FieldID, TermID} = mi_utils:ift_unpack(IFT),
+        
+        %% Either re-use last
+        {Index, IndexLookup} = LookupFun(IndexID, LastIndexLookup, InvertedIndexes),
+        {Field, FieldLookup} = LookupFun(FieldID, LastFieldLookup, InvertedFields),
+        {Term, TermLookup} = LookupFun(TermID, LastTermLookup, InvertedTerms),
 
-    %% Fold over each segment...
-    F2 = fun(Segment, AccIn) ->
-                 Itr = mi_segment:iterator(Segment),
-                 fold(WrappedFun, AccIn, Itr())
-         end,
+        %% Call the fold function...
+        NewAccIn = FoldFun(Index, Field, Term, Value, Props, TS, AccIn),
+        {NewAccIn, IndexLookup, FieldLookup, TermLookup}
+    end,
 
-    Acc2 = lists:foldl(F2, Acc1, Segments),
+    %% Assemble the group iterator...
+    BufferIterators = [mi_buffer:iterator(X) || X <- Buffers],
+    SegmentIterators = [mi_segment:iterator(X) || X <- Segments],
+    GroupIterator = build_group_iterator(BufferIterators ++ SegmentIterators),
+
+    %% Fold over everything...
+    {NewAcc, _, _, _} = fold(WrappedFun, {Acc, none, none, none}, GroupIterator()),
 
     %% Reply...
-    {reply, {ok, Acc2}, State};
+    {reply, {ok, NewAcc}, State};
     
 handle_call(is_empty, _From, State) ->
     #state { terms=Terms } = State,
