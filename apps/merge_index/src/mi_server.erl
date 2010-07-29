@@ -292,7 +292,7 @@ handle_call({info, Index, Field, Term}, _From, State) ->
     #state { buffers=Buffers, segments=Segments } = State,
     case mi_ift_server:find_ift(Index, Field, Term) of
         undefined ->
-            {reply, {ok, 0}, State};
+            {reply, {ok, [{Term, 0}]}, State};
 
         IFT ->
             %% Look up the counts in buffers and segments...

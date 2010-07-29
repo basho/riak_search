@@ -88,7 +88,7 @@ reverse_ift(IFT) when is_integer(IFT) ->
     {Index, Field, Term}.
 
 term_count() ->
-    ets:size(mi_ift_terms).
+    ets:info(mi_ift_terms, size).
 
 
 %% ====================================================================
@@ -207,8 +207,8 @@ find(Table, Key) ->
     end.
 
 ift_pack(IndexID, FieldID, TermID)
-  when IndexID /= undefined;
-       FieldID /= undefined;
+  when IndexID /= undefined,
+       FieldID /= undefined,
        TermID  /= undefined ->
     <<Ift:64/unsigned>> = <<IndexID:16/integer,
                             FieldID:16/integer,
@@ -252,7 +252,7 @@ read_ift_file(State, <<>>) ->
 read_ift_file(State, <<Type:8/unsigned, Id:32/unsigned, Size:32/unsigned>>) ->
     case file:read(State#state.ift_file, Size + ?BLOCK_HEADER_SZ) of
         {ok, <<Data:Size/bytes, Rest/binary>>} ->
-            io:format("Loading ~p ~p ~p\n", [Type, Data, Id]),
+            %% io:format("Loading ~p ~p ~p\n", [Type, Data, Id]),
             Table = block_id_to_table(Type),
             RevTable = table_to_rev_table(Table),
             ets:insert_new(Table, {Data, Id}),
