@@ -37,7 +37,6 @@ init([Root, Config]) ->
     %% Get incdex and buffer options...
     TempState = #state { config=Config },
     SyncInterval = ?SYNC_INTERVAL(TempState),
-    IncdexOptions = [{write_interval, SyncInterval}],
     BufferOptions = [{write_interval, SyncInterval}],
     
     %% Load from disk...
@@ -50,9 +49,6 @@ init([Root, Config]) ->
     State = #state {
         root     = Root,
         locks    = mi_locks:new(),
-        indexes  = mi_incdex:open(join(Root, "indexes"), IncdexOptions),
-        fields   = mi_incdex:open(join(Root, "fields"), IncdexOptions),
-        terms    = mi_incdex:open(join(Root, "terms"), IncdexOptions),
         buffers  = [Buffer],
         segments = Segments,
         config   = Config,
@@ -133,29 +129,14 @@ read_buffers(Root, BufferOptions, [{BNum, BName}|Rest], NextID, Segments) ->
 
 handle_call({index, Index, Field, Term, Value, Props, TS}, _From, State) ->
     %% Calculate the IFT...
-    #state { indexes=Indexes, fields=Fields, terms=Terms, buffers=[CurrentBuffer0|Buffers] } = State,
-    {IndexID, NewIndexes} = mi_incdex:lookup(Index, Indexes),
-    {FieldID, NewFields} = mi_incdex:lookup(Field, Fields),
-    {TermID, NewTerms} = mi_incdex:lookup(Term, Terms),
-    IFT = mi_utils:ift_pack(IndexID, FieldID, TermID),
+    #state { buffers=[CurrentBuffer0|Buffers] } = State,
+    IFT = mi_ift_server:create_ift(Index, Field, Term),
 
     %% Write to the buffer...
     CurrentBuffer = mi_buffer:write(IFT, Value, Props, TS, CurrentBuffer0),
 
     %% Update the state...
-    NewState = State#state {
-        indexes=NewIndexes,
-        fields=NewFields,
-        terms=NewTerms,
-        buffers=[CurrentBuffer|Buffers]
-    },
-
-    %% Add a small delay if we are sitting on too many segments. This
-    %% provides a sort of automated throttling, giving the compactor
-    %% time to merge segments.
-    %% TODO - Make this configurable. It would be useful to
-    %% turn this off for bulk loading.
-    %% TODO - Reevaluate whether sleeping here is a good idea.
+    NewState = State#state {buffers = [CurrentBuffer | Buffers]},
 
     %% Possibly dump buffer to a new segment...
     case mi_buffer:filesize(CurrentBuffer) > ?ROLLOVER_SIZE(NewState) of
@@ -308,84 +289,81 @@ handle_call({compacted, CompactSegmentWO, OldSegments, OldBytes, CallingPid, Cal
 
 handle_call({info, Index, Field, Term}, _From, State) ->
     %% Calculate the IFT...
-    #state { indexes=Indexes, fields=Fields, terms=Terms, buffers=Buffers, segments=Segments } = State,
-    IndexID = mi_incdex:lookup_nocreate(Index, Indexes),
-    FieldID = mi_incdex:lookup_nocreate(Field, Fields),
-    TermID = mi_incdex:lookup_nocreate(Term, Terms),
-    IFT = mi_utils:ift_pack(IndexID, FieldID, TermID),
+    #state { buffers=Buffers, segments=Segments } = State,
+    case mi_ift_server:find_ift(Index, Field, Term) of
+        undefined ->
+            {reply, {ok, 0}, State};
 
-    %% Look up the counts in buffers and segments...
-    BufferCount = lists:sum([mi_buffer:info(IFT, X) || X <- Buffers]),
-    SegmentCount = lists:sum([mi_segment:info(IFT, X) || X <- Segments]),
-    Counts = [{Term, BufferCount + SegmentCount}],
+        IFT ->
+            %% Look up the counts in buffers and segments...
+            BufferCount = lists:sum([mi_buffer:info(IFT, X) || X <- Buffers]),
+            SegmentCount = lists:sum([mi_segment:info(IFT, X) || X <- Segments]),
+            Counts = [{Term, BufferCount + SegmentCount}],
 
-    %% Return...
-    {reply, {ok, Counts}, State};
+            %% Return...
+            {reply, {ok, Counts}, State}
+    end;
 
-handle_call({info_range, Index, Field, StartTerm, EndTerm, Size}, _From, State) ->
+handle_call({info_range, Index, Field, StartTerm, EndTerm, _Size}, _From, State) ->
+    %% TODO: Why do we need size here?
     %% Get the IDs...
-    #state { indexes=Indexes, fields=Fields, terms=Terms, buffers=Buffers, segments=Segments } = State,
-    IndexID = mi_incdex:lookup_nocreate(Index, Indexes),
-    FieldID = mi_incdex:lookup_nocreate(Field, Fields),
-    TermIDs = mi_incdex:select(StartTerm, EndTerm, Size, Terms),
+    #state { buffers=Buffers, segments=Segments } = State,
 
-    F = fun({Term, TermID}) ->
-        StartIFT = mi_utils:ift_pack(IndexID, FieldID, TermID),
-        EndIFT = mi_utils:ift_pack(IndexID, FieldID, TermID),
-        BufferCount = lists:sum([mi_buffer:info(StartIFT, EndIFT, X) || X <- Buffers]),
-        SegmentCount = lists:sum([mi_segment:info(StartIFT, EndIFT, X) || X <- Segments]),
-        {Term, BufferCount + SegmentCount}
-    end,
-    Counts1 = [F(X) || X <- TermIDs],
-    Counts2 = [{Term, Count} || {Term, Count} <- Counts1, Count > 0],
-    {reply, {ok, Counts2}, State};
+    %% For each term, determine the number of entries
+    F = fun({Term, IFT}, Acc) ->
+                Total = lists:sum([mi_buffer:info(IFT, X) || X <- Buffers]) +
+                    lists:sum([mi_segment:info(IFT, X) || X <- Segments]),
+                case Total > 0 of
+                    true ->
+                        [{Term, Total} | Acc];
+                    false ->
+                        Acc
+                end
+        end,
+    Counts = lists:reverse(mi_ift_server:fold_ifts(Index, Field, StartTerm, EndTerm, F, [])),
+    {reply, {ok, Counts}, State};
 
 handle_call({stream, Index, Field, Term, Pid, Ref, FilterFun}, _From, State) ->
     %% Get the IDs...
-    #state { locks=Locks, indexes=Indexes, fields=Fields, terms=Terms, buffers=Buffers, segments=Segments } = State,
-    IndexID = mi_incdex:lookup_nocreate(Index, Indexes),
-    FieldID = mi_incdex:lookup_nocreate(Field, Fields),
-    TermID = mi_incdex:lookup_nocreate(Term, Terms),
+    #state { locks=Locks, buffers=Buffers, segments=Segments } = State,
 
-    %% TODO - These next two lines are indicitive of vestigal code
-    %% from when merge_index used the fated subtype/subterm
-    %% structure. We no longer need a StartIFT and EndIFT, we just
-    %% need the IFT to stream. As a result, there are simplifications
-    %% we could make in mi_buffer and mi_segment. Not making them now
-    %% due to time pressure. - RTK
-    StartIFT = mi_utils:ift_pack(IndexID, FieldID, TermID),
-    EndIFT = mi_utils:ift_pack(IndexID, FieldID, TermID),
+    case mi_ift_server:find_ift(Index, Field, Term) of
+        undefined ->
+            %% Nothing to do, the IFT doesn't exist!
+            Pid ! {result, '$end_of_table', Ref},
+            {reply, ok, State};
 
-    %% Add locks to all buffers...
-    F1 = fun(Buffer, Acc) ->
-        mi_locks:claim(mi_buffer:filename(Buffer), Acc)
-    end,
-    NewLocks = lists:foldl(F1, Locks, Buffers),
+        IFT ->
+            %% Add locks to all buffers...
+            F1 = fun(Buffer, Acc) ->
+                         mi_locks:claim(mi_buffer:filename(Buffer), Acc)
+                 end,
+            NewLocks = lists:foldl(F1, Locks, Buffers),
 
-    %% Add locks to all segments...
-    F2 = fun(Segment, Acc) ->
-        mi_locks:claim(mi_segment:filename(Segment), Acc)
-    end,
-    NewLocks1 = lists:foldl(F2, NewLocks, Segments),
+            %% Add locks to all segments...
+            F2 = fun(Segment, Acc) ->
+                         mi_locks:claim(mi_segment:filename(Segment), Acc)
+                 end,
+            NewLocks1 = lists:foldl(F2, NewLocks, Segments),
 
-    %% Spawn a streaming function...
-    Self = self(),
-    spawn_link(fun() -> 
-        F = fun(_IFT, Value, Props, _TS) ->
-            case FilterFun(Value, Props) of
-                true -> 
-                    Pid!{result, {Value, Props}, Ref};
-                _ -> 
-                    skip
-            end
-        end,
-        stream(StartIFT, EndIFT, F, Buffers, Segments),
-        Pid!{result, '$end_of_table', Ref},
-        gen_server:call(Self, {stream_finished, Buffers, Segments}, infinity)
-    end),
-
-    %% Reply...
-    {reply, ok, State#state { locks=NewLocks1 }};
+            %% Spawn a streaming function...
+            Self = self(),
+            spawn_link(fun() ->
+                               F = fun(_IFT, Value, Props, _TS) ->
+                                           case FilterFun(Value, Props) of
+                                               true ->
+                                                   Pid ! {result, {Value, Props}, Ref};
+                                               _ ->
+                                                   skip
+                                           end
+                                   end,
+                               %% TODO: Stream really doesn't need to take a start/end IFT!!
+                               stream(IFT, IFT, F, Buffers, Segments),
+                               Pid ! {result, '$end_of_table', Ref},
+                               gen_server:call(Self, {stream_finished, Buffers, Segments}, infinity)
+                       end),
+            {reply, ok, State#state { locks=NewLocks1 }}
+    end;
 
 handle_call({stream_finished, Buffers, Segments}, _From, State) ->
     #state { locks=Locks } = State,
@@ -406,25 +384,16 @@ handle_call({stream_finished, Buffers, Segments}, _From, State) ->
     {reply, ok, State#state { locks=NewLocks1 }};
 
 handle_call({fold, Fun, Acc}, _From, State) ->
-    #state { indexes=Indexes, fields=Fields, terms=Terms, buffers=Buffers, segments=Segments } = State,
-    
-    %% Reverse the incdexes. Normally, they map "Value" to ID.  The
-    %% invert/1 command returns a gbtree mapping ID to "Value".
-    InvertedIndexes = mi_incdex:invert(Indexes),
-    InvertedFields = mi_incdex:invert(Fields),
-    InvertedTerms = mi_incdex:invert(Terms),
+    #state { buffers=Buffers, segments=Segments } = State,
 
     %% Create the fold function.
     WrappedFun = fun({IFT, Value, Props, TS}, AccIn) ->
-        %% Look up the Index, Field, and Term...
-        {IndexID, FieldID, TermID} = mi_utils:ift_unpack(IFT),
-        {value, Index} = gb_trees:lookup(IndexID, InvertedIndexes),
-        {value, Field} = gb_trees:lookup(FieldID, InvertedFields),
-        {value, Term} = gb_trees:lookup(TermID, InvertedTerms),
+                         %% Look up the Index, Field, and Term...
+                         {Index, Field, Term} = mi_ift_server:reverse_ift(IFT),
 
-        %% Call the fold function...
-        Fun(Index, Field, Term, Value, Props, TS, AccIn)
-    end,
+                         %% Call the fold function...
+                         Fun(Index, Field, Term, Value, Props, TS, AccIn)
+                 end,
 
     %% Fold over each buffer...
     F1 = fun(Buffer, AccIn) ->
@@ -441,16 +410,14 @@ handle_call({fold, Fun, Acc}, _From, State) ->
 
     Acc2 = lists:foldl(F2, Acc1, Segments),
 
-    %% Reply...
     {reply, {ok, Acc2}, State};
-    
+
 handle_call(is_empty, _From, State) ->
-    #state { terms=Terms } = State,
-    IsEmpty = (mi_incdex:size(Terms) == 0),
+    IsEmpty = mi_ift_server:term_count() == 0,
     {reply, IsEmpty, State};
 
 handle_call(drop, _From, State) ->
-    #state { indexes=Indexes, fields=Fields, terms=Terms, buffers=Buffers, segments=Segments } = State,
+    #state { buffers=Buffers, segments=Segments } = State,
 
     %% Figure out some options...
     SyncInterval = ?SYNC_INTERVAL(State),
@@ -461,14 +428,9 @@ handle_call(drop, _From, State) ->
     [mi_segment:delete(X) || X <- Segments],
     BufferFile = join(State, "buffer.1"),
     Buffer = mi_buffer:open(BufferFile, BufferOptions),
-    NewState = State#state { 
-        locks = mi_locks:new(),
-        indexes = mi_incdex:clear(Indexes),
-        fields = mi_incdex:clear(Fields),
-        terms = mi_incdex:clear(Terms),
-        buffers = [Buffer],
-        segments = []
-    },
+    NewState = State#state { locks = mi_locks:new(),
+                             buffers = [Buffer],
+                             segments = [] },
     {reply, ok, NewState};
 
 handle_call(Request, _From, State) ->
