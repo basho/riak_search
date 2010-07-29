@@ -100,14 +100,30 @@ pass2(Op = #term {}, Schema) ->
 
 pass2(#phrase{props=Props}=Op, Schema) ->
     BQ = proplists:get_value(base_query, Props),
-    [BQ1] = case BQ of
+    BQ1 = case BQ of
               #term{} ->
                   pass2(BQ, Schema);
               #land{} ->
-                  [pass2(BQ, Schema)]
+                  pass2(BQ, Schema)
           end,
+    %% Fixing up borked terms handed back from
+    %% pass2 calls above
+    BQ2 = case BQ1 of
+              [#term{}=T] ->
+                  T;
+              {land, Terms} ->
+                  F = fun(Term) ->
+                              case Term of
+                                  [T] ->
+                                      T;
+                                  _ ->
+                                      Term
+                              end end,
+                  {land, [F(T) || T <- Terms]}
+          end,
+    io:format("BQ2: ~p~n", [BQ2]),
     Props1 = proplists:delete(base_query, Props),
-    Op#phrase{props=[{base_query, BQ1}|Props1]};
+    Op#phrase{props=[{base_query, BQ2}|Props1]};
 
 pass2(Op = #land {}, Schema) ->
     %% Collapse nested and operations.

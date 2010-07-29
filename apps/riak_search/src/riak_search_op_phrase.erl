@@ -63,7 +63,7 @@ chain_op(#phrase{phrase=Phrase, props=Props}, OutputPid, OutputRef, QueryProps) 
                                                     false ->
                                                         fun erlang:'>'/2
                                                 end,
-                                    Evaluator(string:str(Value, Phrase), 0);
+                                    Evaluator(string:str(Value, binary_to_list(Phrase)), 0);
                                 Distance ->
                                     ProxTerms = proplists:get_value(proximity_terms, Props, []),
                                     {ok, AValue} = qilr_analyzer:analyze(Analyzer,
@@ -77,7 +77,6 @@ chain_op(#phrase{phrase=Phrase, props=Props}, OutputPid, OutputRef, QueryProps) 
                     qilr:close_analyzer(Analyzer)
                 end
         end,
-    io:format("Props: ~p~n", [Props]),
     OpMod:chain_op(BaseQuery, OutputPid, OutputRef, [{term_filter, F}|QueryProps]).
 
 evaluate_proximity(_Value, _Distance, []) ->
@@ -89,7 +88,6 @@ evaluate_proximity(Value, Distance, ProxTerms) ->
         [Index] ->
             Index =< Distance;
         Indices ->
-            io:format("Indices: ~p~n", [Indices]),
             evaluate_indices(Indices, Distance)
     end.
 

@@ -21,7 +21,8 @@ chain_op(Op, OutputPid, OutputRef, QueryProps) ->
 chain_op(Op, OutputPid, OutputRef, QueryProps, Type) ->
     %% Create an iterator chain...
     OpList = Op#land.ops,
-    SelectFun = fun(I1, I2) -> select_fun(Type, I1, I2) end,
+    SelectFun = fun(I1, I2) ->
+                        select_fun(Type, I1, I2) end,
     Iterator = riak_search_utils:iterator_chain(SelectFun, OpList, QueryProps),
 
     %% Spawn up pid to gather and send results...
@@ -33,10 +34,9 @@ chain_op(Op, OutputPid, OutputRef, QueryProps, Type) ->
     {ok, 1}.
 
 gather_results(OutputPid, OutputRef, TermFilter, {Term, Op, Iterator}) ->
-    
     NotFlag = (is_tuple(Op) andalso is_record(Op, lnot)) orelse Op == true,
     case NotFlag of
-        true  -> 
+        true  ->
             skip;
         false ->
             case TermFilter of
