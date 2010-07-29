@@ -29,4 +29,5 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-    {ok, {{one_for_one, 5, 10}, [?CHILD(mi_scheduler, worker)]}}.
+    {ok, {{one_for_one, 5, 10}, [?CHILD(mi_ift_server, worker),
+                                 ?CHILD(mi_scheduler, worker)]}}.

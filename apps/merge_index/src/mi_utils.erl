@@ -9,8 +9,6 @@
 -author("Rusty Klophaus <rusty@basho.com>").
 -include("merge_index.hrl").
 -export([
-    ift_pack/3,
-    ift_unpack/1,
     fold/3,
     read_value/1,
     write_value/2,
@@ -21,15 +19,6 @@
     ets_info/0
 ]).
 
-ift_pack(IndexID, FieldID, TermID) ->
-    <<Ift:64/unsigned>> = <<IndexID:16/integer,
-                            FieldID:16/integer,
-                            TermID:32/integer>>,
-    Ift.
-
-ift_unpack(Ift) ->
-    <<IndexID:16/integer, FieldID:16/integer, TermID:32/integer>> = <<Ift:64/unsigned>>,
-    {IndexID, FieldID, TermID}.
 
 fold(F, Acc, Resource) ->
     case F(Resource, Acc) of

@@ -5,5 +5,7 @@
                      stdlib,
                      sasl]},
      {mod, {mi_app, []}},
-     {env, []}
+     {env, [
+            {data_root, "data/merge_index"}
+           ]}
 ]}.
