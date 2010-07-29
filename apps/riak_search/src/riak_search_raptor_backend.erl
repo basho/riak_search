@@ -9,7 +9,7 @@
 -behavior(riak_search_backend).
 
 -export([start/2,stop/1,index_if_newer/7,
-         multi_index/2,delete_entry/5,
+         multi_index/2,delete_entry/6,multi_delete/2,
          stream/6,multi_stream/4,
          info/5,info_range/7,catalog_query/3,fold/3,is_empty/1,drop/1]).
 -export([toggle_raptor_debug/0, shutdown_raptor/0]).
@@ -85,7 +85,7 @@ multi_index(IFTVPKList, State) ->
     end,
     {reply, {indexed, State#state.partition}, State}.
 
-delete_entry(Index, Field, Term, DocId, State) ->
+delete_entry(Index, Field, Term, DocId, _KeyClock, State) ->
     Partition = to_binary(State#state.partition),
     {ok, Conn} = riak_sock_pool:checkout(?CONN_POOL),
     try
@@ -98,6 +98,10 @@ delete_entry(Index, Field, Term, DocId, State) ->
     after
         riak_sock_pool:checkin(?CONN_POOL, Conn)
     end,
+    {reply, {deleted, State#state.partition}, State}.
+
+multi_delete(IFTVKList, State) ->
+    [delete_entry(I, F, T, V, K, State) || {I, F, T, V, K} <- IFTVKList],
     noreply.
 
 info(Index, Field, Term, Sender, State) ->

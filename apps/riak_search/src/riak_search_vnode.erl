@@ -8,6 +8,7 @@
 -export([index/6,index/7,
          multi_index/3,
          delete_term/5,
+         multi_delete/3,
          stream/6,
          multi_stream/4,
          info/5,
@@ -25,6 +26,7 @@
 -record(index_v1, {index, field, term, value, props}).
 -record(multi_index_v1, {iftvp_list}).
 -record(delete_v1, {index, field, term, doc_id}).
+-record(multi_delete_v1, {iftv_list}).
 -record(info_v1, {index, field, term}).
 -record(info_range_v1, {index, field, start_term, end_term, size}).
 -record(stream_v1, {index, field, term, filter_fun}).
@@ -60,6 +62,12 @@ delete_term(Preflist, Index, Field, Term, DocId) ->
       doc_id = DocId
      },
     command(Preflist, Req).
+
+multi_delete(Preflist, IFTVList, Sender) ->
+    Req = #multi_delete_v1{
+      iftv_list = IFTVList
+     },
+    command(Preflist, Req, Sender).    
 
 stream(Preflist, Index, Field, Term, FilterFun, ReplyTo) ->
     Req = #stream_v1{
@@ -156,6 +164,9 @@ handle_command(#delete_v1{index = Index,
                           doc_id = DocId},
                _Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
     bmod_response(BMod:delete_entry(Index, Field, Term, DocId, BState), VState);
+handle_command(#multi_delete_v1{iftv_list = IFTVList},
+               _Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
+    bmod_response(BMod:multi_delete(IFTVList, BState), VState);
 handle_command(#info_v1{index = Index,
                         field = Field,
                         term = Term},

@@ -259,8 +259,9 @@ calc_n_partition(Index, Field, Term) ->
     Partition = calc_partition(Index, Field, Term),
     {N, Partition}.
 
-
 %% Return a key clock to use for revisioning IFTVPs
 current_key_clock() ->
-    {MegaSeconds,Seconds,_}=erlang:now(),
-    to_binary(integer_to_list(MegaSeconds*1000000+Seconds)).
+    {MegaSeconds,Seconds,MilliSeconds}=erlang:now(),
+    (MegaSeconds * 1000000000000) + 
+    (Seconds * 1000000) + 
+    MilliSeconds.

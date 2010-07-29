@@ -18,6 +18,8 @@
              riak_search_facets,
              riak_search_index_fsm,
              riak_search_index_fsm_sup,
+             riak_search_delete_fsm,
+             riak_search_delete_fsm_sup,
              riak_search_op,
              riak_search_op_land,
              riak_search_op_lor,

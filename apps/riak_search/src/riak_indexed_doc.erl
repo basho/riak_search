@@ -10,7 +10,7 @@
 
 -export([
     new/2, new/4,
-    id/1, 
+    index/1, id/1, 
     fields/1, add_field/3, set_fields/2, clear_fields/1,
     props/1, add_prop/3, set_props/2, clear_props/1, 
     to_json/1, from_json/1, 
@@ -29,6 +29,9 @@ new(Id, Fields, Props, Index) ->
 
 fields(#riak_idx_doc{fields=Fields}) ->
     Fields.
+
+index(#riak_idx_doc{index=Index}) ->
+    Index.
 
 id(#riak_idx_doc{id=Id}) ->
     Id.
