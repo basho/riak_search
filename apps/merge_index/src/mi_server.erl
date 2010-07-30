@@ -292,7 +292,7 @@ handle_call({info, Index, Field, Term}, _From, State) ->
     #state { buffers=Buffers, segments=Segments } = State,
     case mi_ift_server:find_ift(Index, Field, Term) of
         undefined ->
-            {reply, {ok, 0}, State};
+            {reply, {ok, [{Term, 0}]}, State};
 
         IFT ->
             %% Look up the counts in buffers and segments...
@@ -383,35 +383,38 @@ handle_call({stream_finished, Buffers, Segments}, _From, State) ->
     %% Return...
     {reply, ok, State#state { locks=NewLocks1 }};
 
-handle_call({fold, Fun, Acc}, _From, State) ->
+handle_call({fold, FoldFun, Acc}, _From, State) ->
     #state { buffers=Buffers, segments=Segments } = State,
 
-    %% Create the fold function.
-    WrappedFun = fun({IFT, Value, Props, TS}, AccIn) ->
-                         %% Look up the Index, Field, and Term...
-                         {Index, Field, Term} = mi_ift_server:reverse_ift(IFT),
+    %% Wrap the FoldFun so that we have a chance to do IndexID /
+    %% FieldID / TermID lookups
+    WrappedFun = fun({IFT, Value, Props, TS}, {AccIn, LastIFT, LastIndex, LastField, LastTerm}) ->
+        %% Possibly re-use the last IFT result, or look up if it has changed.
+        case LastIFT of
+            IFT -> 
+                Index = LastIndex,
+                Field = LastField,
+                Term = LastTerm;
+            _ ->
+                {Index, Field, Term} = mi_ift_server:reverse_ift(IFT)
+        end,
+        
+        %% Call the fold function...
+        NewAccIn = FoldFun(Index, Field, Term, Value, Props, TS, AccIn),
+        {NewAccIn, IFT, Index, Field, Term}
+    end,
 
-                         %% Call the fold function...
-                         Fun(Index, Field, Term, Value, Props, TS, AccIn)
-                 end,
+    %% Assemble the group iterator...
+    BufferIterators = [mi_buffer:iterator(X) || X <- Buffers],
+    SegmentIterators = [mi_segment:iterator(X) || X <- Segments],
+    GroupIterator = build_group_iterator(BufferIterators ++ SegmentIterators),
 
-    %% Fold over each buffer...
-    F1 = fun(Buffer, AccIn) ->
-                 Itr = mi_buffer:iterator(Buffer),
-                 fold(WrappedFun, AccIn, Itr())
-         end,
-    Acc1 = lists:foldl(F1, Acc, Buffers),
+    %% Fold over everything...
+    {NewAcc, _, _, _, _} = fold(WrappedFun, {Acc, none, none, none, none}, GroupIterator()),
 
-    %% Fold over each segment...
-    F2 = fun(Segment, AccIn) ->
-                 Itr = mi_segment:iterator(Segment),
-                 fold(WrappedFun, AccIn, Itr())
-         end,
-
-    Acc2 = lists:foldl(F2, Acc1, Segments),
-
-    {reply, {ok, Acc2}, State};
-
+    %% Reply...
+    {reply, {ok, NewAcc}, State};
+    
 handle_call(is_empty, _From, State) ->
     IsEmpty = mi_ift_server:term_count() == 0,
     {reply, IsEmpty, State};

@@ -139,7 +139,7 @@ fold(FoldFun, Acc, State) ->
             {OuterAcc, {{I,{F,T}},[{V,P,K}]}}
         end,
     Pid = State#state.pid,
-    {OuterAcc0, Final} = merge_index:fold(Pid, Fun, {Acc, undefined}),
+    {ok, {OuterAcc0, Final}} = merge_index:fold(Pid, Fun, {Acc, undefined}),
     OuterAcc = case Final of
         {FoldKey, VPKList} ->
             %% one last IFT to send off
