@@ -327,11 +327,12 @@ pass5(Op, Schema) ->
     F = fun(X) -> lists:flatten([pass5(Y, Schema) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
 
-range_to_lor(Start, End, Inclusive, Facets, _Config) ->
-    {Index, Field, StartTerm, EndTerm, Size} = normalize_range(Start, End, Inclusive),
+range_to_lor(Start, End, Inclusive, Facets, Schema) ->
+    {Index, FieldName, StartTerm, EndTerm, Size} = normalize_range(Start, End, Inclusive),
     
     %% Results are of form {node, Index.Field.Term, Count}
-    {ok, Results} = riak_search:info_range(Index, Field, StartTerm, EndTerm, Size),
+    Field = Schema:find_field(FieldName),
+    Results = range_to_terms(Index, FieldName, StartTerm, EndTerm, Size, Schema:field_type(Field)),
     
     %% Collapse results into a gb_tree to combine...
     F1 = fun({Term, Node, Count}, Acc) ->
@@ -348,7 +349,7 @@ range_to_lor(Start, End, Inclusive, Facets, _Config) ->
     
     %% Create the lor operation.
     F2 = fun({Term, Options}) ->
-        Q = {Index, Field, Term},
+        Q = {Index, FieldName, Term},
         #term { q=Q, options=[{facets, Facets}|Options] }
     end,
     Ops = [F2(X) || X <- Results2],
@@ -482,6 +483,47 @@ pass7(Op = #lor {}, Schema) ->
 pass7(Op, Schema) ->
     F = fun(X) -> lists:flatten([pass7(Y, Schema) || Y <- to_list(X)]) end,
     riak_search_op:preplan_op(Op, F).
+
+%% Expand a range to a list of terms.  Handle the special cases for integer ranges
+%% for negative numbers.  -0010 TO -0005 needs to be swapped to -0005 TO -0010.
+%% If one number is positive and the other is negative then the range query needs
+%% to be broken into a positive search and a negative search
+range_to_terms(Index, Field, StartTerm, EndTerm, Size, integer) ->
+    StartPolarity = hd(StartTerm),
+    EndPolarity = hd(EndTerm),
+    case {StartPolarity,EndPolarity} of
+        {$-,$-} ->
+            call_info_range(Index, Field, EndTerm, StartTerm, Size);
+        {$-,_} ->
+            Len = length(StartTerm),
+            MinusOne = make_minus_one(Len),
+            Zero = make_zero(Len),
+            call_info_range(Index, Field, MinusOne, StartTerm, Size) ++ 
+                call_info_range(Index, Field, Zero, EndTerm, Size);
+        {_,$-} ->
+            %% Swap the range if "positive TO negative"
+            range_to_terms(Index, Field, EndTerm, StartTerm, Size, integer);
+        {_,_} ->
+            call_info_range(Index, Field, StartTerm, EndTerm, Size)
+    end;
+range_to_terms(Index, Field, StartTerm, EndTerm, Size, _Type) ->
+    call_info_range(Index, Field, StartTerm, EndTerm, Size).
+
+call_info_range(Index, Field, StartTerm, EndTerm, Size) when StartTerm > EndTerm ->
+    call_info_range(Index, Field, EndTerm, StartTerm, Size);
+call_info_range(Index, Field, StartTerm, EndTerm, Size) ->
+    {ok, Results} = riak_search:info_range(Index, Field, StartTerm, EndTerm, Size),
+    Results.
+
+make_minus_one(1) ->
+    throw({unhandled_case, make_minus_one});
+make_minus_one(2) ->
+    "-1";
+make_minus_one(Len) ->
+    "-" ++ string:chars($0, Len-2) ++ "1".
+
+make_zero(Len) ->
+    string:chars($0, Len).
 
 
 
