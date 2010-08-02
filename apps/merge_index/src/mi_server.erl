@@ -34,15 +34,10 @@
 }).
 
 init([Root, Config]) ->
-    %% Get incdex and buffer options...
-    TempState = #state { config=Config },
-    SyncInterval = ?SYNC_INTERVAL(TempState),
-    BufferOptions = [{write_interval, SyncInterval}],
-    
     %% Load from disk...
     filelib:ensure_dir(join(Root, "ignore")),
     io:format("Loading merge_index from '~s'~n", [Root]),
-    {NextID, Buffer, Segments} = read_buf_and_seg(Root, BufferOptions),
+    {NextID, Buffer, Segments} = read_buf_and_seg(Root),
     io:format("Finished loading merge_index from '~s'~n", [Root]),
 
     %% Create the state...
@@ -61,7 +56,7 @@ init([Root, Config]) ->
     {ok, State}.
 
 %% Return {Buffers, Segments}, after cleaning up/repairing any partially merged buffers.
-read_buf_and_seg(Root, BufferOptions) ->
+read_buf_and_seg(Root) ->
     %% Delete any files that have a ".deleted" flag. This means that
     %% the system stopped before proper cleanup.
     io:format("Cleaning up...~n"),
@@ -84,7 +79,7 @@ read_buf_and_seg(Root, BufferOptions) ->
     BufferFiles = filelib:wildcard(join(Root, "buffer.*")),
     BufferFiles1 = lists:sort([{get_id_number(X), X} || X <- BufferFiles]),
     NextID = lists:max([X || {X, _} <- BufferFiles1] ++ [0]) + 1,
-    {NextID1, Buffer, Segments1} = read_buffers(Root, BufferOptions, BufferFiles1, NextID, Segments),
+    {NextID1, Buffer, Segments1} = read_buffers(Root, BufferFiles1, NextID, Segments),
     
     %% Return...
     {NextID1, Buffer, Segments1}.
@@ -96,25 +91,25 @@ read_segments([SName|Rest], Segments) ->
     Segment = mi_segment:open_read(SName),
     [Segment|read_segments(Rest, Segments)].
 
-read_buffers(Root, BufferOptions, [], NextID, Segments) ->
+read_buffers(Root, [], NextID, Segments) ->
     %% No latest buffer exists, open a new one...
     BName = join(Root, "buffer." ++ integer_to_list(NextID)),
     io:format("Opening new buffer: '~s'~n", [BName]),
-    Buffer = mi_buffer:open(BName, BufferOptions),
+    Buffer = mi_buffer:new(BName),
     {NextID + 1, Buffer, Segments};
 
-read_buffers(_Root, BufferOptions, [{_BNum, BName}], NextID, Segments) ->
+read_buffers(_Root, [{_BNum, BName}], NextID, Segments) ->
     %% This is the final buffer file... return it as the open buffer...
     io:format("Opening buffer: '~s'~n", [BName]),
-    Buffer = mi_buffer:open(BName, BufferOptions),
+    Buffer = mi_buffer:new(BName),
     {NextID, Buffer, Segments};
 
-read_buffers(Root, BufferOptions, [{BNum, BName}|Rest], NextID, Segments) ->
+read_buffers(Root, [{BNum, BName}|Rest], NextID, Segments) ->
     %% Multiple buffers exist... convert them into segments...
     io:format("Converting buffer: '~s' to segment.~n", [BName]),
     SName = join(Root, "segment." ++ integer_to_list(BNum)),
     set_deleteme_flag(SName),
-    Buffer = mi_buffer:open(BName, BufferOptions),
+    Buffer = mi_buffer:new(BName),
     mi_buffer:close_filehandle(Buffer),
     Size = mi_buffer:size(Buffer),
     SegmentWO = mi_segment:open_write(SName, Size, Size + 1),
@@ -124,7 +119,7 @@ read_buffers(Root, BufferOptions, [{BNum, BName}|Rest], NextID, Segments) ->
     SegmentRO = mi_segment:open_read(SName),
     
     %% Loop...
-    read_buffers(Root, BufferOptions, Rest, NextID, [SegmentRO|Segments]).
+    read_buffers(Root, Rest, NextID, [SegmentRO|Segments]).
 
 
 handle_call({index, Index, Field, Term, Value, Props, TS}, _From, State) ->
@@ -139,7 +134,8 @@ handle_call({index, Index, Field, Term, Value, Props, TS}, _From, State) ->
     NewState = State#state {buffers = [CurrentBuffer | Buffers]},
 
     %% Possibly dump buffer to a new segment...
-    case mi_buffer:filesize(CurrentBuffer) > ?ROLLOVER_SIZE(NewState) of
+    {ok, RolloverSize} = application:get_env(merge_index, buffer_rollover_size),
+    case mi_buffer:filesize(CurrentBuffer) > RolloverSize of
         true ->
             #state { root=Root, next_id=NextID } = NewState,
             
@@ -160,8 +156,7 @@ handle_call({index, Index, Field, Term, Value, Props, TS}, _From, State) ->
             
             %% Create a new empty buffer...
             BName = join(NewState, "buffer." ++ integer_to_list(NextID)),
-            BufferOptions = [{write_interval, ?SYNC_INTERVAL(State)}],
-            NewBuffer = mi_buffer:open(BName, BufferOptions),
+            NewBuffer = mi_buffer:new(BName),
             
             NewState1 = NewState#state {
                 buffers=[NewBuffer|NewState#state.buffers],
@@ -220,7 +215,7 @@ handle_call({start_compaction, CallingPid}, _From, State) ->
     %% and then lopping off files larger than the average. This could be
     %% optimized with tuning, but probably a good enough solution.
     Segments = State#state.segments,
-    MaxSegments = 500,
+    {ok, MaxSegments} = application:get_env(merge_index, max_compact_segments),
     SegmentsToCompact = case get_segments_to_merge(Segments) of
                             STC when length(STC) > MaxSegments ->
                                 lists:sublist(STC, MaxSegments);
@@ -422,15 +417,11 @@ handle_call(is_empty, _From, State) ->
 handle_call(drop, _From, State) ->
     #state { buffers=Buffers, segments=Segments } = State,
 
-    %% Figure out some options...
-    SyncInterval = ?SYNC_INTERVAL(State),
-    BufferOptions = [{write_interval, SyncInterval}],
-
     %% Delete files, reset state...
     [mi_buffer:delete(X) || X <- Buffers],
     [mi_segment:delete(X) || X <- Segments],
     BufferFile = join(State, "buffer.1"),
-    Buffer = mi_buffer:open(BufferFile, BufferOptions),
+    Buffer = mi_buffer:new(BufferFile),
     NewState = State#state { locks = mi_locks:new(),
                              buffers = [Buffer],
                              segments = [] },

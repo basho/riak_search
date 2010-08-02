@@ -104,9 +104,8 @@ from_buffer(Buffer, Segment) ->
 
 from_iterator(Iterator, Segment) ->
     %% Write to segment file in order...
-    WriteInterval = 5 * 1000,
-    WriteBuffer = 5 * 1024 * 1024,
-    Opts = [write, {delayed_write, WriteBuffer, WriteInterval}, raw, binary],
+    {ok, WriteOpts} = application:get_env(merge_index, segment_write_options),
+    Opts = [write, raw, binary] ++ WriteOpts,
     {ok, DataFile} = file:open(data_file(Segment), Opts),
     mi_write_cache:setup(DataFile),
     {ok, OffsetsFile} = file:open(offsets_file(Segment), Opts),
@@ -195,8 +194,8 @@ info(StartIFT, StopIFT, Segment) ->
 
 %% Create an iterator over the entire segment.
 iterator(Segment) ->
-    ReadBuffer = 5 * 1024 * 1024,
-    {ok, FH} = file:open(data_file(Segment), [read, {read_ahead, ReadBuffer}, raw, binary]),
+    {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
+    {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
     fun() -> iterate_segment(FH, undefined, undefined) end.
 
 %% Create an iterator over an inclusive range of IFTs
@@ -204,8 +203,8 @@ iterator(StartIFT, EndIFT, Segment) ->
     case mi_nif:segidx_lookup_nearest(Segment#segment.segidx, StartIFT) of
         {ok, IFT0, Offset, _Count} ->
             %% Seek to the proper offset and start iteration
-            ReadBuffer = 5 * 1024 * 1024,
-            {ok, FH} = file:open(data_file(Segment), [read, {read_ahead, ReadBuffer}, raw, binary]),
+            {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
+            {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
             file:position(FH, Offset),
             fun() -> iterate_segment(FH, IFT0, EndIFT) end;
         not_found ->
@@ -331,7 +330,7 @@ prop_basic_test(Root) ->
                 [file:delete(X) || X <- filelib:wildcard(filename:dirname(Root) ++ "/*")],
 
                 %% Setup a buffer
-                Buffer = make_buffer(Entries, mi_buffer:open(Root ++ "_buffer", [write])),
+                Buffer = make_buffer(Entries, mi_buffer:new(Root ++ "_buffer")),
 
                 %% Build a list of what was actually stored in the buffer -- this is what
                 %% we expect to be present in the segment
