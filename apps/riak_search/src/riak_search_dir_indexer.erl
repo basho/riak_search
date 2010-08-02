@@ -87,9 +87,12 @@ index_master_loop0(Index, Dir, StatusFn) ->
     %% info later for a meaningful status report
     {TotalFiles, TotalBytes} = count_files(list_dir(Dir), 0, 0),
 
+    %% Get the number of workers we want to use for indexing
+    {ok, Workers} = application:get_env(riak_search, dir_index_workers),
+
     %% Spawn a bunch of workers
     Self = self(),
-    [spawn_link(fun() -> index_worker_loop0(Self, Index) end) || _ <- lists:seq(1,32)],
+    [spawn_link(fun() -> index_worker_loop0(Self, Index) end) || _ <- lists:seq(1,Workers)],
 
     %% Initialize status and start processing files
     Status = #index_status {total_files = TotalFiles,
