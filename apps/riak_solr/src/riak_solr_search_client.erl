@@ -119,11 +119,6 @@ delete_doc(Index, DocId) ->
         {error, notfound} ->
             {error, notfound};
         IdxDoc ->
-            {ok, AnalyzerPid} = qilr:new_analyzer(),
-            try 
-                SearchClient:delete_doc(IdxDoc, AnalyzerPid)
-            after
-                qilr:close_analyzer(AnalyzerPid)
-            end,
+            SearchClient:delete_doc(IdxDoc),
             ok
     end.

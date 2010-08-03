@@ -14,6 +14,7 @@
     fields/1, add_field/3, set_fields/2, clear_fields/1,
     props/1, add_prop/3, set_props/2, clear_props/1, 
     postings/1,
+    fold_terms/3,
     to_json/1, from_json/1, 
     to_mochijson2/1, to_mochijson2/2,
     analyze/1, analyze/2,
@@ -61,17 +62,27 @@ clear_props(Doc) ->
 postings(Doc) ->
     %% Construct a list of index/field/term/docid/props from analyzer result.
     %% 
-    #riak_idx_doc{index = Index, id = Id} = Doc,
+    #riak_idx_doc{index = Index, id = Id, facets = Facets} = Doc,
+    VisitTerms = fun(FieldName, Term, Pos, Acc) ->
+                         Props = build_props(Pos, Facets),
+                         [{Index, FieldName, Term, Id, Props} | Acc]
+                 end,
+    fold_terms(VisitTerms, [], Doc).
+
+%% Fold over each of the field/terms calling the folder function with
+%% Fun(FieldName, Term, Pos, TermsAcc)
+fold_terms(Fun, Acc0, Doc) ->
     VisitFields = 
         fun({FieldName, TermPos}, FieldsAcc) ->
                 VisitTerms = 
                     fun({Term, Pos}, TermsAcc) ->
-                            Props = build_props(Pos, Doc#riak_idx_doc.facets),
-                            [{Index, FieldName, Term, Id, Props} | TermsAcc]
+                            Fun(FieldName, Term, Pos, TermsAcc)
                     end,
                 lists:foldl(VisitTerms, FieldsAcc, TermPos)
         end,
-    lists:foldl(VisitFields, [], Doc#riak_idx_doc.field_terms).
+    lists:foldl(VisitFields, Acc0, Doc#riak_idx_doc.field_terms).
+     
+     
 
 to_json(Doc) ->
     mochijson2:encode(to_mochijson2(Doc)).
