@@ -35,7 +35,8 @@
     delete_terms/1, delete_terms/2,
     get_delete_fsm/0,
     stop_delete_fsm/1,
-    delete_doc/2, delete_doc/3,
+    delete_doc_terms/1, delete_doc_terms/2,
+    delete_doc/1, delete_doc/2,
     delete_term/4
 ]).
 
@@ -128,9 +129,10 @@ index_doc(IdxDoc, AnalyzerPid) ->
     
 %% Index a specified #riak_idx_doc
 index_doc(IdxDoc, AnalyzerPid, IndexPid) ->
-    {ok, Postings} = riak_indexed_doc:analyze(IdxDoc, AnalyzerPid),
+    {ok, IdxDoc2} = riak_indexed_doc:analyze(IdxDoc, AnalyzerPid),
+    Postings = riak_indexed_doc:postings(IdxDoc2),
     index_terms(IndexPid, Postings),
-    riak_indexed_doc:put(RiakClient, IdxDoc).
+    riak_indexed_doc:put(RiakClient, IdxDoc2).
 
 %% Delete the specified term - better to use the plural 'terms' interfaces.
 delete_term(Index, Field, Term, Value) ->
@@ -155,26 +157,39 @@ get_delete_fsm() ->
 stop_delete_fsm(Pid) ->
     riak_search_delete_fsm:done(Pid).
 
-%% Delete a specified #riak_idx_doc.
-delete_doc(IdxDoc, AnalyzerPid) ->
+%% Delete all of the indexed terms in the IdxDoc - does not remove the IdxDoc itself
+delete_doc_terms(IdxDoc, DeletePid) ->
+    %% Build a list of terms to delete and send them over to the delete FSM
+    I = riak_indexed_doc:index(IdxDoc),
+    V = riak_indexed_doc:id(IdxDoc),
+    Fun = fun(F, T, _Pos, Acc) ->
+                  [{I,F,T,V} | Acc]
+          end,
+    Terms = riak_indexed_doc:fold_terms(Fun, [], IdxDoc),
+    delete_terms(DeletePid, Terms).
+
+%% See delete_doc_terms/2
+delete_doc_terms(IdxDoc) ->
     {ok, DeletePid} = get_delete_fsm(),
     try
-        delete_doc(IdxDoc, AnalyzerPid, DeletePid)
+        delete_doc_terms(IdxDoc, DeletePid)
+    after
+        stop_delete_fsm(DeletePid)
+    end.    
+
+%% Delete a specified #riak_idx_doc.
+delete_doc(IdxDoc) ->
+    {ok, DeletePid} = get_delete_fsm(),
+    try
+        delete_doc(IdxDoc, DeletePid)
     after
         stop_delete_fsm(DeletePid)
     end.
 
-delete_doc(IdxDoc, AnalyzerPid, DeletePid) ->
-    %% Analyze for postings, remove the Props as the delete interface doesn't
-    %% accept them. Then delete all of the postings.
-    {ok, Postings0} = riak_indexed_doc:analyze(IdxDoc, AnalyzerPid),
-    Postings = [{I,F,T,V} || {I,F,T,V,_} <- Postings0],
-    delete_terms(DeletePid, Postings),
-
-    %% Delete the doc...
-    Index = riak_indexed_doc:index(IdxDoc),
-    DocId = riak_indexed_doc:id(IdxDoc),
-    riak_indexed_doc:delete(RiakClient, Index, DocId).
+delete_doc(IdxDoc, DeletePid) ->
+    delete_doc_terms(IdxDoc, DeletePid),
+    riak_indexed_doc:delete(RiakClient, riak_indexed_doc:index(IdxDoc), 
+                            riak_indexed_doc:id(IdxDoc)).
 
 truncate_list(QueryStart, QueryRows, List) ->
     %% Remove the first QueryStart results...
