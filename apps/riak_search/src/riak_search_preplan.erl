@@ -27,8 +27,9 @@ pass1(OpList, Schema) when is_list(OpList) ->
     lists:flatten([pass1(X, Schema) || X <- OpList]);
 
 pass1({field, Field, Q, Options}, Schema) ->
-    TermOp = #term { q=Q, options=Options},
-    pass1(#field { field=Field, ops=[TermOp]}, Schema);
+    %% TODO: Pick up options and do something with them
+    F = #field{field=Field, ops=Q},
+    pass1(F, Schema);
 
 pass1(Op = #group {}, Schema) ->
     %% Qilr parser returns nested lists in a group.
@@ -85,6 +86,7 @@ pass2(OpList, Schema) when is_list(OpList) ->
 
 pass2(Op = #field {}, Schema) ->
     {Index, Field} = normalize_field(Op#field.field, Schema),
+    io:format("Index: ~p, Field: ~p~n", [Index, Field]),
     %% TODO - Turn this into a new schema
     {ok, NewSchema1} = riak_search_config:get_schema(Index),
     NewSchema2 = NewSchema1:set_default_field(Field),
@@ -121,7 +123,6 @@ pass2(#phrase{props=Props}=Op, Schema) ->
                               end end,
                   {land, [F(T) || T <- Terms]}
           end,
-    io:format("BQ2: ~p~n", [BQ2]),
     Props1 = proplists:delete(base_query, Props),
     Op#phrase{props=[{base_query, BQ2}|Props1]};
 
