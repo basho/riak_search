@@ -128,9 +128,10 @@ index_doc(IdxDoc, AnalyzerPid) ->
     
 %% Index a specified #riak_idx_doc
 index_doc(IdxDoc, AnalyzerPid, IndexPid) ->
-    {ok, Postings} = riak_indexed_doc:analyze(IdxDoc, AnalyzerPid),
+    {ok, IdxDoc2} = riak_indexed_doc:analyze(IdxDoc, AnalyzerPid),
+    Postings = riak_indexed_doc:postings(IdxDoc2),
     index_terms(IndexPid, Postings),
-    riak_indexed_doc:put(RiakClient, IdxDoc).
+    riak_indexed_doc:put(RiakClient, IdxDoc2).
 
 %% Delete the specified term - better to use the plural 'terms' interfaces.
 delete_term(Index, Field, Term, Value) ->

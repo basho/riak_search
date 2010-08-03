@@ -29,9 +29,9 @@ parse_solr_xml(IndexOrSchema, Body) when is_binary(Body) ->
 %% @private
 %% Parse a document to add...
 parse_solr_entry(Index, add, {"doc", Entry}) ->
-    IdxDoc = to_riak_idx_doc(Index, Entry),
-    {ok, Postings} = riak_indexed_doc:analyze(IdxDoc),
-    {IdxDoc, Postings};
+    IdxDoc0 = to_riak_idx_doc(Index, Entry),
+    {ok, IdxDoc} = riak_indexed_doc:analyze(IdxDoc0),
+    IdxDoc;
  
 %% Deletion by ID or Query. If query, then parse...
 parse_solr_entry(Index, delete, {"id", ID}) ->
@@ -68,20 +68,20 @@ to_riak_idx_doc(Index, Doc) ->
             throw({?MODULE, required_field_not_found, "id", Doc})
     end,
     Fields = lists:keydelete("id", 1, Doc),
-    #riak_idx_doc{id=Id, index=Index, fields=Fields, props=[]}.
-
+    riak_indexed_doc:new(Id, Fields, [], Index).
 
 %% Run the provided solr command on the provided docs...
 run_solr_command(_, _, []) ->
     ok;
 
 %% Add a list of documents to the index...
-run_solr_command(Schema, add, [{IdxDoc, Terms}|Docs]) ->
+run_solr_command(Schema, add, [IdxDoc|Docs]) ->
     %% If there is an old document, then delete it.
     delete_doc(Schema:name(), IdxDoc#riak_idx_doc.id),
     
     %% Store the terms...
-    SearchClient:index_terms(Terms),
+    Postings = riak_indexed_doc:postings(IdxDoc),
+    SearchClient:index_terms(Postings),
 
     %% Store the document.
     riak_indexed_doc:put(RiakClient, IdxDoc),

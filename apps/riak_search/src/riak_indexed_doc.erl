@@ -13,6 +13,7 @@
     index/1, id/1, 
     fields/1, add_field/3, set_fields/2, clear_fields/1,
     props/1, add_prop/3, set_props/2, clear_props/1, 
+    postings/1,
     to_json/1, from_json/1, 
     to_mochijson2/1, to_mochijson2/2,
     analyze/1, analyze/2,
@@ -56,6 +57,21 @@ set_props(Props, Doc) ->
 
 clear_props(Doc) ->
     Doc#riak_idx_doc{props=[]}.
+
+postings(Doc) ->
+    %% Construct a list of index/field/term/docid/props from analyzer result.
+    %% 
+    #riak_idx_doc{index = Index, id = Id} = Doc,
+    VisitFields = 
+        fun({FieldName, TermPos}, FieldsAcc) ->
+                VisitTerms = 
+                    fun({Term, Pos}, TermsAcc) ->
+                            Props = build_props(Pos, Doc#riak_idx_doc.facets),
+                            [{Index, FieldName, Term, Id, Props} | TermsAcc]
+                    end,
+                lists:foldl(VisitTerms, FieldsAcc, TermPos)
+        end,
+    lists:foldl(VisitFields, [], Doc#riak_idx_doc.field_terms).
 
 to_json(Doc) ->
     mochijson2:encode(to_mochijson2(Doc)).
@@ -118,7 +134,7 @@ analyze(IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
 %% Return {ok, [{Index, FieldName, Term, DocID, Props}]}.
 analyze(IdxDoc, AnalyzerPid) when is_record(IdxDoc, riak_idx_doc) ->
     %% Extract fields, get schema...
-    #riak_idx_doc{id=DocID, index=Index, fields=DocFields}=IdxDoc,
+    #riak_idx_doc{index=Index, fields=DocFields}=IdxDoc,
     {ok, Schema} = riak_search_config:get_schema(Index),
 
     %% Pull out the facet properties...
@@ -130,21 +146,13 @@ analyze(IdxDoc, AnalyzerPid) when is_record(IdxDoc, riak_idx_doc) ->
     RegularFields = DocFields -- FacetFields,
             
     %% For each Field = {FieldName, FieldValue}, split the FieldValue
-    %% into terms. Build a list of positions for those terms, then get
-    %% a de-duped list of the terms. For each, index the FieldName /
-    %% Term / DocID / Props.
+    %% into terms and build a list of positions for those terms.
     F2 = fun({FieldName, FieldValue}, Acc2) ->
                  {ok, Terms} = analyze_field(FieldName, FieldValue, Schema, AnalyzerPid),
-                 PositionTree = get_term_positions(Terms),
-                 Terms1 = gb_trees:keys(PositionTree),
-                 F3 = fun(Term, Acc3) ->
-                              Props = build_props(Term, PositionTree),
-                              [{Index, FieldName, Term, DocID, Props ++ FacetFields}|Acc3]
-                      end,
-                 lists:foldl(F3, Acc2, Terms1)
+                 [{FieldName, get_term_positions(Terms)} | Acc2]
          end,
-    Postings = lists:foldl(F2, [], RegularFields),
-    {ok, Postings}.
+    FieldTerms = lists:foldl(F2, [], RegularFields),
+    {ok, IdxDoc#riak_idx_doc{field_terms = FieldTerms, facets = FacetFields}}.
 
 %% @private
 %% Parse a FieldValue into a list of terms.
@@ -171,21 +179,14 @@ get_term_positions(Terms) ->
         end
     end,
     {_, Tree} = lists:foldl(F, {1, gb_trees:empty()}, Terms),
-    Tree.
+    gb_trees:to_list(Tree).
 
 %% @private
 %% Given a term and a list of positions, generate a list of
 %% properties.
-build_props(Term, PositionTree) ->
-    case gb_trees:lookup(Term, PositionTree) of
-        none ->
-            [];
-        {value, Positions} ->
-            [
-                {word_pos, Positions},
-                {freq, length(Positions)}
-            ]
-    end.
+build_props(Positions, Facets) ->
+    [{word_pos, Positions},
+     {freq, length(Positions)} | Facets].
 
 %% Returns a Riak object.
 get_obj(RiakClient, DocIndex, DocID) ->

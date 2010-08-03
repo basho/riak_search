@@ -36,7 +36,9 @@
 -record(riak_idx_doc, {id,
                        index="search",
                        fields=[],
-                       props=[]}).
+                       props=[],
+                       facets=[],
+                       field_terms=[]}).
 
 -record(riak_search_ref, {id,
                           termcount,
