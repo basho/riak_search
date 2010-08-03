@@ -117,10 +117,11 @@ combine_terms({Value, Props1}, {Value, Props2}) ->
     NewProps = lists:foldl(fun({K, V}, Acc) ->
                                    lists:keystore(K, 1, Acc, {K, V})
                            end,
+                           Intersection,
                            [{score, ScoreList},
                             {word_pos, WordPos},
-                            {freq, Freq}],
-                           Intersection),
+                            {freq, Freq}]
+                           ),
     {Value, NewProps};
 combine_terms(Other1, Other2) ->
     error_logger:error_msg("Could not combine terms: [~p, ~p]~n", [Other1, Other2]),
