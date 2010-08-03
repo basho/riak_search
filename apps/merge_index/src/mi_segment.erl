@@ -265,13 +265,13 @@ read_seg_value(FH) ->
 
 write_key(FH, IFT) ->
     ok = mi_write_cache:write(FH, <<1:1/integer, 8:31/integer, IFT:64/unsigned>>),
-    10.
+    12.
 
 write_seg_value(FH, Value, Props, TS) ->
     B = term_to_binary({Value, Props, TS}),
     Size = erlang:size(B),
     ok = mi_write_cache:write(FH, <<0:1/integer, Size:31/integer, B/binary>>),
-    Size + 2.
+    Size + 4.
 
 data_file(Segment) when is_record(Segment, segment) ->
     data_file(Segment#segment.root);
