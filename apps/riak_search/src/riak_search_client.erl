@@ -35,6 +35,7 @@
     delete_terms/1, delete_terms/2,
     get_delete_fsm/0,
     stop_delete_fsm/1,
+    delete_doc_terms/1, delete_doc_terms/2,
     delete_doc/1, delete_doc/2,
     delete_term/4
 ]).
@@ -156,6 +157,26 @@ get_delete_fsm() ->
 stop_delete_fsm(Pid) ->
     riak_search_delete_fsm:done(Pid).
 
+%% Delete all of the indexed terms in the IdxDoc - does not remove the IdxDoc itself
+delete_doc_terms(IdxDoc, DeletePid) ->
+    %% Build a list of terms to delete and send them over to the delete FSM
+    I = riak_indexed_doc:index(IdxDoc),
+    V = riak_indexed_doc:id(IdxDoc),
+    Fun = fun(F, T, _Pos, Acc) ->
+                  [{I,F,T,V} | Acc]
+          end,
+    Terms = riak_indexed_doc:fold_terms(Fun, [], IdxDoc),
+    delete_terms(DeletePid, Terms).
+
+%% See delete_doc_terms/2
+delete_doc_terms(IdxDoc) ->
+    {ok, DeletePid} = get_delete_fsm(),
+    try
+        delete_doc_terms(IdxDoc, DeletePid)
+    after
+        stop_delete_fsm(DeletePid)
+    end.    
+
 %% Delete a specified #riak_idx_doc.
 delete_doc(IdxDoc) ->
     {ok, DeletePid} = get_delete_fsm(),
@@ -166,17 +187,9 @@ delete_doc(IdxDoc) ->
     end.
 
 delete_doc(IdxDoc, DeletePid) ->
-    %% Build a list of terms to delete and send them over to the delete FSM
-    I = riak_indexed_doc:index(IdxDoc),
-    V = riak_indexed_doc:id(IdxDoc),
-    Fun = fun(F, T, _Pos, Acc) ->
-                  [{I,F,T,V} | Acc]
-          end,
-    Terms = riak_indexed_doc:fold_terms(Fun, [], IdxDoc),
-    delete_terms(DeletePid, Terms),
-
-    %% Delete the doc...
-    riak_indexed_doc:delete(RiakClient, I, V).
+    delete_doc_terms(IdxDoc, DeletePid),
+    riak_indexed_doc:delete(RiakClient, riak_indexed_doc:index(IdxDoc), 
+                            riak_indexed_doc:id(IdxDoc)).
 
 truncate_list(QueryStart, QueryRows, List) ->
     %% Remove the first QueryStart results...

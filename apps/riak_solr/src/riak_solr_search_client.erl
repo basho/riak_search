@@ -76,8 +76,9 @@ run_solr_command(_, _, []) ->
 
 %% Add a list of documents to the index...
 run_solr_command(Schema, add, [IdxDoc|Docs]) ->
-    %% If there is an old document, then delete it.
-    delete_doc(Schema:name(), IdxDoc#riak_idx_doc.id),
+    %% Delete the terms out of the old document, the idxdoc stored 
+    %% under k/v will be updated with the new postings.
+    delete_doc_terms(Schema:name(), IdxDoc#riak_idx_doc.id),
     
     %% Store the terms...
     Postings = riak_indexed_doc:postings(IdxDoc),
@@ -120,5 +121,14 @@ delete_doc(Index, DocId) ->
             {error, notfound};
         IdxDoc ->
             SearchClient:delete_doc(IdxDoc),
+            ok
+    end.
+
+delete_doc_terms(Index, DocId) ->
+    case riak_indexed_doc:get(RiakClient, Index, DocId) of
+        {error, notfound} ->
+            {error, notfound};
+        IdxDoc ->
+            SearchClient:delete_doc_terms(IdxDoc),
             ok
     end.
