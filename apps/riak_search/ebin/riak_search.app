@@ -33,8 +33,6 @@
              riak_search_op_node,
              riak_search_op_multi_term,
              riak_search_phase,
-             riak_search_raptor_backend,
-             riak_search_raptor_backend_folder,
              riak_search_schema,
              riak_search_schema_parser,
              riak_search_shell,

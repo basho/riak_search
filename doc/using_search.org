@@ -24,22 +24,6 @@
 
 ** Installation
 
-*** Install BerkeleyDB
-
-    Download the distribution file from:
-    http://download.oracle.com/berkeley-db/je-4.0.103.tar.gz
-
-    This archive contains a pre-built version of BDB Java Edition.
-
-    If you are installing a pre-built Riak Search package, unzip the BDB
-    archive and copy =lib/je-4.0.103.jar= to your Riak Search
-    installation under =lib/raptor-VERSION/priv/raptor_server=.
-
-    If you are installing Riak Search from source, unzip the BDB
-    archive and copy =lib/je-4.0.103.jar= to your Riak Search
-    directory, under =apps/raptor/java_src/raptor/lib/=.
-
-
 *** Unzip and install Riak Search*
 
     Enter the riak\_search directory and run:
@@ -74,7 +58,7 @@
    + *Riak KV* - Distributed Key/Value store inspired by Amazon's Dynamo.
    + *Bitcask* -  Storage backend used by Riak KV.
    + *Riak Search* - Distributed index and full-text search engine.
-   + *Raptor* - Storage backend used by Riak Search.
+   + *MergeIndex* - Storage backend used by Riak Search.
    + *Qilr* - Library for parsing queries into execution plans and
              documents into terms.
    + *Riak Solr* - Adds a subset of Solr HTTP interface capabilities to
@@ -755,61 +739,7 @@
 
    + 8087 - Protocol Buffers interface
 
-   + 5099 - Raptor Backend
-
    + 6095 - Analyzer Port
 
    Be sure to take the necessary security precautions to prevent
    exposing these ports to the outside world.
-
-** The Raptor Backend
-
-*** How do I change Raptor Logging?
-
-    1. You can edit log4j.properties to change the logging characteristics
-
-    2. From the riak search console you can significantly decrease
-       logging output (though not turn it off entirely) by using the
-       command:
-
-       : raptor_index_backend:poke("toggle_debug").
-
-*** How do I delete all data from Raptor?
-
-    If you want to delete the data stored in Raptor, delete the
-    "./data/raptor" directory.
-
-*** Notes
-
-    1. MMap and Cache memory use for both BDB and Lucene are currently hard
-       coded while a good configuration system is being worked on.  In the
-       meantime it is recommended you run Raptor on server with a MINIMUM
-       of 2G ram.
-
-    2. You may use Raptor on 32-bit systems; change the command line
-       option in start.sh from "-d64" to "-d32"
-
-    3. 32-bit operation is not available on Mac OS X systems (Java 1.6
-       has no 32 bit mode on OS X)
-
-    4. If you wish to keep the BDB native library in somewhere other
-       than it's installed location, change the following command line
-       option in start.sh to reflect the new location (wrapped for
-       line-length, enter without spaces):
-
-       : -Djava.library.path=/usr/local/lib:
-       : java.library.path=/usr/local/lib:/usr/local/BerkeleyDB.4.8/lib
-
-    5. Raptor has only been tested on Mac OS X and Linux.
-
-    6. If you see this, upgrade to Java 1.6:
-
-       : [javac] bad class file: ...snip.../db.jar(com/sleepycat/db/
-       : Environment.class)
-       : [javac] class file has wrong version 50.0, should be 49.0
-       : [javac] Please remove or make sure it appears in the correct
-       : subdirectory of the classpath.
-       : [javac]     private Environment env;
-       : [javac]             ^
-       : [javac] 1 error
-
