@@ -27,13 +27,12 @@
     terms,
     segments,
     buffers,
-    config,
     next_id,
     scheduled_compaction,
     is_compacting
 }).
 
-init([Root, Config]) ->
+init([Root]) ->
     %% Load from disk...
     filelib:ensure_dir(join(Root, "ignore")),
     io:format("Loading merge_index from '~s'~n", [Root]),
@@ -46,7 +45,6 @@ init([Root, Config]) ->
         locks    = mi_locks:new(),
         buffers  = [Buffer],
         segments = Segments,
-        config   = Config,
         next_id  = NextID,
         scheduled_compaction = false,
         is_compacting = false

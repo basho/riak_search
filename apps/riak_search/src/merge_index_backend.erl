@@ -36,11 +36,10 @@
 %% @spec start(Partition :: integer(), Config :: proplist()) ->
 %%          {ok, state()} | {{error, Reason :: term()}, state()}
 %% @doc Start this backend.
-start(Partition, Config) ->
-    DefaultRootPath = filename:join([".", "data", "merge_index"]),
-    RootPath = proplists:get_value(merge_index_backend_root, Config, DefaultRootPath),
-    Rootfile = filename:join([RootPath, integer_to_list(Partition)]),
-    {ok, Pid} = merge_index:start_link(Rootfile, Config),
+start(Partition, _Config) ->
+    {ok, Root} = application:get_env(merge_index, data_root),
+    PartitionRoot = filename:join([Root, integer_to_list(Partition)]),
+    {ok, Pid} = merge_index:start_link(PartitionRoot),
     {ok, #state { partition=Partition, pid=Pid }}.
 
 %% @spec stop(state()) -> ok | {error, Reason :: term()}
