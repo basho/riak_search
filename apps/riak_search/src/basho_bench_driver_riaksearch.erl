@@ -25,10 +25,15 @@ new(_Id) ->
     MyNode = basho_bench_config:get(riaksearch_node),
     Cookie = basho_bench_config:get(riaksearch_cookie),
     net_kernel:start([MyNode]),
-    erlang:set_cookie(MyNode, Cookie),
+    erlang:set_cookie(node(), Cookie),
 
-    %% Get the nodes, set the cookies...
+    %% Get the nodes...
     Nodes = basho_bench_config:get(riaksearch_remotenodes),
+    F = fun(Node) ->
+        io:format("Testing connectivity to Node: ~p~n", [Node]),
+        pong == net_adm:ping(Node) orelse throw({could_not_reach_node, Node})
+    end,
+    [F(X) || X <- Nodes],
 
     %% Load the field array...
     FieldFile = basho_bench_config:get(riaksearch_fieldfile),
@@ -71,10 +76,16 @@ run('index', KeyGen, ValueGen, State) ->
 run(search, _KeyGen, _ValueGen, State) ->
     case queue:out(State#state.queries) of
         {{value, {QueryField, QueryTerm}}, NewQueries} ->
+            %% Get the next queued query, then search...
             Node = choose(State#state.nodes),
             {_, _} = rpc:call(Node, search, search, [QueryField ++ ":" ++ QueryTerm]),
             {ok, State#state { queries=NewQueries }};
         {empty, NewQueries} ->
+            %% No queries queued up, so just search for something...
+            Node = choose(State#state.nodes),
+            QueryField = choose(State#state.fields),
+            QueryTerm = choose(State#state.terms),
+            {_, _} = rpc:call(Node, search, search, [QueryField ++ ":" ++ QueryTerm]),
             {ok, State#state { queries=NewQueries }}
     end.
 
