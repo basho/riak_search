@@ -20,7 +20,6 @@
    + Java 1.6.x
    + Ant
    + gcc toolchain
-   + BDB Java Edition 4.0.103 - (Installation instructions below.)
 
 ** Installation
 
