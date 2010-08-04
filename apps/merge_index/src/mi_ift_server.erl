@@ -193,7 +193,7 @@ to_binary(Bin) when is_binary(Bin) ->
 find_or_create(Table, Key) ->
     case catch(ets:lookup_element(Table, Key, 2)) of
         {'EXIT', {badarg, _}} ->
-            gen_server:call(?MODULE, {add, Table, Key});
+            gen_server:call(?MODULE, {add, Table, Key}, infinity);
         Id ->
             Id
     end.
@@ -333,7 +333,7 @@ stop_server() ->
             ok;
         Pid ->
             Mref = erlang:monitor(process, Pid),
-            gen_server:call(Pid, stop),
+            gen_server:call(Pid, stop, infinity),
             receive
                 {'DOWN', Mref, _, _, _} ->
                     ok
