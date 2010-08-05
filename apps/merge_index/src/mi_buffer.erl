@@ -9,7 +9,7 @@
 -author("Rusty Klophaus <rusty@basho.com>").
 -include("merge_index.hrl").
 -export([
-    open/2,
+    new/1,
     filename/1,
     close_filehandle/1,
     delete/1,
@@ -39,14 +39,13 @@
 %%% sorted iterator.
 
 %% Open a new buffer. Returns a buffer structure.
-open(Filename, Options) ->
+new(Filename) ->
     %% Open the existing buffer file...
     filelib:ensure_dir(Filename),
     ReadBuffer = 1024 * 1024,
-    WriteInterval = proplists:get_value(write_interval, Options, 2 * 1000),
-    WriteBuffer = proplists:get_value(write_buffer, Options, 1024 * 1024),
-    {ok, FH} = file:open(Filename, [read, {read_ahead, ReadBuffer}, write,
-                                    {delayed_write, WriteBuffer, WriteInterval}, raw, binary]),
+    {ok, WriteOpts} = application:get_env(merge_index, buffer_write_options),
+    {ok, FH} = file:open(Filename, [read, write, raw, binary,
+                                    {read_ahead, ReadBuffer}] ++ WriteOpts),
 
     %% Read into an ets table...
     Table = ets:new(buffer, [ordered_set, public]),
@@ -213,7 +212,7 @@ prop_basic_test(Root) ->
                 [file:delete(X) || X <- filelib:wildcard(filename:dirname(Root) ++ "/*")],
 
                 %% Create a buffer
-                Buffer = make_buffer(Entries, mi_buffer:open(Root ++ "_buffer", [write])),
+                Buffer = make_buffer(Entries, mi_buffer:new(Root ++ "_buffer")),
 
                 %% Filter the generated entries such that each {IFT, Value} is only present
                 %% once and has the latest timestamp for that key
@@ -246,7 +245,7 @@ prop_iter_range_test(Root) ->
                 [file:delete(X) || X <- filelib:wildcard(filename:dirname(Root) ++ "/*")],
 
                 %% Create a buffer
-                Buffer = make_buffer(Entries, mi_buffer:open(Root ++ "_buffer", [write])),
+                Buffer = make_buffer(Entries, mi_buffer:new(Root ++ "_buffer")),
 
                 %% Identify those values in the buffer that are in the generated range
                 {Start, End} = Range,
@@ -272,6 +271,7 @@ prop_iter_range_test_() ->
 
 test_spec(Root, PropertyFn) ->
     {timeout, 60, fun() ->
+                          application:load(merge_index),
                           os:cmd(?FMT("rm -rf ~s; mkdir -p ~s", [Root, Root])),
                           ?assert(eqc:quickcheck(eqc:numtests(250, ?QC_OUT(PropertyFn(Root ++ "/t1")))))
                   end}.

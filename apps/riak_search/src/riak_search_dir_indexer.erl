@@ -51,7 +51,10 @@ stop_index(MasterPid) ->
 console_status(Status) ->
     ElapsedSecs = timer:now_diff(now(), Status#index_status.start_time) / 1000000,
     AvgKbSec = (Status#index_status.processed_bytes / ElapsedSecs) / 1024,
-    Percent = (Status#index_status.processed_bytes / Status#index_status.total_bytes) * 100,
+    TotalBytes = if Status#index_status.total_bytes == 0 -> 1;
+                    true                                 -> Status#index_status.total_bytes
+                 end,
+    Percent = (Status#index_status.processed_bytes / TotalBytes) * 100,
     io:format("Indexer ~p - ~.1f % - ~.1f KB/sec - ~w files - ~w seconds\n",
               [self(), Percent, AvgKbSec, Status#index_status.processed_files,
                trunc(ElapsedSecs)]).
@@ -84,9 +87,12 @@ index_master_loop0(Index, Dir, StatusFn) ->
     %% info later for a meaningful status report
     {TotalFiles, TotalBytes} = count_files(list_dir(Dir), 0, 0),
 
+    %% Get the number of workers we want to use for indexing
+    {ok, Workers} = application:get_env(riak_search, dir_index_workers),
+
     %% Spawn a bunch of workers
     Self = self(),
-    [spawn_link(fun() -> index_worker_loop0(Self, Index) end) || _ <- lists:seq(1,32)],
+    [spawn_link(fun() -> index_worker_loop0(Self, Index) end) || _ <- lists:seq(1,Workers)],
 
     %% Initialize status and start processing files
     Status = #index_status {total_files = TotalFiles,

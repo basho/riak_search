@@ -111,7 +111,7 @@ init([]) ->
     {ok, Root} = application:get_env(merge_index, data_root),
     IftFilename = filename:absname(filename:join(Root, "mi_ift.data")),
     ok = filelib:ensure_dir(IftFilename),
-    case file:open(IftFilename, [read, write, append, binary, raw]) of
+    case file:open(IftFilename, [read, write, append, binary, raw, read_ahead]) of
         {ok, IftFile} ->
             %% TODO: Add error checking and CRC checking on this file
             State = read_ift_file(#state { ift_file = IftFile }),

@@ -67,5 +67,9 @@
          %% How many index terms get sent in a batch to the vnodes
          {index_batch_size, 40},
          %% Threshold for the index FSM delaying return of index_terms call 
-         {index_overload_thresh, 200}]}
+         {index_overload_thresh, 200},
+         %% Number of workers to use when indexing a directory
+         {dir_index_workers, 32}
+        ]}
+
  ]}.

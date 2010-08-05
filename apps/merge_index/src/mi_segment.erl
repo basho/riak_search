@@ -104,9 +104,8 @@ from_buffer(Buffer, Segment) ->
 
 from_iterator(Iterator, Segment) ->
     %% Write to segment file in order...
-    WriteInterval = 5 * 1000,
-    WriteBuffer = 5 * 1024 * 1024,
-    Opts = [write, {delayed_write, WriteBuffer, WriteInterval}, raw, binary],
+    {ok, WriteOpts} = application:get_env(merge_index, segment_write_options),
+    Opts = [write, raw, binary] ++ WriteOpts,
     {ok, DataFile} = file:open(data_file(Segment), Opts),
     mi_write_cache:setup(DataFile),
     {ok, OffsetsFile} = file:open(offsets_file(Segment), Opts),
@@ -195,8 +194,8 @@ info(StartIFT, StopIFT, Segment) ->
 
 %% Create an iterator over the entire segment.
 iterator(Segment) ->
-    ReadBuffer = 5 * 1024 * 1024,
-    {ok, FH} = file:open(data_file(Segment), [read, {read_ahead, ReadBuffer}, raw, binary]),
+    {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
+    {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
     fun() -> iterate_segment(FH, undefined, undefined) end.
 
 %% Create an iterator over an inclusive range of IFTs
@@ -204,8 +203,8 @@ iterator(StartIFT, EndIFT, Segment) ->
     case mi_nif:segidx_lookup_nearest(Segment#segment.segidx, StartIFT) of
         {ok, IFT0, Offset, _Count} ->
             %% Seek to the proper offset and start iteration
-            ReadBuffer = 5 * 1024 * 1024,
-            {ok, FH} = file:open(data_file(Segment), [read, {read_ahead, ReadBuffer}, raw, binary]),
+            {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
+            {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
             file:position(FH, Offset),
             fun() -> iterate_segment(FH, IFT0, EndIFT) end;
         not_found ->
@@ -253,11 +252,11 @@ read_offsets(Root) ->
 
 
 read_seg_value(FH) ->
-    case file:read(FH, 2) of
-        {ok, <<1:1/integer, Size:15/integer>>} ->
+    case file:read(FH, 4) of
+        {ok, <<1:1/integer, Size:31/integer>>} ->
             {ok, <<IFT:64/unsigned>>} = file:read(FH, Size),
             {key, IFT};
-        {ok, <<0:1/integer, Size:15/integer>>} ->
+        {ok, <<0:1/integer, Size:31/integer>>} ->
             {ok, <<B/binary>>} = file:read(FH, Size),
             {value, binary_to_term(B)};
         eof ->
@@ -265,13 +264,13 @@ read_seg_value(FH) ->
     end.
 
 write_key(FH, IFT) ->
-    ok = mi_write_cache:write(FH, <<1:1/integer, 8:15/integer, IFT:64/unsigned>>),
+    ok = mi_write_cache:write(FH, <<1:1/integer, 8:31/integer, IFT:64/unsigned>>),
     10.
 
 write_seg_value(FH, Value, Props, TS) ->
     B = term_to_binary({Value, Props, TS}),
     Size = erlang:size(B),
-    ok = mi_write_cache:write(FH, <<0:1/integer, Size:15/integer, B/binary>>),
+    ok = mi_write_cache:write(FH, <<0:1/integer, Size:31/integer, B/binary>>),
     Size + 2.
 
 data_file(Segment) when is_record(Segment, segment) ->
@@ -331,7 +330,7 @@ prop_basic_test(Root) ->
                 [file:delete(X) || X <- filelib:wildcard(filename:dirname(Root) ++ "/*")],
 
                 %% Setup a buffer
-                Buffer = make_buffer(Entries, mi_buffer:open(Root ++ "_buffer", [write])),
+                Buffer = make_buffer(Entries, mi_buffer:new(Root ++ "_buffer")),
 
                 %% Build a list of what was actually stored in the buffer -- this is what
                 %% we expect to be present in the segment
