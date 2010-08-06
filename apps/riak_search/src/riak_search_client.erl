@@ -12,14 +12,14 @@
 -define(OPTIMIZER_PROC_CT, 32).
 
 -export([
+    %% MapReduce Searching...
+    mapred_search/5, mapred_search_stream/6,
+
     %% Searching...
     parse_query/2,
     search/5,
+    search_fold/5,
     search_doc/5,
-
-    %% Stream Searching...
-    stream_search/2,
-    collect_result/2,
 
     %% Explain...
     explain/2,
@@ -45,6 +45,42 @@
     to_binary/1
 ]).
 
+mapred_search(Index, SearchString, Query, ResultTransformer, Timeout) ->
+    Me = self(),
+    {ok,MR_ReqId} = mapred_search_stream(Index, SearchString, Query, Me, ResultTransformer, Timeout),
+    Results = luke_flow:collect_output(MR_ReqId, Timeout),
+    Results.
+
+mapred_search_stream(Index, SearchString, Query, ClientPid, ResultTransformer, Timeout) ->
+    %% NOTE: Not proud of this code, as it creates a circular dependency on the 
+    %% Parse the query...
+    case parse_query(Index, SearchString) of
+        {ok, Ops} ->
+            QueryOps = Ops;
+        {error, ParseError} ->
+            M = "Error running query '~s': ~p~n",
+            error_logger:error_msg(M, [SearchString, ParseError]),
+            throw({search_stream, SearchString, ParseError}),
+            QueryOps = undefined % Make compiler happy.
+    end,
+
+    %% Set up the mapreduce job...
+    case RiakClient:mapred_stream(Query, ClientPid, ResultTransformer, Timeout) of
+        {ok, {ReqId, FlowPid}} ->
+            %% Perform a search, funnel results to the mapred job...
+            F = fun(Results, Acc) ->
+                %% Make the list of BKeys...
+                BKeys = [{Index, DocID} || {DocID, _Props} <- Results],
+                luke_flow:add_inputs(FlowPid, BKeys),
+                Acc
+            end,
+            ok = search_fold(Index, QueryOps, F, ok, Timeout),
+            luke_flow:finish_inputs(FlowPid),
+            {ok, ReqId};
+        Error ->
+            Error
+    end.
+
 
 %% Parse the provided query. Returns either {ok, QueryOps} or {error,
 %% Error}.
@@ -57,19 +93,30 @@ parse_query(IndexOrSchema, Query) ->
         qilr:close_analyzer(AnalyzerPid)
     end.
 
+
 %% Run the Query, return the list of keys.
 %% Timeout is in milliseconds.
 %% Return the {Length, Results}.
 search(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
-    %% Execute the search and collect the results.
-    SearchRef = stream_search(IndexOrSchema, QueryOps),
-    Results = collect_results(SearchRef, Timeout, []),
+    %% Execute the search, collect the results,.
+    SearchRef1 = stream_search(IndexOrSchema, QueryOps),
+    F = fun(Results, Acc) -> Acc ++ Results end,
+    {ok, SearchRef2, Results} = fold_results(SearchRef1, Timeout, F, []),
+    SortedResults = sort_by_score(SearchRef2, Results),
 
     %% Dedup, and handle start and max results. Return matching
     %% documents.
-    Results1 = truncate_list(QueryStart, QueryRows, Results),
-    Length = length(Results),
+    Results1 = truncate_list(QueryStart, QueryRows, SortedResults),
+    Length = length(SortedResults),
     {Length, Results1}.
+
+%% Run the search query, fold results through function, return final
+%% accumulator.
+search_fold(IndexOrSchema, QueryOps, Fun, AccIn, Timeout) ->
+    %% Execute the search, collect the results,.
+    SearchRef = stream_search(IndexOrSchema, QueryOps),
+    {ok, _NewSearchRef, AccOut} = fold_results(SearchRef, Timeout, Fun, AccIn),
+    AccOut.
 
 search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
     %% Get results...
@@ -229,20 +276,18 @@ stream_search(IndexOrSchema, OpList) ->
         id=Ref, termcount=NumTerms,
         inputcount=NumInputs, querynorm=QueryNorm }.
 
-%% Gather all results from the provided SearchRef, return the list of
-%% results sorted in descending order by score.
-collect_results(SearchRef, Timeout, Acc) ->
-    M = collect_result(SearchRef, Timeout),
-    case M of
-        {done, _} ->
-            sort_by_score(SearchRef, Acc);
-        {[], Ref} ->
-            collect_results(Ref, Timeout, Acc);
+%% Receive results from the provided SearchRef, run through the
+%% provided Fun starting with Acc.
+%% Fun([Results], Acc) -> NewAcc.
+fold_results(SearchRef, Timeout, Fun, Acc) ->
+    case collect_result(SearchRef, Timeout) of
+        {done, Ref} ->
+            {ok, Ref, Acc};
+        {error, timeout} ->
+            {error, timeout};
         {Results, Ref} ->
-            collect_results(Ref, Timeout, Acc ++ Results)
-        %% Dialyzer says this clause is impossible
-        % Error ->
-        %     Error
+            NewAcc = Fun(Results, Acc),
+            fold_results(Ref, Timeout, Fun, NewAcc)
     end.
 
 %% Collect one or more individual results in as non-blocking of a
