@@ -15,7 +15,6 @@
 
 -record(scoring_vars, {term_boost, doc_frequency, num_docs}).
 preplan_op(Op, _F) ->
-    io:format("Op: ~p~n", [Op]),
     Op.
 
 chain_op(Op, OutputPid, OutputRef, QueryProps) ->

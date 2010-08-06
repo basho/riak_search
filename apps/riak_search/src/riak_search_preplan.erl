@@ -86,7 +86,6 @@ pass2(OpList, Schema) when is_list(OpList) ->
 
 pass2(Op = #field {}, Schema) ->
     {Index, Field} = normalize_field(Op#field.field, Schema),
-    io:format("Index: ~p, Field: ~p~n", [Index, Field]),
     %% TODO - Turn this into a new schema
     {ok, NewSchema1} = riak_search_config:get_schema(Index),
     NewSchema2 = NewSchema1:set_default_field(Field),
@@ -557,7 +556,6 @@ make_zero(Len) ->
 
 %% Return the node with the highest combined weight.
 get_preferred_node(Op) ->
-    io:format("Getting preferred node: ~p~n", [Op]),
     Weights = get_preferred_node_inner(Op),
     F = fun({Node, Weight}, Acc) ->
         case gb_trees:lookup(Node, Acc) of

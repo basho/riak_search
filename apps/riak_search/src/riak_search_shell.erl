@@ -32,15 +32,17 @@ search(Query, #state{index=Index}) ->
     Start = erlang:now(),
     R = search:search(Index, Query),
     End = erlang:now(),
-    io:format("Query took ~pms~n", [erlang:trunc(timer:now_diff(End, Start) / 1000)]),
     case R of
         {error, Error} ->
             io:format("Error: ~p~n", [Error]);
         {_, Results} when length(Results) == 0 ->
             io:format("No records found~n");
         {_, Results} ->
-            io:format("Found ~p records:~n", [length(Results)]),
-            [io:format("~p~n", [Result]) || Result <- Results]
+            [io:format("~p~n", [Result]) || Result <- lists:sort(Results)],
+            io:format("----------~n"),
+            io:format("Found ~p records in ~pms~n", [length(Results),
+                                                     erlang:trunc(timer:now_diff(End, Start) / 1000)]),
+            io:format("----------~n")
     end.
 
 parse(Query, #state{analyzer=Analyzer, index=Index}) ->

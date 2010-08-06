@@ -47,7 +47,7 @@ query -> expr:
 expr -> lparen expr entity_bool rparen:
     case prune_empty('$2' ++ '$3', raw) of
         ?EMPTY ->
-            ?EMPTY;
+            {error, no_terms};
         ASTNode when length(ASTNode) == 1 ->
             ASTNode;
         ASTNode ->
@@ -57,7 +57,7 @@ expr -> lparen expr entity_bool rparen:
 expr -> expr entity_bool:
     case prune_empty('$1' ++ '$2', raw) of
         ?EMPTY ->
-            ?EMPTY;
+            {error, no_terms};
         ASTNode when length(ASTNode) == 1 ->
             ASTNode;
         ASTNode ->
