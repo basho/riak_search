@@ -1,0 +1,52 @@
+--------------------------------
+Riak Search 0.12.1 Release Notes
+--------------------------------
+
+Riak Search 0.12.1 contains substantial improvements in indexing
+speed, query speed, storage efficiency, and handoff, mainly as a
+result of switching to a new storage backend called merge_index.
+
+The merge_index backend uses a series of SSTable-type structures on
+disk and in memory (with backing disk logs) to construct an inverted
+index in a non-blocking fashion with the ability to index, query, and
+compact indices in parallel.
+
+Issues / Warnings:
+
+- Storage formats are expected to change until Riak Search graduates
+  from Beta status. You may be required to delete your existing data
+  files and re-index your documents if this happens.
+
+- Response time is currently highly dependent on the size of the
+  result set.
+
+- Document sets with a large vocabulary cause high memory usage, and
+  slow range and wildcard queries.
+
+These issues will be addressed in future releases.
+
+Enhancements
+------------
+179 - Make Search backend more general, switch to merge_index backend. (434, 460)
+364 - Internal analyzer argument passing improved (366)
+388 - Document re-indexing is now more efficient
+
+Bugs Fixed
+----------
+358 - Correct posting properties now returned in all cases
+362 - Solr Sorting now accounts for negative numbers
+363 - Range queries now work with numbers (369)
+406 - Indexed documents are now deleted correctly despite changes to schema or analyzers
+416 - System can now handle sustained periods of heavy indexing
+419 - Scoring now calculated correctly across all searches. (476)
+442 - Timeouts now longer occur during large partition handoff.
+448 - Correct document sets now returned on multi-term searches.
+501 - Timestamps now stored with greater precision.
+
+Known Issues
+------------
+186 - ISO8601 date searching not yet supported.
+290 - Multi-valued Solr fields not yet supported.
+326 - Facet counts not yet supported.
+399 - In certain cases, partition handoff can lead to incorrect search results.
+407 - Prohibited term and NOT queries have different semantics than Lucene. (411, 459)

@@ -27,13 +27,12 @@
     terms,
     segments,
     buffers,
-    config,
     next_id,
     scheduled_compaction,
     is_compacting
 }).
 
-init([Root, Config]) ->
+init([Root]) ->
     %% Load from disk...
     filelib:ensure_dir(join(Root, "ignore")),
     io:format("Loading merge_index from '~s'~n", [Root]),
@@ -46,7 +45,6 @@ init([Root, Config]) ->
         locks    = mi_locks:new(),
         buffers  = [Buffer],
         segments = Segments,
-        config   = Config,
         next_id  = NextID,
         scheduled_compaction = false,
         is_compacting = false
@@ -342,6 +340,9 @@ handle_call({stream, Index, Field, Term, Pid, Ref, FilterFun}, _From, State) ->
             NewLocks1 = lists:foldl(F2, NewLocks, Segments),
 
             %% Spawn a streaming function...
+            %% SLF TODO: How does caller know if worker proc has crashed?
+            %%     TODO: If filter fun or other crashes, linked server
+            %%           also crashes.
             Self = self(),
             spawn_link(fun() ->
                                F = fun(_IFT, Value, Props, _TS) ->
@@ -405,6 +406,7 @@ handle_call({fold, FoldFun, Acc}, _From, State) ->
     GroupIterator = build_group_iterator(BufferIterators ++ SegmentIterators),
 
     %% Fold over everything...
+    %% SLF TODO: If filter fun or other crashes, server crashes.
     {NewAcc, _, _, _, _} = fold(WrappedFun, {Acc, none, none, none, none}, GroupIterator()),
 
     %% Reply...

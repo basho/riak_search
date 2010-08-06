@@ -47,7 +47,7 @@ analyze(Pid, Text, AnalyzerFactory, AnalyzerArgs) ->
     try
         Req = #analysisrequest{text=Text, analyzer_factory=AnalyzerFactory, 
                                analyzer_args=AnalyzerArgs},
-        case gen_server:call(Pid, {analyze, Req}, 10000) of
+        case gen_server:call(Pid, {analyze, Req}, 3600*1000) of
             ignore ->
                 analyze(Pid, Text, AnalyzerFactory);
         R ->

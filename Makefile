@@ -7,14 +7,13 @@ all: deps compile
 compile:
 	./rebar compile
 	make -C apps/qilr/java_src
-	make -C apps/raptor/java_src
+
 deps:
 	./rebar get-deps
 
 clean:
 	./rebar clean
 	make -C apps/qilr/java_src clean
-	make -C apps/raptor/java_src clean
 
 distclean: clean devclean relclean ballclean
 	./rebar delete-deps
@@ -27,7 +26,6 @@ test:
 ##
 rel: deps
 	make -C apps/qilr/java_src
-	make -C apps/raptor/java_src
 	./rebar compile generate
 
 rellink:

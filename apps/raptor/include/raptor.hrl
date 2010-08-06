@@ -1,1 +1,0 @@
--define(CONN_POOL, raptor_conn_pool).

@@ -25,6 +25,8 @@
     iterator/1,
     iterator/3
 ]).
+%% Private/debugging/useful export.
+-export([fold_iterator/3]).
 
 -include("merge_index.hrl").
 -include_lib("kernel/include/file.hrl").
@@ -265,13 +267,13 @@ read_seg_value(FH) ->
 
 write_key(FH, IFT) ->
     ok = mi_write_cache:write(FH, <<1:1/integer, 8:31/integer, IFT:64/unsigned>>),
-    10.
+    12.
 
 write_seg_value(FH, Value, Props, TS) ->
     B = term_to_binary({Value, Props, TS}),
     Size = erlang:size(B),
     ok = mi_write_cache:write(FH, <<0:1/integer, Size:31/integer, B/binary>>),
-    Size + 2.
+    Size + 4.
 
 data_file(Segment) when is_record(Segment, segment) ->
     data_file(Segment#segment.root);
@@ -282,6 +284,15 @@ offsets_file(Segment) when is_record(Segment, segment) ->
     offsets_file(Segment#segment.root);
 offsets_file(Root) ->
     Root ++ ".offsets".
+
+fold_iterator(Itr, Fn, Acc0) ->
+    fold_iterator_inner(Itr(), Fn, Acc0).
+
+fold_iterator_inner(eof, _Fn, Acc) ->
+    lists:reverse(Acc);
+fold_iterator_inner({Term, NextItr}, Fn, Acc0) ->
+    Acc = Fn(Term, Acc0),
+    fold_iterator_inner(NextItr(), Fn, Acc).
 
 %% ===================================================================
 %% EUnit tests
@@ -312,15 +323,6 @@ make_buffer([], B) ->
 make_buffer([{Ift, Value, Props, Tstamp} | Rest], B0) ->
     B = mi_buffer:write(Ift, Value, Props, Tstamp, B0),
     make_buffer(Rest, B).
-
-fold_iterator(Itr, Fn, Acc0) ->
-    fold_iterator_inner(Itr(), Fn, Acc0).
-
-fold_iterator_inner(eof, _Fn, Acc) ->
-    lists:reverse(Acc);
-fold_iterator_inner({Term, NextItr}, Fn, Acc0) ->
-    Acc = Fn(Term, Acc0),
-    fold_iterator_inner(NextItr(), Fn, Acc).
 
 
 prop_basic_test(Root) ->

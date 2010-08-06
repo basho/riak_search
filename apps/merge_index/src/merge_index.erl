@@ -12,7 +12,7 @@
 
 -export([
     %% API
-    start_link/2,
+    start_link/1,
     stop/1,
     index/7,
     stream/7,
@@ -24,8 +24,8 @@
     compact/1
 ]).
 
-start_link(Root, Config) ->
-    gen_server:start_link(mi_server, [Root, Config], [{timeout, infinity}]).
+start_link(Root) ->
+    gen_server:start_link(mi_server, [Root], [{timeout, infinity}]).
 
 stop(_ServerPid) ->
     ok.

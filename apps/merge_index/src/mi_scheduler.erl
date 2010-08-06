@@ -13,6 +13,8 @@
     start/0,
     schedule_compaction/1
 ]).
+%% Private export
+-export([worker_loop/1]).
 
 -include("merge_index.hrl").
 
@@ -119,6 +121,6 @@ worker_loop(Parent) ->
                     error_logger:error_msg("Failed to compact ~p: ~p\n",
                                            [Pid, Reason])
             end,
-            worker_loop(Parent)
+            ?MODULE:worker_loop(Parent)
     end.
 

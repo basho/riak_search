@@ -143,11 +143,6 @@ delete_doc(Index, DocId) ->
             {error, notfound};
         IdxDoc ->
             {ok, Client} = riak_search:local_client(),
-            {ok, AnalyzerPid} = qilr:new_analyzer(),
-            try 
-                Client:delete_doc(IdxDoc, AnalyzerPid)
-            after
-                qilr:close_analyzer(AnalyzerPid)
-            end,
+            Client:delete_doc(IdxDoc),
             ok
     end.
