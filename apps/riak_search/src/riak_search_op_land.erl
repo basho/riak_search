@@ -11,6 +11,7 @@
          chain_op/5
         ]).
 -include("riak_search.hrl").
+-define(INDEX_DOCID(Term), ({element(1, Term), element(2, Term)})).
 
 preplan_op(Op, F) ->
     Op#land { ops=F(Op#land.ops) }.
@@ -74,15 +75,16 @@ select_fun(Type, I1, {eof, Op2}) when is_tuple(Op2) ->
     select_fun(Type, I1, {eof, is_record(Op2, lnot)});
 
 
+
 %% Handle 'AND' cases, notflags = [false, false]
-select_fun(land, {Term1, false, Iterator1}, {Term2, false, Iterator2}) when element(1, Term1) == element(1, Term2) ->
+select_fun(land, {Term1, false, Iterator1}, {Term2, false, Iterator2}) when ?INDEX_DOCID(Term1) == ?INDEX_DOCID(Term2) ->
     NewTerm = riak_search_utils:combine_terms(Term1, Term2),
     {NewTerm, false, fun() -> select_fun(land, Iterator1(), Iterator2()) end};
 
-select_fun(land, {Term1, false, Iterator1}, {Term2, false, Iterator2}) when Term1 < Term2 ->
+select_fun(land, {Term1, false, Iterator1}, {Term2, false, Iterator2}) when ?INDEX_DOCID(Term1) < ?INDEX_DOCID(Term2) ->
     select_fun(land, Iterator1(), {Term2, false, Iterator2});
 
-select_fun(land, {Term1, false, Iterator1}, {Term2, false, Iterator2}) when Term1 > Term2 ->
+select_fun(land, {Term1, false, Iterator1}, {Term2, false, Iterator2}) when ?INDEX_DOCID(Term1) > ?INDEX_DOCID(Term2) ->
     select_fun(land, {Term1, false, Iterator1}, Iterator2());
 
 select_fun(land, {eof, false}, {_Term2, false, _Iterator2}) ->
@@ -92,13 +94,13 @@ select_fun(land, {_Term1, false, _Iterator1}, {eof, false}) ->
     {eof, false};
 
 %% Handle 'AND' cases, notflags = [false, true]
-select_fun(land, {Term1, false, Iterator1}, {Term2, true, Iterator2}) when element(1, Term1) == element(1, Term2) ->
+select_fun(land, {Term1, false, Iterator1}, {Term2, true, Iterator2}) when ?INDEX_DOCID(Term1) == ?INDEX_DOCID(Term2) ->
     select_fun(land, Iterator1(), {Term2, true, Iterator2});
 
-select_fun(land, {Term1, false, Iterator1}, {Term2, true, Iterator2}) when Term1 < Term2 ->
+select_fun(land, {Term1, false, Iterator1}, {Term2, true, Iterator2}) when ?INDEX_DOCID(Term1) < ?INDEX_DOCID(Term2) ->
     {Term1, false, fun() -> select_fun(land, Iterator1(), {Term2, true, Iterator2}) end};
 
-select_fun(land, {Term1, false, Iterator1}, {Term2, true, Iterator2}) when Term1 > Term2 ->
+select_fun(land, {Term1, false, Iterator1}, {Term2, true, Iterator2}) when ?INDEX_DOCID(Term1) > ?INDEX_DOCID(Term2) ->
     select_fun(land, {Term1, false, Iterator1}, Iterator2());
 
 select_fun(land, {eof, false}, {_Term2, true, _Iterator2}) ->
@@ -120,14 +122,14 @@ select_fun(land, {Term1, true, Iterator1}, {eof, false}) ->
 
 
 %% Handle 'AND' cases, notflags = [true, true]
-select_fun(land, {Term1, true, Iterator1}, {Term2, true, Iterator2}) when element(1, Term1) == element(1, Term2) ->
+select_fun(land, {Term1, true, Iterator1}, {Term2, true, Iterator2}) when ?INDEX_DOCID(Term1) == ?INDEX_DOCID(Term2) ->
     NewTerm = riak_search_utils:combine_terms(Term1, Term2),
     {NewTerm, true, fun() -> select_fun(land, Iterator1(), Iterator2()) end};
 
-select_fun(land, {Term1, true, Iterator1}, {Term2, true, Iterator2}) when Term1 < Term2 ->
+select_fun(land, {Term1, true, Iterator1}, {Term2, true, Iterator2}) when ?INDEX_DOCID(Term1) < ?INDEX_DOCID(Term2) ->
     {Term1, true, fun() -> select_fun(land, Iterator1(), {Term2, true, Iterator2}) end};
 
-select_fun(land, {Term1, true, Iterator1}, {Term2, true, Iterator2}) when Term1 > Term2 ->
+select_fun(land, {Term1, true, Iterator1}, {Term2, true, Iterator2}) when ?INDEX_DOCID(Term1) > ?INDEX_DOCID(Term2) ->
     {Term2, true, fun() -> select_fun(land, {Term1, true, Iterator1}, Iterator2()) end};
 
 select_fun(land, {eof, true}, {Term2, true, Iterator2}) ->
@@ -145,14 +147,14 @@ select_fun(land, {eof, _}, {eof, _}) ->
 
 
 %% Handle 'OR' cases, notflags = [false, false]
-select_fun(lor, {Term1, false, Iterator1}, {Term2, false, Iterator2}) when element(1, Term1) == element(1, Term2) ->
+select_fun(lor, {Term1, false, Iterator1}, {Term2, false, Iterator2}) when ?INDEX_DOCID(Term1) == ?INDEX_DOCID(Term2) ->
     NewTerm = riak_search_utils:combine_terms(Term1, Term2),
     {NewTerm, false, fun() -> select_fun(lor, Iterator1(), Iterator2()) end};
 
-select_fun(lor, {Term1, false, Iterator1}, {Term2, false, Iterator2}) when Term1 < Term2 ->
+select_fun(lor, {Term1, false, Iterator1}, {Term2, false, Iterator2}) when ?INDEX_DOCID(Term1) < ?INDEX_DOCID(Term2) ->
     {Term1, false, fun() -> select_fun(lor, Iterator1(), {Term2, false, Iterator2}) end};
 
-select_fun(lor, {Term1, false, Iterator1}, {Term2, false, Iterator2}) when Term1 > Term2 ->
+select_fun(lor, {Term1, false, Iterator1}, {Term2, false, Iterator2}) when ?INDEX_DOCID(Term1) > ?INDEX_DOCID(Term2) ->
     {Term2, false, fun() -> select_fun(lor, {Term1, false, Iterator1}, Iterator2()) end};
 
 select_fun(lor, {eof, false}, {Term2, false, Iterator2}) ->
