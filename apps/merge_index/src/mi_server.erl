@@ -353,8 +353,7 @@ handle_call({stream, Index, Field, Term, Pid, Ref, FilterFun}, _From, State) ->
                                                    skip
                                            end
                                    end,
-                               %% TODO: Stream really doesn't need to take a start/end IFT!!
-                               stream(IFT, IFT, F, Buffers, Segments),
+                               stream(IFT, F, Buffers, Segments),
                                Pid ! {result, '$end_of_table', Ref},
                                gen_server:call(Self, {stream_finished, Buffers, Segments}, infinity)
                        end),
@@ -447,10 +446,10 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% Merge-sort the results from Iterators, and stream to the pid.
-stream(StartIFT, EndIFT, F, Buffers, Segments) ->
+stream(IFT, F, Buffers, Segments) ->
     %% Put together the group iterator...
-    BufferIterators = [mi_buffer:iterator(StartIFT, EndIFT, X) || X <- Buffers],
-    SegmentIterators = [mi_segment:iterator(StartIFT, EndIFT, X) || X <- Segments],
+    BufferIterators = [mi_buffer:iterator(IFT, IFT, X) || X <- Buffers],
+    SegmentIterators = [mi_segment:iterator(IFT, IFT, X) || X <- Segments],
     GroupIterator = build_group_iterator(BufferIterators ++ SegmentIterators),
 
     %% Start streaming...
