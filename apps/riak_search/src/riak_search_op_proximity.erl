@@ -10,6 +10,7 @@
          chain_op/4
         ]).
 -include("riak_search.hrl").
+-define(INDEX_DOCID(Term), ({element(1, Term), element(2, Term)})).
 
 preplan_op(Op, F) ->
     Op#proximity { ops=F(Op#proximity.ops) }.
@@ -107,15 +108,15 @@ select_fun(I1, {{Index, DocID, Props}, Op, Iterator}) when is_record(Op, term) -
 
 
 %% If terms are equal, then bubble up the result...
-select_fun({Term1, Positions1, Iterator1}, {Term2, Positions2, Iterator2}) when element(1, Term1) == element(1, Term2) ->
+select_fun({Term1, Positions1, Iterator1}, {Term2, Positions2, Iterator2}) when ?INDEX_DOCID(Term1) == ?INDEX_DOCID(Term2) ->
     NewTerm = riak_search_utils:combine_terms(Term1, Term2),
     {NewTerm, Positions1 ++ Positions2, fun() -> select_fun(Iterator1(), Iterator2()) end};
 
 %% Terms not equal, so iterate one of them...
-select_fun({Term1, _, Iterator1}, {Term2, Positions2, Iterator2}) when Term1 < Term2 ->
+select_fun({Term1, _, Iterator1}, {Term2, Positions2, Iterator2}) when ?INDEX_DOCID(Term1) < ?INDEX_DOCID(Term2) ->
     select_fun(Iterator1(), {Term2, Positions2, Iterator2});
 
-select_fun({Term1, Positions1, Iterator1}, {Term2, _, Iterator2}) when Term1 > Term2 ->
+select_fun({Term1, Positions1, Iterator1}, {Term2, _, Iterator2}) when ?INDEX_DOCID(Term1) > ?INDEX_DOCID(Term2) ->
     select_fun({Term1, Positions1, Iterator1}, Iterator2());
 
 %% Hit an eof, no more results...
