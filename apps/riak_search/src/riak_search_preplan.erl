@@ -32,11 +32,11 @@ select_node(Op, _Schema) ->
     Op.
 
 %% Convert wildcards and ranges into lor operations
-wildcard_range_to_or(#field{field=FieldName, ops=Ops}=F, Schema)
+wildcard_range_to_or(#field{field=FieldName, ops=Ops}, Schema)
   when is_record(Ops, inclusive_range);
        is_record(Ops, exclusive_range)->
     Field = Schema:find_field(FieldName),
-    {Index, FieldName, StartValue, EndValue, Size} =
+    {_Index, FieldName, StartValue, EndValue, Size} =
         normalize_range({Schema:name(), FieldName, range_start(Ops)},
                         {Schema:name(), FieldName, range_end(Ops)},
                         range_type(Ops) =:= inclusive),
@@ -170,9 +170,9 @@ flatten_bool(Op, _Schema) ->
     Op.
 
 %% Term conversion
-convert_terms({field, Name, Body, Opts}, Schema) when is_list(Body) ->
+convert_terms({field, Name, Body, _Opts}, Schema) when is_list(Body) ->
     visit(Body, ?VISITOR(convert_field_terms, {Name, Schema}), true);
-convert_terms({field, Name, Body, Opts}, Schema) when is_record(Body, phrase) ->
+convert_terms({field, Name, Body, _Opts}, Schema) when is_record(Body, phrase) ->
     convert_field_terms(Body, {Name, Schema});
 convert_terms({field, Name, {term, Body, Opts}, _}, Schema) ->
     #term{q={Schema:name(), Name, Body}, options=Opts};
@@ -398,7 +398,7 @@ find_heaviest_node(Ops) ->
             Node = hd(Ops),
             Node#node.node;
         _ ->
-            {Node, Weight} = hd(lists:sort(F, NodeWeights)),
+            {Node, _Weight} = hd(lists:sort(F, NodeWeights)),
             Node
     end.
 
@@ -406,7 +406,7 @@ collect_node_weights([], Accum) ->
     Accum;
 collect_node_weights([#term{options=Opts}|T], Accum) ->
     Weights = proplists:get_all_values(node_weight, Opts),
-    F = fun(W={Node, Weight}, Acc) ->
+    F = fun(W, Acc) ->
                 case lists:member(W, Acc) of
                     false ->
                         [W|Acc];
