@@ -129,7 +129,6 @@ search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
                        MS
                end,
     %% Fetch the documents in parallel.
-    {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
     F = fun({Index, DocID, _}) ->
         ?PRINT({Index, DocID}),
         riak_indexed_doc:get(RiakClient, Index, DocID)

@@ -164,32 +164,6 @@ rewrite_term(Q, Options, _Schema) ->
             [#term { q=Q, options=Weights ++ Options }]
     end.
 
-
-%% RAPTOR-ONLY OPTIMIZATION
-%% %% Rewrite a term, adding either a facet flag or node weights
-%% %% depending on whether this is a facet.
-%% rewrite_term(Q, Options, _Schema) ->
-%%     case is_facet(Q) of
-%%         true ->
-%%             [#term { q=Q, options=[facet|Options] }];
-%%         false ->
-%%             {Index, Field, Term} = Q,
-%%            
-%%             %%{ok, {_, Node, Count}} = riak_search:info(Index, Field, Term),
-%%             %%Weights = [{node_weight, Node, Count}],
-%%
-%%             %% RAPTORCODE
-%%             TermPreflist = riak_search:term_preflist(Index, Field, Term),
-%%             %% [ {Partition, Node} ... ]
-%%
-%%             Weights = lists:map(fun({Partition, Node}) ->
-%%                 [{node_weight, Node, 1}, {preflist_entry, Partition, Node}]
-%%             end, TermPreflist),
-%%
-%%             [#term { q=Q, options=Weights ++ Options }]
-%%     end.
-
-
 %% Convert a string field into {Index, Field, Term}.
 normalize_term(OriginalField, Schema) when is_binary(OriginalField) ->
     normalize_term(binary_to_list(OriginalField), Schema);
