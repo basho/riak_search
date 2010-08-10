@@ -200,7 +200,7 @@ validate_results_inner(Length, _Results, {length, ValidLength}) ->
 validate_results_inner(_Length, Results, {property, Key, Value}) ->
     KeyL = riak_search_utils:to_list(Key),
     ValueB = riak_search_utils:to_binary(Value),
-    F = fun({_, Props}) ->
+    F = fun({_, _, Props}) ->
         lists:member({KeyL, ValueB}, Props)
     end,
     case lists:all(F, Results) of

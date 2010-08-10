@@ -30,7 +30,7 @@ start_loop(Op, OutputPid, OutputRef, QueryProps) ->
 
     %% Create filter function...
     Facets = proplists:get_all_values(facets, Op#term.options),
-    Fun = fun(_Value, Props) ->
+    Fun = fun(_DocID, Props) ->
         riak_search_facets:passes_facets(Props, Facets)
     end,
 
@@ -39,9 +39,12 @@ start_loop(Op, OutputPid, OutputRef, QueryProps) ->
     {ok, Ref} = riak_search:stream(Index, Field, Term, Fun),
 
     %% Gather the results...
-    loop(ScoringVars, Ref, OutputPid, OutputRef).
+    %% TODO - This type conversion should be removed in bug 484
+    %% "Standardize on a string representation".
+    IndexB = riak_search_utils:to_binary(Index),
+    loop(IndexB, ScoringVars, Ref, OutputPid, OutputRef).
 
-loop(ScoringVars, Ref, OutputPid, OutputRef) ->
+loop(Index, ScoringVars, Ref, OutputPid, OutputRef) ->
     receive 
         {Ref, done} ->
             %io:format("riak_search_op_term: disconnect ($end_of_table)~n"),
@@ -49,18 +52,20 @@ loop(ScoringVars, Ref, OutputPid, OutputRef) ->
             
         {Ref, {result_vec, ResultVec}} ->
             % todo: scoring
-            ResultVec2 = lists:map(fun({Key, Props}) ->
-                NewProps = calculate_score(ScoringVars, Props),
-                {Key, NewProps} end, ResultVec),
+            F = fun({DocID, Props}) ->
+                        NewProps = calculate_score(ScoringVars, Props),
+                        {Index, DocID, NewProps} 
+                end,
+            ResultVec2 = lists:map(F, ResultVec),
             %io:format("ResultVec2 = ~p~n", [ResultVec2]),
             OutputPid!{results, ResultVec2, OutputRef},
-            loop(ScoringVars, Ref, OutputPid, OutputRef);
+            loop(Index, ScoringVars, Ref, OutputPid, OutputRef);
 
         %% TODO: Check if this is dead code
-        {Ref, {result, {Key, Props}}} ->
+        {Ref, {result, {DocID, Props}}} ->
             NewProps = calculate_score(ScoringVars, Props),
-            OutputPid!{results, [{Key, NewProps}], OutputRef},
-            loop(ScoringVars, Ref, OutputPid, OutputRef)
+            OutputPid!{results, [{Index, DocID, NewProps}], OutputRef},
+            loop(Index, ScoringVars, Ref, OutputPid, OutputRef)
     after
         ?STREAM_TIMEOUT ->
             throw(stream_timeout)

@@ -96,8 +96,8 @@ stream(Index, Field, Term, FilterFun, Sender, State) ->
 
 stream_loop(Ref, Sender) ->
     receive
-        {result, {Value, Props}, Ref} ->
-            riak_search_backend:stream_response_results(Sender, [{Value, Props}]),
+        {result, {DocID, Props}, Ref} ->
+            riak_search_backend:stream_response_results(Sender, [{DocID, Props}]),
             stream_loop(Ref, Sender);
         {result, '$end_of_table', Ref} ->
             riak_search_backend:stream_response_done(Sender);

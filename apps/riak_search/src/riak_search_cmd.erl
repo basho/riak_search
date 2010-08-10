@@ -132,13 +132,13 @@ show_schema(Index) ->
 shell(Index) -> 
     riak_search_shell:start(Index).
 
-search(Index, Query) -> 
-    io:format("~n :: Searching for '~s' in ~s...~n~n", [Query, Index]),
+search(DefaultIndex, Query) -> 
+    io:format("~n :: Searching for '~s' in ~s...~n~n", [Query, DefaultIndex]),
     io:format("------------------------------~n~n"),
-    case search:search(Index, Query) of
+    case search:search(DefaultIndex, Query) of
         {Length, Results} ->
             F = fun(X) ->
-                {DocID, Props} = X,
+                {Index, DocID, Props} = X,
                 IndexS = to_list(Index),
                 DocIDS = to_list(DocID),
                 io:format("index/id: ~s/~s~n", [IndexS, DocIDS]),
@@ -152,10 +152,10 @@ search(Index, Query) ->
             io:format(" :: ERROR: ~p", [Other])
     end.
 
-search_doc(Index, Query) -> 
-    io:format("~n :: Searching for '~s' in ~s...~n~n", [Query, Index]),
+search_doc(DefaultIndex, Query) -> 
+    io:format("~n :: Searching for '~s' in ~s...~n~n", [Query, DefaultIndex]),
     io:format("------------------------------~n~n"),
-    case search:search_doc(Index, Query) of
+    case search:search_doc(DefaultIndex, Query) of
         {Length, MaxScore, Results} ->
             F = fun(X) ->
                 %% Index.
@@ -180,9 +180,9 @@ search_doc(Index, Query) ->
             io:format("ERROR: ~p", [Other])
     end.
 
-explain(Index, Query) -> 
-    io:format("~n :: Explaining query '~s' in ~s...~n~n", [Query, Index]),
-    Plan = search:explain(Index, Query),
+explain(DefaultIndex, Query) -> 
+    io:format("~n :: Explaining query '~s' in ~s...~n~n", [Query, DefaultIndex]),
+    Plan = search:explain(DefaultIndex, Query),
     io:format("~p", [Plan]).
 
 index(Index, Path) -> 

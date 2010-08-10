@@ -23,7 +23,7 @@
 -include_lib("riak_core/include/riak_core_pb.hrl").
 
 -record(vstate, {idx, bmod, bstate}).
--record(index_v1, {index, field, term, value, props}).
+-record(index_v1, {index, field, term, doc_id, props}).
 -record(multi_index_v1, {iftvp_list}).
 -record(delete_v1, {index, field, term, doc_id}).
 -record(multi_delete_v1, {iftv_list}).
@@ -35,15 +35,15 @@
 
 -define(HANDOFF_VER,1).
 
-index(Preflist, Index, Field, Term, Value, Props) ->
-    index(Preflist, Index, Field, Term, Value, Props, noreply).
+index(Preflist, Index, Field, Term, DocID, Props) ->
+    index(Preflist, Index, Field, Term, DocID, Props, noreply).
 
-index(Preflist, Index, Field, Term, Value, Props, Sender) ->
+index(Preflist, Index, Field, Term, DocID, Props, Sender) ->
     Req = #index_v1{
       index = Index,
       field = Field,
       term = Term,
-      value = Value,
+      doc_id = DocID,
       props = Props
      },
     command(Preflist, Req, Sender).
@@ -151,10 +151,10 @@ init([VNodeIndex]) ->
 handle_command(#index_v1{index = Index,
                          field = Field,
                          term = Term,
-                         value = Value,
+                         doc_id = DocID,
                          props = Props},
                _Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
-    bmod_response(BMod:index(Index, Field, Term, Value, Props, BState), VState);
+    bmod_response(BMod:index(Index, Field, Term, DocID, Props, BState), VState);
 handle_command(#multi_index_v1{iftvp_list = IFTVPList},
                _Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
     bmod_response(BMod:multi_index(IFTVPList, BState), VState);
@@ -226,8 +226,8 @@ encode_handoff_item({Index,{Field,Term}}, VPKList) ->
 handle_handoff_data(<<?HANDOFF_VER:8,BinObj/binary>>,
                     #vstate{bmod=BMod,bstate=BState}=VState) ->
     {Index,Field,Term,VPKList} = binary_to_term(BinObj),
-    [noreply = BMod:index_if_newer(Index, Field, Term, Value, Props, KeyClock, BState) ||
-        {Value, Props, KeyClock} <- VPKList],
+    [noreply = BMod:index_if_newer(Index, Field, Term, DocID, Props, KeyClock, BState) ||
+        {DocID, Props, KeyClock} <- VPKList],
     {reply, ok, VState}.
 
 is_empty(VState=#vstate{bmod=BMod, bstate=BState}) ->

@@ -33,7 +33,6 @@
              riak_search_op_exclusive_range,
              riak_search_op_proximity,
              riak_search_op_node,
-             riak_search_op_multi_term,
              riak_search_phase,
              riak_search_schema,
              riak_search_schema_parser,
@@ -46,7 +45,6 @@
              riak_search_basic_qc,
              riak_search_operators_qc,
              riak_search_op_mockterm,
-             riak_search_optimizer,
              riak_search_ets_backend,
              basho_bench_driver_riaksearch
             ]},

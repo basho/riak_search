@@ -31,7 +31,7 @@
 %% Chain a list of iterators into what looks like one single iterator.
 %% The SelectFun/2 takes two iterators (which each provide {Value,
 %% Props, IteratorFun}). The SelectFun is responsible for choosing
-%% which value is next in the series, and returning {Value, Props,
+%% which value is next in the series, and returning {Index, Value, Props,
 %% NewIteratorFun}.
 iterator_chain(_, [Op], QueryProps) ->
     iterator_chain_op(Op, QueryProps);
@@ -93,7 +93,7 @@ collector_loop(_Ref, eof) ->
 
 
 %% Gine
-combine_terms({Value, Props1}, {Value, Props2}) ->
+combine_terms({Index, DocID, Props1}, {Index, DocID, Props2}) ->
     %% score list is concatenation of each term's scores
     ScoreList1 = proplists:get_value(score, Props1, []),
     ScoreList2 = proplists:get_value(score, Props2, []),
@@ -122,7 +122,7 @@ combine_terms({Value, Props1}, {Value, Props2}) ->
                             {word_pos, WordPos},
                             {freq, Freq}]
                            ),
-    {Value, NewProps};
+    {Index, DocID, NewProps};
 combine_terms(Other1, Other2) ->
     error_logger:error_msg("Could not combine terms: [~p, ~p]~n", [Other1, Other2]),
     throw({could_not_combine, Other1, Other2}).
