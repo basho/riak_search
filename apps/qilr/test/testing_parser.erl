@@ -10,7 +10,9 @@ parse(Query, Bool) ->
                                     [{riak_search_field, ".*", string, 0,
                                       undefined, false, true, undefined, undefined, false}],
                                     Bool, "com.basho.search.analysis.DefaultAnalyzerFactory"),
-    qilr_parse:string(undefined, Query, Schema).
+    Result = qilr_parse:string(undefined, Query, Schema),
+    file:write_file("/tmp/debug.txt", io_lib:format("~p~n", [Result]), [append]),
+    Result.
 
 multiple_terms_test_() ->
     [fun() ->
@@ -27,21 +29,21 @@ field_test_() ->
                                             {field,"color",{term,<<"blue">>,[]},[]}]},
                                       {field,"acc",{term,<<"aja">>,[]},[]}]}]},
                           parse("(color:red OR color:blue) AND (acc:aja)")),
-             ?assertMatch({ok,[{field,"title",{term, <<"scarlet">>, []},[prohibited]}]},
+             ?assertMatch({ok,[{lnot,[{field,"title",{term, <<"scarlet">>, []}, []}]}]},
                           parse("-title:scarlet")) end].
 
 prefix_test_() ->
     [fun() ->
              ?assertMatch({ok, [{term, <<"planes">>, [required]}]}, parse("+planes")),
-             ?assertMatch({ok, [{term, <<"planes">>, [prohibited]}]}, parse("-planes")),
+             ?assertMatch({ok, [{lnot, [{term, <<"planes">>, []}]}]}, parse("-planes")),
              ?assertMatch({ok,[{phrase,<<"\"planes trains\"">>,
                                [{base_query,[{land,[{term,<<"planes">>,[required]},
                                                     {term,<<"trains">>,[required]}]}]},
                                 required]}]},
                           parse("+\"planes trains\"")),
              ?assertMatch({ok,[{phrase,<<"\"planes trains\"">>,
-                                [{base_query, [{land, [{term, <<"planes">>, [prohibited]},
-                                                       {term, <<"trains">>, [prohibited]}]}]},
+                                [{base_query, [{land, [{lnot, [{term, <<"planes">>, []}]},
+                                                       {lnot, [{term, <<"trains">>, []}]}]}]},
                                   prohibited]}]},
                           parse("-\"planes trains\"")) end].
 
@@ -52,6 +54,8 @@ suffix_test_() ->
              ?assertMatch({ok,[{term,<<"solar">>,[{fuzzy,"0.85"}]}]}, parse("solar~0.85")),
              ?assertMatch({ok, [{term, <<"solar">>, [{boost, "2"}]}]}, parse("solar^2")),
              ?assertMatch({ok, [{term, <<"solar">>, [{boost, "0.9"}]}]}, parse("solar^0.9")),
+             ?assertMatch({ok, [{term, <<"solar">>, [{wildcard, all}]}]}, parse("solar*")),
+             ?assertMatch({ok, [{term, <<"solar">>, [{wildcard, one}]}]}, parse("solar?")),
              ?assertMatch({ok,[{phrase, <<"\"solar power\"">>,
                                 [{base_query, [{land, [{term, <<"solar">>, [{fuzzy, "0.5"}]},
                                                        {term, <<"power">>, [{fuzzy, "0.5"}]}]}]},
@@ -95,13 +99,12 @@ bool_test_() ->
                                                []}]}]}]},
                            parse("acc:(afa AND (NOT aga)) AND (NOT color:oran*)")),
              ?assertMatch({ok,[{land,[{lor,[{field,"color",
-                                             {term,<<"re">>,[{wildcard,all}]},
+                                             {term,<<"yell">>,[{wildcard,all}]},
                                              []},
                                             {field,"color",{term,<<"blub">>,[{fuzzy,"0.5"}]},[]}]},
                                       {field,"parity",
-                                       [{exclusive_range,{term,<<"100">>,[]},{term,<<"105">>,[]}}],
-                                       []}]}]},
-                          parse("(color:re* OR color:blub~) AND (parity:{100 TO 105})")),
+                                       {exclusive_range,<<"100">>, <<"105">>}, []}]}]},
+                          parse("(color:yell* OR color:blub~) AND (parity:{100 TO 105})")),
              ?assertMatch({ok,[{lor,[{term,<<"flag">>,[]},
                                      {field,"color",
                                       [{lor,[{term,<<"red">>,[]},{term,<<"blue">>,[]}]}],
@@ -174,55 +177,27 @@ req_prohib_test_() ->
     [fun() ->
              ?assertMatch({ok,[{field,"product",{term,<<"milk">>,[]},[required]}]},
                           parse("+product:milk")),
-             ?assertMatch({ok,[{field,"product",{term,<<"eggs">>,[]},[prohibited]}]},
+             ?assertMatch({ok,[{lnot, [{field,"product",{term,<<"eggs">>,[]},[]}]}]},
                           parse("-product:eggs")),
              ?assertMatch({ok,[{field,"product",
                                 [{land,[{term,<<"milk">>,[required]},
-                                        {term,<<"whole">>,[prohibited]}]}],
+                                        {lnot, [{term,<<"whole">>,[]}]}]}],
                                []}]},
                           parse("product:(+milk AND -whole)")) end].
 
 field_range_test_() ->
     [fun() ->
-             ?assertMatch({ok,[{field,"title",[{inclusive_range,{term,<<"Aida">>,[]},
-                                                {term,<<"Carmen">>,[]}}],
-                                []}]},
+             ?assertMatch({ok,[{field,"title",{inclusive_range, <<"Aida">>, <<"Carmen">>}, []}]},
                           parse("title:[Aida TO Carmen]")),
-             ?assertMatch({ok,[{field,"title",[{inclusive_range,{term,<<"Aida">>,[]},
-                                                {term,<<"Carmen">>,[]}}],
-                                []}]},
+             ?assertMatch({ok,[{field,"title",{inclusive_range, <<"Aida">>, <<"Carmen">>}, []}]},
                           parse("title:[Aida TO Carmen}")),
-             ?assertMatch({ok,[{field,"mod_date",
-                                 [{exclusive_range,{term,<<"20020101">>,[]},
-                                   {term,<<"20030101">>,[]}}],
-                                []}]},
+             ?assertMatch({ok,[{field,"mod_date", {exclusive_range, <<"20020101">>, <<"20030101">>}, []}]},
                           parse("mod_date:{20020101 TO 20030101}")),
-             ?assertMatch({ok,[{field,"mod_date",
-                                 [{exclusive_range,{term,<<"20020101">>,[]},
-                                   {term,<<"20030101">>,[]}}],
-                                []}]},
+             ?assertMatch({ok,[{field,"mod_date", {exclusive_range, <<"20020101">>, <<"20030101">>}, []}]},
                           parse("mod_date:{20020101 TO 20030101]")) end].
 
-%% analysis_trimming_test_() ->
-%%     [fun() ->
-%%              ?assertMatch({ok, [{term, <<"television">>, []}]}, parse("the && television")),
-%%              ?assertMatch({ok, [{land,[{term,<<"pen">>,[]},{term,<<"pad">>,[]}]}]},
-%%                           parse("pen && (a pad)")) end].
-
-%% escaped_chars_gen(Chars) ->
-%%     escaped_chars_gen(Chars, []).
-
-%% escaped_chars_gen([], Accum) ->
-%%     Accum;
-%% escaped_chars_gen([H|T], Accum) ->
-%%     Term1 = lists:flatten(["\\", H, "lion"]),
-%%     Term2 = lists:flatten(["li\\", H, "on"]),
-%%     Term3 = lists:flatten(["lion\\", H]),
-%%     F = fun() ->
-%%                 ?assertMatch({ok, [{term, Term1, []}]},
-%%                              parse(Term1)),
-%%                 ?assertMatch({ok, [{term, Term2, []}]},
-%%                              parse(Term2)),
-%%                 ?assertMatch({ok, [{term, Term3, []}]},
-%%                              parse(Term3)) end,
-%%     escaped_chars_gen(T, [F|Accum]).
+analysis_trimming_test_() ->
+    [fun() ->
+             ?assertMatch({ok, [{term, <<"television">>, []}]}, parse("a && television")),
+             ?assertMatch({ok, [{land,[{term,<<"pen">>,[]},{term,<<"pad">>,[]}]}]},
+                          parse("pen && (a && pad)")) end].
