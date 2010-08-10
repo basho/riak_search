@@ -124,14 +124,14 @@ search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
     MaxScore = case Results of
                    [] ->
                        "0.0";
-                   [{_, Attrs}|_] ->
-                       [MS] = io_lib:format("~g", [proplists:get_value(score, Attrs)]),
+                   [{_, _, Props}|_] ->
+                       [MS] = io_lib:format("~g", [proplists:get_value(score, Props)]),
                        MS
                end,
     %% Fetch the documents in parallel.
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
-    Index = Schema:name(),
-    F = fun({DocID, _}) ->
+    F = fun({Index, DocID, _}) ->
+        ?PRINT({Index, DocID}),
         riak_indexed_doc:get(RiakClient, Index, DocID)
     end,
     Documents = plists:map(F, Results, {processes, 4}),
@@ -144,8 +144,8 @@ explain(IndexOrSchema, QueryOps) ->
     riak_search_preplan:preplan(QueryOps, Schema).
 
 %% Index the specified term - better to use the plural 'terms' interfaces
-index_term(Index, Field, Term, Value, Props) ->
-    index_terms([{Index, Field, Term, Value, Props}]).
+index_term(Index, Field, Term, DocID, Props) ->
+    index_terms([{Index, Field, Term, DocID, Props}]).
 
 %% Create an index FSM, send the terms and shut it down
 index_terms(Terms) ->
@@ -182,8 +182,8 @@ index_doc(IdxDoc, AnalyzerPid, IndexPid) ->
     riak_indexed_doc:put(RiakClient, IdxDoc2).
 
 %% Delete the specified term - better to use the plural 'terms' interfaces.
-delete_term(Index, Field, Term, Value) ->
-    delete_terms([{Index, Field, Term, Value}]).
+delete_term(Index, Field, Term, DocID) ->
+    delete_terms([{Index, Field, Term, DocID}]).
 
 %% Create a delete FSM, send the terms and shut it down.
 delete_terms(Terms) ->
@@ -345,13 +345,13 @@ get_scoring_info_1(Ops) when is_list(Ops) ->
 
 sort_by_score(#riak_search_ref{querynorm=QNorm, termcount=TermCount}, Results) ->
     SortedResults = lists:sort(calculate_scores(QNorm, TermCount, Results)),
-    [{Value, Props} || {_, Value, Props} <- SortedResults].
+    [{Index, DocID, Props} || {_, Index, DocID, Props} <- SortedResults].
 
-calculate_scores(QueryNorm, NumTerms, [{Value, Props}|Results]) ->
+calculate_scores(QueryNorm, NumTerms, [{Index, DocID, Props}|Results]) ->
     ScoreList = proplists:get_value(score, Props),
     Coord = length(ScoreList) / (NumTerms + 1),
     Score = Coord * QueryNorm * lists:sum(ScoreList),
     NewProps = lists:keystore(score, 1, Props, {score, Score}),
-    [{-1 * Score, Value, NewProps}|calculate_scores(QueryNorm, NumTerms, Results)];
+    [{-1 * Score, Index, DocID, NewProps}|calculate_scores(QueryNorm, NumTerms, Results)];
 calculate_scores(_, _, []) ->
     [].

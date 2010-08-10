@@ -95,15 +95,15 @@ get_min_max(_LastMin, Min, Max, [], NextPass) ->
 
     
 %% Normalize, throw away the operators, replace with a list of lists of positions.
-select_fun({{Value, Props}, Op, Iterator}, I2) when is_record(Op, term) ->
+select_fun({{Index, DocID, Props}, Op, Iterator}, I2) when is_record(Op, term) ->
     Positions = proplists:get_value(word_pos, Props, []),
     Positions1 = lists:sort(Positions),
-    select_fun({{Value, Props}, [Positions1], Iterator}, I2);
+    select_fun({{Index, DocID, Props}, [Positions1], Iterator}, I2);
 
-select_fun(I1, {{Value, Props}, Op, Iterator}) when is_record(Op, term) ->
+select_fun(I1, {{Index, DocID, Props}, Op, Iterator}) when is_record(Op, term) ->
     Positions = proplists:get_value(word_pos, Props, []),
     Positions1 = lists:sort(Positions),
-    select_fun(I1, {{Value, Props}, [Positions1], Iterator});
+    select_fun(I1, {{Index, DocID, Props}, [Positions1], Iterator});
 
 
 %% If terms are equal, then bubble up the result...

@@ -49,13 +49,12 @@ preplan_op(#phrase{phrase=Phrase0, base_query=BQ}=Op, F) ->
 
 chain_op(#phrase{phrase=Phrase, base_query=BaseQuery, props=Props}, OutputPid, OutputRef, QueryProps) ->
     {ok, Client} = riak:local_client(),
-    IndexName = proplists:get_value(index_name, QueryProps),
     DefaultField = proplists:get_value(default_field, QueryProps),
     FieldName = get_query_field(DefaultField, BaseQuery),
-    F = fun({DocId, _}) ->
+    F = fun({Index, DocId, _}) ->
                 {ok, Analyzer} = qilr:new_analyzer(),
                 try
-                    Bucket = riak_search_utils:to_binary(IndexName),
+                    Bucket = riak_search_utils:to_binary(Index),
                     Key = riak_search_utils:to_binary(DocId),
                     case Client:get(Bucket, Key, 1) of
                         {ok, Obj} ->

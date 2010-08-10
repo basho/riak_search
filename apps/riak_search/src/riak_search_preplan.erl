@@ -355,20 +355,6 @@ range_to_lor(Start, End, Inclusive, Facets, Schema) ->
     Ops = [F2(X) || X <- Results2],
     #lor { ops=Ops }.
 
-
-%% RAPTOR-ONLY OPTIMIZATION
-%% range_to_lor(Start, End, Inclusive, Facets, _Schema) ->
-%%     {Index, Field, StartTerm, EndTerm, _Size} = normalize_range(Start, End, Inclusive),
-%%
-%%     %% Results are of form {"term", 'node@1.1.1.1', Count}
-%%     {ok, Results} = riak_search:info_range(Index, Field, StartTerm, EndTerm, _Size),
-%%     %% {ok, Results} = riak_search:info_range_no_count(Index, Field, StartTerm, EndTerm),
-%%
-%%     %% Collapse or terms into multi_stream operation
-%%     TermProps = [{facets, Facets}],
-%%     Optimized_Or = riak_search_optimizer:optimize_or(Results, Index, Field, TermProps),
-%%     #lor { ops=Optimized_Or }.
-
 normalize_range({Index, Field, StartTerm}, {Index, Field, EndTerm}, Inclusive) ->
     {StartTerm1, EndTerm1} = case Inclusive of
         true -> {StartTerm, EndTerm};
