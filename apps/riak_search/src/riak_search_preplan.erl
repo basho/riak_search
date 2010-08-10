@@ -9,12 +9,13 @@
 preplan(AST, Schema) ->
     %% pass 1 - Convert field & terms
     AST1 = visit(AST, ?VISITOR(convert_terms, Schema), true),
-    %% pass 2 - Flatten and cosolidate boolean ops
+    %% pass 2 - Flatten and consolidate boolean ops
     AST2 = visit(AST1, ?VISITOR(flatten_bool, Schema), false),
     %% pass 3 - Inject facets or node weights for terms
     AST3 = visit(AST2, ?VISITOR(insert_facet_or_weight, Schema), true),
     %% pass 4 - convert range and wildcard expressions
     AST4 = visit(AST3, ?VISITOR(wildcard_range_to_or, Schema), true),
+    %% pass 5 - pick node for boolean ops
     visit(AST4, ?VISITOR(select_node, Schema), true).
 
 %% Internal functions
@@ -237,7 +238,7 @@ visit(AST, Callback, FollowSubTrees) ->
 visit([], _Callback, _FollowSubTrees, Accum) ->
     lists:flatten(lists:reverse(Accum));
 visit([{Type, Nodes}|T], Callback, FollowSubTrees, Accum) when Type =:= land;
-                                                                  Type =:= lor ->
+                                                               Type =:= lor ->
     NewNodes = case FollowSubTrees of
                    true ->
                        visit(Nodes, Callback, FollowSubTrees, []);

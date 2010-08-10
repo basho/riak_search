@@ -22,8 +22,7 @@ entity_bool
 Terminals
 
 word phrase plus minus lnot land lor lparen rparen colon
-tilde caret to lstache rstache lbracket rbracket asterisk
-qmark
+tilde caret to lstache rstache lbracket rbracket
 
 .
 
@@ -143,10 +142,6 @@ exclusive_range -> lstache term_core to term_core rbracket:
     {exclusive_range, analyze_range_word(extract_text('$2')),
                        analyze_range_word(extract_text('$4'))}.
 
-prefixes -> prefixes plus:
-    '$1' ++ [required].
-prefixes -> prefixes minus:
-    '$1' ++ [prohibited].
 prefixes -> plus:
     [required].
 prefixes -> minus:
@@ -168,10 +163,6 @@ suffixes -> fuzzy_prox_suffix:
     '$1'.
 suffixes -> boost_suffix:
     '$1'.
-suffixes -> asterisk:
-    [{wildcard, all}].
-suffixes -> qmark:
-    [{wildcard, one}].
 
 entity_bool -> lparen entity_bool rparen:
     if
@@ -208,14 +199,15 @@ term_core -> phrase:
 
 Erlang code.
 -define(EMPTY, {empty, '$empty', []}).
--export([string/1, string/2, string/3]).
+-ifdef(TEST).
+-export([string/1]).
+-endif.
+-export([string/3]).
 
+-ifdef(TEST).
 string(Query) ->
     string(undefined, Query, undefined).
-
-string(Query, Schema) ->
-    {ok, Pid} = qilr:new_analyzer(),
-    string(Pid, Query, Schema).
+-endif.
 
 string(Pid, Query, Schema) ->
     erlang:put(qilr_schema, Schema),

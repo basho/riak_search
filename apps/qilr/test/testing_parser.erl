@@ -10,9 +10,7 @@ parse(Query, Bool) ->
                                     [{riak_search_field, ".*", string, 0,
                                       undefined, false, true, undefined, undefined, false}],
                                     Bool, "com.basho.search.analysis.DefaultAnalyzerFactory"),
-    Result = qilr_parse:string(undefined, Query, Schema),
-    file:write_file("/tmp/debug.txt", io_lib:format("~p~n", [Result]), [append]),
-    Result.
+    qilr_parse:string(undefined, Query, Schema).
 
 multiple_terms_test_() ->
     [fun() ->
