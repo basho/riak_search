@@ -201,7 +201,7 @@ build_props(Positions, Facets) ->
 
 %% Returns a Riak object.
 get_obj(RiakClient, DocIndex, DocID) ->
-    Bucket = to_binary(DocIndex),
+    Bucket = idx_doc_bucket(DocIndex),
     Key = to_binary(DocID),
     RiakClient:get(Bucket, Key).
 
@@ -217,7 +217,7 @@ get(RiakClient, DocIndex, DocID) ->
 %% Write the object to Riak.
 put(RiakClient, IdxDoc) ->
     #riak_idx_doc { id=DocID, index=DocIndex } = IdxDoc,
-    DocBucket = to_binary(DocIndex),
+    DocBucket = idx_doc_bucket(DocIndex),
     DocKey = to_binary(DocID),
     case RiakClient:get(DocBucket, DocKey) of
         {ok, Obj} -> 
@@ -228,6 +228,12 @@ put(RiakClient, IdxDoc) ->
     RiakClient:put(DocObj).
 
 delete(RiakClient, DocIndex, DocID) ->
-    DocBucket = to_binary(DocIndex),
+    DocBucket = idx_doc_bucket(DocIndex),
     DocKey = to_binary(DocID),
     RiakClient:delete(DocBucket, DocKey).
+
+
+idx_doc_bucket(Bucket) when is_binary(Bucket) ->
+    <<"_rsid_", Bucket/binary>>;
+idx_doc_bucket(Bucket) ->
+    idx_doc_bucket(to_binary(Bucket)).
