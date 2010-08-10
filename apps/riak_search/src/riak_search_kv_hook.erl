@@ -5,7 +5,12 @@
 %% -------------------------------------------------------------------
 
 -module(riak_search_kv_hook).
--export([precommit/1]).
+-export([install/1,
+         precommit_def/0,
+         precommit/1]).
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 
 -define(DEFAULT_EXTRACTOR, {modfun, riak_search_kv_extractor, extract}).
 -define(DEFAULT_ARGS,      undefined).
@@ -40,7 +45,39 @@
 -type search_fields() :: [{search_field(),search_data()}].
 -type search_field() :: string().
 -type search_data() :: string() | binary().
-         
+    
+
+%% Install the kv/search integration hook on the specified bucket     
+install(Bucket) -> 
+    BucketProps = riak_core_bucket:get_bucket(Bucket),
+
+    %% Get the current precommit hook
+    case proplists:get_value(precommit, BucketProps, []) of
+        X when is_list(X) ->
+            CurrentPrecommit=X;
+        {struct, _}=X ->
+            CurrentPrecommit=[X]
+    end,
+
+    %% Add kv/search hook - make sure there are not duplicate entries
+    IndexHook = [precommit_def()],
+    CleanPrecommit = CurrentPrecommit -- IndexHook,
+    case CleanPrecommit ++ IndexHook of
+        [{struct, _}]=Y ->
+            UpdPrecommit=Y;
+        Y ->
+            UpdPrecommit=Y
+    end,
+
+    %% Update the bucket properties
+    UpdBucketProps = lists:keyreplace(precommit, 1, BucketProps, 
+                                      {precommit, UpdPrecommit}),
+    riak_core_bucket:set_bucket(Bucket, UpdBucketProps).
+
+precommit_def() ->
+    {struct, [{<<"mod">>,atom_to_binary(?MODULE, latin1)},
+              {<<"fun">>,<<"precommit">>}]}.
+
 
 %% Precommit hook for riak k/v and search integration.  Executes
 %% the desired mapping on the riak object to produce a search
@@ -170,3 +207,65 @@ run_extract(RiakObject, {{modfun, Mod, Fun}, Args}) ->
     Mod:Fun(RiakObject, Args);
 run_extract(_, _) ->
     throw({error, not_implemented}).
+
+-ifdef(TEST).
+
+install_test() ->
+    application:load(riak_core),
+    {ok, RingEvtPid} = riak_core_ring_events:start_link(),
+    {ok, RingMgrPid} = riak_core_ring_manager:start_link(),
+
+    WithoutPrecommitProps = [{n_val,3},
+                             {allow_mult,false},
+                             {last_write_wins,false},
+                             {precommit,[]},
+                             {postcommit,[]},
+                             {chash_keyfun,{riak_core_util,chash_std_keyfun}},
+                             {linkfun,{modfun,riak_kv_wm_link_walker,mapreduce_linkfun}},
+                             {old_vclock,86400},
+                             {young_vclock,20},
+                             {big_vclock,50},
+                             {small_vclock,10},
+                             {r,quorum},
+                             {w,quorum},
+                             {dw,quorum},
+                             {rw,quorum}],
+    WithPrecommitProps =  [{precommit,{struct,[{<<"mod">>,<<"mod">>},
+                                               {<<"fun">>,<<"fun">>}]}} |
+                           WithoutPrecommitProps],
+    riak_core_bucket:set_bucket("no_precommit", WithoutPrecommitProps),
+    riak_core_bucket:set_bucket("other_precommit", WithPrecommitProps),
+    ?assertEqual(false, search_hook_present("no_precommit")),
+    ?assertEqual(false, search_hook_present("other_precommit")),
+
+    install("no_precommit"),
+    ?assertEqual(true, search_hook_present("no_precommit")),
+
+    install("no_precommit"),
+    ?assertEqual(true, search_hook_present("no_precommit")),
+
+    install("other_precommit"),
+    ?assertEqual(true, search_hook_present("other_precommit")),
+
+    install("other_precommit"),
+    ?assertEqual(true, search_hook_present("other_precommit")),
+
+    unlink(RingMgrPid),
+    unlink(RingEvtPid),
+    exit(RingMgrPid, kill),
+    exit(RingEvtPid, kill),
+    ok.
+
+search_hook_present(Bucket) ->
+    Props = riak_core_bucket:get_bucket(Bucket),
+    Precommit = proplists:get_value(precommit, Props, []),
+    IndexHook = precommit_def(),
+    case Precommit of
+        L when is_list(L) ->
+            lists:member(IndexHook, Precommit);
+        T when is_tuple(T) ->
+            Precommit == IndexHook
+    end.
+
+-endif. % TEST
+    
