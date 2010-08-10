@@ -38,10 +38,11 @@ search(Query, #state{index=Index}) ->
         {_, Results} when length(Results) == 0 ->
             io:format("No records found~n");
         {_, Results} ->
-            [io:format("~p~n", [Result]) || Result <- lists:sort(Results)],
+            [io:format("~p~n", [Result]) || Result <- Results],
             io:format("----------~n"),
             io:format("Found ~p records in ~pms~n", [length(Results),
                                                      erlang:trunc(timer:now_diff(End, Start) / 1000)]),
+            io:format("SHA1: ~p~n", [mochihex:to_hex(crypto:sha(term_to_binary(Results)))]),
             io:format("----------~n")
     end.
 
@@ -52,7 +53,7 @@ parse(Query, #state{analyzer=Analyzer, index=Index}) ->
 graph(Query, #state{client=Client, index=Index}) ->
     case Client:parse_query(Index, Query) of
         {ok, AST} ->
-            io:format("~p~n", [Client:query_as_graph(Client:explain(Index, AST))]);
+            io:format("~p~n", [Client:explain(Index, AST)]);
         Error->
             io:format("Error: ~p~n", [Error])
     end.
@@ -84,8 +85,10 @@ read_input(#state{handler=Handler}=State, Accum0) ->
                             io:format("ERROR: ~p~n", [Error]);
                         {error, _} = Error ->
                             io:format("~p~n", [Error]);
-                        _ ->
-                            ok
+                        ok ->
+                            ok;
+                        Error ->
+                            io:format("Error: ~p~n", [Error])
                     end,
                     read_input(State, [])
             end;

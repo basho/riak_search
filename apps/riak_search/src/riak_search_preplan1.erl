@@ -4,11 +4,12 @@
 %%
 %% -------------------------------------------------------------------
 
--module(riak_search_preplan).
+-module(riak_search_preplan1).
 -export([preplan/2]).
 
 -include("riak_search.hrl").
 preplan(OpList, Schema) ->
+    io:format("Starting oplist: ~p~n", [OpList]),
     OpList0 = #group { ops=OpList },
     OpList1 = pass1(OpList0, Schema),
     OpList2 = pass2(OpList1, Schema),

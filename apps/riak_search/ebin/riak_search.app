@@ -15,6 +15,7 @@
              riak_search_dir_indexer,
              riak_search_sup,
              riak_search_preplan,
+             riak_search_preplan2,
              riak_search_facets,
              riak_search_index_fsm,
              riak_search_index_fsm_sup,
