@@ -28,6 +28,8 @@
     analyzer_factory/1,
     analyzer_args/1,
     is_field_facet/1,
+    is_skip/1,
+    aliases/1,
     field_types/0,
 
     %% Field lookup
@@ -98,6 +100,12 @@ analyzer_args(Field) ->
 is_field_facet(Field) ->
     Field#riak_search_field.facet == true.
 
+is_skip(Field) ->
+    Field#riak_search_field.skip == true.
+
+aliases(Field) ->
+    [element(2, T) || T <- Field#riak_search_field.aliases].
+
 field_types() ->
     FTypes0 = [{Field#riak_search_field.name,
                 Field#riak_search_field.type} || Field <- fields()],
@@ -125,12 +133,31 @@ find_field(FName, [Field|Fields]) ->
                     find_field(FName, Fields)
             end;
         false ->
-            case FName == Field#riak_search_field.name of
+            case FName == Field#riak_search_field.name orelse 
+                matches_alias(FName, Field#riak_search_field.aliases) of
                 true ->
                     Field;
-                false ->
+                false ->                 
                     find_field(FName, Fields)
             end
+    end.
+
+%% Return true if the name matches an alias
+matches_alias(_FName, []) ->
+    false;
+matches_alias(FName, [{exact, Alias}|Aliases]) ->
+    case FName of
+        Alias ->
+            true;
+        _ ->
+            matches_alias(FName, Aliases)
+    end;
+matches_alias(FName, [{re, _Alias, MP}|Aliases]) ->
+    case re:run(FName, MP) of
+        {match, _} ->
+            true;
+        nomatch ->
+            matches_alias(FName, Aliases)
     end.
 
 %% Verify that the schema names match. If so, then validate required
@@ -165,3 +192,5 @@ validate_required_fields_1(Doc, [Field|Rest]) ->
         error ->
             {error, {reqd_field_missing, FieldName}}
     end.
+
+              
