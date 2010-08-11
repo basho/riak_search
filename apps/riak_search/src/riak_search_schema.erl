@@ -24,6 +24,7 @@
     field_type/1,
     padding_size/1,
     padding_char/1,
+    is_dynamic/1,
     is_field_required/1,
     analyzer_factory/1,
     analyzer_args/1,
@@ -87,6 +88,9 @@ padding_size(Field) ->
 
 padding_char(Field) ->
     Field#riak_search_field.padding_char.
+
+is_dynamic(Field) ->
+    Field#riak_search_field.dynamic == true.
 
 is_field_required(Field) ->
     Field#riak_search_field.required == true.
