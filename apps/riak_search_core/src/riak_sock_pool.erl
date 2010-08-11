@@ -40,7 +40,7 @@ start_link(Name, ConnMod, CountFun) ->
     gen_server:start_link({local, Name}, ?MODULE, [ConnMod, CountFun], []).
 
 checkout(Name) ->
-    case gen_server:call(Name, checkout) of
+    case gen_server:call(Name, checkout, infinity) of
         empty_pool ->
             timer:sleep(random:uniform(?MAX_RETRY_WAIT)),
             checkout(Name);
@@ -52,7 +52,7 @@ checkin(Name, Conn) ->
     gen_server:cast(Name, {checkin, Conn}).
 
 current_count(Name) ->
-    gen_server:call(Name, current_count).
+    gen_server:call(Name, current_count, infinity).
 
 init([{OpenMod, CloseMod}, CountFun]) ->
     process_flag(trap_exit, true),
