@@ -37,7 +37,7 @@ start() ->
     gen_server:start({local, ?MODULE}, ?MODULE, [], []).
 
 schedule_compaction(Pid) ->
-    gen_server:call(?MODULE, {schedule_compaction, Pid}).
+    gen_server:call(?MODULE, {schedule_compaction, Pid}, infinity).
     
 
 %% ====================================================================
