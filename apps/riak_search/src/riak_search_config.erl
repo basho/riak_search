@@ -40,7 +40,7 @@ start_link() ->
 
 %% Clear cached schemas.
 clear() ->
-    gen_server:call(?SERVER, clear).
+    gen_server:call(?SERVER, clear, infinity).
 
 %% Get schema information for the provided index name.
 %% @param Schema - Either the name of an index, or a schema record.
@@ -52,7 +52,7 @@ get_schema(Schema) when is_tuple(Schema) ->
             {error, badarg}
     end;
 get_schema(Schema) ->
-    gen_server:call(?SERVER, {get_schema, riak_search_utils:to_binary(Schema)}).
+    gen_server:call(?SERVER, {get_schema, riak_search_utils:to_binary(Schema)}, infinity).
 
 
 init([]) ->
