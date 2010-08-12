@@ -18,8 +18,8 @@ extract(RiakObject, _Args) ->
         Json = mochijson2:decode(Data),    
         lists:reverse(lists:flatten(make_search_fields(undefined, Json, [])))
     catch
-        _:_ ->
-            {fail, cannot_parse_json}
+        _:Err ->
+            {fail, {cannot_parse_json,Err}}
     end.
 
 
@@ -58,26 +58,19 @@ append_fieldname(FieldPrefix, Name) ->
 search_fieldname(undefined) ->
     ?DEFAULT_FIELD;
 search_fieldname(Name) ->
-    clean_name(Name, []).
+    riak_search_kv_extractor:clean_name(Name).
 
-%% Substitute : and . for _
-clean_name([], RevName) ->
-    lists:reverse(RevName);
-clean_name([C | Rest], RevName) when C =:= $.; C =:= $: ->
-    clean_name(Rest, [$_ | RevName]);
-clean_name([C | Rest], RevName) ->
-    clean_name(Rest, [C | RevName]).
 
 
 -ifdef(TEST).
 
+bad_json_test() ->
+    Data = <<"<?xml><suprise>this is not json</suprise>">>, 
+    Object = riak_object:new(<<"b">>, <<"k">>, Data, "application/json"),
+    ?assertMatch({fail, {cannot_parse_json,_}}, extract(Object, undefined)).
+             
 json_test() ->
-    Tests = [{<<"<?xml><suprise>this is not json</suprise>">>, 
-              {fail, cannot_parse_json}},
-
-              {<<"{}">>, []},
-
-             {<<"{\"myfield\":\"myvalue\"}">>,
+    Tests = [{<<"{\"myfield\":\"myvalue\"}">>,
               [{"myfield",<<"myvalue">>}]},
 
              {<<"{\"myfield\":123}">>,
