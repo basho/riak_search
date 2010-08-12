@@ -47,7 +47,7 @@ analyze(Pid, Text, AnalyzerFactory, AnalyzerArgs) ->
     try
         Req = #analysisrequest{text=Text, analyzer_factory=AnalyzerFactory, 
                                analyzer_args=AnalyzerArgs},
-        case gen_server:call(Pid, {analyze, Req}, 3600*1000) of
+        case gen_server:call(Pid, {analyze, Req}, infinity) of
             ignore ->
                 analyze(Pid, Text, AnalyzerFactory);
         R ->
@@ -60,7 +60,7 @@ analyze(Pid, Text, AnalyzerFactory, AnalyzerArgs) ->
     end.
 
 close(Pid) ->
-    gen_server:call(Pid, close).
+    gen_server:call(Pid, close, infinity).
 
 start_link() ->
     gen_server:start_link(?MODULE, [], []).
