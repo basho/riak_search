@@ -7,12 +7,29 @@
 -module(riak_search_kv_extractor).
 -export([extract/2]).
 
--define(DEFAULT_FIELD, "value").
-
 %% Initial implementation - get the whole object as the default field
-extract(RiakObject, _Args) ->
-    Data = riak_object:get_value(RiakObject),
-    [{?DEFAULT_FIELD, Data}].
+extract(RiakObject, Args) ->
+    ContentType =  dict:fetch(<<"content-type">>, 
+                              riak_object:get_metadata(RiakObject)),
+    Extractor = get_extractor(ContentType, encodings()),
+    Extractor:extract(RiakObject, Args).
+
+%% Get the encoding from the content type
+get_extractor(_, []) ->
+    riak_search_kv_raw_extractor;
+get_extractor(CT, [{Encoding, Types} | Rest]) ->
+    case lists:member(CT, Types) of
+        true ->
+            Encoding;
+        false ->
+            get_extractor(CT, Rest)
+    end.
     
-
-
+encodings() ->
+    [{riak_search_kv_xml_extractor,  ["application/xml",
+                                      "text/xml"]},
+     {riak_search_kv_json_extractor, ["application/json",
+                                      "application/x-javascript",
+                                      "text/javascript",
+                                      "text/x-javascript",
+                                      "text/x-json"]}].
