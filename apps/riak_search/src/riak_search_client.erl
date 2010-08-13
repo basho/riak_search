@@ -105,7 +105,6 @@ search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
                end,
     %% Fetch the documents in parallel.
     F = fun({Index, DocID, _}) ->
-        ?PRINT({Index, DocID}),
         riak_indexed_doc:get(RiakClient, Index, DocID)
     end,
     Documents = plists:map(F, Results, {processes, 4}),
