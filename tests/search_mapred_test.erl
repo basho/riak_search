@@ -43,4 +43,4 @@ Query = [
 ].
 
 {ok, [Count]} = SearchClient:mapred(Bucket, SearchString, Query, undefined, 10000).
-Count.
+Count
