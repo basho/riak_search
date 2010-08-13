@@ -8,14 +8,7 @@
 -export([
     client_connect/1,
     local_client/0,
-    stream/4,
-%%     multi_stream/3,
-    info/3,
-%%     term_preflist/3,
-    info_range/5
-%%     info_range_no_count/4,
-%%     catalog_query/1,
-%%     term/2
+    mapred_search/3
 ]).
 -include("riak_search.hrl").
 
@@ -29,29 +22,31 @@ local_client() ->
     {ok, Client} = riak:local_client(),
     {ok, riak_search_client:new(Client)}.
 
+%% Used in riak_kv Map/Reduce integration.
+mapred_search(FlowPid, Options, Timeout) ->
+    %% Get the Index and Query from properties...
+    DefaultIndex = proplists:get_value(i, Options),
+    Query = proplists:get_value(q, Options),
+    
+    %% Parse the query...
+    {ok, Client} = riak_search:local_client(),
+    case Client:parse_query(DefaultIndex, Query) of
+        {ok, Ops} ->
+            QueryOps = Ops;
+        {error, ParseError} ->
+            M = "Error running query '~s': ~p~n",
+            error_logger:error_msg(M, [Query, ParseError]),
+            throw({mapred_search, Query, ParseError}),
+            QueryOps = undefined % Make compiler happy.
+    end,
 
-stream(Index, Field, Term, FilterFun) ->
-    {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
-    %% Calculate the preflist with full N but then only ask the first
-    %% node in it.  Preflists are ordered with primaries first followed
-    %% by fallbacks, so this will prefer a primary node over a fallback.
-    [FirstEntry|_] = riak_core_apl:get_apl(Partition, N, riak_search),
-    Preflist = [FirstEntry],
-    riak_search_vnode:stream(Preflist, Index, Field, Term, FilterFun, self()).
+    %% Perform a search, funnel results to the mapred job...
+    F = fun(Results, Acc) ->
+        %% Make the list of BKeys...
+        BKeys = [{Index, DocID} || {Index, DocID, _Props} <- Results],
+        luke_flow:add_inputs(FlowPid, BKeys),
+        Acc
+    end,
+    ok = Client:search_fold(DefaultIndex, QueryOps, F, ok, Timeout),
+    luke_flow:finish_inputs(FlowPid).
 
-info(Index, Field, Term) ->
-    {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
-    Preflist = riak_core_apl:get_apl(Partition, N, riak_search),
-    {ok, Ref} = riak_search_vnode:info(Preflist, Index, Field, Term, self()),
-    {ok, _Results} = riak_search_backend:collect_info_response(length(Preflist), Ref, []).
-
-info_range(Index, Field, StartTerm, EndTerm, Size) ->
-    %% TODO: Duplicating current behavior for now - a PUT against a preflist with
-    %%       the N val set to the size of the ring - this will mean no failbacks
-    %%       will be available.  Instead should work out the preflist for
-    %%       each partition index and find which node is responsible for that partition
-    %%       and talk to that.
-    Preflist = riak_core_apl:active_owners(riak_search),
-    {ok, Ref} = riak_search_vnode:info_range(Preflist, Index, Field, StartTerm, EndTerm, 
-                                             Size, self()),
-    {ok, _Results} = riak_search_backend:collect_info_response(length(Preflist), Ref, []).

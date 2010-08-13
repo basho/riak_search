@@ -14,8 +14,7 @@
 -define(STREAM_TIMEOUT, 15000).
 
 -record(scoring_vars, {term_boost, doc_frequency, num_docs}).
-preplan_op(Op, _F) ->
-    Op.
+preplan_op(Op, _F) -> Op.
 
 chain_op(Op, OutputPid, OutputRef, QueryProps) ->
     spawn_link(fun() -> start_loop(Op, OutputPid, OutputRef, QueryProps) end),
@@ -37,13 +36,22 @@ start_loop(Op, OutputPid, OutputRef, QueryProps) ->
 
     %% Start streaming the results...
     {Index, Field, Term} = Op#term.q,
-    {ok, Ref} = riak_search:stream(Index, Field, Term, Fun),
+    {ok, Ref} = stream(Index, Field, Term, Fun),
 
     %% Gather the results...
     %% TODO - This type conversion should be removed in bug 484
     %% "Standardize on a string representation".
     IndexB = riak_search_utils:to_binary(Index),
     loop(IndexB, ScoringVars, Ref, OutputPid, OutputRef).
+
+stream(Index, Field, Term, FilterFun) ->
+    {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
+    %% Calculate the preflist with full N but then only ask the first
+    %% node in it.  Preflists are ordered with primaries first followed
+    %% by fallbacks, so this will prefer a primary node over a fallback.
+    [FirstEntry|_] = riak_core_apl:get_apl(Partition, N, riak_search),
+    Preflist = [FirstEntry],
+    riak_search_vnode:stream(Preflist, Index, Field, Term, FilterFun, self()).
 
 loop(Index, ScoringVars, Ref, OutputPid, OutputRef) ->
     receive 

@@ -284,27 +284,21 @@ range_to_terms(Index, Field, StartTerm, EndTerm, Size, integer) ->
     EndPolarity = hd(EndTerm),
     case {StartPolarity,EndPolarity} of
         {$-,$-} ->
-            call_info_range(Index, Field, EndTerm, StartTerm, Size);
+            info_range(Index, Field, EndTerm, StartTerm, Size);
         {$-,_} ->
             Len = length(StartTerm),
             MinusOne = make_minus_one(Len),
             Zero = make_zero(Len),
-            call_info_range(Index, Field, MinusOne, StartTerm, Size) ++
-                call_info_range(Index, Field, Zero, EndTerm, Size);
+            info_range(Index, Field, MinusOne, StartTerm, Size) ++
+                info_range(Index, Field, Zero, EndTerm, Size);
         {_,$-} ->
             %% Swap the range if "positive TO negative"
             range_to_terms(Index, Field, EndTerm, StartTerm, Size, integer);
         {_,_} ->
-            call_info_range(Index, Field, StartTerm, EndTerm, Size)
+            info_range(Index, Field, StartTerm, EndTerm, Size)
     end;
 range_to_terms(Index, Field, StartTerm, EndTerm, Size, _Type) ->
-    call_info_range(Index, Field, StartTerm, EndTerm, Size).
-
-call_info_range(Index, Field, StartTerm, EndTerm, Size) when StartTerm > EndTerm ->
-    call_info_range(Index, Field, EndTerm, StartTerm, Size);
-call_info_range(Index, Field, StartTerm, EndTerm, Size) ->
-    {ok, Results} = riak_search:info_range(Index, Field, StartTerm, EndTerm, Size),
-    Results.
+    info_range(Index, Field, StartTerm, EndTerm, Size).
 
 make_minus_one(1) ->
     throw({unhandled_case, make_minus_one});
@@ -386,7 +380,7 @@ terms_from_range_results(Schema, FieldName, Results) ->
     [F1(X) || X <- Results2].
 
 node_weights_for_term(IndexName, FieldName, Term) ->
-    {ok, Weights0} = riak_search:info(IndexName, FieldName, Term),
+    Weights0 = info(IndexName, FieldName, Term),
     [{node_weight, {Node, Count}} || {_, Node, Count} <- Weights0].
 
 find_heaviest_node(Ops) ->
@@ -420,3 +414,24 @@ collect_node_weights([#lnot{ops=Ops}|T], Accum) ->
     collect_node_weights(T, NewAccum);
 collect_node_weights([_|T], Accum) ->
     collect_node_weights(T, Accum).
+
+info(Index, Field, Term) ->
+    {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
+    Preflist = riak_core_apl:get_apl(Partition, N, riak_search),
+    {ok, Ref} = riak_search_vnode:info(Preflist, Index, Field, Term, self()),
+    {ok, Results} = riak_search_backend:collect_info_response(length(Preflist), Ref, []),
+    Results.
+
+info_range(Index, Field, StartTerm, EndTerm, Size) when EndTerm < StartTerm ->
+    info_range(Index, Field, EndTerm, StartTerm, Size);
+info_range(Index, Field, StartTerm, EndTerm, Size) ->
+    %% TODO: Duplicating current behavior for now - a PUT against a preflist with
+    %%       the N val set to the size of the ring - this will mean no failbacks
+    %%       will be available.  Instead should work out the preflist for
+    %%       each partition index and find which node is responsible for that partition
+    %%       and talk to that.
+    Preflist = riak_core_apl:active_owners(riak_search),
+    {ok, Ref} = riak_search_vnode:info_range(Preflist, Index, Field, StartTerm, EndTerm, 
+                                             Size, self()),
+    {ok, Results} = riak_search_backend:collect_info_response(length(Preflist), Ref, []),
+    Results.

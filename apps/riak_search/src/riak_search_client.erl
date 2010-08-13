@@ -13,7 +13,7 @@
 
 -export([
     %% MapReduce Searching...
-    mapred_search/5, mapred_search_stream/6,
+    mapred/5, mapred_stream/6,
 
     %% Searching...
     parse_query/2,
@@ -45,41 +45,16 @@
     to_binary/1
 ]).
 
-mapred_search(Index, SearchString, Query, ResultTransformer, Timeout) ->
-    Me = self(),
-    {ok,MR_ReqId} = mapred_search_stream(Index, SearchString, Query, Me, ResultTransformer, Timeout),
-    Results = luke_flow:collect_output(MR_ReqId, Timeout),
-    Results.
-
-mapred_search_stream(Index, SearchString, Query, ClientPid, ResultTransformer, Timeout) ->
-    %% NOTE: Not proud of this code, as it creates a circular dependency on the 
-    %% Parse the query...
-    case parse_query(Index, SearchString) of
-        {ok, Ops} ->
-            QueryOps = Ops;
-        {error, ParseError} ->
-            M = "Error running query '~s': ~p~n",
-            error_logger:error_msg(M, [SearchString, ParseError]),
-            throw({search_stream, SearchString, ParseError}),
-            QueryOps = undefined % Make compiler happy.
-    end,
-
-    %% Set up the mapreduce job...
-    case RiakClient:mapred_stream(Query, ClientPid, ResultTransformer, Timeout) of
-        {ok, {ReqId, FlowPid}} ->
-            %% Perform a search, funnel results to the mapred job...
-            F = fun(Results, Acc) ->
-                %% Make the list of BKeys...
-                BKeys = [{Index, DocID} || {DocID, _Props} <- Results],
-                luke_flow:add_inputs(FlowPid, BKeys),
-                Acc
-            end,
-            ok = search_fold(Index, QueryOps, F, ok, Timeout),
-            luke_flow:finish_inputs(FlowPid),
-            {ok, ReqId};
-        Error ->
-            Error
-    end.
+mapred(DefaultIndex, SearchQuery, MRQuery, ResultTransformer, Timeout) ->
+    {ok, ReqID} = mapred_stream(DefaultIndex, SearchQuery, MRQuery, self(), ResultTransformer, Timeout),
+    luke_flow:collect_output(ReqID, Timeout).
+        
+mapred_stream(DefaultIndex, SearchQuery, MRQuery, ClientPid, ResultTransformer, Timeout) ->
+    InputDef = {modfun, riak_search, mapred_search, [{i, DefaultIndex}, {q, SearchQuery}]},
+    {ok, {RId, FSM}} = RiakClient:mapred_stream(MRQuery, ClientPid, ResultTransformer, Timeout),
+    RiakClient:mapred_dynamic_inputs_stream(FSM, InputDef, Timeout),
+    luke_flow:finish_inputs(FSM),
+    {ok, RId}.
 
 
 %% Parse the provided query. Returns either {ok, QueryOps} or {error,
