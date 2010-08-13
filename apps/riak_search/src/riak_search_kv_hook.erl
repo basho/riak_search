@@ -42,6 +42,7 @@
 
 -type index() :: binary().
 -type docid() :: binary().
+-type idxdoc() :: tuple(). % #riak_indexed_doc{}
 
 -type search_fields() :: [{search_field(),search_data()}].
 -type search_field() :: string().
@@ -112,6 +113,9 @@ get_extractor(RiakObject) ->
                          {user_funterm(), args()}) -> {funterm(), args()}.
 validate_extractor(undefined) ->
     {?DEFAULT_EXTRACTOR, ?DEFAULT_ARGS};
+validate_extractor({struct, JsonExtractor}) ->
+    Lang = proplists:get_value(<<"language">>, JsonExtractor),    
+    validate_extractor(erlify_json_funterm(Lang, JsonExtractor));
 validate_extractor({FunTerm, Args}) when is_tuple(FunTerm) ->
     {validate_funterm(FunTerm), Args};
 validate_extractor(FunTerm) ->
@@ -131,7 +135,32 @@ validate_funterm({jsfun, Name}) ->
 validate_funterm(FunTerm) ->
     throw({"cannot parse funterm", FunTerm}).
 
-   
+%% Decode a bucket property that was set using JSON/HTTP interface
+erlify_json_funterm(<<"erlang">>, Props) ->
+    Mod = to_modfun(proplists:get_value(<<"module">>, Props, undefined)),
+    Fun = to_modfun(proplists:get_value(<<"function">>, Props, undefined)),
+    Arg = proplists:get_value(<<"arg">>, Props, undefined),
+    {{modfun, Mod, Fun}, Arg};
+erlify_json_funterm(<<"javascript">>, Props) ->
+    Source = proplists:get_value(<<"source">>, Props, undefined),
+    Name = proplists:get_value(<<"name">>, Props, undefined),
+    Arg = proplists:get_value(<<"arg">>, Props, undefined),
+    case Source of
+        undefined ->
+            case Name of
+                undefined ->
+                    throw("javascript kv/search extractor must have name or source");
+                _ ->
+                    {{jsfun, Name}, Arg}
+            end;
+        _ ->
+            {{jsanon, Source}, Arg}
+    end;
+erlify_json_funterm(Lang, _Props) ->
+    throw({"kv/search extractors must be written in erlang or javascript", Lang}).
+
+     
+
 -spec to_modfun(list() | atom()) -> atom().
 to_modfun(List) when is_list(List) ->
     %% Using list_to_atom here so that the extractor module
@@ -172,8 +201,7 @@ index_object(RiakObject, Extractor) ->
     SearchClient:index_terms(Postings),
 
     %% Store the indexed_doc for next time
-    riak_indexed_doc:put(RiakClient, NewIdxDoc),
-    ok.
+    riak_indexed_doc:put(RiakClient, NewIdxDoc).
 
 %% Remove any old index entries if they exist
 -spec remove_old_entries(riak_client(), search_client(), index(), docid()) -> ok.
@@ -186,7 +214,7 @@ remove_old_entries(RiakClient, SearchClient, Index, DocId) ->
     end.
 
 %% Make an indexed document under Index/DocId from the RiakObject
--spec make_indexed_doc(index(), docid(), riak_object(), extractdef()) -> ok.
+-spec make_indexed_doc(index(), docid(), riak_object(), extractdef()) -> idxdoc().
 make_indexed_doc(Index, DocId, RiakObject, Extractor) ->
     Fields = run_extract(RiakObject, Extractor),
     IdxDoc0 = riak_indexed_doc:new(DocId, Fields, [], Index),
