@@ -34,7 +34,6 @@
              riak_search_op_exclusive_range,
              riak_search_op_proximity,
              riak_search_op_node,
-             riak_search_phase,
              riak_search_schema,
              riak_search_schema_parser,
              riak_search_shell,
