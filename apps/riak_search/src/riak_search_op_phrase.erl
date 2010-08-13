@@ -45,12 +45,9 @@ chain_op(#phrase{phrase=Phrase, props=Props}, OutputPid, OutputRef, QueryProps) 
     F = fun({IndexName, DocId, _}) ->
                 {ok, Analyzer} = qilr:new_analyzer(),
                 try
-                    Bucket = riak_search_utils:to_binary(IndexName),
-                    Key = riak_search_utils:to_binary(DocId),
-                    case Client:get(Bucket, Key, 1) of
-                        {ok, Obj} ->
-                            IdxDoc = riak_object:get_value(Obj),
-                            #riak_idx_doc{fields=Fields}=IdxDoc,
+                    case riak_indexed_doc:get(Client, IndexName, DocId) of
+                        {ok, IdxDoc} ->
+                            Fields = riak_indexed_doc:fields(IdxDoc),
                             Value = proplists:get_value(FieldName, Fields, ""),
                             case proplists:get_value(proximity, Props, undefined) of
                                 undefined ->
