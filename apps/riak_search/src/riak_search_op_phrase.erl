@@ -41,9 +41,8 @@ chain_op(#phrase{phrase=Phrase, props=Props}, OutputPid, OutputRef, QueryProps) 
     BaseQuery = proplists:get_value(base_query, Props),
     OpMod = proplists:get_value(op_mod, Props),
     {ok, Client} = riak:local_client(),
-    IndexName = proplists:get_value(index_name, QueryProps),
     FieldName = proplists:get_value(default_field, QueryProps),
-    F = fun({DocId, _}) ->
+    F = fun({IndexName, DocId, _}) ->
                 {ok, Analyzer} = qilr:new_analyzer(),
                 try
                     Bucket = riak_search_utils:to_binary(IndexName),
