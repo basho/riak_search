@@ -50,7 +50,7 @@ mapred(DefaultIndex, SearchQuery, MRQuery, ResultTransformer, Timeout) ->
     luke_flow:collect_output(ReqID, Timeout).
         
 mapred_stream(DefaultIndex, SearchQuery, MRQuery, ClientPid, ResultTransformer, Timeout) ->
-    InputDef = {modfun, riak_search, mapred_search, [{i, DefaultIndex}, {q, SearchQuery}]},
+    InputDef = {modfun, riak_search, mapred_search, [DefaultIndex, SearchQuery]},
     {ok, {RId, FSM}} = RiakClient:mapred_stream(MRQuery, ClientPid, ResultTransformer, Timeout),
     RiakClient:mapred_dynamic_inputs_stream(FSM, InputDef, Timeout),
     luke_flow:finish_inputs(FSM),

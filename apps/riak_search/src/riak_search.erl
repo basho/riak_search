@@ -25,12 +25,16 @@ local_client() ->
 %% Used in riak_kv Map/Reduce integration.
 mapred_search(FlowPid, Options, Timeout) ->
     %% Get the Index and Query from properties...
-    DefaultIndex = proplists:get_value(i, Options),
-    Query = proplists:get_value(q, Options),
+    [DefaultIndex, Query] = Options,
+
+    %% TODO - This is temporary until we fix data types.
+    DefaultIndexB = riak_search_utils:to_binary(DefaultIndex),
+    QueryL = riak_search_utils:to_list(Query),
+    
     
     %% Parse the query...
     {ok, Client} = riak_search:local_client(),
-    case Client:parse_query(DefaultIndex, Query) of
+    case Client:parse_query(DefaultIndexB, QueryL) of
         {ok, Ops} ->
             QueryOps = Ops;
         {error, ParseError} ->
