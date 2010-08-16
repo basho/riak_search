@@ -4,10 +4,15 @@
 %%
 %% -------------------------------------------------------------------
 -module(riak_search_kv_raw_extractor).
--export([extract/2]).
+-export([extract/2,
+         extract_value/2]).
 
 -define(DEFAULT_FIELD, "value").
 
 extract(RiakObject, _Args) ->
-    Data = riak_object:get_value(RiakObject),
+    Values = riak_object:get_values(RiakObject),
+    lists:flatten([extract_value(V, _Args) || V <- Values]).
+
+extract_value(Data, _Args) ->
     [{?DEFAULT_FIELD, Data}].
+
