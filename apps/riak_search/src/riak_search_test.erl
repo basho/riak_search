@@ -9,6 +9,7 @@
 -include_lib("xmerl/include/xmerl.hrl").
 -export([test/1]).
 -define(TEST_INDEX, "test").
+-define(MD_CTYPE, <<"content-type">>).
 
 %% This module runs the semi-automated test modules found in the
 %% ./tests directory. Each module contains a script.def file
@@ -24,6 +25,9 @@
 %% {search, Query, Validators} : Search on the query, run the validators.
 %% {solr_select, Params, Validators} : Search on the query, run the validators.
 %% {solr_update, Params, Path} : Execute the provided Solr script through the HTTP interface.
+%% {index_bucket, Bucket} : Enable indexing hook for bucket
+%% {putobj, Bucket, Key, [{ContentType, Value}]} : Put a riak object
+%% {delobj, Bucket, Key} : Delete a riak object
 %%
 %% Validators:
 %% {length, N} : Make sure there are exactly N results.
@@ -175,8 +179,28 @@ test_inner({solr_update, Path, Params}, Root) ->
     end;
 test_inner({solr_update, Path}, Root) ->
     test_inner({solr_update, Path, []}, Root);
+test_inner({index_bucket, Bucket}, _) ->
+    ok = riak_search_kv_hook:install(Bucket),
+    true;
+test_inner({putobj, Bucket, Key, CtValues}, _) ->
+    RObj0 = riak_object:new(Bucket, Key, <<"v">>),
+    Contents = [{dict:from_list([{?MD_CTYPE, CT}]), V} || {CT,V} <- CtValues],
+    RObj = riak_object:set_contents(RObj0, Contents),
+    {ok,C} = riak:local_client(),
+    ok = C:put(RObj),
+    true;
+test_inner({delobj, Bucket, Key}, _) ->
+    {ok,C} = riak:local_client(),
+    case C:delete(Bucket, Key) of
+        ok ->
+            true;
+        {error, notfound} ->
+            true;
+        _ ->
+            false
+    end;
 test_inner(Other, _Root) ->
-    io:format("Unexpected test step: ~p~n", [Other]),
+    io:format("Unexpected test step: ~p root ~p~n", [Other, _Root]),
     throw({unexpected_test_step, Other}).
 
 validate_results(Length, Results, Validators) ->
