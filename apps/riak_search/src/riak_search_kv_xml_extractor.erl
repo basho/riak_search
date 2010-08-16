@@ -4,7 +4,8 @@
 %%
 %% -------------------------------------------------------------------
 -module(riak_search_kv_xml_extractor).
--export([extract/2]).
+-export([extract/2,
+        extract_value/2]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -15,7 +16,10 @@
 -record(state, {name_stack=[], fields=[]}).
 
 extract(RiakObject, _Args) ->
-    Data = riak_object:get_value(RiakObject),
+    Values = riak_object:get_values(RiakObject),
+    lists:flatten([extract_value(V, _Args) || V <- Values]).
+
+extract_value(Data, _Args) ->
     try
         Options = [{event_fun, fun sax_cb/3}, {event_state, #state{}}],
         {ok, State, _Rest} = xmerl_sax_parser:stream(Data, Options),
@@ -24,7 +28,6 @@ extract(RiakObject, _Args) ->
         _:Err ->
             {fail, {cannot_parse_xml, Err}}
     end.
-
 
 %% @private
 %% xmerl_sax_parser callback to parse an XML document into search

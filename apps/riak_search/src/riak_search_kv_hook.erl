@@ -197,11 +197,16 @@ index_object(RiakObject, Extractor) ->
 
     %% If all ok, remove the old entries and index the new
     remove_old_entries(RiakClient, SearchClient, Index, DocId),
-    Postings = riak_indexed_doc:postings(NewIdxDoc),
-    SearchClient:index_terms(Postings),
 
-    %% Store the indexed_doc for next time
-    riak_indexed_doc:put(RiakClient, NewIdxDoc).
+    case NewIdxDoc of
+        deleted ->
+            riak_indexed_doc:delete(RiakClient, Index, DocId);
+        _ ->
+            %% Update the search index and store the indexed_doc in k/v
+            Postings = riak_indexed_doc:postings(NewIdxDoc),
+            SearchClient:index_terms(Postings),
+            riak_indexed_doc:put(RiakClient, NewIdxDoc)
+    end.
 
 %% Remove any old index entries if they exist
 -spec remove_old_entries(riak_client(), search_client(), index(), docid()) -> ok.
@@ -216,11 +221,16 @@ remove_old_entries(RiakClient, SearchClient, Index, DocId) ->
 %% Make an indexed document under Index/DocId from the RiakObject
 -spec make_indexed_doc(index(), docid(), riak_object(), extractdef()) -> idxdoc().
 make_indexed_doc(Index, DocId, RiakObject, Extractor) ->
-    Fields = run_extract(RiakObject, Extractor),
-    IdxDoc0 = riak_indexed_doc:new(DocId, Fields, [], Index),
-    {ok, IdxDoc} = riak_indexed_doc:analyze(IdxDoc0),
-    IdxDoc.
-                         
+    case riak_kv_util:is_x_deleted(RiakObject) of
+        true ->
+            deleted;
+        false ->
+            Fields = run_extract(RiakObject, Extractor),
+            IdxDoc0 = riak_indexed_doc:new(DocId, Fields, [], Index),
+            {ok, IdxDoc} = riak_indexed_doc:analyze(IdxDoc0),
+            IdxDoc
+    end.
+ 
 -spec make_index(riak_object()) -> binary().
 make_index(RiakObject) ->
     riak_object:bucket(RiakObject).

@@ -4,7 +4,8 @@
 %%
 %% -------------------------------------------------------------------
 -module(riak_search_kv_json_extractor).
--export([extract/2]).
+-export([extract/2,
+         extract_value/2]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -13,7 +14,10 @@
 -define(DEFAULT_FIELD, "value").
 
 extract(RiakObject, _Args) ->
-    Data = riak_object:get_value(RiakObject),
+    Values = riak_object:get_values(RiakObject),
+    lists:flatten([extract_value(V, _Args) || V <- Values]).
+
+extract_value(Data, _Args) ->
     try
         Json = mochijson2:decode(Data),    
         lists:reverse(lists:flatten(make_search_fields(undefined, Json, [])))

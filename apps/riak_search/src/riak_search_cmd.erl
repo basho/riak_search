@@ -120,7 +120,8 @@ set_schema(Index, SchemaFile) ->
                     erlang:exit(-1)
             end;
         _Error ->
-            io:format(" :: ERROR: Could not read '~s'.~n", [SchemaFile])
+            io:format(" :: ERROR: Could not read '~s'.~n", [SchemaFile]),
+            erlang:exit(-1)
     end.
 
 show_schema(Index) -> 

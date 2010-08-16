@@ -13,10 +13,23 @@
 %% Extract search data from the riak_object.  Switch between the
 %% built-in extractors based on Content-Type.
 extract(RiakObject, Args) ->
-    ContentType =  dict:fetch(<<"content-type">>, 
-                              riak_object:get_metadata(RiakObject)),
-    Extractor = get_extractor(ContentType, encodings()),
-    Extractor:extract(RiakObject, Args).
+    Contents = riak_object:get_contents(RiakObject),
+    F = fun({MD,V}, Fields) ->
+                ContentType =  get_content_type(MD),
+                Extractor = get_extractor(ContentType, encodings()),
+                [Extractor:extract_value(V, Args) | Fields]
+        end,
+    lists:flatten(lists:foldl(F, [], Contents)).
+
+%% Get the content type from the metadata
+get_content_type(MD) ->
+    case dict:find(<<"content-type">>,  MD) of
+        error ->
+            "application/octet-stream";
+        {ok, CT} ->
+            CT
+    end.
+                                                 
 
 %% Get the encoding from the content type
 get_extractor(_, []) ->
@@ -68,13 +81,19 @@ extractor_test() ->
              {JsonData, "text/x-json", JsonFields},
              {XmlData,  "application/xml", XmlFields},
              {XmlData,  "text/xml", XmlFields},
-             {PlainData,"text/plain", PlainFields}],
+             {PlainData,"text/plain", PlainFields},
+             {PlainData, undefined, PlainFields}],
     check_expected(Tests).
 
 check_expected([]) ->
     ok;
 check_expected([{Data, CT, Fields}|Rest]) ->
-    Object = riak_object:new(<<"b">>, <<"k">>, Data, CT),
+    case CT of
+        undefined ->
+            Object = riak_object:new(<<"b">>, <<"k">>, Data);
+        _ ->
+            Object = riak_object:new(<<"b">>, <<"k">>, Data, CT)
+    end,
     ?assertEqual(Fields, extract(Object, undefined)),
     check_expected(Rest).
 
