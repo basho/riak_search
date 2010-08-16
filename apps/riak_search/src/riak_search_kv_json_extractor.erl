@@ -14,17 +14,17 @@
 -define(DEFAULT_FIELD, "value").
 
 extract(RiakObject, _Args) ->
-    Values = riak_object:get_values(RiakObject),
-    lists:flatten([extract_value(V, _Args) || V <- Values]).
-
-extract_value(Data, _Args) ->
     try
-        Json = mochijson2:decode(Data),    
-        lists:reverse(lists:flatten(make_search_fields(undefined, Json, [])))
+        Values = riak_object:get_values(RiakObject),
+        lists:flatten([extract_value(V, _Args) || V <- Values])
     catch
         _:Err ->
             {fail, {cannot_parse_json,Err}}
     end.
+
+extract_value(Data, _Args) ->
+    Json = mochijson2:decode(Data),    
+    lists:reverse(lists:flatten(make_search_fields(undefined, Json, []))).
 
 
 make_search_fields(NamePrefix, {struct, Fields}, Output) ->

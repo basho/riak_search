@@ -13,13 +13,18 @@
 %% Extract search data from the riak_object.  Switch between the
 %% built-in extractors based on Content-Type.
 extract(RiakObject, Args) ->
-    Contents = riak_object:get_contents(RiakObject),
-    F = fun({MD,V}, Fields) ->
-                ContentType =  get_content_type(MD),
-                Extractor = get_extractor(ContentType, encodings()),
-                [Extractor:extract_value(V, Args) | Fields]
-        end,
-    lists:flatten(lists:foldl(F, [], Contents)).
+    try
+        Contents = riak_object:get_contents(RiakObject),
+        F = fun({MD,V}, Fields) ->
+                    ContentType =  get_content_type(MD),
+                    Extractor = get_extractor(ContentType, encodings()),
+                    [Extractor:extract_value(V, Args) | Fields]
+            end,
+        lists:flatten(lists:foldl(F, [], Contents))
+    catch
+        _:Err ->
+            {fail, {cannot_parse,Err}}
+    end.
 
 %% Get the content type from the metadata
 get_content_type(MD) ->

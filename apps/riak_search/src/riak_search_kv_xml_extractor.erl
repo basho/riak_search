@@ -16,19 +16,19 @@
 -record(state, {name_stack=[], fields=[]}).
 
 extract(RiakObject, _Args) ->
-    Values = riak_object:get_values(RiakObject),
-    lists:flatten([extract_value(V, _Args) || V <- Values]).
-
-extract_value(Data, _Args) ->
     try
-        Options = [{event_fun, fun sax_cb/3}, {event_state, #state{}}],
-        {ok, State, _Rest} = xmerl_sax_parser:stream(Data, Options),
-        lists:reverse(lists:flatten(State#state.fields))
+        Values = riak_object:get_values(RiakObject),
+        lists:flatten([extract_value(V, _Args) || V <- Values])
     catch
         _:Err ->
             {fail, {cannot_parse_xml, Err}}
     end.
 
+extract_value(Data, _Args) ->
+    Options = [{event_fun, fun sax_cb/3}, {event_state, #state{}}],
+    {ok, State, _Rest} = xmerl_sax_parser:stream(Data, Options),
+    lists:reverse(lists:flatten(State#state.fields)).
+ 
 %% @private
 %% xmerl_sax_parser callback to parse an XML document into search
 %% fields.
