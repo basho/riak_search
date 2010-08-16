@@ -50,6 +50,8 @@ when FieldClass == field orelse FieldClass == dynamic_field ->
     Name = proplists:get_value(name, FieldProps),
     Type = proplists:get_value(type, FieldProps, string),
     IsRequired = (not IsDynamic) andalso (proplists:get_value(required, FieldProps, false) == true),
+    IsSkip = proplists:get_value(skip, FieldProps, false),
+    Aliases = proplists:get_all_values(alias, FieldProps),
     DefaultPaddingSize = get_default_padding_size(Type),
     PaddingSize = proplists:get_value(padding_size, FieldProps, DefaultPaddingSize),
     DefaultPaddingChar = get_default_padding_char(Type),
@@ -67,6 +69,10 @@ when FieldClass == field orelse FieldClass == dynamic_field ->
     valid_type(Type) orelse
         throw({error, {malformed_schema, type, FieldProps}}),
 
+    %% Make sure no aliases on dynamic fields
+    (IsDynamic == true andalso Aliases /= []) andalso
+        throw({error, {malformed_schema, no_dynamic_field_aliases, FieldProps}}),
+
     %% Calculate Name...
     case FieldClass of 
         field  -> 
@@ -78,11 +84,13 @@ when FieldClass == field orelse FieldClass == dynamic_field ->
     %% Create the field...
     Field0 = #riak_search_field {
       name=NewName, 
+      aliases=[calculate_alias_pattern(A) || A <- lists:usort(Aliases)],
       type=Type, 
       padding_size=PaddingSize,
       padding_char=normalize_padding_char(PaddingChar, Name),
       required=IsRequired, 
       dynamic=IsDynamic, 
+      skip=IsSkip,
       analyzer_factory=FieldAnalyzer,
       analyzer_args=FieldAnalyzerArgs,
       facet=Facet
@@ -127,17 +135,31 @@ normalize_padding_char(Char, _Field) when is_integer(Char) ->
 normalize_padding_char(_BadValue, Field) ->
     throw({error, {bad_padding_char, Field}}).
 
-%% A name pattern can have one (and only one) wildcard. If we find a
-%% wildcard, replace it with a the regex ".*" So
-calculate_name_pattern(Name) ->
-    MaxOneWildcard = string:chr(Name, $*) == string:chr(Name, $*),
-    case MaxOneWildcard of
-        true -> 
-            calculate_name_pattern_1(Name);
-        false -> 
-            throw({error, {bad_dynamic_name, Name}})
+%% Checks to see if an alias is exact or a wildcard (and if
+%% it is a wildcard, precompile the pattern to match)
+calculate_alias_pattern(Alias) ->
+    case string:chr(Alias, $*) of
+        0 ->
+            {exact, Alias};
+        _ ->
+            case re:compile(calculate_name_pattern_1(Alias)) of
+                {ok, MP} ->
+                    {re, Alias, MP};
+                {error, ErrSpec} ->
+                    throw({error, {bad_alias_wildcard, {Alias, ErrSpec}}})
+            end
     end.
 
+%% A name pattern must have a wildcard. Check for it and
+%% replace it with the regex ".*"
+calculate_name_pattern(Name) ->
+    case string:chr(Name, $*) of
+        0 -> % Not found
+            throw({error, {bad_dynamic_name, Name}});
+        _ -> 
+            calculate_name_pattern_1(Name)
+    end.
+       
 %% Replace "*" with ".*" in a string.
 calculate_name_pattern_1([]) -> 
     [];
@@ -224,6 +246,25 @@ normalize_padding_char_test() ->
     ?assertThrow({error, {bad_padding_char, fld}}, 
                  normalize_padding_char("00", fld)).
     
+
+bad_alias_regexp_test() ->
+    SchemaProps = [{version, 1},{default_field, "field"}],
+    FieldDefs =  [{field, [{name, "badaliaswildre"},
+                           {alias, "[*"}]}],
+    SchemaDef = {schema, SchemaProps, FieldDefs},
+    ?assertThrow({error, {bad_alias_wildcard,
+                           {"[*",
+                            {"missing terminating ] for character class",3}}}},
+                 from_eterm(bad_alias_regexp_test, SchemaDef)).
+
+alias_on_dynamic_field_invalid_test() ->
+    SchemaProps = [{version, 1},{default_field, "field"}],
+    FieldDefs =  [{dynamic_field, [{name, "field_*"},
+                                   {alias, "analias"}]}],
+    SchemaDef = {schema, SchemaProps, FieldDefs},
+    ?assertThrow({error, {malformed_schema, no_dynamic_field_aliases, _FieldProps}},
+                 from_eterm(bad_alias_regexp_test, SchemaDef)).
+ 
 
 
 -endif. % TEST

@@ -10,6 +10,7 @@
          precommit/1]).
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-export([run_mod_fun_extract_test_fun/2]).
 -endif.
 
 -define(DEFAULT_EXTRACTOR, {modfun, riak_search_kv_extractor, extract}).
@@ -41,6 +42,7 @@
 
 -type index() :: binary().
 -type docid() :: binary().
+-type idxdoc() :: tuple(). % #riak_indexed_doc{}
 
 -type search_fields() :: [{search_field(),search_data()}].
 -type search_field() :: string().
@@ -111,6 +113,9 @@ get_extractor(RiakObject) ->
                          {user_funterm(), args()}) -> {funterm(), args()}.
 validate_extractor(undefined) ->
     {?DEFAULT_EXTRACTOR, ?DEFAULT_ARGS};
+validate_extractor({struct, JsonExtractor}) ->
+    Lang = proplists:get_value(<<"language">>, JsonExtractor),    
+    validate_extractor(erlify_json_funterm(Lang, JsonExtractor));
 validate_extractor({FunTerm, Args}) when is_tuple(FunTerm) ->
     {validate_funterm(FunTerm), Args};
 validate_extractor(FunTerm) ->
@@ -130,13 +135,38 @@ validate_funterm({jsfun, Name}) ->
 validate_funterm(FunTerm) ->
     throw({"cannot parse funterm", FunTerm}).
 
-   
+%% Decode a bucket property that was set using JSON/HTTP interface
+erlify_json_funterm(<<"erlang">>, Props) ->
+    Mod = to_modfun(proplists:get_value(<<"module">>, Props, undefined)),
+    Fun = to_modfun(proplists:get_value(<<"function">>, Props, undefined)),
+    Arg = proplists:get_value(<<"arg">>, Props, undefined),
+    {{modfun, Mod, Fun}, Arg};
+erlify_json_funterm(<<"javascript">>, Props) ->
+    Source = proplists:get_value(<<"source">>, Props, undefined),
+    Name = proplists:get_value(<<"name">>, Props, undefined),
+    Arg = proplists:get_value(<<"arg">>, Props, undefined),
+    case Source of
+        undefined ->
+            case Name of
+                undefined ->
+                    throw("javascript kv/search extractor must have name or source");
+                _ ->
+                    {{jsfun, Name}, Arg}
+            end;
+        _ ->
+            {{jsanon, Source}, Arg}
+    end;
+erlify_json_funterm(Lang, _Props) ->
+    throw({"kv/search extractors must be written in erlang or javascript", Lang}).
+
+     
+
 -spec to_modfun(list() | atom()) -> atom().
 to_modfun(List) when is_list(List) ->
     %% Using list_to_atom here so that the extractor module
     %% does not need to be pre-loaded.  
     list_to_atom(List);
-to_modfun(Atom) when is_list(Atom) ->
+to_modfun(Atom) when is_atom(Atom) ->
     Atom;
 to_modfun(Val) ->
     throw({"cannot convert to module/function name", Val}).
@@ -171,8 +201,7 @@ index_object(RiakObject, Extractor) ->
     SearchClient:index_terms(Postings),
 
     %% Store the indexed_doc for next time
-    riak_indexed_doc:put(RiakClient, NewIdxDoc),
-    ok.
+    riak_indexed_doc:put(RiakClient, NewIdxDoc).
 
 %% Remove any old index entries if they exist
 -spec remove_old_entries(riak_client(), search_client(), index(), docid()) -> ok.
@@ -185,7 +214,7 @@ remove_old_entries(RiakClient, SearchClient, Index, DocId) ->
     end.
 
 %% Make an indexed document under Index/DocId from the RiakObject
--spec make_indexed_doc(index(), docid(), riak_object(), extractdef()) -> ok.
+-spec make_indexed_doc(index(), docid(), riak_object(), extractdef()) -> idxdoc().
 make_indexed_doc(Index, DocId, RiakObject, Extractor) ->
     Fields = run_extract(RiakObject, Extractor),
     IdxDoc0 = riak_indexed_doc:new(DocId, Fields, [], Index),
@@ -203,10 +232,45 @@ make_docid(RiakObject) ->
 %% Run the extraction function against the RiakObject to get a list of
 %% search fields and data
 -spec run_extract(riak_object(), extractdef()) -> search_fields().
-run_extract(RiakObject, {{modfun, Mod, Fun}, Args}) ->
-    Mod:Fun(RiakObject, Args);
-run_extract(_, _) ->
-    throw({error, not_implemented}).
+run_extract(RiakObject, {{modfun, Mod, Fun}, Arg}) ->
+    Mod:Fun(RiakObject, Arg);
+run_extract(RiakObject, {{qfun, Fun}, Arg}) ->
+    Fun(RiakObject, Arg);
+run_extract(RiakObject, {JsFunTerm, Arg}) when element(1, JsFunTerm) == jsanon; 
+                                               element(1, JsFunTerm) == jsfun ->
+    JsRObj = riak_object:to_json(RiakObject),
+    case Arg of
+        undefined ->
+            JsArg = null;
+        _ ->
+            JsArg = Arg
+    end,
+    case riak_kv_js_manager:blocking_dispatch({JsFunTerm, [JsRObj, JsArg]}, 5) of
+        {ok, <<"fail">>} ->
+            throw(fail);
+        {ok, [{<<"fail">>, Message}]} ->
+            throw({fail, Message});
+        {ok, JsonFields} ->
+            erlify_json_extract(JsonFields);
+        {error, Error} ->
+            error_logger:error_msg("Error executing kv/search hook: ~s",
+                                   [Error]),
+            throw({fail, Error})
+    end;
+run_extract(_, ExtractDef) ->
+    throw({error, {not_implemented, ExtractDef}}).
+
+erlify_json_extract(R) ->
+    erlify_json_extract(R, []).
+
+erlify_json_extract([], Acc) ->
+    lists:reverse(Acc);
+erlify_json_extract([{BinFieldName, FieldData} | Rest], Acc) when is_binary(BinFieldName),
+                                                                  is_binary(FieldData) ->
+    erlify_json_extract(Rest, [{binary_to_list(BinFieldName), FieldData} | Acc]);
+erlify_json_extract(R, _Acc) ->
+    throw({fail, {bad_json_extractor, R}}).
+    
 
 -ifdef(TEST).
 
@@ -266,6 +330,94 @@ search_hook_present(Bucket) ->
         T when is_tuple(T) ->
             Precommit == IndexHook
     end.
+
+run_mod_fun_extract_test() ->
+    %% Try the anonymous function
+    TestObj = conflict_test_object(),
+    Extractor = validate_extractor({{modfun, ?MODULE, run_mod_fun_extract_test_fun}, undefined}),
+    ?assertEqual([{"data",<<"some data">>}],
+                 run_extract(TestObj, Extractor)).
+ 
+run_mod_fun_extract_test_fun(O, _Args) ->
+    StrVals = [binary_to_list(B) || B <- riak_object:get_values(O)],
+    Data = string:join(StrVals, " "),
+    [{"data", list_to_binary(Data)}].
+
+run_qfun_extract_test() ->
+    %% Try the anonymous function
+    TestObj = conflict_test_object(),
+    Fun1 = fun(O, _Args) ->
+                   StrVals = [binary_to_list(B) || B <- riak_object:get_values(O)],
+                   Data = string:join(StrVals, " "),
+                   [{"data", list_to_binary(Data)}]
+           end,
+    Extractor = validate_extractor({{qfun, Fun1}, undefined}),
+    ?assertEqual([{"data",<<"some data">>}],
+                 run_extract(TestObj, Extractor)).
+ 
+    
+
+anon_js_extract_test() ->
+    maybe_start_app(sasl),
+    maybe_start_app(erlang_js),
+    {ok, JsSup} = riak_kv_js_sup:start_link(),
+    {ok, JsMgr} = riak_kv_js_manager:start_link(2),
+
+    %% Anonymous JSON function with default argument
+    %% Join together all the values in a search field
+    %% called "data" and the argument as "arg"
+    JustObjectSource = "function(o) {
+                var vals = [];
+                for (var i = 0; i < o.values.length; i++) {
+                  vals.push(o.values[i].data);
+                }
+                data = vals.join(\" \");
+                return {\"data\":data};
+              }",
+    ObjectArgSource = "function(o,a) {
+                var vals = [];
+                for (var i = 0; i < o.values.length; i++) {
+                  vals.push(o.values[i].data);
+                }
+                data = vals.join(\" \");
+                return {\"data\":data, \"arg\":a.f};
+              }",
+ 
+    %% Try the anonymous function
+    O = conflict_test_object(),
+    Extractor1 = validate_extractor({{jsanon, JustObjectSource}, undefined}),
+    ?assertEqual([{"data",<<"some data">>}],
+                 run_extract(O, Extractor1)),
+                 
+    %% Anonymous JSON function with provided argument
+    %% Arg = {struct [{<<"f">>,<<"v">>}]},
+    Arg = {struct, [{<<"f">>,<<"v">>}]},
+    Extractor2 = validate_extractor({{jsanon, ObjectArgSource}, Arg}),
+    ?assertEqual([{"data",<<"some data">>}, 
+                  {"arg", <<"v">>}],
+                 run_extract(O, Extractor2)),
+
+    stop_pid(JsMgr),
+    stop_pid(JsSup),
+    application:stop(erlang_js).
+
+conflict_test_object() ->
+    O0 = riak_object:new(<<"b">>,<<"k">>,<<"v">>),
+    riak_object:set_contents(O0, [{dict:new(), <<"some">>},
+                                  {dict:new(), <<"data">>}]).
+    
+
+maybe_start_app(App) ->
+    case application:start(App) of
+        {error, {already_started, App}} ->
+            ok;
+        ok ->
+            ok
+    end.
+
+stop_pid(Pid) ->
+    unlink(Pid),
+    exit(Pid, kill).
 
 -endif. % TEST
     

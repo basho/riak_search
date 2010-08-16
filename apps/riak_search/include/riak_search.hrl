@@ -46,10 +46,12 @@
                           querynorm}).
 
 -record(riak_search_field, {name,
+                            aliases=[],
                             type,
                             padding_size,
                             padding_char,
                             required=false,
+                            skip=false,
                             dynamic=false,
                             analyzer_factory,
                             analyzer_args,
