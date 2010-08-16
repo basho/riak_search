@@ -1,5 +1,6 @@
 #!/bin/bash
 
+ORIGINAL_DIR=$(pwd)
 RUNNER_SCRIPT_DIR={{runner_script_dir}}
 RUNNER_SCRIPT=${0##*/}
 
@@ -72,4 +73,4 @@ if [ "$RES" != "pong" ]; then
     exit 1
 fi
 
-$NODETOOL rpc riak_search_cmd command "$@"
+$NODETOOL rpc_infinity riak_search_cmd command $ORIGINAL_DIR "$@"

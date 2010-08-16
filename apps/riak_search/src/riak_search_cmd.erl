@@ -37,59 +37,68 @@ usage() ->
     io:format(Usage).
 
 %% Set Schema
-command(["set_schema", SchemaFile]) ->
-    set_schema(?DEFAULT_INDEX, SchemaFile);
-command(["set_schema", Index, SchemaFile]) ->
-    set_schema(Index, SchemaFile);
+command([CurDir, "set_schema", SchemaFile]) ->
+    SchemaFile1 = filename:join(CurDir, SchemaFile),
+    set_schema(?DEFAULT_INDEX, SchemaFile1);
+command([CurDir, "set_schema", Index, SchemaFile]) ->
+    SchemaFile1 = filename:join(CurDir, SchemaFile),
+    set_schema(Index, SchemaFile1);
 
 %% Show Schema
-command(["show_schema"]) ->
+command([_CurDir, "show_schema"]) ->
     show_schema(?DEFAULT_INDEX);
-command(["show_schema", Index]) ->
+command([_CurDir, "show_schema", Index]) ->
     show_schema(Index);
 
 %% Shell
-command(["shell"]) -> 
+command([_CurDir, "shell"]) -> 
     shell(?DEFAULT_INDEX);
-command(["shell", Index]) ->
+command([_CurDir, "shell", Index]) ->
     shell(Index);
 
 %% Search
-command(["search", Query]) ->
+command([_CurDir, "search", Query]) ->
     search(?DEFAULT_INDEX, Query);
-command(["search", Index, Query]) ->
+command([_CurDir, "search", Index, Query]) ->
     search(Index, Query);
 
 %% Serach Doc
-command(["search_doc", Query]) ->
+command([_CurDir, "search_doc", Query]) ->
     search_doc(?DEFAULT_INDEX, Query);
-command(["search_doc", Index, Query]) ->
+command([_CurDir, "search_doc", Index, Query]) ->
     search_doc(Index, Query);
 
 %% Explain
-command(["explain", Query]) ->
+command([_CurDir, "explain", Query]) ->
     explain(?DEFAULT_INDEX, Query);
-command(["explain", Index, Query]) ->
+command([_CurDir, "explain", Index, Query]) ->
     explain(Index, Query);
 
 %% Index
-command(["index", Path]) ->
-    index(?DEFAULT_INDEX, Path);
-command(["index", Index, Path]) ->
-    index(Index, Path);
+command([CurDir, "index", Path]) ->
+    Path1 = filename:join(CurDir, Path),
+    index(?DEFAULT_INDEX, Path1);
+command([CurDir, "index", Index, Path]) ->
+    Path1 = filename:join(CurDir, Path),
+    index(Index, Path1);
 
-command(["delete", Path]) ->
-    delete(?DEFAULT_INDEX, Path);
-command(["delete", Index, Path]) ->
-    delete(Index, Path);
+command([CurDir, "delete", Path]) ->
+    Path1 = filename:join(CurDir, Path),
+    delete(?DEFAULT_INDEX, Path1);
+command([CurDir, "delete", Index, Path]) ->
+    Path1 = filename:join(CurDir, Path),
+    delete(Index, Path1);
 
-command(["solr", Path]) ->
-    solr(?DEFAULT_INDEX, Path);
-command(["solr", Index, Path]) ->
-    solr(Index, Path);
+command([CurDir, "solr", Path]) ->
+    Path1 = filename:join(CurDir, Path),
+    solr(?DEFAULT_INDEX, Path1);
+command([CurDir, "solr", Index, Path]) ->
+    Path1 = filename:join(CurDir, Path),
+    solr(Index, Path1);
 
-command(["test", Path]) ->
-    test(Path);
+command([CurDir, "test", Path]) ->
+    Path1 = filename:join(CurDir, Path),
+    test(Path1);
 
 command(_) ->
     usage().
@@ -187,7 +196,7 @@ explain(DefaultIndex, Query) ->
 
 index(Index, Path) -> 
     io:format("~n :: Indexing path '~s' in ~s...~n~n", [Path, Index]),
-    search:index_dir(Index, Path).
+    riak_search_dir_indexer:index(Index, Path).
 
 delete(Index, Path) -> 
     io:format("~n :: De-Indexing path '~s' in ~s...~n~n", [Path, Index]),

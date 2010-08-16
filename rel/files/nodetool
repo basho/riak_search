@@ -39,6 +39,16 @@ main(Args) ->
                 _ ->
                     halt(1)
             end;
+        ["rpc_infinity", Module, Function | RpcArgs] ->
+            case rpc:call(TargetNode, list_to_atom(Module), list_to_atom(Function), [RpcArgs], infinity) of
+                ok ->
+                    ok;
+                {badrpc, Reason} ->
+                    io:format("RPC to ~p failed: ~p\n", [TargetNode, Reason]),
+                    halt(1);
+                _ ->
+                    halt(1)
+            end;
         Other ->
             io:format("Other: ~p\n", [Other]),
             io:format("Usage: nodetool {ping|stop|restart|reboot}\n")

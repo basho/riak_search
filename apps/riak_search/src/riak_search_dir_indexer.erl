@@ -8,6 +8,7 @@
 -include_lib("kernel/include/file.hrl").
 
 -export([start_index/2, start_index/3,
+         index/2, index/3,
          stop_index/1]).
 
 -record(index_status, { total_files = 0,
@@ -31,9 +32,22 @@ start_index(Index, Dir, StatusFn) ->
     %% Spawn master worker; do _not_ link to calling process to avoid
     %% issues when running on console
     Master = spawn(fun() -> index_master_loop0(Index, Dir, StatusFn) end),
-    Master ! start,
     Master.
 
+index(Index, Dir) ->
+    index(Index, Dir, fun console_status/1).
+    
+index(Index, Dir, StatusFun) ->
+    Master = start_index(Index, Dir, StatusFun),
+    index_block_loop(Master).
+
+index_block_loop(Master) ->
+    case is_process_alive(Master) of
+        true -> 
+            timer:sleep(1000),
+            index_block_loop(Master);
+        false -> ok
+    end.
 
 stop_index(MasterPid) ->
     Mref = erlang:monitor(process, MasterPid),
