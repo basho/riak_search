@@ -10,7 +10,7 @@
 
 -behaviour(gen_server).
 
--define(SCHEMA_KEY, <<"_rs_schema">>).
+-define(SCHEMA_BUCKET, <<"_rs_schema">>).
 -define(DEFAULT_SCHEMA, filename:join([code:priv_dir(riak_search), "default.def"])).
 
 %% API
@@ -162,11 +162,11 @@ load_default_schema(SchemaName) ->
 %% @param Index - the name of an index.
 %% @param RawSchemaBinary - Binary representing the RawSchema file.
 put_raw_schema(Client, SchemaName, RawSchemaBinary) ->
-    case Client:get(SchemaName, ?SCHEMA_KEY) of
+    case Client:get(?SCHEMA_BUCKET, SchemaName) of
         {ok, Obj} ->
             NewObj = riak_object:update_value(Obj, RawSchemaBinary);
         {error, notfound} ->
-            NewObj = riak_object:new(SchemaName, ?SCHEMA_KEY, RawSchemaBinary)
+            NewObj = riak_object:new(?SCHEMA_BUCKET, SchemaName, RawSchemaBinary)
     end,
     Client:put(NewObj).
 
@@ -174,7 +174,7 @@ put_raw_schema(Client, SchemaName, RawSchemaBinary) ->
 %% @param Index - the name of an index.
 %% @return {ok, RawSchemaBinary}, or 'undefined' if not found.
 get_raw_schema(Client, SchemaName) ->
-    case Client:get(SchemaName, ?SCHEMA_KEY) of
+    case Client:get(?SCHEMA_BUCKET, SchemaName) of
         {ok, Entry} ->
             {ok, riak_object:get_value(Entry)};
         {error, notfound} ->
