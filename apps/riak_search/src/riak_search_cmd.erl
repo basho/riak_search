@@ -111,10 +111,14 @@ set_schema(Index, SchemaFile) ->
             case riak_search_config:parse_raw_schema(B) of
                 {ok, _Schema} ->
                     {ok, Client} = riak:local_client(),
-                    riak_search_config:put_raw_schema(Client, IndexB, B),
-                    riak_search_config:clear(),
-                    io:format(" :: Done.~n");
-
+                    case riak_search_config:put_raw_schema(Client, IndexB, B) of
+                        ok ->
+                            ok = riak_search_config:clear(),
+                            io:format(" :: Done.~n");
+                        Error ->
+                            io:format(" :: STORAGE ERROR: ~p~n", [Error]),
+                            erlang:exit(-1)
+                    end;
                 Error ->
                     io:format(" :: PARSING ERROR: ~p~n", [Error]),
                     erlang:exit(-1)
