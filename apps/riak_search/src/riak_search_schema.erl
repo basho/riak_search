@@ -4,7 +4,7 @@
 %%
 %% -------------------------------------------------------------------
 
--module(riak_search_schema, [Name, Version, DefaultField, FieldsAndFacets, DefaultOp, AnalyzerFactory]).
+-module(riak_search_schema, [Name, Version, DefaultField, UniqueKey, FieldsAndFacets, DefaultOp, AnalyzerFactory]).
 -export([
     %% Properties...
     name/0,
@@ -13,6 +13,7 @@
     fields_and_facets/0,
     facets/0,
     fields/0,
+    unique_key/0,
     default_field/0,
     set_default_field/1,
     default_op/0,
@@ -46,7 +47,7 @@ name() ->
     riak_search_utils:to_list(Name).
 
 set_name(NewName) ->
-    ?MODULE:new(NewName, Version, DefaultField, FieldsAndFacets, DefaultOp, AnalyzerFactory).
+    ?MODULE:new(NewName, Version, DefaultField, UniqueKey, FieldsAndFacets, DefaultOp, AnalyzerFactory).
 
 version() ->
     Version.
@@ -60,6 +61,9 @@ fields() ->
 facets() ->
     [X || X <- FieldsAndFacets, X#riak_search_field.facet == true].
 
+unique_key() ->
+    UniqueKey.
+
 default_field() ->
     DefaultField.
 
@@ -69,13 +73,13 @@ analyzer_factory() ->
     AnalyzerFactory.
 
 set_default_field(NewDefaultField) ->
-    ?MODULE:new(Name, Version, NewDefaultField, FieldsAndFacets, DefaultOp, AnalyzerFactory).
+    ?MODULE:new(Name, Version, NewDefaultField, UniqueKey, FieldsAndFacets, DefaultOp, AnalyzerFactory).
 
 default_op() ->
     DefaultOp.
 
 set_default_op(NewDefaultOp) ->
-    ?MODULE:new(Name, Version, DefaultField, FieldsAndFacets, NewDefaultOp, AnalyzerFactory).
+    ?MODULE:new(Name, Version, DefaultField, UniqueKey, FieldsAndFacets, NewDefaultOp, AnalyzerFactory).
 
 field_name(Field) ->
     Field#riak_search_field.name.
