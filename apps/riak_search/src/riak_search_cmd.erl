@@ -32,6 +32,8 @@ usage() ->
     search-cmd index [INDEX] PATH            : Index files in a path.
     search-cmd delete [INDEX] PATH           : De-index files in a path.
     search-cmd solr [INDEX] PATH             : Run the Solr file.
+    search-cmd install BUCKET                : Install kv/search integration hook
+    search-cmd uninstall BUCKET              : Uninstall kv/search integration hook
     search-cmd test PATH                     : Run a test package
     ",
     io:format(Usage).
@@ -99,6 +101,11 @@ command([CurDir, "solr", Index, Path]) ->
 command([CurDir, "test", Path]) ->
     Path1 = filename:join(CurDir, Path),
     test(Path1);
+
+command([_CurDir, "install", Bucket]) ->
+    riak_search_kv_hook:install(riak_search_utils:to_binary(Bucket));
+command([_CurDir, "uninstall", Bucket]) ->
+    riak_search_kv_hook:uninstall(riak_search_utils:to_binary(Bucket));
 
 command(_) ->
     usage().

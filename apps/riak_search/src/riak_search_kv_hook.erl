@@ -6,6 +6,7 @@
 
 -module(riak_search_kv_hook).
 -export([install/1,
+         uninstall/1,
          precommit_def/0,
          precommit/1]).
 -ifdef(TEST).
@@ -52,19 +53,8 @@
 %% Install the kv/search integration hook on the specified bucket     
 install(Bucket) -> 
     BucketProps = riak_core_bucket:get_bucket(Bucket),
-
-    %% Get the current precommit hook
-    case proplists:get_value(precommit, BucketProps, []) of
-        X when is_list(X) ->
-            CurrentPrecommit=X;
-        {struct, _}=X ->
-            CurrentPrecommit=[X]
-    end,
-
-    %% Add kv/search hook - make sure there are not duplicate entries
-    IndexHook = [precommit_def()],
-    CleanPrecommit = CurrentPrecommit -- IndexHook,
-    case CleanPrecommit ++ IndexHook of
+    CleanPrecommit = strip_precommit(BucketProps),
+    case CleanPrecommit ++ [precommit_def()] of
         [{struct, _}]=Y ->
             UpdPrecommit=Y;
         Y ->
@@ -74,6 +64,16 @@ install(Bucket) ->
     %% Update the bucket properties
     UpdBucketProps = lists:keyreplace(precommit, 1, BucketProps, 
                                       {precommit, UpdPrecommit}),
+    riak_core_bucket:set_bucket(Bucket, UpdBucketProps).
+
+%% Uninstall kv/search integration hook from specified bucket
+uninstall(Bucket) ->
+    BucketProps = riak_core_bucket:get_bucket(Bucket),
+    CleanPrecommit = strip_precommit(BucketProps),
+
+    %% Update the bucket properties
+    UpdBucketProps = lists:keyreplace(precommit, 1, BucketProps, 
+                                      {precommit, CleanPrecommit}),
     riak_core_bucket:set_bucket(Bucket, UpdBucketProps).
 
 precommit_def() ->
@@ -280,7 +280,20 @@ erlify_json_extract([{BinFieldName, FieldData} | Rest], Acc) when is_binary(BinF
     erlify_json_extract(Rest, [{binary_to_list(BinFieldName), FieldData} | Acc]);
 erlify_json_extract(R, _Acc) ->
     throw({fail, {bad_json_extractor, R}}).
+        
+%% Get the precommit hook from the bucket and strip any
+%% existing index hooks.
+strip_precommit(BucketProps) ->
+    %% Get the current precommit hook
+    case proplists:get_value(precommit, BucketProps, []) of
+        X when is_list(X) ->
+            CurrentPrecommit=X;
+        {struct, _}=X ->
+            CurrentPrecommit=[X]
+    end,
     
+    %% Add kv/search hook - make sure there are not duplicate entries
+    CurrentPrecommit -- [precommit_def()].
 
 -ifdef(TEST).
 
