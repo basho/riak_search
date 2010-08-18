@@ -44,9 +44,25 @@ analyze(Pid, Text, AnalyzerFactory) ->
     analyze(Pid, Text, AnalyzerFactory, undefined).
 
 
-analyze(_Pid, Text, {Mod, Fun, Options}, _AnalyzerArgs) ->
-    %% Mod:Fun/2 should return {ok, [Terms]}.
-    Mod:Fun(Text, Options);
+
+%% No analyzer is defined. Use text_analyzers:default_analyzer_factory.
+analyze(_Pid, Text, undefined, AnalyzerArgs) ->
+    text_analyzers:default_analyzer_factory(Text, AnalyzerArgs);
+
+%% Handle Erlang-based AnalyzerFactory. Can either be of the form
+%% {erlang, Mod, Fun} or {erlang, Mod, Fun, Args}. Function should
+%% return {ok, Terms} where Terms is a list of Erlang binaries.
+analyze(_Pid, Text, {erlang, Mod, Fun, AnalyzerArgs}, _) ->
+    Mod:Fun(Text, AnalyzerArgs);
+analyze(_Pid, Text, {erlang, Mod, Fun}, AnalyzerArgs) ->
+    Mod:Fun(Text, AnalyzerArgs);
+
+%% Handle Java-based AnalyzerFactory. Can either be of the form {java,
+%% AnalyzerFactoryClass, Args} or {java, AnalyzerFactoryClass}.
+analyze(Pid, Text, {java, AnalyzerFactory, AnalyzerArgs}, _) ->
+    analyze(Pid, Text, AnalyzerFactory, AnalyzerArgs);
+analyze(Pid, Text, {java, AnalyzerFactory}, AnalyzerArgs) ->
+    analyze(Pid, Text, AnalyzerFactory, AnalyzerArgs);
 analyze(Pid, Text, AnalyzerFactory, AnalyzerArgs) ->
     try
         Req = #analysisrequest{text=Text, analyzer_factory=AnalyzerFactory, 
