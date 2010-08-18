@@ -13,18 +13,27 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
+-import(riak_search_utils, [to_list/1, to_atom/1]).
+
+
+
 %% Given an Erlang term (see riak_search/priv/search.def for example)
 %% parse the term into a riak_search_schema parameterized module.
 from_eterm(SchemaName, {schema, SchemaProps, FieldDefs}) ->
     %% Read fields...
-    Version = proplists:get_value(version, SchemaProps),
-    DefaultField = proplists:get_value(default_field, SchemaProps),
+    Version = to_list(proplists:get_value(version, SchemaProps)),
+    DefaultField = to_list(proplists:get_value(default_field, SchemaProps)),
+    UniqueKey = to_list(proplists:get_value(unique_key, SchemaProps, "id")),
     SchemaAnalyzer = proplists:get_value(analyzer_factory, SchemaProps),
-    DefaultOp = list_to_atom(proplists:get_value(default_op, SchemaProps, "or")),
+    DefaultOp = to_atom(proplists:get_value(default_op, SchemaProps, "or")),
 
     %% Verify that version is defined...
     Version /= undefined orelse
         throw({error, {malformed_schema, version, {schema, SchemaProps}}}),
+
+    %% Verify that the unique key is defined...
+    UniqueKey /= undefined orelse
+        throw({error, {malformed_schema, unique_key, {schema, SchemaProps}}}),
 
     %% Verify that default field is defined...
     DefaultField /= undefined orelse
@@ -35,9 +44,8 @@ from_eterm(SchemaName, {schema, SchemaProps, FieldDefs}) ->
         throw({error, {malformed_schema, default_op, {schema, SchemaProps}}}),
 
     {ok, Fields} = parse_fields(FieldDefs, SchemaAnalyzer, []),
-    {ok, riak_search_schema:new(SchemaName, Version, DefaultField, Fields, 
-                                DefaultOp, SchemaAnalyzer)}.
-
+    {ok, riak_search_schema:new(SchemaName, Version, DefaultField, UniqueKey, 
+                                Fields, DefaultOp, SchemaAnalyzer)}.
 
 parse_fields([], _SchemaAnalyzer, Fields) ->
     {ok, lists:reverse(Fields)};
@@ -58,7 +66,7 @@ when FieldClass == field orelse FieldClass == dynamic_field ->
     PaddingChar = proplists:get_value(padding_char, FieldProps, DefaultPaddingChar),
     DefaultFieldAnalyzer = get_default_field_analyzer(Type, SchemaAnalyzer),
     FieldAnalyzer = proplists:get_value(analyzer_factory, FieldProps, DefaultFieldAnalyzer),
-    FieldAnalyzerArgs = proplists:get_value(analyzer_args, FieldProps, undefined),
+    FieldAnalyzerArgs = proplists:get_value(analyzer_args, FieldProps, []),
     Facet = proplists:get_value(facet, FieldProps, false),
 
     %% Verify that name exists...

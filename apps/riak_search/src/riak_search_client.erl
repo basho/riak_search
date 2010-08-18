@@ -122,13 +122,16 @@ index_term(Index, Field, Term, DocID, Props) ->
 
 %% Create an index FSM, send the terms and shut it down
 index_terms(Terms) ->
-    {ok, Pid} = get_index_fsm(),
-    ok = index_terms(Pid, Terms),
-    stop_index_fsm(Pid).
+    {ok, IndexPid} = get_index_fsm(),
+    try
+        ok = index_terms(IndexPid, Terms)
+    after
+        stop_index_fsm(IndexPid)
+    end.
 
 %% Index terms against an index FSM
-index_terms(Pid, Terms) ->
-    riak_search_index_fsm:index_terms(Pid, Terms).
+index_terms(IndexPid, Terms) ->
+    riak_search_index_fsm:index_terms(IndexPid, Terms).
 
 %% Get an index FSM
 get_index_fsm() ->
@@ -160,13 +163,16 @@ delete_term(Index, Field, Term, DocID) ->
 
 %% Create a delete FSM, send the terms and shut it down.
 delete_terms(Terms) ->
-    {ok, Pid} = get_delete_fsm(),
-    ok = delete_terms(Pid, Terms),
-    stop_delete_fsm(Pid).
+    {ok, DeletePid} = get_delete_fsm(),
+    try
+        ok = delete_terms(DeletePid, Terms)
+    after
+        stop_delete_fsm(DeletePid)
+    end.
     
 %% Delete terms against a delete FSM.
-delete_terms(Pid, Terms) ->
-    riak_search_delete_fsm:delete_terms(Pid, Terms).
+delete_terms(DeletePid, Terms) ->
+    riak_search_delete_fsm:delete_terms(DeletePid, Terms).
 
 %% Get a delete FSM
 get_delete_fsm() ->
@@ -178,7 +184,7 @@ stop_delete_fsm(Pid) ->
     riak_search_delete_fsm:done(Pid).
 
 %% Delete all of the indexed terms in the IdxDoc - does not remove the IdxDoc itself
-delete_doc_terms(IdxDoc, DeletePid) ->
+delete_doc_terms(DeletePid, IdxDoc) ->
     %% Build a list of terms to delete and send them over to the delete FSM
     I = riak_indexed_doc:index(IdxDoc),
     V = riak_indexed_doc:id(IdxDoc),
@@ -192,7 +198,7 @@ delete_doc_terms(IdxDoc, DeletePid) ->
 delete_doc_terms(IdxDoc) ->
     {ok, DeletePid} = get_delete_fsm(),
     try
-        delete_doc_terms(IdxDoc, DeletePid)
+        delete_doc_terms(DeletePid, IdxDoc)
     after
         stop_delete_fsm(DeletePid)
     end.    
@@ -201,13 +207,13 @@ delete_doc_terms(IdxDoc) ->
 delete_doc(IdxDoc) ->
     {ok, DeletePid} = get_delete_fsm(),
     try
-        delete_doc(IdxDoc, DeletePid)
+        delete_doc(DeletePid, IdxDoc)
     after
         stop_delete_fsm(DeletePid)
     end.
 
-delete_doc(IdxDoc, DeletePid) ->
-    delete_doc_terms(IdxDoc, DeletePid),
+delete_doc(DeletePid, IdxDoc) ->
+    delete_doc_terms(DeletePid, IdxDoc),
     riak_indexed_doc:delete(RiakClient, riak_indexed_doc:index(IdxDoc), 
                             riak_indexed_doc:id(IdxDoc)).
 
