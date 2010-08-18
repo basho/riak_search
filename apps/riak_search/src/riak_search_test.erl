@@ -182,10 +182,8 @@ test_inner({solr_update, Path}, Root) ->
 test_inner({index_bucket, Bucket}, _) ->
     ok = riak_search_kv_hook:install(Bucket),
     true;
-test_inner({putobj, Bucket, Key, CtValues}, _) ->
-    RObj0 = riak_object:new(Bucket, Key, <<"v">>),
-    Contents = [{dict:from_list([{?MD_CTYPE, CT}]), V} || {CT,V} <- CtValues],
-    RObj = riak_object:set_contents(RObj0, Contents),
+test_inner({putobj, Bucket, Key, Ct, Value}, _) ->
+    RObj = riak_object:new(Bucket, Key, Value, Ct),
     {ok,C} = riak:local_client(),
     ok = C:put(RObj),
     true;
