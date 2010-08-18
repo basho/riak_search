@@ -43,6 +43,10 @@ analyze(Pid, Text, AnalyzerFactory) when is_list(Text) ->
 analyze(Pid, Text, AnalyzerFactory) ->
     analyze(Pid, Text, AnalyzerFactory, undefined).
 
+
+analyze(_Pid, Text, {Mod, Fun, Options}, _AnalyzerArgs) ->
+    %% Mod:Fun/2 should return {ok, [Terms]}.
+    Mod:Fun(Text, Options);
 analyze(Pid, Text, AnalyzerFactory, AnalyzerArgs) ->
     try
         Req = #analysisrequest{text=Text, analyzer_factory=AnalyzerFactory, 
