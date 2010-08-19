@@ -9,6 +9,7 @@
              riak_solr_indexer_wm,
              riak_solr_searcher_wm,
              riak_solr_xml_xform,
+             riak_solr_xml,
              riak_solr_search_client,
              riak_solr_output,
              solr_search,
