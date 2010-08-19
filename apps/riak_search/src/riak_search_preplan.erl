@@ -265,13 +265,14 @@ visit([{Type, MaybeNodeList}|T], Callback, FollowSubTrees, Accum) when Type =:= 
             visit(T, Callback, FollowSubTrees, [H1|Accum])
     end;
 visit([H|T], Callback, FollowSubTrees, Accum) ->
-    H1 = Callback(H),
     case Callback(H) of
         skip ->
             visit(T, Callback, FollowSubTrees, Accum);
         H1 ->
             visit(T, Callback, FollowSubTrees, [H1|Accum])
-    end.
+    end;
+visit(AST, _, _, Accum) ->
+    throw({unexpected_ast, AST, Accum}).
 
 %% Misc. helper functions
 
