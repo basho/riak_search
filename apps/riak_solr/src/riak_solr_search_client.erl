@@ -120,16 +120,6 @@ run_solr_command(_Schema, Command, _Docs, _IndexPid, _DeletePid) ->
     error_logger:error_msg("Unknown solr command: ~p~n", [Command]),
     throw({unknown_solr_command, Command}).
 
-%% ensure_deleted(Index, DocID) ->
-%%     case riak_indexed_doc:get(RiakClient, Index, DocID) of
-%%         {error, notfound} -> 
-%%             ok;
-%%         _ ->
-%%             SearchClient:delete_doc(Index, DocID),
-%%             timer:sleep(10),
-%%             ensure_deleted(Index, DocID)
-%%     end.
-
 delete_doc(DeletePid, Index, DocId) ->
     case riak_indexed_doc:get(RiakClient, Index, DocId) of
         {error, notfound} ->
