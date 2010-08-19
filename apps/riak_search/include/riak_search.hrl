@@ -37,8 +37,7 @@
                        index="search",
                        fields=[],
                        props=[],
-                       facets=[],
-                       field_terms=[]}).
+                       facets=[]}).
 
 -record(riak_search_ref, {id,
                           termcount,

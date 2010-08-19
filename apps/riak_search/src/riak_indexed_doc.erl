@@ -13,7 +13,6 @@
     props/1, add_prop/3, set_props/2, clear_props/1, 
     postings/1,
     fold_terms/3,
-    to_json/1, from_json/1, 
     to_mochijson2/1, to_mochijson2/2,
     analyze/1, analyze/2,
     get_obj/3, get/3, put/2, delete/3
@@ -32,14 +31,14 @@ new(Id, Fields, Props, Index) ->
     {RegularFields, FacetFields} = normalize_fields(Fields, Schema),
     #riak_idx_doc{id=Id, fields=RegularFields, facets=FacetFields, props=Props, index=Index}.
 
-fields(#riak_idx_doc{fields=Fields, facets=Facets}) ->
-    Fields ++ Facets.
+fields(IdxDoc) ->
+    regular_fields(IdxDoc) ++ facets(IdxDoc).
 
 regular_fields(#riak_idx_doc{fields=Fields}) ->
-    Fields.
+    [{FieldName, FieldValue} || {FieldName, FieldValue, _} <- Fields].
 
 facets(#riak_idx_doc{facets=Facets}) ->
-    Facets.
+    [{FieldName, FieldValue} || {FieldName, FieldValue, _} <- Facets].
 
 index(#riak_idx_doc{index=Index}) ->
     Index.
@@ -59,76 +58,80 @@ set_props(Props, Doc) ->
 clear_props(Doc) ->
     Doc#riak_idx_doc{props=[]}.
 
-postings(Doc) ->
+postings(IdxDoc) ->
     %% Construct a list of index/field/term/docid/props from analyzer result.
     %% 
-    #riak_idx_doc{index = Index, id = Id, facets = Facets} = Doc,
+    #riak_idx_doc{index = Index, id = Id, facets = Facets} = IdxDoc,
     VisitTerms = fun(FieldName, Term, Pos, Acc) ->
                          Props = build_props(Pos, Facets),
                          [{Index, FieldName, Term, Id, Props} | Acc]
                  end,
-    fold_terms(VisitTerms, [], Doc).
+    fold_terms(VisitTerms, [], IdxDoc).
 
 %% Fold over each of the field/terms calling the folder function with
 %% Fun(FieldName, Term, Pos, TermsAcc)
-fold_terms(Fun, Acc0, Doc) ->
+fold_terms(Fun, Acc0, IdxDoc) ->
     VisitFields = 
-        fun({FieldName, TermPos}, FieldsAcc) ->
+        fun({FieldName, _, TermPos}, FieldsAcc) ->
                 VisitTerms = 
                     fun({Term, Pos}, TermsAcc) ->
                             Fun(FieldName, Term, Pos, TermsAcc)
                     end,
                 lists:foldl(VisitTerms, FieldsAcc, TermPos)
         end,
-    lists:foldl(VisitFields, Acc0, Doc#riak_idx_doc.field_terms).
+    lists:foldl(VisitFields, Acc0, IdxDoc#riak_idx_doc.fields).
      
      
-
-to_json(Doc) ->
-    mochijson2:encode(to_mochijson2(Doc)).
+%% Currently unused?
+%% to_json(Doc) ->
+%%     mochijson2:encode(to_mochijson2(Doc)).
 
 to_mochijson2(Doc) ->
     F = fun({_Name, Value}) -> Value end,
     to_mochijson2(F, Doc).
 
-to_mochijson2(XForm, #riak_idx_doc{id=Id, index=Index, fields=Fields, props=Props}) ->
+to_mochijson2(XForm, #riak_idx_doc{id=Id, index=Index, fields=Fields, facets=Facets, props=Props}) ->
     {struct, [{id, riak_search_utils:to_binary(Id)},
               {index, riak_search_utils:to_binary(Index)},
               {fields, {struct, [{riak_search_utils:to_binary(Name),
-                                  XForm({Name, Value})} || {Name, Value} <- lists:keysort(1, Fields)]}},
+                                  XForm({Name, Value})} || {Name, Value, _} <- lists:keysort(1, Fields ++ Facets)]}},
               {props, {struct, [{riak_search_utils:to_binary(Name),
                                  riak_search_utils:to_binary(Value)} || {Name, Value} <- Props]}}]}.
 
-from_json(Json) ->
-    case mochijson2:decode(Json) of
-        {struct, Data} ->
-            Id = proplists:get_value(<<"id">>, Data),
-            Index = proplists:get_value(<<"index">>, Data),
-            build_doc(Id, Index, Data);
-        {error, _} = Error ->
-            Error;
-        _NonsenseJson ->
-            {error, bad_json_format}
-    end.
+%% Currently Unused?
+%% from_json(Json) ->
+%%     case mochijson2:decode(Json) of
+%%         {struct, Data} ->
+%%             Id = proplists:get_value(<<"id">>, Data),
+%%             Index = proplists:get_value(<<"index">>, Data),
+%%             build_doc(Id, Index, Data);
+%%         {error, _} = Error ->
+%%             Error;
+%%         _NonsenseJson ->
+%%             {error, bad_json_format}
+%%     end.
 
-%% @private
-build_doc(Id, Index, _Data) when Id =:= undefined orelse
-                                 Index =:= undefined ->
-    {error, missing_id_or_index};
-build_doc(Id, Index, Data) ->
-    #riak_idx_doc{id=riak_search_utils:from_binary(Id), index=binary_to_list(Index),
-                  fields=read_json_fields(<<"fields">>, Data),
-                  props=read_json_fields(<<"props">>, Data)}.
-
-%% @private
-read_json_fields(Key, Data) ->
-    case proplists:get_value(Key, Data) of
-        {struct, Fields} ->
-            [{riak_search_utils:from_binary(Name),
-              riak_search_utils:from_binary(Value)} || {Name, Value} <- Fields];
-        _ ->
-            []
-    end.
+%% %% @private
+%% build_doc(Id, Index, _Data) when Id =:= undefined orelse
+%%                                  Index =:= undefined ->
+%%     {error, missing_id_or_index};
+%% build_doc(Id, Index, Data) ->
+%%     Fields = [{Name, Value, []} || {Name, Value} <- read_json_fields(<<"fields">>, Data)),
+%%     Props = read_json_fields(<<"props">>, Data),
+%%     #riak_idx_doc{id=riak_search_utils:from_binary(Id), 
+%%                   index=binary_to_list(Index),
+%%                   fields=Fields,
+%%                   props=Props}.
+        
+%% %% @private
+%% read_json_fields(Key, Data) ->
+%%     case proplists:get_value(Key, Data) of
+%%         {struct, Fields} ->
+%%             [{riak_search_utils:from_binary(Name),
+%%               riak_search_utils:from_binary(Value)} || {Name, Value} <- Fields];
+%%         _ ->
+%%             []
+%%     end.
 
 %% Parse a #riak_idx_doc{} record.
 %% Return {ok, [{Index, FieldName, Term, DocID, Props}]}.
@@ -145,34 +148,39 @@ analyze(IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
 %% Return {ok, [{Index, FieldName, Term, DocID, Props}]}.
 analyze(IdxDoc, AnalyzerPid) when is_record(IdxDoc, riak_idx_doc) ->
     %% Extract fields, get schema...
-    #riak_idx_doc{index=Index, fields=Fields}=IdxDoc,
+    #riak_idx_doc{index=Index, fields=Fields, facets=Facets}=IdxDoc,
     {ok, Schema} = riak_search_config:get_schema(Index),
     
-    %% For each Field = {FieldName, FieldValue}, split the FieldValue
+    %% For each Field = {FieldName, FieldValue, _}, split the FieldValue
     %% into terms and build a list of positions for those terms.
-    F2 = fun({FieldName, FieldValue}, Acc2) ->
-                 {ok, Terms} = analyze_field(FieldName, FieldValue, Schema, AnalyzerPid),
-                 [{FieldName, get_term_positions(Terms)} | Acc2]
-         end,
-    FieldTerms = lists:foldl(F2, [], Fields),
-    {ok, IdxDoc#riak_idx_doc{field_terms = FieldTerms}}.
+    F = fun({FieldName, FieldValue, _}, Acc2) ->
+                {ok, Terms} = analyze_field(FieldName, FieldValue, Schema, AnalyzerPid),
+                [{FieldName, FieldValue, get_term_positions(Terms)} | Acc2]
+        end,
+    NewFields = lists:foldl(F, [], Fields),
+    NewFacets = lists:foldl(F, [], Facets),
+
+    %% For each Facet = {FieldName, FieldValue, _}, split the FieldValue
+    %% into terms and build a list of positions for those terms.
+    {ok, IdxDoc#riak_idx_doc{ fields=NewFields, facets=NewFacets }}.
 
 %% Normalize the list of input fields against the schema
 %% - drop any skip fields
 %% - replace any aliased fields with the correct name
 %% - combine duplicate field names into a single field (separate by spaces)
-%% - split out into regular and facets fields
 normalize_fields(DocFields, Schema) ->
-    %% Split up the fields into regular fields and facet fields,
-    %% dropping any skipped fields.
-    Fun = fun({InFieldName, FieldValue}, {Regular, Facets}=Acc) ->
+    Fun = fun({InFieldName, FieldValue}, {Regular, Facets}) ->
                   FieldDef = Schema:find_field(InFieldName),
                   case Schema:is_skip(FieldDef) of
                       true ->
-                          Acc;
+                          {Regular, Facets};
                       false ->
-                          Field = {normalize_field_name(InFieldName, FieldDef, Schema), 
-                                   to_binary(FieldValue)},
+                          %% Create the field. Use an empty list
+                          %% placeholder for term positions. This gets
+                          %% filled when we analyze the document.
+                          NormFieldName = normalize_field_name(InFieldName, FieldDef, Schema),
+                          NormFieldValue = to_binary(FieldValue),
+                          Field = {NormFieldName, NormFieldValue, []},
                           case Schema:is_field_facet(FieldDef) of
                               true ->
                                   {Regular, [Field | Facets]};
@@ -211,8 +219,9 @@ merge_fields(DocFields) ->
 
 %% @private
 %% Merge field data with previous if the names match.  Input must be sorted.
-merge_fields_folder({FieldName, NewFieldData}, [{FieldName, FieldData} | Fields]) ->
-    [{FieldName, <<FieldData/binary, " ", NewFieldData/binary>>} | Fields];
+merge_fields_folder({FieldName, NewFieldData, NewTermPos}, [{FieldName, FieldData, TermPos} | Fields]) ->
+    Field = {FieldName, <<FieldData/binary, " ", NewFieldData/binary>>, TermPos ++ NewTermPos},
+    [Field | Fields];
 merge_fields_folder(New, Fields) ->
     [New | Fields].
       
