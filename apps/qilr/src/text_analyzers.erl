@@ -35,6 +35,8 @@ standard_tokenizer(<<_,T/binary>>, Options, Acc) ->
 
 %% Greater than 3 characters.
 %% Tokens is a list of strings.
+length_filter(Tokens, [MinLength]) ->
+    [X || X <- Tokens, length(X) >= MinLength];
 length_filter(Tokens, _Options) ->
     [X || X <- Tokens, length(X) >= 3].
 
