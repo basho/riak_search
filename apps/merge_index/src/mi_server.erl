@@ -229,7 +229,7 @@ handle_call({start_compaction, CallingPid}, _From, State) ->
         %% Create the group iterator...
         process_flag(priority, high),
         SegmentIterators = [mi_segment:iterator(X) || X <- SegmentsToCompact],
-        GroupIterator = build_group_iterator(SegmentIterators),
+        GroupIterator = build_iterator_tree(SegmentIterators),
 
         %% Create the new compaction segment...
         <<MD5:128/integer>> = erlang:md5(term_to_binary({now, make_ref()})),
@@ -402,7 +402,7 @@ handle_call({fold, FoldFun, Acc}, _From, State) ->
     %% Assemble the group iterator...
     BufferIterators = [mi_buffer:iterator(X) || X <- Buffers],
     SegmentIterators = [mi_segment:iterator(X) || X <- Segments],
-    GroupIterator = build_group_iterator(BufferIterators ++ SegmentIterators),
+    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators),
 
     %% Fold over everything...
     %% SLF TODO: If filter fun or other crashes, server crashes.
@@ -450,7 +450,7 @@ stream(IFT, F, Buffers, Segments) ->
     %% Put together the group iterator...
     BufferIterators = [mi_buffer:iterator(IFT, IFT, X) || X <- Buffers],
     SegmentIterators = [mi_segment:iterator(IFT, IFT, X) || X <- Segments],
-    GroupIterator = build_group_iterator(BufferIterators ++ SegmentIterators),
+    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators),
 
     %% Start streaming...
     stream_inner(F, undefined, undefined, GroupIterator()),
@@ -468,11 +468,19 @@ stream_inner(F, LastIFT, LastValue, {{IFT, Value, Props, TS}, Iter}) ->
 stream_inner(_, _, _, eof) -> ok.
 
 %% Chain a list of iterators into what looks like one single iterator.
-build_group_iterator([Iterator|Iterators]) ->
-    GroupIterator = build_group_iterator(Iterators),
-    fun() -> group_iterator(Iterator(), GroupIterator()) end;
-build_group_iterator([]) ->
-    fun() -> eof end.
+build_iterator_tree(Iterators) ->
+    case build_iterator_tree_inner(Iterators) of
+        [OneIterator] -> OneIterator;
+        ManyIterators -> build_iterator_tree(ManyIterators)
+    end.
+build_iterator_tree_inner([]) ->
+    [];
+build_iterator_tree_inner([Iterator]) ->
+    [Iterator];
+build_iterator_tree_inner([IteratorA,IteratorB|Rest]) ->
+    Iterator = fun() -> group_iterator(IteratorA(), IteratorB()) end,
+    [Iterator|build_iterator_tree_inner(Rest)].
+
 group_iterator(I1 = {Term1, Iterator1}, I2 = {Term2, Iterator2}) ->
     case compare_fun(Term1, Term2) of
         true ->
