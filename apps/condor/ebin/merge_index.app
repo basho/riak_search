@@ -5,7 +5,7 @@
               {mod,{mi_app,[]}},
               {env,[{data_root,"data/merge_index"},
                     {max_compact_segments,100},
-                    {segment_read_options,[{read_ahead,5242880}]},
+                    {segment_read_options,[{read_ahead,65536}]},
                     {segment_write_options,[{delayed_write,5242880,5000}]},
                     {buffer_write_options,[{delayed_write,1048576,2000}]},
                     {buffer_rollover_size,1048576}]},
