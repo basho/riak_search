@@ -123,7 +123,8 @@ xml_indent(Size, EmitNewLine) ->
 
 render_xml_doc(Schema, Doc) ->
     Fields0 = lists:keysort(1, riak_indexed_doc:fields(Doc)),
-    Fields = [{"id", riak_indexed_doc:id(Doc)}|Fields0],
+    UniqueKey = Schema:unique_key(),
+    Fields = [{UniqueKey, riak_indexed_doc:id(Doc)}|Fields0],
     [xml_nl(),
      xml_indent(4), {doc, [],
                      render_xml_fields(Schema, Fields, []) ++
@@ -153,9 +154,6 @@ render_xml_params(NumFound, Schema, SQuery) ->
 
 render_xml_fields(_Schema, [], Accum) ->
     lists:flatten(lists:reverse(Accum));
-render_xml_fields(Schema, [{"id", Value}|T], Accum) ->
-    render_xml_fields(Schema, T, [[xml_nl(),
-                                  xml_indent(6), {str, [{name, "id"}], [#xmlText{value=Value}]}]|Accum]);
 render_xml_fields(Schema, [{Name, Value}|T], Accum) ->
     Field = Schema:find_field(Name),
     Tag = case Schema:field_type(Field) of
