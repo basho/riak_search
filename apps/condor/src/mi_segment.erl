@@ -45,8 +45,10 @@
 
 -record(writer, { data_file,
                   offsets_table,
-                  offset = 0,
+                  start_pos = 0,
                   pos = 0,
+                  last_offset = 0,
+                  offsets = [],
                   count = 0,
                   last_index,
                   last_field,
@@ -137,11 +139,14 @@ from_iterator_inner(W, {{Index, Field, Term, Value, Props, TS}, Iterator})
     %% file. The offsets entry contains entries less than (but not
     %% equal to) the Key.
     Key = {Index, Field, Term},
-    case (W#writer.pos - W#writer.offset > ?BLOCK_SIZE) of
+    case (W#writer.pos - W#writer.start_pos > ?BLOCK_SIZE) of
         true ->
-            ets:insert(W#writer.offsets_table, {Key, W#writer.offset, W#writer.bloom}),
+            Offsets = tl(lists:reverse(W#writer.offsets)),
+            ets:insert(W#writer.offsets_table, {Key, W#writer.start_pos, Offsets, W#writer.bloom}),
             W1 = W#writer { count = 1,
-                            offset = W#writer.pos,
+                            start_pos = W#writer.pos,
+                            last_offset = W#writer.pos,
+                            offsets = [],
                             bloom=mi_bloom:bloom(?BLOOM_CAPACITY, ?BLOOM_ERROR)};
         false ->
             W1 = W
@@ -150,7 +155,9 @@ from_iterator_inner(W, {{Index, Field, Term, Value, Props, TS}, Iterator})
     %% Start a new keyspace...
     BytesWritten1 = write_key(W#writer.data_file, Index, Field, Term),
     BytesWritten2 = write_seg_value(W#writer.data_file, Value, Props, TS),
-    W2 = W1#writer { pos = W#writer.pos + BytesWritten1 + BytesWritten2,
+    W2 = W1#writer { last_offset = W1#writer.pos + BytesWritten1,
+                     offsets = [(W1#writer.pos-W1#writer.last_offset)|W1#writer.offsets],
+                     pos = W1#writer.pos + BytesWritten1 + BytesWritten2,
                      last_index = Index,
                      last_field = Field,
                      last_term = Term,
@@ -179,9 +186,9 @@ from_iterator_inner(#writer { pos = 0, count=0, last_index = undefined, last_fie
 
 from_iterator_inner(W, eof) ->
     Key = {W#writer.last_index, W#writer.last_field, W#writer.last_term},
-    ets:insert(W#writer.offsets_table, {Key, W#writer.pos, W#writer.bloom}),
-    W#writer { count = 0,
-               offset = W#writer.pos}.
+    Offsets = tl(lists:reverse(W#writer.offsets)),
+    ets:insert(W#writer.offsets_table, {Key, W#writer.pos, Offsets, W#writer.bloom}),
+    W#writer { count=0 }.
 
 %% return the number of results under this IFT.
 %% TODO - Fix this.
@@ -191,7 +198,7 @@ info(Index, Field, Term, Segment) ->
         '$end_of_table' -> 
             0;
         OffsetKey ->
-            [{_, _, Bloom}] = ets:lookup(Segment#segment.offsets_table, OffsetKey),
+            [{_, _, _, Bloom}] = ets:lookup(Segment#segment.offsets_table, OffsetKey),
             case mi_bloom:is_element(Key, Bloom) of
                 true  -> 1;
                 false -> 0
@@ -231,13 +238,13 @@ iterator(Index, Field, Term, Segment) ->
         '$end_of_table' -> 
             fun() -> eof end;
         OffsetKey ->
-            [{_, Offset, Bloom}] = ets:lookup(Segment#segment.offsets_table, OffsetKey),
+            [{_, StartPos, Offsets, Bloom}] = ets:lookup(Segment#segment.offsets_table, OffsetKey),
             case mi_bloom:is_element(Key, Bloom) of
                 true ->
                     {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
                     {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
-                    file:position(FH, Offset),
-                    fun() -> iterate_term(FH, Key) end;
+                    file:position(FH, StartPos),
+                    fun() -> iterate_term(FH, Offsets, Key) end;
                 false ->
                     fun() -> eof end
             end
@@ -245,14 +252,27 @@ iterator(Index, Field, Term, Segment) ->
 
 %% Iterate over the segment file until we find the start of the values
 %% section we want.
-iterate_term(File, Key) ->
+iterate_term(File, [], Key) ->
     case read_seg_value(File) of
         {key, CurrKey} when CurrKey < Key ->
-            iterate_term(File, Key);
+            iterate_term(File, [], Key);
         {key, CurrKey} when CurrKey == Key ->
             iterate_term_values(File, Key);
         {value, _} ->
-            iterate_term(File, Key);
+            throw({iterate_term, offset_fail});
+        _ ->
+            file:close(File),
+            eof
+    end;
+iterate_term(File, [Offset|Offsets], Key) ->
+    case read_seg_value(File) of
+        {key, CurrKey} when CurrKey < Key ->
+            file:read(File, Offset),
+            iterate_term(File, Offsets, Key);
+        {key, CurrKey} when CurrKey == Key ->
+            iterate_term_values(File, Key);
+        {value, _} ->
+            throw({iterate_term, offset_fail});
         _ ->
             file:close(File),
             eof
