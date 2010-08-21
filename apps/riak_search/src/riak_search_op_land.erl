@@ -11,6 +11,7 @@
          chain_op/5
         ]).
 -include("riak_search.hrl").
+-define(RESULTVEC_SIZE, 1000).
 -define(INDEX_DOCID(Term), ({element(1, Term), element(2, Term)})).
 
 preplan_op(Op, F) ->
@@ -28,33 +29,32 @@ chain_op(Op, OutputPid, OutputRef, QueryProps, Type) ->
 
     %% Spawn up pid to gather and send results...
     TermFilter = proplists:get_value(term_filter, QueryProps),
-    F = fun() -> gather_results(OutputPid, OutputRef, TermFilter, Iterator()) end,
+    F = fun() -> gather_results(OutputPid, OutputRef, TermFilter, Iterator(), []) end,
     spawn_link(F),
 
     %% Return.
     {ok, 1}.
 
-gather_results(OutputPid, OutputRef, TermFilter, {Term, Op, Iterator}) ->
+gather_results(OutputPid, OutputRef, TermFilter, {Term, Op, Iterator}, Acc)
+  when length(Acc) > ?RESULTVEC_SIZE ->
+    OutputPid ! {results, Acc, OutputRef},
+    gather_results(OutputPid, OutputRef, TermFilter, {Term, Op, Iterator}, []);
+gather_results(OutputPid, OutputRef, TermFilter, {Term, Op, Iterator}, Acc) ->
     NotFlag = (is_tuple(Op) andalso is_record(Op, lnot)) orelse Op == true,
     case NotFlag of
         true  ->
             skip;
         false ->
-            case TermFilter of
-                undefined ->
-                    OutputPid ! {results, [Term], OutputRef};
-                _ ->
-                    case TermFilter(Term) of
-                        true ->
-                            OutputPid ! {results, [Term], OutputRef};
-                        false ->
-                            skip
-                    end
+            case (TermFilter == undefined) orelse (TermFilter(Term) == true) of
+                true ->
+                    gather_results(OutputPid, OutputRef, TermFilter, Iterator(), [Term|Acc]);
+                false ->
+                    gather_results(OutputPid, OutputRef, TermFilter, Iterator(), Acc)
             end
-    end,
-    gather_results(OutputPid, OutputRef, TermFilter, Iterator());
-gather_results(OutputPid, OutputRef, _FilterFun, {eof, _}) ->
-    OutputPid!{disconnect, OutputRef}.
+    end;
+gather_results(OutputPid, OutputRef, _FilterFun, {eof, _}, Acc) ->
+    OutputPid ! {results, Acc, OutputRef},
+    OutputPid ! {disconnect, OutputRef}.
 
 
 %% Now, treat the operation as a comparison between two terms. Return

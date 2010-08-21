@@ -10,6 +10,7 @@
          chain_op/4
         ]).
 -include("riak_search.hrl").
+-define(RESULTVEC_SIZE, 1000).
 -define(INDEX_DOCID(Term), ({element(1, Term), element(2, Term)})).
 
 preplan_op(Op, F) ->
@@ -23,34 +24,41 @@ chain_op(Op, OutputPid, OutputRef, QueryProps) ->
 
     %% Spawn up pid to gather and send results...
     Proximity = Op#proximity.proximity,
-    F = fun() -> gather_results(Proximity, OutputPid, OutputRef, Iterator()) end,
+    F = fun() -> gather_results(Proximity, OutputPid, OutputRef, Iterator(), []) end,
     spawn_link(F),
 
     %% Return.
     {ok, 1}.
 
 
+%% Possibly send off a batch of results.
+gather_results(Proximity, OutputPid, OutputRef, {Term, Positions, Iterator}, Acc)
+  when length(Acc) > ?RESULTVEC_SIZE ->
+    OutputPid ! {results, Acc, OutputRef},
+    gather_results(Proximity, OutputPid, OutputRef, {Term, Positions, Iterator}, []);
+
 %% If we are here, there was only one proximity term, so just send it
 %% through.
-gather_results(Proximity, OutputPid, OutputRef, {Term, Op, Iterator}) when is_record(Op, term) ->
-    OutputPid!{results, [Term], OutputRef},
-    gather_results(Proximity, OutputPid, OutputRef, Iterator());
+gather_results(Proximity, OutputPid, OutputRef, {Term, Op, Iterator}, Acc) 
+  when is_record(Op, term) ->
+    gather_results(Proximity, OutputPid, OutputRef, Iterator(), [Term|Acc]);
 
 %% Positions holds a list of term positions for this value. Check to
 %% see if there is any combination where all the terms are within
 %% Proximity words from eachother.
-gather_results(Proximity, OutputPid, OutputRef, {Term, Positions, Iterator}) when is_list(Positions) ->
+gather_results(Proximity, OutputPid, OutputRef, {Term, Positions, Iterator}, Acc) 
+  when is_list(Positions) ->
     case within_proximity(Proximity, Positions) of
         true ->
-            OutputPid!{results, [Term], OutputRef};
+            gather_results(Proximity, OutputPid, OutputRef, {Term, Positions, Iterator}, [Term|Acc]);
         false ->
-            skip
-    end,
-    gather_results(Proximity, OutputPid, OutputRef, Iterator());
+            gather_results(Proximity, OutputPid, OutputRef, {Term, Positions, Iterator}, Acc)
+    end;
 
 %% Nothing more to send...
-gather_results(_, OutputPid, OutputRef, {eof, _}) ->
-    OutputPid!{disconnect, OutputRef}.
+gather_results(_, OutputPid, OutputRef, {eof, _}, Acc) ->
+    OutputPid ! {results, Acc, OutputRef},
+    OutputPid ! {disconnect, OutputRef}.
 
 %% Return true if all of the terms exist within Proximity words from
 %% eachother.

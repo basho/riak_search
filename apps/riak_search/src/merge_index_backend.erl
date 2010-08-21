@@ -99,6 +99,9 @@ stream_loop(Ref, Sender) ->
         {result, {DocID, Props}, Ref} ->
             riak_search_backend:stream_response_results(Sender, [{DocID, Props}]),
             stream_loop(Ref, Sender);
+        {result_vec, ResultVec, Ref} ->
+            riak_search_backend:stream_response_results(Sender, ResultVec),
+            stream_loop(Ref, Sender);
         {result, '$end_of_table', Ref} ->
             riak_search_backend:stream_response_done(Sender);
         Other ->
