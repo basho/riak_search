@@ -28,6 +28,9 @@
 
 -include("merge_index.hrl").
 -include_lib("kernel/include/file.hrl").
+-define(BLOCK_SIZE, 65536).
+-define(BLOOM_CAPACITY, 512).
+-define(BLOOM_ERROR, 0.01).
 
 -ifdef(TEST).
 -ifdef(EQC).
@@ -48,7 +51,8 @@
                   last_index,
                   last_field,
                   last_term,
-                  last_value }).
+                  last_value,
+                  bloom}).
 
 
 exists(Root) ->
@@ -112,7 +116,8 @@ from_iterator(Iterator, Segment) ->
 
     %% Open the offset table...
     W = #writer { data_file = DataFile,
-                  offsets_table = Segment#segment.offsets_table },
+                  offsets_table = Segment#segment.offsets_table,
+                  bloom = mi_bloom:bloom(?BLOOM_CAPACITY, ?BLOOM_ERROR)},
     try
         Wfinal = from_iterator_inner(W, Iterator()),
         mi_write_cache:flush(Wfinal#writer.data_file),
@@ -125,19 +130,19 @@ from_iterator(Iterator, Segment) ->
     Segment.
 
 
--define(BLOCKSIZE, 32000).
 
 from_iterator_inner(W, {{Index, Field, Term, Value, Props, TS}, Iterator})
   when (W#writer.last_term /= Term) orelse (W#writer.last_field /= Field) orelse (W#writer.last_index /= Index) ->
     %% If we've exceeded the block size, write an entry to the offsets
     %% file. The offsets entry contains entries less than (but not
     %% equal to) the Key.
-    case (W#writer.pos - W#writer.offset > ?BLOCKSIZE) of
+    Key = {Index, Field, Term},
+    case (W#writer.pos - W#writer.offset > ?BLOCK_SIZE) of
         true ->
-            Key = {Index, Field, Term},
-            ets:insert(W#writer.offsets_table, {Key, W#writer.offset}),
+            ets:insert(W#writer.offsets_table, {Key, W#writer.offset, W#writer.bloom}),
             W1 = W#writer { count = 1,
-                            offset = W#writer.pos};
+                            offset = W#writer.pos,
+                            bloom=mi_bloom:bloom(?BLOOM_CAPACITY, ?BLOOM_ERROR)};
         false ->
             W1 = W
     end,
@@ -149,7 +154,8 @@ from_iterator_inner(W, {{Index, Field, Term, Value, Props, TS}, Iterator})
                      last_index = Index,
                      last_field = Field,
                      last_term = Term,
-                     last_value = Value},
+                     last_value = Value,
+                     bloom = mi_bloom:add_element(Key, W1#writer.bloom)},
     IteratorResult = Iterator(),
     from_iterator_inner(W2, IteratorResult);
 
@@ -159,7 +165,7 @@ from_iterator_inner(W, {{Index, Field, Term, Value, Props, TS}, Iterator})
     BytesWritten = write_seg_value(W#writer.data_file, Value, Props, TS),
     W1 = W#writer { pos = W#writer.pos + BytesWritten,
                     count = W#writer.count + 1,
-                    last_value = Value },
+                    last_value = Value},
     from_iterator_inner(W1, Iterator());
 
 from_iterator_inner(W, {{Index, Field, Term, Value, _Props, _TS}, Iterator})
@@ -173,14 +179,24 @@ from_iterator_inner(#writer { pos = 0, count=0, last_index = undefined, last_fie
 
 from_iterator_inner(W, eof) ->
     Key = {W#writer.last_index, W#writer.last_field, W#writer.last_term},
-    ets:insert(W#writer.offsets_table, {Key, W#writer.pos}),
-    W#writer { count = 1,
+    ets:insert(W#writer.offsets_table, {Key, W#writer.pos, W#writer.bloom}),
+    W#writer { count = 0,
                offset = W#writer.pos}.
 
 %% return the number of results under this IFT.
 %% TODO - Fix this.
-info(_Index, _Field, _Term, _Segment) ->
-    1.
+info(Index, Field, Term, Segment) ->
+    Key = {Index, Field, Term},
+    case ets:next(Segment#segment.offsets_table, Key) of
+        '$end_of_table' -> 
+            0;
+        OffsetKey ->
+            [{_, _, Bloom}] = ets:lookup(Segment#segment.offsets_table, OffsetKey),
+            case mi_bloom:is_element(Key, Bloom) of
+                true  -> 1;
+                false -> 0
+            end
+    end.
 
 %% %% Return the number of results for IFTs between the StartIFT and
 %% %% StopIFT, inclusive.
@@ -215,36 +231,39 @@ iterator(Index, Field, Term, Segment) ->
         '$end_of_table' -> 
             fun() -> eof end;
         OffsetKey ->
-            [{_, Offset}] = ets:lookup(Segment#segment.offsets_table, OffsetKey),
-            {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
-            {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
-            file:position(FH, Offset),
-            fun() -> 
-                    iterate_segment(FH, Key)
+            [{_, Offset, Bloom}] = ets:lookup(Segment#segment.offsets_table, OffsetKey),
+            case mi_bloom:is_element(Key, Bloom) of
+                true ->
+                    {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
+                    {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
+                    file:position(FH, Offset),
+                    fun() -> iterate_term(FH, Key) end;
+                false ->
+                    fun() -> eof end
             end
     end.
 
 %% Iterate over the segment file until we find the start of the values
 %% section we want.
-iterate_segment(File, Key) ->
+iterate_term(File, Key) ->
     case read_seg_value(File) of
         {key, CurrKey} when CurrKey < Key ->
-            iterate_segment(File, Key);
+            iterate_term(File, Key);
         {key, CurrKey} when CurrKey == Key ->
-            iterate_segment_values(File, Key);
+            iterate_term_values(File, Key);
         {value, _} ->
-            iterate_segment(File, Key);
+            iterate_term(File, Key);
         _ ->
             file:close(File),
             eof
     end.
 
-iterate_segment_values(File, Key) ->
+iterate_term_values(File, Key) ->
     case read_seg_value(File) of
         {value, {Value, Props, Ts}} ->
             {Index, Field, Term} = Key,
             {{Index, Field, Term, Value, Props, Ts},
-             fun() -> iterate_segment_values(File, Key) end};
+             fun() -> iterate_term_values(File, Key) end};
         _ ->
             file:close(File),
             eof
