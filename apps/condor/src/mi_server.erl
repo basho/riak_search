@@ -32,6 +32,8 @@
     is_compacting
 }).
 
+-define(RESULTVEC_SIZE, 1000).
+
 init([Root]) ->
     %% Load from disk...
     filelib:ensure_dir(join(Root, "ignore")),
@@ -330,12 +332,15 @@ handle_call({stream, Index, Field, Term, Pid, Ref, FilterFun}, _From, State) ->
     %%           also crashes.
     Self = self(),
     spawn_link(fun() ->
-                       F = fun(_Index, _Field, _Term, Value, Props, _TS) ->
-                                   case FilterFun(Value, Props) of
-                                       true ->
-                                           Pid ! {result, {Value, Props}, Ref};
-                                       _ ->
-                                           skip
+                       F = fun(Results) ->
+                                   WrappedFilter = fun({Value, Props}) -> 
+                                                           FilterFun(Value, Props) == true
+                                                   end,
+                                   case lists:filter(WrappedFilter, Results) of
+                                       [] -> 
+                                           skip;
+                                       FilteredResults ->
+                                           Pid ! {result_vec, FilteredResults, Ref}
                                    end
                            end,
                        stream(Index, Field, Term, F, Buffers, Segments),
@@ -386,8 +391,9 @@ handle_call({fold, FoldFun, Acc}, _From, State) ->
     {reply, {ok, NewAcc}, State};
     
 handle_call(is_empty, _From, State) ->
-    IsEmpty = mi_ift_server:term_count() == 0,
-    {reply, IsEmpty, State};
+    %% TODO - Address this. Check the current buffer and the offset
+    %% files.
+    {reply, false, State};
 
 handle_call(drop, _From, State) ->
     #state { buffers=Buffers, segments=Segments } = State,
@@ -427,20 +433,25 @@ stream(Index, Field, Term, F, Buffers, Segments) ->
     GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators),
 
     %% Start streaming...
-    stream_inner(F, undefined, undefined, undefined, undefined, GroupIterator()),
+    stream_inner(F, undefined, undefined, undefined, undefined, GroupIterator(), []),
     ok.
-stream_inner(F, LastIndex, LastField, LastTerm, LastValue, {{Index, Field, Term, Value, Props, TS}, Iter}) ->
+stream_inner(F, LastIndex, LastField, LastTerm, LastValue, Iterator, Acc) 
+  when length(Acc) > ?RESULTVEC_SIZE ->
+    F(Acc),
+    stream_inner(F, LastIndex, LastField, LastTerm, LastValue, Iterator, []);
+stream_inner(F, LastIndex, LastField, LastTerm, LastValue, {{Index, Field, Term, Value, Props, _TS}, Iter}, Acc) ->
     %% Check in reverse order, more efficient.
     IsDuplicate = (LastValue == Value) andalso (LastTerm == Term) andalso (LastField == Field) andalso (LastIndex == Index),
     IsDeleted = (Props == undefined),
     case (not IsDuplicate) andalso (not IsDeleted) of
         true  -> 
-            F(Index, Field, Term, Value, Props, TS);
+            stream_inner(F, Index, Field, Term, Value, Iter(), [{Value, Props}|Acc]);
         false -> 
-            skip
-    end,
-    stream_inner(F, Index, Field, Term, Value, Iter());
-stream_inner(_, _, _, _, _, eof) -> ok.
+            stream_inner(F, Index, Field, Term, Value, Iter(), Acc)
+    end;
+stream_inner(F, _, _, _, _, eof, Acc) -> 
+    F(Acc),
+    ok.
 
 %% Chain a list of iterators into what looks like one single iterator.
 build_iterator_tree(Iterators) ->
