@@ -7,7 +7,7 @@
 -module(riak_search_utils).
 
 -export([
-    iterator_chain/3,
+    iterator_tree/3,
     combine_terms/2,
     parse_datetime/1,
     to_atom/1,
@@ -33,20 +33,35 @@
 %% Props, IteratorFun}). The SelectFun is responsible for choosing
 %% which value is next in the series, and returning {Index, Value, Props,
 %% NewIteratorFun}.
-iterator_chain(_, [Op], QueryProps) ->
-    iterator_chain_op(Op, QueryProps);
-iterator_chain(SelectFun, [Op|OpList], QueryProps) ->
-    OpIterator = iterator_chain_op(Op, QueryProps),
-    GroupIterator = iterator_chain(SelectFun, OpList, QueryProps),
-    fun() -> SelectFun(OpIterator(), GroupIterator()) end;
-iterator_chain(_, [], _) ->
-    fun() -> {eof, false} end.
+iterator_tree(SelectFun, OpList, QueryProps) ->
+    %% Turn all operations into iterators and then combine into a tree.
+    Iterators = [iterator_tree_op(X, QueryProps) || X <- OpList],
+    iterator_tree_combine(SelectFun, Iterators).
 
+%% @private Given a list of iterators, combine into a tree. Works by
+%% walking through the list pairing two iterators together (which
+%% combines a level of iterators) and then calling itself recursively
+%% until there is only one iterator left.
+iterator_tree_combine(SelectFun, Iterators) ->
+    case iterator_tree_combine_inner(SelectFun, Iterators) of
+        [OneIterator] -> 
+            OneIterator;
+        ManyIterators -> 
+            iterator_tree_combine(SelectFun, ManyIterators)
+    end.
+iterator_tree_combine_inner(_SelectFun, []) ->
+    [];
+iterator_tree_combine_inner(_SelectFun, [Iterator]) ->
+    [Iterator];
+iterator_tree_combine_inner(SelectFun, [IteratorA,IteratorB|Rest]) ->
+    Iterator = fun() -> SelectFun(IteratorA(), IteratorB()) end,
+    [Iterator|iterator_tree_combine_inner(SelectFun, Rest)].
+    
 %% Chain an operator, and build an iterator function around it. The
 %% iterator will return {Result, NotFlag, NewIteratorFun} each time it is called, or block
 %% until one is available. When there are no more results, it will
 %% return {eof, NotFlag}.
-iterator_chain_op(Op, QueryProps) ->
+iterator_tree_op(Op, QueryProps) ->
     %% Spawn a collection process...
     Ref = make_ref(),
     Pid = spawn_link(fun() -> collector_loop(Ref, []) end),
@@ -56,18 +71,18 @@ iterator_chain_op(Op, QueryProps) ->
 
     %% Return an iterator function. Returns
     %% a new result.
-    fun() -> iterator_chain_inner(Pid, make_ref(), Op) end.
+    fun() -> iterator_tree_inner(Pid, make_ref(), Op) end.
 
 %% Iterator function body.
-iterator_chain_inner(Pid, Ref, Op) ->
+iterator_tree_inner(Pid, Ref, Op) ->
     Pid!{get_result, self(), Ref},
     receive
         {result, eof, Ref} ->
             {eof, Op};
         {result, Result, Ref} ->
-            {Result, Op, fun() -> iterator_chain_inner(Pid, Ref, Op) end};
+            {Result, Op, fun() -> iterator_tree_inner(Pid, Ref, Op) end};
         X ->
-            io:format("iterator_chain_inner(~p, ~p, ~p)~n>> unknown message: ~p~n", [Pid, Ref, Op, X])
+            io:format("iterator_tree_inner(~p, ~p, ~p)~n>> unknown message: ~p~n", [Pid, Ref, Op, X])
     end.
 
 %% Collect messages in the process's mailbox, and wait until someone

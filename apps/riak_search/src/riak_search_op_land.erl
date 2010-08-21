@@ -24,7 +24,7 @@ chain_op(Op, OutputPid, OutputRef, QueryProps, Type) ->
     OpList = Op#land.ops,
     SelectFun = fun(I1, I2) ->
                         select_fun(Type, I1, I2) end,
-    Iterator = riak_search_utils:iterator_chain(SelectFun, OpList, QueryProps),
+    Iterator = riak_search_utils:iterator_tree(SelectFun, OpList, QueryProps),
 
     %% Spawn up pid to gather and send results...
     TermFilter = proplists:get_value(term_filter, QueryProps),
