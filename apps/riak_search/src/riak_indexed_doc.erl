@@ -66,7 +66,7 @@ postings(IdxDoc) ->
                          Props = build_props(Pos, Facets),
                          [{Index, FieldName, Term, Id, Props} | Acc]
                  end,
-    fold_terms(VisitTerms, [], IdxDoc).
+     fold_terms(VisitTerms, [], IdxDoc).
 
 %% Fold over each of the field/terms calling the folder function with
 %% Fun(FieldName, Term, Pos, TermsAcc)
@@ -321,15 +321,15 @@ normalize_fields_test() ->
     {ok, Schema} = riak_search_schema_parser:from_eterm(is_skip_test, SchemaDef),
 
     ?assertEqual({[], []}, normalize_fields([], Schema)),    
-    ?assertEqual({[{"afield",<<"data">>}], []}, normalize_fields([{"afield","data"}], Schema)),
-    ?assertEqual({[{"afield",<<"data">>}], []}, normalize_fields([{"afieldtoo","data"}], Schema)),
-    ?assertEqual({[{"afield",<<"one two three">>}], []}, 
+    ?assertEqual({[{"afield",<<"data">>, []}], []}, normalize_fields([{"afield","data"}], Schema)),
+    ?assertEqual({[{"afield",<<"data">>, []}], []}, normalize_fields([{"afieldtoo","data"}], Schema)),
+    ?assertEqual({[{"afield",<<"one two three">>, []}], []}, 
                  normalize_fields([{"afieldtoo","one"},
                                    {"afield","two"},
                                    {"afieldtoo", "three"}], Schema)),
-    ?assertEqual({[{"anotherfield", <<"abc def ghi">>},
-                   {"afield",<<"one two three">>}],
-                  [{"afacet", <<"first second">>}]},
+    ?assertEqual({[{"anotherfield", <<"abc def ghi">>, []},
+                   {"afield",<<"one two three">>, []}],
+                  [{"afacet", <<"first second">>, []}]},
                  normalize_fields([{"anotherfield","abc"},
                                    {"afieldtoo","one"},
                                    {"skipme","skippable terms"},
