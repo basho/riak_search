@@ -101,7 +101,7 @@ filesize(Segment) ->
 
 delete(Segment) ->
     [ok = file:delete(X) || X <- filelib:wildcard(Segment#segment.root ++ ".*")],
-    ets:delete(Segment#writer.offsets_table),
+    ets:delete(Segment#segment.offsets_table),
     ok.
 
 %% Create a segment from a Buffer (see mi_buffer.erl)
@@ -257,27 +257,35 @@ iterator(Index, Field, Term, Segment) ->
 
 %% Iterate over the segment file until we find the start of the values
 %% section we want.
-iterate_term(File, [], Key) ->
-    case read_seg_value(File) of
-        {key, CurrKey} when CurrKey < Key ->
-            iterate_term(File, [], Key);
-        {key, CurrKey} when CurrKey == Key ->
-            iterate_term_values(File, Key);
-        {value, _} ->
-            throw({iterate_term, offset_fail1});
-        _ ->
-            file:close(File),
-            eof
-    end;
 iterate_term(File, [Offset|Offsets], Key) ->
     case read_seg_value(File) of
-        {key, CurrKey} when CurrKey < Key ->
-            file:read(File, Offset),
-            iterate_term(File, Offsets, Key);
+        {key, CurrKey} ->
+            %% Value should be a key, otherwise error. If the key is
+            %% smaller than the one we need, keep jumping. If it's the
+            %% one we need, then iterate values. Otherwise, it's too
+            %% big, so close the file and return.
+            if 
+                CurrKey < Key ->
+                    file:read(File, Offset),
+                    iterate_term(File, Offsets, Key);
+                CurrKey == Key ->
+                    iterate_term_values(File, Key);
+                CurrKey > Key ->
+                    file:close(File),
+                    eof
+            end;
+        _ ->
+            %% Shouldn't get here. If we're here, then the Offset
+            %% values are broken in some way.
+            throw({iterate_term, offset_fail})
+    end;
+iterate_term(File, [], Key) ->
+    %% We're at the last key in the file. If it matches
+    %% our key, then iterate the values, otherwise close the file
+    %% handle.
+    case read_seg_value(File) of
         {key, CurrKey} when CurrKey == Key ->
             iterate_term_values(File, Key);
-        {value, _} ->
-            throw({iterate_term, offset_fail2});
         _ ->
             file:close(File),
             eof
