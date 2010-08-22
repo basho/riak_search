@@ -9,14 +9,18 @@
 preplan(AST, Schema) ->
     %% pass 1 - Convert field & terms
     AST1 = visit(AST, ?VISITOR(convert_terms, Schema), true),
+    ?PRINT(AST1),
     %% pass 2 - Flatten and consolidate boolean ops
     AST2 = visit(AST1, ?VISITOR(flatten_bool, Schema), false),
+    ?PRINT(AST2),
     %% pass 3 - Inject facets or node weights for terms
     AST3 = visit(AST2, ?VISITOR(insert_facet_or_weight, Schema), true),
     %% pass 4 - convert range and wildcard expressions
     AST4 = visit(AST3, ?VISITOR(wildcard_range_to_or, Schema), true),
     %% pass 5 - pick node for boolean ops
-    visit(AST4, ?VISITOR(select_node, Schema), true).
+    AST5 = visit(AST4, ?VISITOR(select_node, Schema), true),
+    AST5.
+
 
 %% Internal functions
 
@@ -141,31 +145,39 @@ add_facet_or_weight(Op, _) ->
     Op.
 
 %% Nested bool flattening
-flatten_bool(#land{ops=Ops}=Bool, Schema) ->
-    case length(Ops) == 1 of
-        true ->
-            [Op] = Ops,
-            case is_record(Op, land) of
-                true ->
-                    flatten_bool(Op, Schema);
-                false ->
-                    Bool
-            end;
-        false ->
-            Bool
+flatten_bool(#land{}=Bool, Schema) ->
+    %% Collapse nested #land operations...
+    F = fun(X = #land {}, {_, Acc}) -> 
+                {loop, X#land.ops ++ Acc};
+           (X, {Again, Acc}) -> 
+                NewX = flatten_bool(X, Schema),
+                {Again, [NewX|Acc]} end,
+    {Continue, NewOps} = lists:foldl(F, {stop, []}, Bool#land.ops),
+    
+    %% If anything has changed, do another round of collapsing.
+    NewBool = Bool#land { ops = NewOps },
+    case Continue of
+        stop -> 
+            NewBool;
+        loop ->
+            flatten_bool(NewBool, Schema)
     end;
-flatten_bool(#lor{ops=Ops}=Bool, Schema) ->
-    case length(Ops) == 1 of
-        true ->
-            [Op] = Ops,
-            case is_record(Op, lor) of
-                true ->
-                    flatten_bool(Op, Schema);
-                false ->
-                    Bool
-            end;
-        false ->
-            Bool
+flatten_bool(#lor{}=Bool, Schema) ->
+    %% Collapse nested #lor operations...
+    F = fun(X = #lor {}, {_, Acc}) -> 
+                {loop, X#lor.ops ++ Acc};
+           (X, {Again, Acc}) -> 
+                NewX = flatten_bool(X, Schema),
+                {Again, [NewX|Acc]} end,
+    {Continue, NewOps} = lists:foldl(F, {stop, []}, Bool#lor.ops),
+    
+    %% If anything has changed, do another round of collapsing.
+    NewBool = Bool#lor { ops = NewOps },
+    case Continue of
+        stop -> 
+            NewBool;
+        loop ->
+            flatten_bool(NewBool, Schema)
     end;
 flatten_bool(Op, _Schema) ->
     Op.
