@@ -9,16 +9,15 @@
 preplan(AST, Schema) ->
     %% pass 1 - Convert field & terms
     AST1 = visit(AST, ?VISITOR(convert_terms, Schema), true),
-    ?PRINT(AST1),
     %% pass 2 - Flatten and consolidate boolean ops
     AST2 = visit(AST1, ?VISITOR(flatten_bool, Schema), false),
-    ?PRINT(AST2),
     %% pass 3 - Inject facets or node weights for terms
     AST3 = visit(AST2, ?VISITOR(insert_facet_or_weight, Schema), true),
     %% pass 4 - convert range and wildcard expressions
     AST4 = visit(AST3, ?VISITOR(wildcard_range_to_or, Schema), true),
     %% pass 5 - pick node for boolean ops
     AST5 = visit(AST4, ?VISITOR(select_node, Schema), true),
+    %% Return.
     AST5.
 
 
