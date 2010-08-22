@@ -101,6 +101,7 @@ filesize(Segment) ->
 
 delete(Segment) ->
     [ok = file:delete(X) || X <- filelib:wildcard(Segment#segment.root ++ ".*")],
+    ets:delete(Segment#writer.offsets_table),
     ok.
 
 %% Create a segment from a Buffer (see mi_buffer.erl)
@@ -117,9 +118,13 @@ from_iterator(Iterator, Segment) ->
     mi_write_cache:setup(DataFile),
 
     %% Open the offset table...
-    W = #writer { data_file = DataFile,
-                  offsets_table = Segment#segment.offsets_table,
-                  bloom = mi_bloom:bloom(?BLOOM_CAPACITY, ?BLOOM_ERROR)},
+    W = #writer { count = 0,
+                  start_pos = 0,
+                  last_offset = 0,
+                  offsets = [],
+                  data_file = DataFile,
+                  bloom = mi_bloom:bloom(?BLOOM_CAPACITY, ?BLOOM_ERROR),
+                  offsets_table = Segment#segment.offsets_table},
     try
         Wfinal = from_iterator_inner(W, Iterator()),
         mi_write_cache:flush(Wfinal#writer.data_file),
@@ -187,7 +192,7 @@ from_iterator_inner(#writer { pos = 0, count=0, last_index = undefined, last_fie
 from_iterator_inner(W, eof) ->
     Key = {W#writer.last_index, W#writer.last_field, W#writer.last_term},
     Offsets = tl(lists:reverse(W#writer.offsets)),
-    ets:insert(W#writer.offsets_table, {Key, W#writer.pos, Offsets, W#writer.bloom}),
+    ets:insert(W#writer.offsets_table, {Key, W#writer.start_pos, Offsets, W#writer.bloom}),
     W#writer { count=0 }.
 
 %% return the number of results under this IFT.
@@ -259,7 +264,7 @@ iterate_term(File, [], Key) ->
         {key, CurrKey} when CurrKey == Key ->
             iterate_term_values(File, Key);
         {value, _} ->
-            throw({iterate_term, offset_fail});
+            throw({iterate_term, offset_fail1});
         _ ->
             file:close(File),
             eof
@@ -272,7 +277,7 @@ iterate_term(File, [Offset|Offsets], Key) ->
         {key, CurrKey} when CurrKey == Key ->
             iterate_term_values(File, Key);
         {value, _} ->
-            throw({iterate_term, offset_fail});
+            throw({iterate_term, offset_fail2});
         _ ->
             file:close(File),
             eof

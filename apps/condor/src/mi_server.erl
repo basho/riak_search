@@ -385,15 +385,28 @@ handle_call({fold, FoldFun, Acc}, _From, State) ->
 
     %% Fold over everything...
     %% SLF TODO: If filter fun or other crashes, server crashes.
-    {NewAcc, _, _, _, _} = fold(WrappedFun, {Acc, none, none, none, none}, GroupIterator()),
+    NewAcc = fold(WrappedFun, Acc, GroupIterator()),
 
     %% Reply...
     {reply, {ok, NewAcc}, State};
     
 handle_call(is_empty, _From, State) ->
-    %% TODO - Address this. Check the current buffer and the offset
-    %% files.
-    {reply, false, State};
+    %% Check if we have buffer data...
+    case State#state.buffers of
+        [] -> 
+            HasBufferData = false;
+        [Buffer] ->
+            HasBufferData = mi_buffer:size(Buffer) > 0;
+        _ ->
+            HasBufferData = true
+    end,
+
+    %% Check if we have segment data.
+    HasSegmentData = length(State#state.segments) > 0,
+
+    %% Return.
+    IsEmpty = (not HasBufferData) andalso (not HasSegmentData),
+    {reply, IsEmpty, State};
 
 handle_call(drop, _From, State) ->
     #state { buffers=Buffers, segments=Segments } = State,
