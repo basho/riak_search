@@ -46,12 +46,17 @@ start_loop(Op, OutputPid, OutputRef, QueryProps) ->
 
 stream(Index, Field, Term, FilterFun) ->
     {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
-    %% Calculate the preflist with full N but then only ask the first
-    %% node in it.  Preflists are ordered with primaries first followed
-    %% by fallbacks, so this will prefer a primary node over a fallback.
-    [FirstEntry|_] = riak_core_apl:get_apl(Partition, N, riak_search),
-    Preflist = [FirstEntry],
-    riak_search_vnode:stream(Preflist, Index, Field, Term, FilterFun, self()).
+    %% Calculate the primary preflist, no point in pulling from nodes
+    %% that will only have a small amount of terms. Use the local node if possible,
+    %% otherwise use any node.
+    Preflist = riak_core_apl:get_primary_apl({Partition, N, 1}, N, riak_search),
+    case lists:keyfind(node(), 2, Preflist) of
+        false ->
+            PreflistEntry = riak_search_utils:choose(Preflist);
+        PreflistEntry ->
+            PreflistEntry = PreflistEntry
+    end,
+    riak_search_vnode:stream([PreflistEntry], Index, Field, Term, FilterFun, self()).
 
 loop(Index, ScoringVars, Ref, OutputPid, OutputRef) ->
     receive 

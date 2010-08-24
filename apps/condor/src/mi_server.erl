@@ -274,12 +274,11 @@ handle_call({compacted, CompactSegmentWO, OldSegments, OldBytes, CallingPid, Cal
 %% make query planning go as expected.
 handle_call({info, Index, Field, Term}, _From, State) ->
     %% Calculate the IFT...
-    #state { buffers=Buffers, segments=Segments } = State,
+    #state { segments=Segments } = State,
 
-    %% Look up the counts in buffers and segments...
-    BufferCount = lists:sum([mi_buffer:info(Index, Field, Term, X) || X <- Buffers]),
-    SegmentCount = lists:sum([mi_segment:info(Index, Field, Term, X) || X <- Segments]),
-    Counts = [{Term, BufferCount + SegmentCount}],
+    %% Look up the weights in segments. 
+    SegmentCount = [mi_segment:info(Index, Field, Term, X) || X <- Segments],
+    Counts = [{Term, lists:max([0|SegmentCount])}],
     
     %% Return...
     {reply, {ok, Counts}, State};

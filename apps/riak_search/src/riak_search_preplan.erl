@@ -429,7 +429,7 @@ collect_node_weights([_|T], Accum) ->
 
 info(Index, Field, Term) ->
     {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
-    Preflist = riak_core_apl:get_apl(Partition, N, riak_search),
+    Preflist = riak_core_apl:get_primary_apl({Partition, N, 1}, N, riak_search),
     {ok, Ref} = riak_search_vnode:info(Preflist, Index, Field, Term, self()),
     {ok, Results} = riak_search_backend:collect_info_response(length(Preflist), Ref, []),
     Results.
