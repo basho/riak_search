@@ -12,10 +12,10 @@
     fields/1, regular_fields/1, facets/1,
     props/1, add_prop/3, set_props/2, clear_props/1, 
     postings/1,
-    fold_terms/3,
     to_mochijson2/1, to_mochijson2/2,
     analyze/1, analyze/2,
-    get_obj/3, get/3, put/2, delete/3
+    get_obj/3, get/3, put/2, 
+    delete/2, delete/3
 ]).
 
 -include("riak_search.hrl").
@@ -61,10 +61,11 @@ clear_props(Doc) ->
 postings(IdxDoc) ->
     %% Construct a list of index/field/term/docid/props from analyzer result.
     %% 
+    K =  riak_search_utils:current_key_clock(),
     #riak_idx_doc{index = Index, id = Id, facets = Facets} = IdxDoc,
     VisitTerms = fun(FieldName, Term, Pos, Acc) ->
                          Props = build_props(Pos, Facets),
-                         [{Index, FieldName, Term, Id, Props} | Acc]
+                         [{Index, FieldName, Term, Id, Props, K} | Acc]
                  end,
      fold_terms(VisitTerms, [], IdxDoc).
 
@@ -287,6 +288,9 @@ put(RiakClient, IdxDoc) ->
             DocObj = riak_object:new(DocBucket, DocKey, IdxDoc)
     end,
     RiakClient:put(DocObj).
+
+delete(RiakClient, IdxDoc) ->
+    delete(RiakClient, index(IdxDoc), id(IdxDoc)).
 
 delete(RiakClient, DocIndex, DocID) ->
     DocBucket = idx_doc_bucket(DocIndex),

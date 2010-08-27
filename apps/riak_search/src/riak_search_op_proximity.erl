@@ -34,7 +34,7 @@ chain_op(Op, OutputPid, OutputRef, QueryProps) ->
 %% Possibly send off a batch of results.
 gather_results(Proximity, OutputPid, OutputRef, {Term, Positions, Iterator}, Acc)
   when length(Acc) > ?RESULTVEC_SIZE ->
-    OutputPid ! {results, Acc, OutputRef},
+    OutputPid ! {results, lists:reverse(Acc), OutputRef},
     gather_results(Proximity, OutputPid, OutputRef, {Term, Positions, Iterator}, []);
 
 %% If we are here, there was only one proximity term, so just send it
@@ -57,7 +57,7 @@ gather_results(Proximity, OutputPid, OutputRef, {Term, Positions, Iterator}, Acc
 
 %% Nothing more to send...
 gather_results(_, OutputPid, OutputRef, {eof, _}, Acc) ->
-    OutputPid ! {results, Acc, OutputRef},
+    OutputPid ! {results, lists:reverse(Acc), OutputRef},
     OutputPid ! {disconnect, OutputRef}.
 
 %% Return true if all of the terms exist within Proximity words from

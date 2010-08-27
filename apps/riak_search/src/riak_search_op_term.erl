@@ -45,11 +45,13 @@ start_loop(Op, OutputPid, OutputRef, QueryProps) ->
     loop(IndexB, ScoringVars, Ref, OutputPid, OutputRef).
 
 stream(Index, Field, Term, FilterFun) ->
-    {N, Partition} = riak_search_utils:calc_n_partition(Index, Field, Term),
-    %% Calculate the primary preflist, no point in pulling from nodes
-    %% that will only have a small amount of terms. Use the local node if possible,
-    %% otherwise use any node.
-    Preflist = riak_core_apl:get_primary_apl({Partition, N, 1}, N, riak_search),
+    %% Get the primary preflist, minus any down nodes. (We don't use
+    %% secondary nodes since we ultimately read results from one node
+    %% anyway.)
+    Preflist = riak_search_utils:get_primary_apl(Index, Field, Term),
+
+    %% Try to use the local node if possible. Otherwise choose
+    %% randomly.
     case lists:keyfind(node(), 2, Preflist) of
         false ->
             PreflistEntry = riak_search_utils:choose(Preflist);

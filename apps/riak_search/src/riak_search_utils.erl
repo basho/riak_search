@@ -9,7 +9,6 @@
 -export([
     iterator_tree/3,
     combine_terms/2,
-    parse_datetime/1,
     to_atom/1,
     to_binary/1,
     to_utf8/1,
@@ -20,9 +19,11 @@
     from_binary/1,
     index_recursive/2,
     n_val/0,
-    calc_partition/3,
-    calc_n_partition/3,
-    current_key_clock/0
+    current_key_clock/0,
+    choose/1,
+    get_primary_apl/3,
+    get_apl_list/0,
+    partition_fun/0
 ]).
 
 -include("riak_search.hrl").
@@ -181,54 +182,6 @@ from_binary(B) when is_binary(B) ->
 from_binary(L) ->
     L.
 
-%% Parse a list date into {{Y, M, D}, {H, M, S}}.
-
-%% EXAMPLE: Wed, 7 Feb 2001 09:07:00 -0800
-parse_datetime([_,_,_,_,$\s,D1,$\s,M1,M2,M3,$\s,Y1,Y2,Y3,Y4,$\s,HH1,HH2,$:,MM1,MM2,$:,SS1,SS2|_]) ->
-    YMD = {list_to_integer([Y1,Y2,Y3,Y4]), month([M1,M2,M3]), list_to_integer([D1])},
-    HMS = {list_to_integer([HH1,HH2]), list_to_integer([MM1,MM2]), list_to_integer([SS1,SS2])},
-    {YMD, HMS};
-
-%% EXAMPLE: Wed, 14 Feb 2001 09:07:00 -0800
-parse_datetime([_,_,_,_,$\s,D1,D2,$\s,M1,M2,M3,$\s,Y1,Y2,Y3,Y4,$\s,HH1,HH2,$:,MM1,MM2,$:,SS1,SS2|_]) ->
-    YMD = {list_to_integer([Y1,Y2,Y3,Y4]), month([M1,M2,M3]), list_to_integer([D1, D2])},
-    HMS = {list_to_integer([HH1,HH2]), list_to_integer([MM1,MM2]), list_to_integer([SS1,SS2])},
-    {YMD, HMS};
-
-
-%% EXAMPLE: 20081015
-parse_datetime([Y1,Y2,Y3,Y4,M1,M2,D1,D2]) ->
-    {parse_date([Y1,Y2,Y3,Y4,M1,M2,D1,D2]), {0,0,0}};
-
-
-%% EXAMPLE: 2004-10-14
-parse_datetime([Y1,Y2,Y3,Y4,$-,M1,M2,$-,D1,D2]) ->
-    {parse_date([Y1,Y2,Y3,Y4,M1,M2,D1,D2]), {0,0,0}};
-
-parse_datetime(_) ->
-    error.
-
-%% @private
-parse_date([Y1,Y2,Y3,Y4,M1,M2,D1,D2]) ->
-    Y = list_to_integer([Y1, Y2, Y3, Y4]),
-    M = list_to_integer([M1, M2]),
-    D = list_to_integer([D1, D2]),
-    {Y, M, D}.
-
-%% @private
-month("Jan") -> 1;
-month("Feb") -> 2;
-month("Mar") -> 3;
-month("Apr") -> 4;
-month("May") -> 5;
-month("Jun") -> 6;
-month("Jul") -> 7;
-month("Aug") -> 8;
-month("Sep") -> 9;
-month("Oct") -> 10;
-month("Nov") -> 11;
-month("Dec") -> 12.
-
 %% Recursively index the provided file or directory, running
 %% the specified function on the body of any files.
 index_recursive(Callback, Directory) ->
@@ -259,25 +212,121 @@ index_recursive_file(Callback, File) ->
 n_val() ->
     app_helper:get_env(riak_search, n_val, 2).
 
-%% @private
-%% Calculate the hash key for the index, field and term. NB. This is not
-%% the same as the partition index to send in preflists.
-calc_partition(Index, Field, Term) ->
-    %% Work out which partition to use
-    IndexBin = riak_search_utils:to_binary(Index),
-    FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-    riak_core_util:chash_key({IndexBin, FieldTermBin}).
-
-%% @private
-%% Calculate N and a partition number for an index/field/term combination
-calc_n_partition(Index, Field, Term) ->
-    N = n_val(),
-    Partition = calc_partition(Index, Field, Term),
-    {N, Partition}.
-
 %% Return a key clock to use for revisioning IFTVPs
 current_key_clock() ->
     {MegaSeconds,Seconds,MilliSeconds}=erlang:now(),
     (MegaSeconds * 1000000000000) + 
     (Seconds * 1000000) + 
     MilliSeconds.
+
+%% Choose a random element from the List or Array.
+choose(List) when is_list(List) ->
+    N = random:uniform(length(List)),
+    lists:nth(N, List);
+choose(Array) when element(1, Array) == array ->
+    N = random:uniform(Array:size()),
+    Array:get(N - 1).
+
+
+%% ==================================================================
+%% THE FUNCTIONS BELOW SHOULD BE ENCAPSULATED IN RIAK_CORE, AND THE
+%% LEAKY ABSTRACTIONS NEED TO BE PATCHED. THEY ARE HERE BECAUSE I AM
+%% TESTING OUT A SOLUTION AND DON'T WANT TO MUCK UP RIAK_CORE TO DO
+%% IT. IF THIS PANS OUT, THESE SHOULD MOVE TO RIAK_CORE. - Rusty
+%% ==================================================================
+
+-define(RINGTOP, trunc(math:pow(2,160)-1)).  % SHA-1 space
+
+%% Return only primary preflist, no fallbacks.
+get_primary_apl(Index, Field, Term) ->
+    %% Get the physical nodes that are online...
+    UpNodes = ordsets:from_list(riak_core_node_watcher:nodes(riak_search)),
+
+    %% Get the list of all VNodes...
+    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
+    {chstate, _, _, CHash, _} = Ring,
+    {NumPartitions, VNodes} = CHash,
+
+    %% Calculate the IndexAsInt for this Index/Field/Term...
+    NVal = n_val(),
+    Bucket = riak_search_utils:to_binary(Index),
+    Key = riak_search_utils:to_binary([Field, ".", Term]),
+    <<IndexAsInt:160/integer>> = riak_core_util:chash_std_keyfun({Bucket,Key}),
+
+    %% Calculate the Partition for this I/F/T...
+    Partition = get_partition(IndexAsInt, NumPartitions),
+
+    %% Return the preflist, containing only up nodes...
+    F = fun({{I,N,_}, Node}) ->
+                (I == Partition) andalso (N == NVal) andalso (lists:member(Node, UpNodes));
+           (_) ->
+                false
+        end,
+    lists:filter(F, VNodes).
+
+get_apl_list() ->
+    %% Get the physical nodes that are online...
+    UpNodes = ordsets:from_list(riak_core_node_watcher:nodes(riak_search)),
+
+    %% Get the list of all VNodes...
+    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
+    {chstate, _, _, CHash, _} = Ring,
+    {_NumPartitions, AllVNodes0} = CHash,
+
+    %% Only take the VNodes with the right NVal...
+    NVal = n_val(),
+    AllVNodes = [{{I, N, C}, Node} || {{I, N, C}, Node} <- AllVNodes0, NVal == N],
+
+    %% Iterate through the list.
+    get_apl_list_1(NVal, AllVNodes, AllVNodes, UpNodes).
+
+get_apl_list_1(_, [], _, _) ->
+    [];
+get_apl_list_1(NVal, VNodes, AllVNodes, UpNodes) ->
+    %% Split out the primary preflist...
+    {Primaries, Rest} = lists:split(NVal, VNodes),
+    
+    %% Get the partition number...
+    {{Partition,_,_},_} = hd(Primaries),
+                
+    %% Ensure all primaries are up. If not, pull from the secondary nodes.
+    Preflist = ensure_primaries(Primaries, Rest ++ AllVNodes, UpNodes),
+    [{Partition, Preflist}|get_apl_list_1(NVal, Rest, AllVNodes, UpNodes)].
+
+%% Loop through the list of primaries. If the primary node is down,
+%% replace it with the name of a secondary node and try again.
+ensure_primaries([], _, _) ->
+    [];
+ensure_primaries([{INC, Node}|T], Secondaries, UpNodes) ->
+    case lists:member(Node, UpNodes) of
+        true ->
+            [{INC, Node}|ensure_primaries(T, Secondaries, UpNodes)];
+        false ->
+            [{_, FallbackNode}|Secondaries1] = Secondaries,
+            ensure_primaries([{INC, FallbackNode}|T], Secondaries1, UpNodes)
+    end.
+
+
+% @doc Returns a function F(Index, Field, Term) -> integer() that can be used to
+% calculate the partition on the ring.
+partition_fun() ->
+    %% Get the number of partitions.
+    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
+    {chstate, _, _, CHash, _} = Ring,
+    {NumPartitions, _} = CHash,
+
+    %% Return a function to calculate the partition.
+    fun(Index, Field, Term) ->
+            Bucket = riak_search_utils:to_binary(Index),
+            Key = riak_search_utils:to_binary([Field, ".", Term]),
+            <<IndexAsInt:160/integer>> = riak_core_util:chash_std_keyfun({Bucket,Key}),
+            get_partition(IndexAsInt, NumPartitions)
+    end.
+
+get_partition(IndexAsInt, NumPartitions) ->
+    Inc = ?RINGTOP div NumPartitions,
+    RingPos = (IndexAsInt div Inc) + 1,
+    case RingPos == NumPartitions of
+        true -> 0;
+        false -> RingPos * Inc
+    end.    

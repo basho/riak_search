@@ -166,21 +166,19 @@ index_master_loop([FName | Rest], Status, StatusFn) ->
 index_worker_loop0(QueuePid, Index) ->
     {ok, Client} = riak_search:local_client(),
     {ok, AnalyzerPid} = qilr:new_analyzer(),
-    {ok, IndexFsmPid} = Client:get_index_fsm(),
     {ok, Schema} = riak_search_config:get_schema(Index),
     DefaultField = Schema:default_field(),
     try
         QueuePid ! {next_file, self(), 0},
-        index_worker_loop(QueuePid, Client, AnalyzerPid, IndexFsmPid, Index, DefaultField)
+        index_worker_loop(QueuePid, Client, AnalyzerPid, Index, DefaultField)
     catch Error ->
             error_logger:error_msg("Indexing error: ~p~n", [Error])
     after
-        Client:stop_index_fsm(IndexFsmPid),
         qilr:close_analyzer(AnalyzerPid)
     end,
     ok.
 
-index_worker_loop(QueuePid, Client, AnalyzerPid, IndexFsmPid, Index, DefaultField) ->
+index_worker_loop(QueuePid, Client, AnalyzerPid, Index, DefaultField) ->
     receive
         {file, FName} ->
             case file:read_file(FName) of
@@ -188,14 +186,14 @@ index_worker_loop(QueuePid, Client, AnalyzerPid, IndexFsmPid, Index, DefaultFiel
                     DocID = filename:basename(FName),
                     Fields = [{DefaultField, binary_to_list(Data)}],
                     IdxDoc = riak_indexed_doc:new(DocID, Fields, [], Index),
-                    Client:index_doc(IdxDoc, AnalyzerPid, IndexFsmPid),
+                    Client:index_doc(IdxDoc, AnalyzerPid),
                     QueuePid ! {next_file, self(), size(Data)};
 
                 {error, Reason} ->
                     error_logger:error_msg("Failed to read file ~p: ~p\n", [FName, Reason]),
                     QueuePid ! {next_file, self(), 0}
             end,
-            index_worker_loop(QueuePid, Client, AnalyzerPid, IndexFsmPid, Index, DefaultField);
+            index_worker_loop(QueuePid, Client, AnalyzerPid, Index, DefaultField);
         stop ->
             stop
     after ?WORKER_TIMEOUT ->

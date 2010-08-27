@@ -20,11 +20,10 @@ parse_solr_xml(IndexOrSchema, Body) when is_binary(Body) ->
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
 
     %% Parse the xml...
-    {ok, Command, Entries} = riak_solr_xml_xform:xform(Body),
+    %% {ok, Command, Entries} = riak_solr_xml_xform:xform(Body),
 
     %% DEBUG - Testing new parser.
-    %% {ok, Command, Entries} = riak_solr_xml:parse(Body),
-
+    {ok, Command, Entries} = riak_solr_xml:parse(Body),
     ParsedDocs = [parse_solr_entry(Schema, Command, X) || X <- Entries],
     {ok, Command, ParsedDocs}.
 
@@ -75,65 +74,72 @@ to_riak_idx_doc(Schema, Doc) ->
     riak_indexed_doc:new(Id, Fields, [], Schema:name()).
 
 
-run_solr_command(Schema, Command, Entries) ->
-    {ok, IndexPid} = SearchClient:get_index_fsm(),
-    {ok, DeletePid} = SearchClient:get_delete_fsm(),
-    try 
-        run_solr_command(Schema, Command, Entries, IndexPid, DeletePid)
-    after
-        SearchClient:stop_index_fsm(IndexPid),
-        SearchClient:stop_delete_fsm(DeletePid)
-    end.
-
 %% Run the provided solr command on the provided docs...
-run_solr_command(_, _, [], _, _) ->
+run_solr_command(_, _, []) ->
     ok;
 
 %% Add a list of documents to the index...
-run_solr_command(Schema, add, [IdxDoc|Docs], IndexPid, DeletePid) ->
+run_solr_command(_Schema, add, Docs) ->
     %% Delete the terms out of the old document, the idxdoc stored 
     %% under k/v will be updated with the new postings.
-    delete_doc_terms(DeletePid, Schema:name(), IdxDoc#riak_idx_doc.id),
-    
-    %% Store the terms...
-    Postings = riak_indexed_doc:postings(IdxDoc),
-    SearchClient:index_terms(IndexPid, Postings),
+    F = fun(IdxDoc, {DeleteAccIn, IndexAccIn}) ->
+                %% Get the terms to delete...
+                Index = riak_indexed_doc:index(IdxDoc), 
+                DocId = riak_indexed_doc:id(IdxDoc),
+                case riak_indexed_doc:get(RiakClient, Index, DocId) of
+                    {error, notfound} ->
+                        DeleteTerms = [];
+                    OldIdxDoc ->
+                        DeleteTerms = riak_indexed_doc:postings(OldIdxDoc)
+                end,
+                NewDeleteAcc = DeleteTerms ++ DeleteAccIn,
 
-    %% Store the document.
-    riak_indexed_doc:put(RiakClient, IdxDoc),
-    run_solr_command(Schema, add, Docs, IndexPid, DeletePid);
+                %% Get the terms to index...
+                IndexTerms = riak_indexed_doc:postings(IdxDoc),
+                NewIndexAcc = IndexTerms ++ IndexAccIn,
+                
+                %% Store the document...
+                riak_indexed_doc:put(RiakClient, IdxDoc),
+                
+                %% Return.
+                {NewDeleteAcc, NewIndexAcc}
+        end,
+    {DeleteAcc, IndexAcc} = lists:foldl(F, {[],[]}, Docs),
+    SearchClient:delete_terms(DeleteAcc),
+    SearchClient:index_terms(IndexAcc),
+    ok;
 
 %% Delete a document by ID...
-run_solr_command(Schema, delete, [{'id', Index, ID}|IDs], IndexPid, DeletePid) ->
-    delete_doc(DeletePid, Index, ID),
-    run_solr_command(Schema, delete, IDs, IndexPid, DeletePid);
+run_solr_command(Schema, delete, [{'id', Index, ID}|IDs]) ->
+    delete_doc(Index, ID),
+    run_solr_command(Schema, delete, IDs);
 
 %% Delete documents by query...
-run_solr_command(Schema, delete, [{'query', QueryOps}|Queries], IndexPid, DeletePid) ->
+run_solr_command(Schema, delete, [{'query', QueryOps}|Queries]) ->
     Index = Schema:name(),
     {_NumFound, _MaxScore, Docs} = SearchClient:search_doc(Schema:name(), QueryOps, 0, infinity, ?DEFAULT_TIMEOUT),
-    [delete_doc(DeletePid, Index, X#riak_idx_doc.id) || X <- Docs, X /= {error, notfound}],
-    run_solr_command(Schema, delete, Queries, IndexPid, DeletePid);
+    [delete_doc(Index, X#riak_idx_doc.id) || X <- Docs, X /= {error, notfound}],
+    run_solr_command(Schema, delete, Queries);
 
 %% Unknown command, so error...
-run_solr_command(_Schema, Command, _Docs, _IndexPid, _DeletePid) ->
+run_solr_command(_Schema, Command, _Docs) ->
     error_logger:error_msg("Unknown solr command: ~p~n", [Command]),
     throw({unknown_solr_command, Command}).
 
-delete_doc(DeletePid, Index, DocId) ->
+delete_doc(Index, DocId) ->
     case riak_indexed_doc:get(RiakClient, Index, DocId) of
         {error, notfound} ->
             {error, notfound};
         IdxDoc ->
-            SearchClient:delete_doc(DeletePid, IdxDoc),
+            SearchClient:delete_doc(IdxDoc),
             ok
     end.
 
-delete_doc_terms(DeletePid, Index, DocId) ->
-    case riak_indexed_doc:get(RiakClient, Index, DocId) of
-        {error, notfound} ->
-            {error, notfound};
-        IdxDoc ->
-            SearchClient:delete_doc_terms(DeletePid, IdxDoc),
-            ok
-    end.
+%% delete_doc_terms(Index, DocId) ->
+%%     case riak_indexed_doc:get(RiakClient, Index, DocId) of
+%%         {error, notfound} ->
+%%             {error, notfound};
+%%         IdxDoc ->
+%%             SearchClient:delete_doc_terms(IdxDoc),
+%%             ok
+%%     end.

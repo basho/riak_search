@@ -25,19 +25,15 @@
     explain/2,
 
     %% Indexing...
-    index_terms/1, index_terms/2,
-    get_index_fsm/0,
-    stop_index_fsm/1,
-    index_doc/2, index_doc/3,
+    index_doc/2,
     index_term/5,
+    index_terms/1, 
 
     %% Delete
-    delete_terms/1, delete_terms/2,
-    get_delete_fsm/0,
-    stop_delete_fsm/1,
-    delete_doc_terms/1, delete_doc_terms/2,
-    delete_doc/1, delete_doc/2,
-    delete_term/4
+    delete_doc/1,
+    delete_doc_terms/1,
+    delete_term/4,
+    delete_terms/1
 ]).
 
 -import(riak_search_utils, [
@@ -116,106 +112,106 @@ explain(IndexOrSchema, QueryOps) ->
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
     riak_search_preplan:preplan(QueryOps, Schema).
 
+%% Index a specified #riak_idx_doc
+index_doc(IdxDoc, AnalyzerPid) ->
+    {ok, IdxDoc2} = riak_indexed_doc:analyze(IdxDoc, AnalyzerPid),
+    Postings = riak_indexed_doc:postings(IdxDoc2),
+    index_terms(Postings),
+    riak_indexed_doc:put(RiakClient, IdxDoc2).
+
 %% Index the specified term - better to use the plural 'terms' interfaces
 index_term(Index, Field, Term, DocID, Props) ->
     index_terms([{Index, Field, Term, DocID, Props}]).
 
-%% Create an index FSM, send the terms and shut it down
+%% Given a list of terms of the form {I,F,T,V,P,K}, pull them off in
+%% chunks, batch them according to preflist, and then index them in
+%% parallel.
 index_terms(Terms) ->
-    {ok, IndexPid} = get_index_fsm(),
+    BatchSize = app_helper:get_env(riak_search, index_batch_size, 10000),
+    PartitionFun = riak_search_utils:partition_fun(),
+    Preflists = riak_search_utils:get_apl_list(),
+    index_terms_1(Terms, BatchSize, PartitionFun, Preflists).
+index_terms_1(Terms, BatchSize, PartitionFun, Partitions) when length(Terms) > BatchSize ->
+    {Batch, Rest} = lists:split(BatchSize, Terms),
+    index_terms_1(Batch, BatchSize, PartitionFun, Partitions),
+    index_terms_1(Rest, BatchSize, PartitionFun, Partitions);
+index_terms_1(Terms, _, PartitionFun, Preflists) ->
+    Table = ets:new(batch, [protected, duplicate_bag]),
     try
-        ok = index_terms(IndexPid, Terms)
+        %% Group the postings by partition...
+        F1 = fun(Posting = {I,F,T,_V,_P,_K}) ->
+                     Partition = PartitionFun(I,F,T),
+                     ets:insert(Table, {Partition, Posting})
+            end,
+        [F1(X) || X <- Terms],
+        
+        %% For each preflist entry, look up the SubBatch and index the
+        %% terms.
+        F2 = fun({Partition, Preflist}) -> 
+                     %% Read from ets, strip off the Partition number,
+                     %% and then index the batch.
+                     SubBatch = [Posting || {_, Posting} <- ets:lookup(Table, Partition)],
+                     ok = riak_search_vnode:index(Preflist, SubBatch)
+             end,
+        plists:map(F2, Preflists, {processes, 4})
     after
-        stop_index_fsm(IndexPid)
+        ets:delete(Table)
     end.
 
-%% Index terms against an index FSM
-index_terms(IndexPid, Terms) ->
-    riak_search_index_fsm:index_terms(IndexPid, Terms).
+delete_doc(IdxDoc) ->
+    delete_doc_terms(IdxDoc),
+    riak_indexed_doc:delete(RiakClient, IdxDoc).
 
-%% Get an index FSM
-get_index_fsm() ->
-    riak_search_index_fsm_sup:start_child().
-
-%% Tell an index FSM indexing is complete and wait for it to shut down
-stop_index_fsm(Pid) ->
-    riak_search_index_fsm:done(Pid).
-
-%% Index a specified #riak_idx_doc
-index_doc(IdxDoc, AnalyzerPid) ->
-    {ok, IndexPid} = get_index_fsm(),
-    try
-        index_doc(IdxDoc, AnalyzerPid, IndexPid)
-    after
-        stop_index_fsm(IndexPid)
-    end.
-    
-%% Index a specified #riak_idx_doc
-index_doc(IdxDoc, AnalyzerPid, IndexPid) ->
-    {ok, IdxDoc2} = riak_indexed_doc:analyze(IdxDoc, AnalyzerPid),
-    Postings = riak_indexed_doc:postings(IdxDoc2),
-    index_terms(IndexPid, Postings),
-    riak_indexed_doc:put(RiakClient, IdxDoc2).
+%% Delete all of the indexed terms in the IdxDoc - does not remove the IdxDoc itself
+delete_doc_terms(IdxDoc) ->
+    %% Build a list of terms to delete and send them over to the delete FSM
+    Postings = riak_indexed_doc:postings(IdxDoc),
+    delete_terms(Postings).
 
 %% Delete the specified term - better to use the plural 'terms' interfaces.
 delete_term(Index, Field, Term, DocID) ->
-    delete_terms([{Index, Field, Term, DocID}]).
+    K =  riak_search_utils:current_key_clock(),
+    delete_terms([{Index, Field, Term, DocID, K}]).
 
-%% Create a delete FSM, send the terms and shut it down.
+%% Given a list of terms of the form {I,F,T,V,P,K}, pull them off in
+%% chunks, batch them according to preflist, and then index them in
+%% parallel.
 delete_terms(Terms) ->
-    {ok, DeletePid} = get_delete_fsm(),
+    BatchSize = app_helper:get_env(riak_search, index_batch_size, 10000),
+    PartitionFun = riak_search_utils:partition_fun(),
+    Preflists = riak_search_utils:get_apl_list(),
+    delete_terms_1(Terms, BatchSize, PartitionFun, Preflists).
+delete_terms_1(Terms, BatchSize, PartitionFun, Partitions) when length(Terms) > BatchSize ->
+    {Batch, Rest} = lists:split(BatchSize, Terms),
+    delete_terms_1(Batch, BatchSize, PartitionFun, Partitions),
+    delete_terms_1(Rest, BatchSize, PartitionFun, Partitions);
+delete_terms_1(Terms, _, PartitionFun, Preflists) ->
+    Table = ets:new(batch, [protected, bag]),
     try
-        ok = delete_terms(DeletePid, Terms)
+        %% Group the postings by partition...
+        F1 = fun
+                 ({I,F,T,V,K}) ->
+                     Partition = PartitionFun(I,F,T),
+                     ets:insert(Table, {Partition, {I,F,T,V,K}});
+                 ({I,F,T,V,_P,K}) ->    
+                     Partition = PartitionFun(I,F,T),
+                     ets:insert(Table, {Partition, {I,F,T,V,K}})
+            end,
+        [F1(X) || X <- Terms],
+
+        %% For each preflist entry, look up the SubBatch and delete the
+        %% terms.
+        F2 = fun({Partition, Preflist}) -> 
+                     %% Read from ets, strip off the Partition number,
+                     %% and then index the batch.
+                     SubBatch = [Posting || {_, Posting} <- ets:lookup(Table, Partition)],
+                     ok = riak_search_vnode:delete(Preflist, SubBatch)
+             end,
+        plists:map(F2, Preflists, {processes, 4})
     after
-        stop_delete_fsm(DeletePid)
-    end.
-    
-%% Delete terms against a delete FSM.
-delete_terms(DeletePid, Terms) ->
-    riak_search_delete_fsm:delete_terms(DeletePid, Terms).
-
-%% Get a delete FSM
-get_delete_fsm() ->
-    riak_search_delete_fsm_sup:start_child().
-
-%% Tell a delete FSM deleting is complete and wait for it to shut
-%% down.
-stop_delete_fsm(Pid) ->
-    riak_search_delete_fsm:done(Pid).
-
-%% Delete all of the indexed terms in the IdxDoc - does not remove the IdxDoc itself
-delete_doc_terms(DeletePid, IdxDoc) ->
-    %% Build a list of terms to delete and send them over to the delete FSM
-    I = riak_indexed_doc:index(IdxDoc),
-    V = riak_indexed_doc:id(IdxDoc),
-    Fun = fun(F, T, _Pos, Acc) ->
-                  [{I,F,T,V} | Acc]
-          end,
-    Terms = riak_indexed_doc:fold_terms(Fun, [], IdxDoc),
-    delete_terms(DeletePid, Terms).
-
-%% See delete_doc_terms/2
-delete_doc_terms(IdxDoc) ->
-    {ok, DeletePid} = get_delete_fsm(),
-    try
-        delete_doc_terms(DeletePid, IdxDoc)
-    after
-        stop_delete_fsm(DeletePid)
-    end.    
-
-%% Delete a specified #riak_idx_doc.
-delete_doc(IdxDoc) ->
-    {ok, DeletePid} = get_delete_fsm(),
-    try
-        delete_doc(DeletePid, IdxDoc)
-    after
-        stop_delete_fsm(DeletePid)
+        ets:delete(Table)
     end.
 
-delete_doc(DeletePid, IdxDoc) ->
-    delete_doc_terms(DeletePid, IdxDoc),
-    riak_indexed_doc:delete(RiakClient, riak_indexed_doc:index(IdxDoc), 
-                            riak_indexed_doc:id(IdxDoc)).
 
 truncate_list(QueryStart, QueryRows, List) ->
     %% Remove the first QueryStart results...

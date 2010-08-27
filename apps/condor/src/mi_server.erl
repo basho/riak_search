@@ -449,7 +449,7 @@ stream(Index, Field, Term, F, Buffers, Segments) ->
     ok.
 stream_inner(F, LastIndex, LastField, LastTerm, LastValue, Iterator, Acc) 
   when length(Acc) > ?RESULTVEC_SIZE ->
-    F(Acc),
+    F(lists:reverse(Acc)),
     stream_inner(F, LastIndex, LastField, LastTerm, LastValue, Iterator, []);
 stream_inner(F, LastIndex, LastField, LastTerm, LastValue, {{Index, Field, Term, Value, Props, _TS}, Iter}, Acc) ->
     %% Check in reverse order, more efficient.
@@ -462,7 +462,7 @@ stream_inner(F, LastIndex, LastField, LastTerm, LastValue, {{Index, Field, Term,
             stream_inner(F, Index, Field, Term, Value, Iter(), Acc)
     end;
 stream_inner(F, _, _, _, _, eof, Acc) -> 
-    F(Acc),
+    F(lists:reverse(Acc)),
     ok.
 
 %% Chain a list of iterators into what looks like one single iterator.
@@ -496,7 +496,7 @@ group_iterator(eof) ->
     eof.
 
 %% Return true if the two tuples are in sorted order. 
-compare_fun({Index1, Field1, Term1, Value1, _, TS1}, {Index2, Field2, Term2, Value2, _, TS2}) ->
+compare_fun(A1 = {Index1, Field1, Term1, Value1, _, TS1}, A2 = {Index2, Field2, Term2, Value2, _, TS2}) ->
     (Index1 < Index2) %% Check for Index ordering. (Ascending)
         orelse 
         ((Index1 == Index2) andalso %% Check for Field ordering. (Ascending)
