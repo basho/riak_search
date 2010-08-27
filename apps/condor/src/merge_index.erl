@@ -14,7 +14,7 @@
     %% API
     start_link/1,
     stop/1,
-    index/7,
+    index/7, index/2, 
     stream/7,
     info/4,
     info_range/6,
@@ -31,8 +31,10 @@ stop(_ServerPid) ->
     ok.
 
 index(ServerPid, Index, Field, Term, Value, Props, Timestamp) ->
-    gen_server:call(ServerPid, 
-        {index, Index, Field, Term, Value, Props, Timestamp}, infinity).
+    index(ServerPid, [{Index, Field, Term, Value, Props, Timestamp}]).
+
+index(ServerPid, Postings) ->
+    gen_server:call(ServerPid, {index, Postings}, infinity).
 
 info(ServerPid, Index, Field, Term) ->
     gen_server:call(ServerPid, {info, Index, Field, Term}, infinity).

@@ -15,7 +15,7 @@
     delete/1,
     filesize/1,
     size/1,
-    write/7,
+    write/7, write/2,
     info/4,
     iterator/1, iterator/4, iterator/5
 ]).
@@ -58,7 +58,7 @@ new(Filename) ->
 open_inner(FH, Table) ->
     case mi_utils:read_value(FH) of
         {ok, {Index, Field, Term, Value, Props, TS}} ->
-            write_ets(Index, Field, Term, Value, Props, TS, Table),
+            write_ets([{Index, Field, Term, Value, Props, TS}], Table),
             open_inner(FH, Table);
         eof ->
             ok
@@ -87,12 +87,15 @@ size(Buffer) ->
 %% Write the value to the buffer.
 %% Returns the new buffer structure.
 write(Index, Field, Term, Value, Props, TS, Buffer) ->
+    write([{Index, Field, Term, Value, Props, TS}], Buffer).
+
+write(Postings, Buffer) ->
     %% Write to file...
     FH = Buffer#buffer.handle,
-    BytesWritten = mi_utils:write_value(FH, {Index, Field, Term, Value, Props, TS}),
+    BytesWritten = lists:sum([mi_utils:write_value(FH, Posting) || Posting <- Postings]),
 
     %% Return a new buffer with a new tree and size...
-    write_ets(Index, Field, Term, Value, Props, TS, Buffer#buffer.table),
+    write_ets(Postings, Buffer#buffer.table),
 
     %% Return the new buffer.
     Buffer#buffer {
@@ -145,7 +148,9 @@ iterator(Index, Field, StartTerm, EndTerm, Buffer) ->
 %% Internal functions
 %% ===================================================================
 
-write_ets(Index, Field, Term, Value, Props, Tstamp, Table) ->
+write_ets([], _) ->
+    ok;
+write_ets([{Index, Field, Term, Value, Props, Tstamp}|Postings], Table) ->
     Key = {Index, Field, Term, Value},
     case ets:lookup(Table, Key) of
         [] ->
@@ -159,7 +164,8 @@ write_ets(Index, Field, Term, Value, Props, Tstamp, Table) ->
                     %% New value is >= existing value; take more recent write
                     ets:insert(Table, {Key, Props, Tstamp})
             end
-    end.
+    end,
+    write_ets(Postings, Table).
 
 iterate_ets(Key = {Index, Field, Term, Value}, EndKey = {Index, Field, EndTerm, _}, Table) 
   when EndTerm == undefined orelse Term =< EndTerm ->

@@ -13,7 +13,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--import(riak_search_utils, [to_list/1, to_atom/1]).
+-import(riak_search_utils, [to_list/1, to_atom/1, to_binary/1]).
 
 
 
@@ -91,7 +91,7 @@ when FieldClass == field orelse FieldClass == dynamic_field ->
 
     %% Create the field...
     Field0 = #riak_search_field {
-      name=NewName, 
+      name=NewName,
       aliases=[calculate_alias_pattern(A) || A <- lists:usort(Aliases)],
       type=Type, 
       padding_size=PaddingSize,

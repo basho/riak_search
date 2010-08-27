@@ -44,7 +44,7 @@
 -include("riak_search.hrl").
 
 name() ->
-    riak_search_utils:to_list(Name).
+    riak_search_utils:to_binary(Name).
 
 set_name(NewName) ->
     ?MODULE:new(NewName, Version, DefaultField, UniqueKey, FieldsAndFacets, DefaultOp, AnalyzerFactory).

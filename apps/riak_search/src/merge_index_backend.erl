@@ -42,20 +42,18 @@ stop(State) ->
 
 index(IFTVPKList, State) ->
     Pid = State#state.pid,
-    F = fun(IFTVPK) ->
-                {Index, Field, Term, DocId, Props, KeyClock} = IFTVPK,
-                merge_index:index(Pid, to_binary(Index), to_binary(Field), to_binary(Term), to_binary(DocId), Props, KeyClock)
-    end,
-    [F(X) || X <- IFTVPKList],
+    merge_index:index(Pid, IFTVPKList),
+    %% F = fun(IFTVPK) ->
+    %%             {Index, Field, Term, DocId, Props, KeyClock} = IFTVPK,
+    %%             merge_index:index(Pid, Index, Field, Term, DocId, Props, KeyClock)
+    %% end,
+    %% [F(X) || X <- IFTVPKList],
     {reply, {indexed, node()}, State}.
 
 delete(IFTVKList, State) ->
     Pid = State#state.pid,
-    F = fun(IFTVPK) ->
-                {Index, Field, Term, DocId, KeyClock} = IFTVPK,
-                merge_index:index(Pid, to_binary(Index), to_binary(Field), to_binary(Term), to_binary(DocId), undefined, KeyClock)
-    end,
-    [F(X) || X <- IFTVKList],
+    IFTVKList1 = [{I,F,T,V,undefined,K} || {I,F,T,V,K} <- IFTVKList],
+    merge_index:index(Pid, IFTVKList1),
     {reply, {deleted, node()}, State}.
 
 info(Index, Field, Term, Sender, State) ->

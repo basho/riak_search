@@ -29,7 +29,11 @@
 new(Id, Fields, Props, Index) ->
     {ok, Schema} = riak_search_config:get_schema(Index),
     {RegularFields, FacetFields} = normalize_fields(Fields, Schema),
-    #riak_idx_doc{id=Id, fields=RegularFields, facets=FacetFields, props=Props, index=Index}.
+    #riak_idx_doc{ index=to_binary(Index),
+                   id=to_binary(Id), 
+                   fields=RegularFields, 
+                   facets=FacetFields, 
+                   props=Props }.
 
 fields(IdxDoc) ->
     regular_fields(IdxDoc) ++ facets(IdxDoc).
@@ -58,31 +62,26 @@ set_props(Props, Doc) ->
 clear_props(Doc) ->
     Doc#riak_idx_doc{props=[]}.
 
+%% Construct a list of [{Index, Field, Term, Id, Props, Timestamp}]
+%% from previously analyzed results.
 postings(IdxDoc) ->
-    %% Construct a list of index/field/term/docid/props from analyzer result.
-    %% 
-    K =  riak_search_utils:current_key_clock(),
-    #riak_idx_doc{index = Index, id = Id, facets = Facets} = IdxDoc,
-    VisitTerms = fun(FieldName, Term, Pos, Acc) ->
-                         Props = build_props(Pos, Facets),
-                         [{Index, FieldName, Term, Id, Props, K} | Acc]
-                 end,
-     fold_terms(VisitTerms, [], IdxDoc).
+    %% Get some values.
+    DocIndex = ?MODULE:index(IdxDoc),
+    DocId = ?MODULE:id(IdxDoc),
+    Facets = ?MODULE:facets(IdxDoc),
+    K = riak_search_utils:current_key_clock(),
+    
+    %% Fold over each regular field, and then fold over each term in
+    %% that field.
+    F1 = fun({FieldName, _, TermPos}, FieldsAcc) ->
+                 F2 = fun({Term, Positions}, Acc) ->
+                              Props = build_props(Positions, Facets),
+                              [{DocIndex, FieldName, Term, DocId, Props, K} | Acc]
+                      end,
+                 lists:foldl(F2, FieldsAcc, TermPos)
+         end,
+    lists:foldl(F1, [], IdxDoc#riak_idx_doc.fields).
 
-%% Fold over each of the field/terms calling the folder function with
-%% Fun(FieldName, Term, Pos, TermsAcc)
-fold_terms(Fun, Acc0, IdxDoc) ->
-    VisitFields = 
-        fun({FieldName, _, TermPos}, FieldsAcc) ->
-                VisitTerms = 
-                    fun({Term, Pos}, TermsAcc) ->
-                            Fun(FieldName, Term, Pos, TermsAcc)
-                    end,
-                lists:foldl(VisitTerms, FieldsAcc, TermPos)
-        end,
-    lists:foldl(VisitFields, Acc0, IdxDoc#riak_idx_doc.fields).
-     
-     
 %% Currently unused?
 %% to_json(Doc) ->
 %%     mochijson2:encode(to_mochijson2(Doc)).
@@ -149,16 +148,18 @@ analyze(IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
 %% Return {ok, [{Index, FieldName, Term, DocID, Props}]}.
 analyze(IdxDoc, AnalyzerPid) when is_record(IdxDoc, riak_idx_doc) ->
     %% Extract fields, get schema...
-    #riak_idx_doc{index=Index, fields=Fields, facets=Facets}=IdxDoc,
-    {ok, Schema} = riak_search_config:get_schema(Index),
+    DocIndex = ?MODULE:index(IdxDoc),
+    RegularFields = ?MODULE:regular_fields(IdxDoc),
+    Facets = ?MODULE:facets(IdxDoc),
+    {ok, Schema} = riak_search_config:get_schema(DocIndex),
     
     %% For each Field = {FieldName, FieldValue, _}, split the FieldValue
     %% into terms and build a list of positions for those terms.
-    F = fun({FieldName, FieldValue, _}, Acc2) ->
+    F = fun({FieldName, FieldValue}, Acc2) ->
                 {ok, Terms} = analyze_field(FieldName, FieldValue, Schema, AnalyzerPid),
                 [{FieldName, FieldValue, get_term_positions(Terms)} | Acc2]
         end,
-    NewFields = lists:foldl(F, [], Fields),
+    NewFields = lists:foldl(F, [], RegularFields),
     NewFacets = lists:foldl(F, [], Facets),
 
     %% For each Facet = {FieldName, FieldValue, _}, split the FieldValue
@@ -205,9 +206,9 @@ normalize_fields(DocFields, Schema) ->
 normalize_field_name(FieldName, FieldDef, Schema) ->
     case Schema:is_dynamic(FieldDef) of
         true ->
-            FieldName;
+            to_binary(FieldName);
         _ ->
-            Schema:field_name(FieldDef)
+            to_binary(Schema:field_name(FieldDef))
     end.
 
 %% @private
@@ -278,7 +279,8 @@ get(RiakClient, DocIndex, DocID) ->
 
 %% Write the object to Riak.
 put(RiakClient, IdxDoc) ->
-    #riak_idx_doc { id=DocID, index=DocIndex } = IdxDoc,
+    DocIndex = index(IdxDoc),
+    DocID = id(IdxDoc),
     DocBucket = idx_doc_bucket(DocIndex),
     DocKey = to_binary(DocID),
     case RiakClient:get(DocBucket, DocKey) of

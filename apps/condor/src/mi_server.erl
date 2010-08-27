@@ -121,10 +121,11 @@ read_buffers(Root, [{BNum, BName}|Rest], NextID, Segments) ->
     read_buffers(Root, Rest, NextID, [SegmentRO|Segments]).
 
 
-handle_call({index, Index, Field, Term, Value, Props, TS}, _From, State) ->
+handle_call({index, Postings}, _From, State) ->
     %% Write to the buffer...
     #state { buffers=[CurrentBuffer0|Buffers] } = State,
-    CurrentBuffer = mi_buffer:write(Index, Field, Term, Value, Props, TS, CurrentBuffer0),
+    %% Index, Field, Term, Value, Props, TS
+    CurrentBuffer = mi_buffer:write(Postings, CurrentBuffer0),
 
     %% Update the state...
     NewState = State#state {buffers = [CurrentBuffer | Buffers]},
@@ -496,7 +497,7 @@ group_iterator(eof) ->
     eof.
 
 %% Return true if the two tuples are in sorted order. 
-compare_fun(A1 = {Index1, Field1, Term1, Value1, _, TS1}, A2 = {Index2, Field2, Term2, Value2, _, TS2}) ->
+compare_fun({Index1, Field1, Term1, Value1, _, TS1}, {Index2, Field2, Term2, Value2, _, TS2}) ->
     (Index1 < Index2) %% Check for Index ordering. (Ascending)
         orelse 
         ((Index1 == Index2) andalso %% Check for Field ordering. (Ascending)
