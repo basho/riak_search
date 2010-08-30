@@ -24,11 +24,11 @@ preplan_op(Op, F) ->
 chain_op(OpList, OutputPid, Ref, QueryProps) when is_list(OpList)->
     plists:map(fun(Op) ->
                        chain_op(Op, OutputPid, Ref, QueryProps) end,
-               OpList),
+               OpList, {processes, 4}),
     {ok, length(OpList)};
 
 chain_op(Op, OutputPid, Ref, QueryProps) ->
-    spawn(fun() ->
+    spawn_link(fun() ->
         case op_to_module(Op) of
             undefined ->
                 ?PRINT({unknown_op, Op}),
