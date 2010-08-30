@@ -16,6 +16,8 @@
 
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 -include_lib("riak_core/include/riak_core_pb.hrl").
+-define(PRINT(Var), io:format("DEBUG: ~p:~p - ~p~n~n ~p~n~n", [?MODULE, ?LINE, ??Var, Var])).
+
 
 -record(vstate, {idx, bmod, bstate}).
 -record(index_v1, {iftvp_list}).
@@ -68,11 +70,11 @@ command(PrefList, Req, Sender) ->
     riak_core_vnode_master:command(PrefList, Req, Sender,
                                    riak_search_vnode_master).
 
-sync_spawn_command([], _) ->
-    ok;
-sync_spawn_command([{Index,Node}|Rest], Msg) ->
-    riak_core_vnode_master:sync_spawn_command({Index, Node}, Msg, riak_search_vnode_master),
-    sync_spawn_command(Rest, Msg).
+sync_spawn_command(Preflist, Msg) ->
+    F = fun({Index, Node}) ->
+                riak_core_vnode_master:sync_spawn_command({Index, Node}, Msg, riak_search_vnode_master)
+        end,
+    plists:map(F, Preflist, {processes, 4}).
 
 
 

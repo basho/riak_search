@@ -10,8 +10,6 @@
 -include("merge_index.hrl").
 -export([
     fold/3,
-    read_value/1,
-    write_value/2,
     file_exists/1,
     create_empty_file/1,
     now_to_timestamp/1,
@@ -25,23 +23,6 @@ fold(F, Acc, Resource) ->
         {ok, NewResource, NewAcc} -> fold(F, NewAcc, NewResource);
         {eof, NewAcc} -> {ok, NewAcc}
     end.
-
-read_value(FH) ->
-    case file:read(FH, 2) of
-        {ok, <<Size:16/integer>>} ->
-            {ok, B} = file:read(FH, Size),
-            {ok, binary_to_term(B)};
-        eof ->
-            eof
-    end.
-
-write_value(FH, Term) when not is_binary(Term) ->
-    B = term_to_binary(Term),
-    write_value(FH, B);
-write_value(FH, B) ->
-    Size = size(B),
-    ok = file:write(FH, <<Size:16/integer, B/binary>>),
-    Size + 2.
 
 file_exists(Filename) ->
     filelib:is_file(Filename).

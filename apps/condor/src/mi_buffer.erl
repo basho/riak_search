@@ -56,9 +56,9 @@ new(Filename) ->
     #buffer { filename=Filename, handle=FH, table=Table, size=Size }.
 
 open_inner(FH, Table) ->
-    case mi_utils:read_value(FH) of
+    case read_value(FH) of
         {ok, {Index, Field, Term, Value, Props, TS}} ->
-            write_ets([{Index, Field, Term, Value, Props, TS}], Table),
+            write_to_ets(Table, [{Index, Field, Term, Value, Props, TS}]),
             open_inner(FH, Table);
         eof ->
             ok
@@ -92,10 +92,10 @@ write(Index, Field, Term, Value, Props, TS, Buffer) ->
 write(Postings, Buffer) ->
     %% Write to file...
     FH = Buffer#buffer.handle,
-    BytesWritten = lists:sum([mi_utils:write_value(FH, Posting) || Posting <- Postings]),
+    BytesWritten = write_to_file(FH, Postings),
 
     %% Return a new buffer with a new tree and size...
-    write_ets(Postings, Buffer#buffer.table),
+    write_to_ets(Buffer#buffer.table, Postings),
 
     %% Return the new buffer.
     Buffer#buffer {
@@ -148,24 +148,46 @@ iterator(Index, Field, StartTerm, EndTerm, Buffer) ->
 %% Internal functions
 %% ===================================================================
 
-write_ets([], _) ->
+read_value(FH) ->
+    case file:read(FH, 2) of
+        {ok, <<Size:16/integer>>} ->
+            {ok, B} = file:read(FH, Size),
+            {ok, binary_to_term(B)};
+        eof ->
+            eof
+    end.
+
+write_to_file(FH, Terms) when is_list(Terms) ->
+    %% Convert all values to binaries, count the bytes.
+    F = fun(X, {SizeAcc, IOAcc}) ->
+                B1 = term_to_binary(X),
+                Size = erlang:size(B1),
+                B2 = <<Size:16/integer, B1/binary>>,
+                {SizeAcc + Size + 2, [B2|IOAcc]}
+        end,
+    {Size, ReverseIOList} = lists:foldl(F, {0, []}, Terms),
+    ok = file:write(FH, lists:reverse(ReverseIOList)),
+    Size.
+
+write_to_ets(_, []) ->
     ok;
-write_ets([{Index, Field, Term, Value, Props, Tstamp}|Postings], Table) ->
+write_to_ets(Table, [{Index, Field, Term, Value, Props, Tstamp}|Postings]) ->
     Key = {Index, Field, Term, Value},
-    case ets:lookup(Table, Key) of
-        [] ->
-            ets:insert_new(Table, {Key, Props, Tstamp});
-        [{Key, _, ExistingTstamp}] ->
+    case ets:insert_new(Table, {Key, Props, Tstamp}) of
+        true ->
+            ok;
+        false ->
+            [{Key, _, ExistingTstamp}] = ets:lookup(Table, Key),
             case ExistingTstamp > Tstamp of
                 true ->
                     %% Keep existing tstamp; clearly newer
                     ok;
                 false ->
                     %% New value is >= existing value; take more recent write
-                    ets:insert(Table, {Key, Props, Tstamp})
+                    ets:update_element(Table, Key, [{2, Props}, {3, Tstamp}])
             end
     end,
-    write_ets(Postings, Table).
+    write_to_ets(Table, Postings).
 
 iterate_ets(Key = {Index, Field, Term, Value}, EndKey = {Index, Field, EndTerm, _}, Table) 
   when EndTerm == undefined orelse Term =< EndTerm ->

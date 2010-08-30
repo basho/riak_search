@@ -138,7 +138,7 @@ index_terms_1(Terms, BatchSize, PartitionFun, Partitions) when length(Terms) > B
 index_terms_1(Terms, _, PartitionFun, Preflists) ->
     Table = ets:new(batch, [protected, duplicate_bag]),
     try
-        %% Group the postings by partition...
+        %% SubBatch the postings by partition...
         F1 = fun(Posting = {I,F,T,_V,_P,_K}) ->
                      Partition = PartitionFun(I,F,T),
                      ets:insert(Table, {Partition, Posting})
@@ -149,9 +149,11 @@ index_terms_1(Terms, _, PartitionFun, Preflists) ->
         %% terms.
         F2 = fun({Partition, Preflist}) -> 
                      %% Read from ets, strip off the Partition number,
-                     %% and then index the batch.
+                     %% and then index the batch.  TODO: Catch the
+                     %% output of the delete statement, make sure it
+                     %% was successful, if not then try again.
                      SubBatch = [Posting || {_, Posting} <- ets:lookup(Table, Partition)],
-                     ok = riak_search_vnode:index(Preflist, SubBatch)
+                     riak_search_vnode:index(Preflist, SubBatch)
              end,
         plists:map(F2, Preflists, {processes, 4})
     after
@@ -186,14 +188,14 @@ delete_terms_1(Terms, BatchSize, PartitionFun, Partitions) when length(Terms) > 
     delete_terms_1(Batch, BatchSize, PartitionFun, Partitions),
     delete_terms_1(Rest, BatchSize, PartitionFun, Partitions);
 delete_terms_1(Terms, _, PartitionFun, Preflists) ->
-    Table = ets:new(batch, [protected, bag]),
+    Table = ets:new(batch, [protected, duplicate_bag]),
     try
-        %% Group the postings by partition...
+        %% SubBatch the postings by partition...
         F1 = fun
-                 ({I,F,T,V,K}) ->
+                 ({I,F,T,V,_P,K}) ->    
                      Partition = PartitionFun(I,F,T),
                      ets:insert(Table, {Partition, {I,F,T,V,K}});
-                 ({I,F,T,V,_P,K}) ->    
+                 ({I,F,T,V,K}) ->
                      Partition = PartitionFun(I,F,T),
                      ets:insert(Table, {Partition, {I,F,T,V,K}})
             end,
@@ -203,9 +205,11 @@ delete_terms_1(Terms, _, PartitionFun, Preflists) ->
         %% terms.
         F2 = fun({Partition, Preflist}) -> 
                      %% Read from ets, strip off the Partition number,
-                     %% and then index the batch.
+                     %% and then index the batch.  TODO: Catch the
+                     %% output of the delete statement, make sure it
+                     %% was successful, if not then try again.
                      SubBatch = [Posting || {_, Posting} <- ets:lookup(Table, Partition)],
-                     ok = riak_search_vnode:delete(Preflist, SubBatch)
+                     riak_search_vnode:delete(Preflist, SubBatch)
              end,
         plists:map(F2, Preflists, {processes, 4})
     after

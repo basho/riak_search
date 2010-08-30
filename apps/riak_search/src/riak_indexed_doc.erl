@@ -14,7 +14,7 @@
     postings/1,
     to_mochijson2/1, to_mochijson2/2,
     analyze/1, analyze/2,
-    get_obj/3, get/3, put/2, 
+    new_obj/2, get_obj/3, put_obj/2, get/3, put/2, 
     delete/2, delete/3
 ]).
 
@@ -277,6 +277,11 @@ get(RiakClient, DocIndex, DocID) ->
             Other
     end.
 
+new_obj(DocIndex, DocID) ->
+    DocBucket = idx_doc_bucket(DocIndex),
+    DocKey = to_binary(DocID),
+    riak_object:new(DocBucket, DocKey, undefined).
+
 %% Write the object to Riak.
 put(RiakClient, IdxDoc) ->
     DocIndex = index(IdxDoc),
@@ -290,6 +295,10 @@ put(RiakClient, IdxDoc) ->
             DocObj = riak_object:new(DocBucket, DocKey, IdxDoc)
     end,
     RiakClient:put(DocObj).
+
+put_obj(RiakClient, RiakObj) ->
+    RiakClient:put(RiakObj).
+    
 
 delete(RiakClient, IdxDoc) ->
     delete(RiakClient, index(IdxDoc), id(IdxDoc)).
