@@ -23,8 +23,13 @@ parse_solr_xml(IndexOrSchema, Body) when is_binary(Body) ->
     %% {ok, Command, Entries} = riak_solr_xml_xform:xform(Body),
 
     %% DEBUG - Testing new parser.
+    ?TIMEON,
     {ok, Command, Entries} = riak_solr_xml:parse(Body),
+    ?TIMEOFF("Finished parsing document."),
+
+    ?TIMEON,
     ParsedDocs = [parse_solr_entry(Schema, Command, X) || X <- Entries],
+    ?TIMEOFF("Finished parsing solr entries."),
     {ok, Command, ParsedDocs}.
 
 %% @private
@@ -83,30 +88,50 @@ run_solr_command(_Schema, add, Docs) ->
     %% Delete the terms out of the old document, the idxdoc stored 
     %% under k/v will be updated with the new postings.
     F = fun(IdxDoc, {DeleteAccIn, IndexAccIn}) ->
+                %% Read the old object. This gets kind of convoluted
+                %% in order to avoid repeated lookups to Riak.
+
                 %% Get the terms to delete...
                 Index = riak_indexed_doc:index(IdxDoc), 
                 DocId = riak_indexed_doc:id(IdxDoc),
-                case riak_indexed_doc:get(RiakClient, Index, DocId) of
+                case riak_indexed_doc:get_obj(RiakClient, Index, DocId) of
+                    {ok, OldRiakObj} ->
+                        OldIdxDoc = riak_object:get_value(OldRiakObj),
+                        DeleteTerms = riak_indexed_doc:postings(OldIdxDoc);
                     {error, notfound} ->
-                        DeleteTerms = [];
-                    OldIdxDoc ->
-                        DeleteTerms = riak_indexed_doc:postings(OldIdxDoc)
+                        OldRiakObj = riak_indexed_doc:new_obj(Index, DocId),
+                        DeleteTerms = []
                 end,
-                NewDeleteAcc = DeleteTerms ++ DeleteAccIn,
+                NewDeleteAcc = [DeleteTerms|DeleteAccIn],
 
                 %% Get the terms to index...
                 IndexTerms = riak_indexed_doc:postings(IdxDoc),
-                NewIndexAcc = IndexTerms ++ IndexAccIn,
+                NewIndexAcc = [IndexTerms|IndexAccIn],
                 
                 %% Store the document...
-                riak_indexed_doc:put(RiakClient, IdxDoc),
+                RiakObj = riak_object:update_value(OldRiakObj, IdxDoc),
+                riak_indexed_doc:put_obj(RiakClient, RiakObj),
                 
                 %% Return.
                 {NewDeleteAcc, NewIndexAcc}
         end,
+
+    ?TIMEON,
     {DeleteAcc, IndexAcc} = lists:foldl(F, {[],[]}, Docs),
-    SearchClient:delete_terms(DeleteAcc),
-    SearchClient:index_terms(IndexAcc),
+    ?TIMEOFF({finished_preparing_terms, length(Docs)}),
+
+    ?TIMEON,
+    FlatDeleteAcc = lists:flatten(DeleteAcc),
+    FlatIndexAcc = lists:flatten(IndexAcc),
+    ?TIMEOFF(flattened_lists),
+
+    ?TIMEON,
+    SearchClient:delete_terms(FlatDeleteAcc),
+    ?TIMEOFF({finished_deleting_terms, length(FlatDeleteAcc)}),
+    
+    ?TIMEON,
+    SearchClient:index_terms(FlatIndexAcc),
+    ?TIMEOFF({finished_indexing_terms, length(FlatIndexAcc)}),
     ok;
 
 %% Delete a document by ID...
