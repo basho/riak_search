@@ -507,6 +507,8 @@
 
 *** Fuzzy Searches
 
+   *NOTE:* Fuzzy Searches are not yet supported.
+
     Fuzzy searching allows you to find terms with similar
     spelling. To specify a fuzzy search, use the tilde operator on a
     single term with an optional fuzziness argument. (If no fuzziness
