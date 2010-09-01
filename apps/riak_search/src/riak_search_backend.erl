@@ -15,14 +15,10 @@
 behaviour_info(callbacks) ->
     [{start,2},
      {stop,1},
-     {index_if_newer,7},
-     {multi_index,2},
-     {delete_entry,6},
-     {multi_delete,2},
+     {index, 2},
+     {delete, 2},
      {stream,6},
      {info,5},
-     {info_range,7},
-     {catalog_query,3},
      {fold,3},
      {is_empty,1},
      {drop,1}];
