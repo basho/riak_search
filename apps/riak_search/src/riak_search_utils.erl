@@ -22,10 +22,8 @@
     current_key_clock/0,
     choose/1,
     ets_keys/1,
-    get_primary_apl/3,
-    get_apl_list/0,
     partition_fun/0,
-    get_partition/2
+    calc_partition/3
 ]).
 
 -include("riak_search.hrl").
@@ -243,87 +241,13 @@ ets_keys_1(Table, Key) ->
     end.
 
 
-%% ==================================================================
-%% THE FUNCTIONS BELOW SHOULD BE ENCAPSULATED IN RIAK_CORE, AND THE
-%% LEAKY ABSTRACTIONS NEED TO BE PATCHED. THEY ARE HERE BECAUSE I AM
-%% TESTING OUT A SOLUTION AND DON'T WANT TO MUCK UP RIAK_CORE TO DO
-%% IT. IF THIS PANS OUT, THESE SHOULD MOVE TO RIAK_CORE. - Rusty
-%% ==================================================================
 
+% @doc Returns a function F(Index, Field, Term) -> integer() that can
+% be used to calculate the partition on the ring. It is used in places
+% where we need to make repeated calls to get the actual partition
+% (not the DocIdx) of an Index/Field/Term combination. NOTE: This, or something like it,
+% should probably get moved to Riak Core in the future. 
 -define(RINGTOP, trunc(math:pow(2,160)-1)).  % SHA-1 space
-
-%% Return only primary preflist, no fallbacks.
-get_primary_apl(Index, Field, Term) ->
-    %% Get the physical nodes that are online...
-    UpNodes = ordsets:from_list(riak_core_node_watcher:nodes(riak_search)),
-
-    %% Get the list of all VNodes...
-    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
-    {chstate, _, _, CHash, _} = Ring,
-    {NumPartitions, VNodes} = CHash,
-
-    %% Calculate the IndexAsInt for this Index/Field/Term...
-    NVal = n_val(),
-    Bucket = riak_search_utils:to_binary(Index),
-    Key = riak_search_utils:to_binary([Field, ".", Term]),
-    <<IndexAsInt:160/integer>> = riak_core_util:chash_std_keyfun({Bucket,Key}),
-
-    %% Calculate the Partition for this I/F/T...
-    Partition = get_partition(IndexAsInt, NumPartitions),
-
-    %% Return the preflist, containing only up nodes...
-    F = fun({{I,N,_}, Node}) ->
-                (I == Partition) andalso (N == NVal) andalso (lists:member(Node, UpNodes));
-           (_) ->
-                false
-        end,
-    lists:filter(F, VNodes).
-
-get_apl_list() ->
-    %% Get the physical nodes that are online...
-    UpNodes = ordsets:from_list(riak_core_node_watcher:nodes(riak_search)),
-
-    %% Get the list of all VNodes...
-    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
-    {chstate, _, _, CHash, _} = Ring,
-    {_NumPartitions, AllVNodes0} = CHash,
-
-    %% Only take the VNodes with the right NVal...
-    NVal = n_val(),
-    AllVNodes = [{{I, N, C}, Node} || {{I, N, C}, Node} <- AllVNodes0, NVal == N],
-
-    %% Iterate through the list.
-    get_apl_list_1(NVal, AllVNodes, AllVNodes, UpNodes).
-
-get_apl_list_1(_, [], _, _) ->
-    [];
-get_apl_list_1(NVal, VNodes, AllVNodes, UpNodes) ->
-    %% Split out the primary preflist...
-    {Primaries, Rest} = lists:split(NVal, VNodes),
-    
-    %% Get the partition number...
-    {{Partition,_,_},_} = hd(Primaries),
-                
-    %% Ensure all primaries are up. If not, pull from the secondary nodes.
-    Preflist = ensure_primaries(Primaries, Rest ++ AllVNodes, UpNodes),
-    [{Partition, Preflist}|get_apl_list_1(NVal, Rest, AllVNodes, UpNodes)].
-
-%% Loop through the list of primaries. If the primary node is down,
-%% replace it with the name of a secondary node and try again.
-ensure_primaries([], _, _) ->
-    [];
-ensure_primaries([{INC, Node}|T], Secondaries, UpNodes) ->
-    case lists:member(Node, UpNodes) of
-        true ->
-            [{INC, Node}|ensure_primaries(T, Secondaries, UpNodes)];
-        false ->
-            [{_, FallbackNode}|Secondaries1] = Secondaries,
-            ensure_primaries([{INC, FallbackNode}|T], Secondaries1, UpNodes)
-    end.
-
-
-% @doc Returns a function F(Index, Field, Term) -> integer() that can be used to
-% calculate the partition on the ring.
 partition_fun() ->
     %% Get the number of partitions.
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
@@ -332,24 +256,18 @@ partition_fun() ->
 
     %% Return a function to calculate the partition.
     fun(Index, Field, Term) ->
-            Bucket = riak_search_utils:to_binary(Index),
-            Key = riak_search_utils:to_binary([Field, ".", Term]),
-            <<IndexAsInt:160/integer>> = riak_core_util:chash_std_keyfun({Bucket,Key}),
-            get_partition(IndexAsInt, NumPartitions)
+            <<IndexAsInt:160/integer>> = calc_partition(Index, Field, Term),
+            Inc = ?RINGTOP div NumPartitions,
+            RingPos = (IndexAsInt div Inc) + 1,
+            case RingPos == NumPartitions of
+                true -> 0;
+                false -> RingPos * Inc
+            end
     end.
 
-get_partition(IndexAsInt, NumPartitions) ->
-    Inc = ?RINGTOP div NumPartitions,
-    RingPos = (IndexAsInt div Inc) + 1,
-    case RingPos == NumPartitions of
-        true -> 0;
-        false -> RingPos * Inc
-    end.    
-
-
-%% calc_partition(Index, Field, Term) ->
-%%     %% Work out which partition to use
-%%     IndexBin = riak_search_utils:to_binary(Index),
-%%     FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-%%     riak_core_util:chash_key({IndexBin, FieldTermBin}).
+calc_partition(Index, Field, Term) ->
+    %% Work out which partition to use
+    IndexBin = riak_search_utils:to_binary(Index),
+    FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
+    riak_core_util:chash_key({IndexBin, FieldTermBin}).
 
