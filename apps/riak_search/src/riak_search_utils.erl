@@ -21,9 +21,11 @@
     n_val/0,
     current_key_clock/0,
     choose/1,
+    ets_keys/1,
     get_primary_apl/3,
     get_apl_list/0,
-    partition_fun/0
+    partition_fun/0,
+    get_partition/2
 ]).
 
 -include("riak_search.hrl").
@@ -228,6 +230,19 @@ choose(Array) when element(1, Array) == array ->
     Array:get(N - 1).
 
 
+%% Given an ETS table, return a list of keys.
+ets_keys(Table) ->
+    Key = ets:first(Table),
+    [Key|ets_keys_1(Table, Key)].
+ets_keys_1(Table, Key) ->
+    case ets:next(Table, Key) of
+        '$end_of_table' -> 
+            [];
+        NextKey -> 
+            [NextKey|ets_keys_1(Table, NextKey)]
+    end.
+
+
 %% ==================================================================
 %% THE FUNCTIONS BELOW SHOULD BE ENCAPSULATED IN RIAK_CORE, AND THE
 %% LEAKY ABSTRACTIONS NEED TO BE PATCHED. THEY ARE HERE BECAUSE I AM
@@ -330,3 +345,11 @@ get_partition(IndexAsInt, NumPartitions) ->
         true -> 0;
         false -> RingPos * Inc
     end.    
+
+
+%% calc_partition(Index, Field, Term) ->
+%%     %% Work out which partition to use
+%%     IndexBin = riak_search_utils:to_binary(Index),
+%%     FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
+%%     riak_core_util:chash_key({IndexBin, FieldTermBin}).
+

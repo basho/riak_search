@@ -28,10 +28,10 @@
 %% @spec start(Partition :: integer(), Config :: proplist()) ->
 %%          {ok, state()} | {{error, Reason :: term()}, state()}
 %% @doc Start this backend.
-start({I, C, R}, _Config) ->
-    Partition = lists:flatten(io_lib:format("~p_~p_~p", [I, C, R])),
+start(Partition, _Config) ->
+    PartitionStr = lists:flatten(io_lib:format("~p", [Partition])),
     {ok, Root} = application:get_env(merge_index, data_root),
-    PartitionRoot = filename:join([Root, Partition]),
+    PartitionRoot = filename:join([Root, PartitionStr]),
     {ok, Pid} = merge_index:start_link(PartitionRoot),
     {ok, #state { partition=Partition, pid=Pid }}.
 

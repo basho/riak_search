@@ -82,11 +82,8 @@ sync_spawn_command(Preflist, Msg) ->
 %% Callbacks for riak_core_vnode
 %%
 
-start_vnode({I,C,R}) ->
-    riak_core_vnode_master:get_vnode_pid({I, C, R}, riak_search_vnode);
-start_vnode(_) ->
-    %% Old style partition.
-    ignore.
+start_vnode(Partition) when is_integer(Partition) ->
+    riak_core_vnode_master:get_vnode_pid(Partition, riak_search_vnode).
 
 
 init([VNodeIndex]) ->
