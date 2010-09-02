@@ -221,9 +221,11 @@ current_key_clock() ->
 
 %% Choose a random element from the List or Array.
 choose(List) when is_list(List) ->
+    random:seed(now()),
     N = random:uniform(length(List)),
     lists:nth(N, List);
 choose(Array) when element(1, Array) == array ->
+    random:seed(now()),
     N = random:uniform(Array:size()),
     Array:get(N - 1).
 
