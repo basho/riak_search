@@ -7,7 +7,8 @@
 -module(riak_search_op_term).
 -export([
          preplan_op/2,
-         chain_op/4
+         chain_op/4,
+         calculate_score/2
         ]).
 
 -include("riak_search.hrl").

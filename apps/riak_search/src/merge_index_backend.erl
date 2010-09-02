@@ -13,6 +13,7 @@
     index/2,
     delete/2,
     stream/6,
+    range/8,
     info/5,
     fold/3,
     is_empty/1,
@@ -66,23 +67,30 @@ info(Index, Field, Term, Sender, State) ->
 stream(Index, Field, Term, FilterFun, Sender, State) ->
     Pid = State#state.pid,
     OutputRef = make_ref(),
-    OutputPid = spawn_link(fun() -> stream_loop(OutputRef, Sender) end),
+    OutputPid = spawn_link(fun() -> result_loop(OutputRef, Sender) end),
     merge_index:stream(Pid, to_binary(Index), to_binary(Field), to_binary(Term), OutputPid, OutputRef, FilterFun),
     noreply.
 
-stream_loop(Ref, Sender) ->
+range(Index, Field, StartTerm, EndTerm, Size, FilterFun, Sender, State) ->
+    Pid = State#state.pid,
+    OutputRef = make_ref(),
+    OutputPid = spawn_link(fun() -> result_loop(OutputRef, Sender) end),
+    merge_index:range(Pid, to_binary(Index), to_binary(Field), to_binary(StartTerm), to_binary(EndTerm), Size, OutputPid, OutputRef, FilterFun),
+    noreply.
+
+result_loop(Ref, Sender) ->
     receive
         {result, {DocID, Props}, Ref} ->
-            riak_search_backend:stream_response_results(Sender, [{DocID, Props}]),
-            stream_loop(Ref, Sender);
+            riak_search_backend:response_results(Sender, [{DocID, Props}]),
+            result_loop(Ref, Sender);
         {result_vec, ResultVec, Ref} ->
-            riak_search_backend:stream_response_results(Sender, ResultVec),
-            stream_loop(Ref, Sender);
+            riak_search_backend:response_results(Sender, ResultVec),
+            result_loop(Ref, Sender);
         {result, '$end_of_table', Ref} ->
-            riak_search_backend:stream_response_done(Sender);
+            riak_search_backend:response_done(Sender);
         Other ->
             ?PRINT({unexpected_result, Other}),
-            stream_loop(Ref, Sender)
+            result_loop(Ref, Sender)
     end.
 
 is_empty(State) ->

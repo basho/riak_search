@@ -373,6 +373,8 @@ get_scoring_info_1(Op) when is_record(Op, mockterm) ->
 get_scoring_info_1(#phrase{props=Props}) ->
     BaseQuery = proplists:get_value(base_query, Props),
     get_scoring_info_1(BaseQuery);
+get_scoring_info_1(Op) when is_record(Op, range) ->
+    [];
 get_scoring_info_1(Op) when is_tuple(Op) ->
     get_scoring_info_1(element(2, Op));
 get_scoring_info_1(Ops) when is_list(Ops) ->

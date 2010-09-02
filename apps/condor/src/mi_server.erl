@@ -345,12 +345,47 @@ handle_call({stream, Index, Field, Term, Pid, Ref, FilterFun}, _From, State) ->
                            end,
                        stream(Index, Field, Term, F, Buffers, Segments),
                        Pid ! {result, '$end_of_table', Ref},
-                       gen_server:call(Self, {stream_finished, Buffers, Segments}, infinity)
+                       gen_server:call(Self, {stream_or_range_finished, Buffers, Segments}, infinity)
                end),
 
     {reply, ok, State#state { locks=NewLocks1 }};
     
-handle_call({stream_finished, Buffers, Segments}, _From, State) ->
+%% handle_call({range, Index, Field, StartTerm, EndTerm, Size, Pid, Ref, FilterFun}, _From, State) ->
+%%     #state { locks=Locks, buffers=Buffers, segments=Segments } = State,
+
+%%     %% Add locks to all buffers...
+%%     F1 = fun(Buffer, Acc) ->
+%%                  mi_locks:claim(mi_buffer:filename(Buffer), Acc)
+%%          end,
+%%     NewLocks = lists:foldl(F1, Locks, Buffers),
+
+%%     %% Add locks to all segments...
+%%     F2 = fun(Segment, Acc) ->
+%%                  mi_locks:claim(mi_segment:filename(Segment), Acc)
+%%          end,
+%%     NewLocks1 = lists:foldl(F2, NewLocks, Segments),
+
+%%     Self = self(),
+%%     spawn_link(fun() ->
+%%                        F = fun(Results) ->
+%%                                    WrappedFilter = fun({Value, Props}) -> 
+%%                                                            FilterFun(Value, Props) == true
+%%                                                    end,
+%%                                    case lists:filter(WrappedFilter, Results) of
+%%                                        [] -> 
+%%                                            skip;
+%%                                        FilteredResults ->
+%%                                            Pid ! {result_vec, FilteredResults, Ref}
+%%                                    end
+%%                            end,
+%%                        range(Index, Field, StartTerm, EndTerm, Size, F, Buffers, Segments),
+%%                        Pid ! {result, '$end_of_table', Ref},
+%%                        gen_server:call(Self, {stream_range_finished, Buffers, Segments}, infinity)
+%%                end),
+
+%%     {reply, ok, State#state { locks=NewLocks1 }};
+    
+handle_call({stream_or_range_finished, Buffers, Segments}, _From, State) ->
     #state { locks=Locks } = State,
 
     %% Remove locks from all buffers...
@@ -367,6 +402,7 @@ handle_call({stream_finished, Buffers, Segments}, _From, State) ->
 
     %% Return...
     {reply, ok, State#state { locks=NewLocks1 }};
+
 
 handle_call({fold, FoldFun, Acc}, _From, State) ->
     #state { buffers=Buffers, segments=Segments } = State,
@@ -465,6 +501,33 @@ stream_inner(F, LastIndex, LastField, LastTerm, LastValue, {{Index, Field, Term,
 stream_inner(F, _, _, _, _, eof, Acc) -> 
     F(lists:reverse(Acc)),
     ok.
+
+%% range(Index, Field, StartTerm, EndTerm, Size, F, Buffers, Segments) ->
+%%     %% Put together the group iterator...
+%%     BufferIterators = [mi_buffer:iterator(Index, Field, Term, X) || X <- Buffers],
+%%     SegmentIterators = [mi_segment:iterator(Index, Field, Term, X) || X <- Segments],
+%%     GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators),
+
+%%     %% Start rangeing...
+%%     range_inner(F, undefined, undefined, undefined, undefined, GroupIterator(), []),
+%%     ok.
+%% range_inner(F, LastIndex, LastField, LastTerm, LastValue, Iterator, Acc) 
+%%   when length(Acc) > ?RESULTVEC_SIZE ->
+%%     F(lists:reverse(Acc)),
+%%     range_inner(F, LastIndex, LastField, LastTerm, LastValue, Iterator, []);
+%% range_inner(F, LastIndex, LastField, LastTerm, LastValue, {{Index, Field, Term, Value, Props, _TS}, Iter}, Acc) ->
+%%     %% Check in reverse order, more efficient.
+%%     IsDuplicate = (LastValue == Value) andalso (LastTerm == Term) andalso (LastField == Field) andalso (LastIndex == Index),
+%%     IsDeleted = (Props == undefined),
+%%     case (not IsDuplicate) andalso (not IsDeleted) of
+%%         true  -> 
+%%             range_inner(F, Index, Field, Term, Value, Iter(), [{Value, Props}|Acc]);
+%%         false -> 
+%%             range_inner(F, Index, Field, Term, Value, Iter(), Acc)
+%%     end;
+%% range_inner(F, _, _, _, _, eof, Acc) -> 
+%%     F(lists:reverse(Acc)),
+%%     ok.
 
 %% Chain a list of iterators into what looks like one single iterator.
 build_iterator_tree(Iterators) ->

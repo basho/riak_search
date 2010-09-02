@@ -8,7 +8,9 @@
 -export([index/2,
          delete/2,
          info/5,
-         stream/6]).
+         stream/6,
+         range/8
+        ]).
 -export([start_vnode/1, init/1, handle_command/3,
          handle_handoff_command/3, handle_handoff_data/2,
          handoff_starting/2, handoff_cancelled/1, handoff_finished/2,
@@ -24,6 +26,7 @@
 -record(delete_v1, {iftv_list}).
 -record(info_v1, {index, field, term}).
 -record(stream_v1, {index, field, term, filter_fun}).
+-record(range_v1, {index, field, start_term, end_term, size, filter_fun}).
 
 -define(HANDOFF_VER,1).
 
@@ -60,6 +63,18 @@ stream(Preflist, Index, Field, Term, FilterFun, ReplyTo) ->
     command(Preflist, Req, {raw, Ref, ReplyTo}),
     {ok, Ref}.
 
+range(VNode, Index, Field, StartTerm, EndTerm, Size, FilterFun, ReplyTo) ->
+    Req = #range_v1{
+      index = Index,
+      field = Field,
+      start_term = StartTerm,
+      end_term = EndTerm,
+      size = Size,
+      filter_fun = FilterFun
+     },
+    Ref = {stream_response, make_ref()},
+    command([VNode], Req, {raw, Ref, ReplyTo}),
+    {ok, Ref}.
 
 %%
 %% Utility functions
@@ -114,6 +129,15 @@ handle_command(#stream_v1{index = Index,
                           filter_fun = FilterFun},
                Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
     bmod_response(BMod:stream(Index, Field, Term, FilterFun, Sender, BState), VState);
+
+handle_command(#range_v1{index = Index,
+                         field = Field,
+                         start_term = StartTerm,
+                         end_term = EndTerm,
+                         size = Size,
+                         filter_fun = FilterFun},
+               Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
+    bmod_response(BMod:range(Index, Field, StartTerm, EndTerm, Size, FilterFun, Sender, BState), VState);
 
 %% Request from core_vnode_handoff_sender - fold function
 %% expects to be called with {{Bucket,Key},Value}
