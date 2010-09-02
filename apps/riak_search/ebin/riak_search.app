@@ -31,6 +31,8 @@
              riak_search_op_lor,
              riak_search_op_lnot,
              riak_search_op_term,
+			 riak_search_op_range,
+			 riak_search_op_range_worker,
              riak_search_op_phrase,
              riak_search_op_field,
              riak_search_op_inclusive_range,
