@@ -16,7 +16,7 @@
          terminate/2, code_change/3]).
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
--export([new_conn/0]). % for unit testing
+-export([new_conn/0, close/1, close_nonblocking/1]). % for unit testing
 -endif.
 
 %% wait up to 250ms before trying to checkout a connection again
@@ -25,10 +25,17 @@
 -record(state,
         {
           pool=[],          %% available connections
+          inuse=[],         %% list of checked-out connections
           openmod,          %% module to use to start connections
           closemod,         %% module to use to close connections
           countfun,         %% how many connections to start
           initialized=false %% have any conns been inited?
+         }).
+
+-record(use,
+        {
+          ref,  %% monitor reverence
+          conn  %% PID of the connection
          }).
 
 %% thanks to Tony Rogvall for the idea
@@ -55,6 +62,9 @@
 %%      Close should be the name of a module that exports an arity-one
 %%      function named 'close', that takes a pid() (as returned from
 %%      Open:new_conn/0) as its parameter, and closes the connection.
+%%      This module should also export a function named
+%%      'close_nonblocking', with the same contract as 'close', that
+%%      is guaranteed not to block the caller while executing.
 %%
 %%      CountFun should be a zero-arity function that returns an
 %%      integer, specifying the number of connections to keep alive.
@@ -103,19 +113,31 @@ handle_call(checkout, From,
 handle_call(checkout, _From, #state{pool=[]}=State) ->
     %% nothing available for checkout right now
     {reply, empty_pool, State};
-handle_call(checkout, _From, #state{pool=[H|T]}=State) ->
+handle_call(checkout, {Pid,_}, #state{pool=[H|T], inuse=InUse0}=State) ->
     %% simple: hand back the available connection
-    {reply, {ok, H}, State#state{pool=T}};
+    %% watch the pid, so we can cleanup the connect it's using if
+    %%  it exits before checking the conn back in
+    Ref = erlang:monitor(process, Pid),
+    InUse = [#use{ref=Ref, conn=H}|InUse0],
+    {reply, {ok, H}, State#state{pool=T, inuse=InUse}};
 handle_call(current_count, _From, #state{pool=Pool}=State) ->
     %% grab the number of connections available for checkout
     {reply, length(Pool), State};
 handle_call(_Request, _From, State) ->
     {reply, ignore, State}.
 
-handle_cast({checkin, Conn}, #state{pool=Pool}=State) ->
+handle_cast({checkin, Conn}, #state{pool=Pool, inuse=InUse0}=State) ->
     case is_process_alive(Conn) of
         true ->
-            {noreply, State#state{pool=Pool ++ [Conn]}};
+            case lists:keytake(Conn, #use.conn, InUse0) of
+                {value, #use{ref=Ref}, InUse} ->
+                    %% don't watch the pid for exits any more
+                    erlang:demonitor(Ref, [flush]),
+                    {noreply, State#state{pool=[Conn|Pool],inuse=InUse}};
+                false ->
+                    %% bogus return - we don't know this connection
+                    {noreply, State}
+            end;
         false ->
             %% process death will have triggered handle_info(#'DOWN'{})
             {noreply, State}
@@ -123,17 +145,44 @@ handle_cast({checkin, Conn}, #state{pool=Pool}=State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info(#'DOWN'{id=DownPid},
-            #state{openmod=ConnMod, pool=Pool}=State) ->
-    %% Create a new pid to replace the downed one
-    Pool1 = lists:delete(DownPid, Pool) ++ [init_conn(ConnMod)],
-    {noreply, State#state{pool=Pool1}};
+handle_info(#'DOWN'{ref=Ref, id=DownPid},
+            #state{openmod=OpenMod, closemod=CloseMod,
+                   pool=Pool0, inuse=InUse0}=State) ->
+    case lists:keytake(Ref, #use.ref, InUse0) of
+        {value, #use{conn=Conn}, InUse} ->
+            %% this is a 'DOWN' for a user of one of our connections
+            %% can't be sure what state they left the conn in, so
+            %%  terminate it, then fire up a new one when we get the
+            %%  'DOWN' for the connection
+            %%  Warning: this means that a connection that takes a
+            %%  long time to close will leave the pool under-full
+            %%  for a time, but it means we will never exceed the
+            %%  maximum open connections specified by CountFun()
+            CloseMod:close_nonblocking(Conn),
+            Pool = Pool0;
+        false ->
+            %% this is a 'DOWN' for one of our connections
+            case lists:keytake(DownPid, #use.conn, InUse0) of
+                {value, #use{ref=UseRef}, InUse} ->
+                    %% the connection was in use at the time
+                    erlang:demonitor(UseRef, [flush]),
+                    Pool1 = Pool0;
+                false ->
+                    %% the connection was not in use at the time
+                    InUse = InUse0,
+                    Pool1 = lists:delete(DownPid, Pool0)
+            end,
+            %% Create a new pid to replace the downed one
+            Pool = Pool1 ++ [init_conn(OpenMod)]
+    end,
+    {noreply, State#state{pool=Pool, inuse=InUse}};
 
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(_Reason, #state{closemod=ConnMod, pool=Pool}) ->
+terminate(_Reason, #state{closemod=ConnMod, pool=Pool, inuse=InUse}) ->
     [ConnMod:close(Conn) || Conn <- Pool],
+    [ConnMod:close(Conn) || #use{conn=Conn} <- InUse ],
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
@@ -168,6 +217,8 @@ new_conn() ->
 close(Pid) ->
     Pid ! done.
 
+close_nonblocking(Pid) ->
+    Pid ! done.
 
 exhausted_test() ->
     ConnCount = 3,
@@ -222,6 +273,51 @@ exit_test() ->
         %% Checkin the dead process and make sure current
         %% count stays the same
         checkin(sock_pool_ut, Pid),
+        ?assertEqual(ConnCount, ?MODULE:current_count(sock_pool_ut))
+    after
+        unlink(Pool),
+        exit(Pool, kill)
+    end.
+
+leak_test() ->
+    ConnCount = 5,
+    {ok, Pool} = start_link(sock_pool_ut, {?MODULE, ?MODULE},
+                            fun() -> ConnCount end),
+    try
+        %% Lazy evaluation - does not open pool until first use
+        ?assertEqual(0, ?MODULE:current_count(sock_pool_ut)),
+
+        %% Proc will wait for a close message, then die without
+        %% returning its connection
+        EunitPid = self(),
+        Pid = spawn(fun() ->
+                            {ok, PoolPid} = checkout(sock_pool_ut),
+                            EunitPid ! {checked_out, PoolPid},
+                            receive please_die -> ok
+                            after 5000 -> ok
+                            end
+                    end),
+        erlang:monitor(process, Pid),
+        PoolPid = receive {checked_out, COPid} ->
+                          erlang:monitor(process, COPid),
+                          COPid
+                  after 1000 ->
+                          ?assert(false)
+                  end,
+        
+        %% make sure pool size is smaller
+        ?assertEqual(ConnCount-1, ?MODULE:current_count(sock_pool_ut)),
+
+        Pid ! please_die,
+        %% Close the connection and make sure the process has exited
+        receive #'DOWN'{id = Pid} -> ok
+        after 1000 -> ?assert(false)
+        end,
+        receive #'DOWN'{id = PoolPid} -> ok
+        after 1000 -> ?assert(false)
+        end,
+
+        %% Make sure the pool is back up to size again
         ?assertEqual(ConnCount, ?MODULE:current_count(sock_pool_ut))
     after
         unlink(Pool),

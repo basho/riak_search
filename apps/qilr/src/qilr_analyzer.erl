@@ -17,7 +17,8 @@
 -define(MSG_ANALYSIS_ERROR,   3).
 
 %% API
--export([start_link/0, analyze/2, analyze/3, analyze/4, close/1]).
+-export([start_link/0, analyze/2, analyze/3, analyze/4,
+         close/1, close_nonblocking/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -82,6 +83,9 @@ analyze(Pid, Text, AnalyzerFactory, AnalyzerArgs) ->
 close(Pid) ->
     gen_server:call(Pid, close, infinity).
 
+close_nonblocking(Pid) ->
+    gen_server:cast(Pid, close).
+
 start_link() ->
     gen_server:start_link(?MODULE, [], []).
 
@@ -100,6 +104,7 @@ init([]) ->
     end.
 
 handle_call(close, _From, #state{socket=Sock}=State) ->
+    %% for close/1
     gen_tcp:close(Sock),
     {stop, normal, ok, State};
 
@@ -111,6 +116,10 @@ handle_call({analyze, Req}, From, #state{socket=Sock, caller=undefined}=State) -
 handle_call(_Request, _From, State) ->
     {reply, ignore, State}.
 
+handle_cast(close, #state{socket=Sock}=State) ->
+    %% for close_nonblocking/1
+    gen_tcp:close(Sock),
+    {stop, normal, State};
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
