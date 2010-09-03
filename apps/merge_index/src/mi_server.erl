@@ -32,6 +32,8 @@
     is_compacting
 }).
 
+-define(RESULTVEC_SIZE, 1000).
+
 init([Root]) ->
     %% Load from disk...
     filelib:ensure_dir(join(Root, "ignore")),
@@ -109,8 +111,7 @@ read_buffers(Root, [{BNum, BName}|Rest], NextID, Segments) ->
     set_deleteme_flag(SName),
     Buffer = mi_buffer:new(BName),
     mi_buffer:close_filehandle(Buffer),
-    Size = mi_buffer:size(Buffer),
-    SegmentWO = mi_segment:open_write(SName, Size, Size + 1),
+    SegmentWO = mi_segment:open_write(SName),
     mi_segment:from_buffer(Buffer, SegmentWO),
     mi_buffer:delete(Buffer),
     clear_deleteme_flag(mi_segment:filename(SegmentWO)),
@@ -120,13 +121,11 @@ read_buffers(Root, [{BNum, BName}|Rest], NextID, Segments) ->
     read_buffers(Root, Rest, NextID, [SegmentRO|Segments]).
 
 
-handle_call({index, Index, Field, Term, Value, Props, TS}, _From, State) ->
-    %% Calculate the IFT...
-    #state { buffers=[CurrentBuffer0|Buffers] } = State,
-    IFT = mi_ift_server:create_ift(Index, Field, Term),
-
+handle_call({index, Postings}, _From, State) ->
     %% Write to the buffer...
-    CurrentBuffer = mi_buffer:write(IFT, Value, Props, TS, CurrentBuffer0),
+    #state { buffers=[CurrentBuffer0|Buffers] } = State,
+    %% Index, Field, Term, Value, Props, TS
+    CurrentBuffer = mi_buffer:write(Postings, CurrentBuffer0),
 
     %% Update the state...
     NewState = State#state {buffers = [CurrentBuffer | Buffers]},
@@ -146,8 +145,7 @@ handle_call({index, Index, Field, Term, Value, Props, TS}, _From, State) ->
                 SNum  = get_id_number(mi_buffer:filename(CurrentBuffer)),
                 SName = join(Root, "segment." ++ integer_to_list(SNum)),
                 set_deleteme_flag(SName),
-                Size = mi_buffer:size(CurrentBuffer),
-                SegmentWO = mi_segment:open_write(SName, Size, Size + 1),
+                SegmentWO = mi_segment:open_write(SName),
                 mi_segment:from_buffer(CurrentBuffer, SegmentWO),
                 gen_server:call(Pid, {buffer_to_segment, CurrentBuffer, SegmentWO}, infinity)
             end),
@@ -227,23 +225,14 @@ handle_call({start_compaction, CallingPid}, _From, State) ->
     CallingRef = make_ref(),
     spawn_opt(fun() ->
         %% Create the group iterator...
-        process_flag(priority, high),
         SegmentIterators = [mi_segment:iterator(X) || X <- SegmentsToCompact],
-        GroupIterator = build_iterator_tree(SegmentIterators),
+        GroupIterator = build_iterator_tree(SegmentIterators, fun mi_utils:term_compare_fun/2),
 
         %% Create the new compaction segment...
         <<MD5:128/integer>> = erlang:md5(term_to_binary({now, make_ref()})),
         SName = join(State, io_lib:format("segment.~.16B", [MD5])),
         set_deleteme_flag(SName),
-
-        %% Calculate min and max table slots based on incoming segments.
-        MinSize = if SegmentsToCompact /= [] ->
-                          lists:max([mi_segment:size(X) || X <- SegmentsToCompact]);
-                     true ->
-                          0
-                  end,
-        MaxSize = lists:sum([mi_segment:size(X) || X <- SegmentsToCompact]),
-        CompactSegment = mi_segment:open_write(SName, MinSize, MaxSize),
+        CompactSegment = mi_segment:open_write(SName),
         
         %% Run the compaction...
         mi_segment:from_iterator(GroupIterator, CompactSegment),
@@ -280,87 +269,123 @@ handle_call({compacted, CompactSegmentWO, OldSegments, OldBytes, CallingPid, Cal
     CallingPid ! {compaction_complete, CallingRef, length(OldSegments), OldBytes},
     {reply, ok, NewState};
 
+%% Instead of count, return an actual weight. The weight will either
+%% be 0 (if the term is in a block with other terms) or the size of
+%% the block if the block is devoted to the index alone. This will
+%% make query planning go as expected.
 handle_call({info, Index, Field, Term}, _From, State) ->
     %% Calculate the IFT...
-    #state { buffers=Buffers, segments=Segments } = State,
-    case mi_ift_server:find_ift(Index, Field, Term) of
-        undefined ->
-            {reply, {ok, [{Term, 0}]}, State};
+    #state { segments=Segments } = State,
 
-        IFT ->
-            %% Look up the counts in buffers and segments...
-            BufferCount = lists:sum([mi_buffer:info(IFT, X) || X <- Buffers]),
-            SegmentCount = lists:sum([mi_segment:info(IFT, X) || X <- Segments]),
-            Counts = [{Term, BufferCount + SegmentCount}],
-
-            %% Return...
-            {reply, {ok, Counts}, State}
-    end;
-
-handle_call({info_range, Index, Field, StartTerm, EndTerm, _Size}, _From, State) ->
-    %% TODO: Why do we need size here?
-    %% Get the IDs...
-    #state { buffers=Buffers, segments=Segments } = State,
-
-    %% For each term, determine the number of entries
-    F = fun({Term, IFT}, Acc) ->
-                Total = lists:sum([mi_buffer:info(IFT, X) || X <- Buffers]) +
-                    lists:sum([mi_segment:info(IFT, X) || X <- Segments]),
-                case Total > 0 of
-                    true ->
-                        [{Term, Total} | Acc];
-                    false ->
-                        Acc
-                end
-        end,
-    Counts = lists:reverse(mi_ift_server:fold_ifts(Index, Field, StartTerm, EndTerm, F, [])),
+    %% Look up the weights in segments. 
+    SegmentCount = [mi_segment:info(Index, Field, Term, X) || X <- Segments],
+    Counts = [{Term, lists:max([0|SegmentCount])}],
+    
+    %% Return...
     {reply, {ok, Counts}, State};
+
+
+%% Handle this later. We need a range. Roll through the index to get
+%% the size from the first to the last found term in the index. Use
+%% this range for query planning. Again, this will make query planning 
+%% go as expected.
+%% handle_call({info_range, Index, Field, StartTerm, EndTerm, _Size}, _From, State) ->
+%%     %% TODO: Why do we need size here?
+%%     %% Get the IDs...
+%%     #state { buffers=Buffers, segments=Segments } = State,
+
+%%     %% For each term, determine the number of entries
+%%     Total = 
+%%         lists:sum([mi_buffer:info_range(Index, Field, StartTerm, EndTerm, X) || X <- Buffers]) +
+%%         lists:sum([mi_segment:info_range(Index, Field, StartTerm, EndTerm, X) || X <- Segments]),
+
+%%     F = fun({Term, IFT}, Acc) ->
+%%                 case Total > 0 of
+%%                     true ->
+%%                         [{Term, Total} | Acc];
+%%                     false ->
+%%                         Acc
+%%                 end
+%%         end,
+%%     Counts = lists:reverse(mi_ift_server:fold_ifts(Index, Field, StartTerm, EndTerm, F, [])),
+%%     {reply, {ok, Counts}, State};
 
 handle_call({stream, Index, Field, Term, Pid, Ref, FilterFun}, _From, State) ->
     %% Get the IDs...
     #state { locks=Locks, buffers=Buffers, segments=Segments } = State,
 
-    case mi_ift_server:find_ift(Index, Field, Term) of
-        undefined ->
-            %% Nothing to do, the IFT doesn't exist!
-            Pid ! {result, '$end_of_table', Ref},
-            {reply, ok, State};
+    %% Add locks to all buffers...
+    F1 = fun(Buffer, Acc) ->
+                 mi_locks:claim(mi_buffer:filename(Buffer), Acc)
+         end,
+    NewLocks = lists:foldl(F1, Locks, Buffers),
 
-        IFT ->
-            %% Add locks to all buffers...
-            F1 = fun(Buffer, Acc) ->
-                         mi_locks:claim(mi_buffer:filename(Buffer), Acc)
-                 end,
-            NewLocks = lists:foldl(F1, Locks, Buffers),
+    %% Add locks to all segments...
+    F2 = fun(Segment, Acc) ->
+                 mi_locks:claim(mi_segment:filename(Segment), Acc)
+         end,
+    NewLocks1 = lists:foldl(F2, NewLocks, Segments),
 
-            %% Add locks to all segments...
-            F2 = fun(Segment, Acc) ->
-                         mi_locks:claim(mi_segment:filename(Segment), Acc)
-                 end,
-            NewLocks1 = lists:foldl(F2, NewLocks, Segments),
+    %% Spawn a streaming function...
+    %% SLF TODO: How does caller know if worker proc has crashed?
+    %%     TODO: If filter fun or other crashes, linked server
+    %%           also crashes.
+    Self = self(),
+    spawn_link(fun() ->
+                       F = fun(Results) ->
+                                   WrappedFilter = fun({Value, Props}) -> 
+                                                           FilterFun(Value, Props) == true
+                                                   end,
+                                   case lists:filter(WrappedFilter, Results) of
+                                       [] -> 
+                                           skip;
+                                       FilteredResults ->
+                                           Pid ! {result_vec, FilteredResults, Ref}
+                                   end
+                           end,
+                       stream(Index, Field, Term, F, Buffers, Segments),
+                       Pid ! {result, '$end_of_table', Ref},
+                       gen_server:call(Self, {stream_or_range_finished, Buffers, Segments}, infinity)
+               end),
 
-            %% Spawn a streaming function...
-            %% SLF TODO: How does caller know if worker proc has crashed?
-            %%     TODO: If filter fun or other crashes, linked server
-            %%           also crashes.
-            Self = self(),
-            spawn_link(fun() ->
-                               F = fun(_IFT, Value, Props, _TS) ->
-                                           case FilterFun(Value, Props) of
-                                               true ->
-                                                   Pid ! {result, {Value, Props}, Ref};
-                                               _ ->
-                                                   skip
-                                           end
-                                   end,
-                               stream(IFT, F, Buffers, Segments),
-                               Pid ! {result, '$end_of_table', Ref},
-                               gen_server:call(Self, {stream_finished, Buffers, Segments}, infinity)
-                       end),
-            {reply, ok, State#state { locks=NewLocks1 }}
-    end;
+    {reply, ok, State#state { locks=NewLocks1 }};
+    
+handle_call({range, Index, Field, StartTerm, EndTerm, Size, Pid, Ref, FilterFun}, _From, State) ->
+    #state { locks=Locks, buffers=Buffers, segments=Segments } = State,
 
-handle_call({stream_finished, Buffers, Segments}, _From, State) ->
+    %% Add locks to all buffers...
+    F1 = fun(Buffer, Acc) ->
+                 mi_locks:claim(mi_buffer:filename(Buffer), Acc)
+         end,
+    NewLocks = lists:foldl(F1, Locks, Buffers),
+
+    %% Add locks to all segments...
+    F2 = fun(Segment, Acc) ->
+                 mi_locks:claim(mi_segment:filename(Segment), Acc)
+         end,
+    NewLocks1 = lists:foldl(F2, NewLocks, Segments),
+
+    Self = self(),
+    spawn_link(fun() ->
+                       F = fun(Results) ->
+                                   WrappedFilter = fun({Value, Props}) -> 
+                                                           FilterFun(Value, Props) == true
+                                                   end,
+                                   case lists:filter(WrappedFilter, Results) of
+                                       [] -> 
+                                           skip;
+                                       FilteredResults ->
+                                           Pid ! {result_vec, FilteredResults, Ref}
+                                   end
+                           end,
+                       range(Index, Field, StartTerm, EndTerm, Size, F, Buffers, Segments),
+                       Pid ! {result, '$end_of_table', Ref},
+                       gen_server:call(Self, {stream_or_range_finished, Buffers, Segments}, infinity)
+               end),
+
+    {reply, ok, State#state { locks=NewLocks1 }};
+    
+handle_call({stream_or_range_finished, Buffers, Segments}, _From, State) ->
     #state { locks=Locks } = State,
 
     %% Remove locks from all buffers...
@@ -378,41 +403,45 @@ handle_call({stream_finished, Buffers, Segments}, _From, State) ->
     %% Return...
     {reply, ok, State#state { locks=NewLocks1 }};
 
+
 handle_call({fold, FoldFun, Acc}, _From, State) ->
     #state { buffers=Buffers, segments=Segments } = State,
 
     %% Wrap the FoldFun so that we have a chance to do IndexID /
     %% FieldID / TermID lookups
-    WrappedFun = fun({IFT, Value, Props, TS}, {AccIn, LastIFT, LastIndex, LastField, LastTerm}) ->
-        %% Possibly re-use the last IFT result, or look up if it has changed.
-        case LastIFT of
-            IFT -> 
-                Index = LastIndex,
-                Field = LastField,
-                Term = LastTerm;
-            _ ->
-                {Index, Field, Term} = mi_ift_server:reverse_ift(IFT)
-        end,
-        
+    WrappedFun = fun({Index, Field, Term, Value, Props, TS}, AccIn) ->
         %% Call the fold function...
-        NewAccIn = FoldFun(Index, Field, Term, Value, Props, TS, AccIn),
-        {NewAccIn, IFT, Index, Field, Term}
+        FoldFun(Index, Field, Term, Value, Props, TS, AccIn)
     end,
 
     %% Assemble the group iterator...
     BufferIterators = [mi_buffer:iterator(X) || X <- Buffers],
     SegmentIterators = [mi_segment:iterator(X) || X <- Segments],
-    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators),
+    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators, fun mi_utils:term_compare_fun/2),
 
     %% Fold over everything...
     %% SLF TODO: If filter fun or other crashes, server crashes.
-    {NewAcc, _, _, _, _} = fold(WrappedFun, {Acc, none, none, none, none}, GroupIterator()),
+    NewAcc = fold(WrappedFun, Acc, GroupIterator()),
 
     %% Reply...
     {reply, {ok, NewAcc}, State};
     
 handle_call(is_empty, _From, State) ->
-    IsEmpty = mi_ift_server:term_count() == 0,
+    %% Check if we have buffer data...
+    case State#state.buffers of
+        [] -> 
+            HasBufferData = false;
+        [Buffer] ->
+            HasBufferData = mi_buffer:size(Buffer) > 0;
+        _ ->
+            HasBufferData = true
+    end,
+
+    %% Check if we have segment data.
+    HasSegmentData = length(State#state.segments) > 0,
+
+    %% Return.
+    IsEmpty = (not HasBufferData) andalso (not HasSegmentData),
     {reply, IsEmpty, State};
 
 handle_call(drop, _From, State) ->
@@ -446,63 +475,81 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% Merge-sort the results from Iterators, and stream to the pid.
-stream(IFT, F, Buffers, Segments) ->
+stream(Index, Field, Term, F, Buffers, Segments) ->
     %% Put together the group iterator...
-    BufferIterators = [mi_buffer:iterator(IFT, IFT, X) || X <- Buffers],
-    SegmentIterators = [mi_segment:iterator(IFT, IFT, X) || X <- Segments],
-    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators),
+    BufferIterators = [mi_buffer:iterator(Index, Field, Term, X) || X <- Buffers],
+    SegmentIterators = [mi_segment:iterator(Index, Field, Term, X) || X <- Segments],
+    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators, fun mi_utils:value_compare_fun/2),
 
     %% Start streaming...
-    stream_inner(F, undefined, undefined, GroupIterator()),
+    stream_or_range_inner(F, undefined, GroupIterator(), []),
     ok.
-stream_inner(F, LastIFT, LastValue, {{IFT, Value, Props, TS}, Iter}) ->
-    IsDuplicate = (LastIFT == IFT) andalso (LastValue == Value),
+
+range(Index, Field, StartTerm, EndTerm, Size, F, Buffers, _Segments) ->
+    %% Put together the group iterator...
+    BufferIterators = lists:flatten([mi_buffer:iterators(Index, Field, StartTerm, EndTerm, Size, X) || X <- Buffers]),
+    %% SegmentIterators = lists:flatten([mi_segment:iterators(Index, Field, Term, X) || X <- Segments]),
+    SegmentIterators = [],
+    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators, fun mi_utils:value_compare_fun/2),
+
+    %% Start rangeing...
+    stream_or_range_inner(F, undefined, GroupIterator(), []),
+    ok.
+
+stream_or_range_inner(F, LastValue, Iterator, Acc) 
+  when length(Acc) > ?RESULTVEC_SIZE ->
+    F(lists:reverse(Acc)),
+    stream_or_range_inner(F, LastValue, Iterator, []);
+stream_or_range_inner(F, LastValue, {{Value, Props, _TS}, Iter}, Acc) ->
+    IsDuplicate = (LastValue == Value),
     IsDeleted = (Props == undefined),
     case (not IsDuplicate) andalso (not IsDeleted) of
         true  -> 
-            F(IFT, Value, Props, TS);
+            stream_or_range_inner(F, Value, Iter(), [{Value, Props}|Acc]);
         false -> 
-            skip
-    end,
-    stream_inner(F, IFT, Value, Iter());
-stream_inner(_, _, _, eof) -> ok.
+            stream_or_range_inner(F, Value, Iter(), Acc)
+    end;
+stream_or_range_inner(F, _, eof, Acc) -> 
+    F(lists:reverse(Acc)),
+    ok.
+
+%% BACKHERE - Pass in the compare fun and use a different one for
+%% different circumstances. We *don't* want to use the
+%% Index/Field/Term when doing a range search, but we do want it for
+%% building super-segments as well as sorting a dumped buffer.
 
 %% Chain a list of iterators into what looks like one single iterator.
-build_iterator_tree(Iterators) ->
-    case build_iterator_tree_inner(Iterators) of
+build_iterator_tree([], _CompareFun) ->
+    fun() -> eof end;
+build_iterator_tree(Iterators, CompareFun) ->
+    case build_iterator_tree_inner(Iterators, CompareFun) of
         [OneIterator] -> OneIterator;
-        ManyIterators -> build_iterator_tree(ManyIterators)
+        ManyIterators -> build_iterator_tree(ManyIterators, CompareFun)
     end.
-build_iterator_tree_inner([]) ->
+build_iterator_tree_inner([], _) ->
     [];
-build_iterator_tree_inner([Iterator]) ->
+build_iterator_tree_inner([Iterator], _) ->
     [Iterator];
-build_iterator_tree_inner([IteratorA,IteratorB|Rest]) ->
-    Iterator = fun() -> group_iterator(IteratorA(), IteratorB()) end,
-    [Iterator|build_iterator_tree_inner(Rest)].
+build_iterator_tree_inner([IteratorA,IteratorB|Rest], CompareFun) ->
+    Iterator = fun() -> group_iterator(IteratorA(), IteratorB(), CompareFun) end,
+    [Iterator|build_iterator_tree_inner(Rest, CompareFun)].
 
-group_iterator(I1 = {Term1, Iterator1}, I2 = {Term2, Iterator2}) ->
-    case compare_fun(Term1, Term2) of
+group_iterator(I1 = {Term1, Iterator1}, I2 = {Term2, Iterator2}, CompareFun) ->
+    case CompareFun(Term1, Term2) of
         true ->
-            NewIterator = fun() -> group_iterator(Iterator1(), I2) end,
+            NewIterator = fun() -> group_iterator(Iterator1(), I2, CompareFun) end,
             {Term1, NewIterator};
         false ->
-            NewIterator = fun() -> group_iterator(I1, Iterator2()) end,
+            NewIterator = fun() -> group_iterator(I1, Iterator2(), CompareFun) end,
             {Term2, NewIterator}
     end;
-group_iterator(eof, I) -> group_iterator(I);
-group_iterator(I, eof) -> group_iterator(I).
-group_iterator({Term, Iterator}) ->
-    NewIterator = fun() -> group_iterator(Iterator()) end,
-    {Term, NewIterator};
-group_iterator(eof) ->
-    eof.
+group_iterator(eof, eof, _) -> 
+    eof;
+group_iterator(eof, Iterator, _) -> 
+    Iterator;
+group_iterator(Iterator, eof, _) -> 
+    Iterator.
 
-%% Return true if the two tuples are in sorted order. 
-compare_fun({IFT1, Value1, _, TS1}, {IFT2, Value2, _, TS2}) ->
-    (IFT1 < IFT2) orelse
-    ((IFT1 == IFT2) andalso (Value1 < Value2)) orelse
-    ((IFT1 == IFT2) andalso (Value1 == Value2) andalso (TS1 > TS2)).
 
 %% Return the ID number of a Segment/Buffer/Filename...
 %% Files can be named:

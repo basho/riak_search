@@ -15,9 +15,9 @@
     delete/1,
     filesize/1,
     size/1,
-    write/5,
-    info/2, info/3,
-    iterator/1, iterator/3
+    write/7, write/2,
+    info/4,
+    iterator/1, iterator/4, iterators/6
 ]).
 
 
@@ -48,7 +48,7 @@ new(Filename) ->
                                     {read_ahead, ReadBuffer}] ++ WriteOpts),
 
     %% Read into an ets table...
-    Table = ets:new(buffer, [ordered_set, public]),
+    Table = ets:new(buffer, [duplicate_bag, public]),
     open_inner(FH, Table),
     {ok, Size} = file:position(FH, cur),
 
@@ -56,9 +56,9 @@ new(Filename) ->
     #buffer { filename=Filename, handle=FH, table=Table, size=Size }.
 
 open_inner(FH, Table) ->
-    case mi_utils:read_value(FH) of
-        {ok, {IFT, Value, Props, TS}} ->
-            write_ets(IFT, Value, Props, TS, Table),
+    case read_value(FH) of
+        {ok, {Index, Field, Term, Value, Props, TS}} ->
+            write_to_ets(Table, [{Index, Field, Term, Value, Props, TS}]),
             open_inner(FH, Table);
         eof ->
             ok
@@ -86,13 +86,16 @@ size(Buffer) ->
 
 %% Write the value to the buffer.
 %% Returns the new buffer structure.
-write(IFT, Value, Props, TS, Buffer) ->
+write(Index, Field, Term, Value, Props, TS, Buffer) ->
+    write([{Index, Field, Term, Value, Props, TS}], Buffer).
+
+write(Postings, Buffer) ->
     %% Write to file...
     FH = Buffer#buffer.handle,
-    BytesWritten = mi_utils:write_value(FH, {IFT, Value, Props, TS}),
+    BytesWritten = write_to_file(FH, Postings),
 
     %% Return a new buffer with a new tree and size...
-    write_ets(IFT, Value, Props, TS, Buffer#buffer.table),
+    write_to_ets(Buffer#buffer.table, Postings),
 
     %% Return the new buffer.
     Buffer#buffer {
@@ -100,65 +103,79 @@ write(IFT, Value, Props, TS, Buffer) ->
     }.
 
 %% Return the number of results under this IFT.
-info(IFT, Buffer) ->
-    Spec = [{{{IFT, '_'}, '_', '_'}, [], [true]}],
+info(Index, Field, Term, Buffer) ->
+    Spec = [{{{Index, Field, Term, '_'}, '_', '_'}, [], [true]}],
     ets:select_count(Buffer#buffer.table, Spec).
 
-
-%% Return the number of results for IFTs between the StartIFT and
-%% StopIFT, inclusive.
-info(StartIFT, EndIFT, Buffer) ->
-    Spec = [{{{'$1', '_'}, '_', '_'},
-             [{'=<', StartIFT, '$1'}, {'=<', '$1', EndIFT}],
-             [true]}],
-    ets:select_count(Buffer#buffer.table, Spec).
-
-%%
-%% Return an iterator that traverses the entire buffer
-%%
+%% Return an iterator that traverses the entire buffer.
 iterator(Buffer) ->
     Table = Buffer#buffer.table,
-    fun() -> iterate_ets(ets:first(Table), undefined, Table) end.
+    List1 = ets:tab2list(Table),
+    List2 = [{I,F,T,V,P,K} || {{I,F,T},V,P,K} <- List1],
+    List3 = lists:sort(fun mi_utils:term_compare_fun/2, List2),
+    fun() -> iterate_list(List3) end.
 
-%%
-%% Return an iterator that traverses a range of the buffer
-%%
-iterator(StartIFT, StopIFT, Buffer) ->
+%% Return an iterator that traverses a range of the buffer.
+iterator(Index, Field, Term, Buffer) ->
     Table = Buffer#buffer.table,
-    fun() -> iterate_ets(ets:next(Table, {StartIFT, <<>>}), StopIFT, Table) end.
+    List1 = ets:lookup(Table, {Index, Field, Term}),
+    List2 = [{V,P,K} || {_Key,V,P,K} <- List1],
+    List3 = lists:sort(fun mi_utils:value_compare_fun/2, List2),
+    fun() -> iterate_list(List3) end.
+
+%% Return a list of iterators over a range.
+iterators(Index, Field, StartTerm, EndTerm, Size, Buffer) ->
+    Table = Buffer#buffer.table,
+    Keys = mi_utils:ets_keys(Table),
+    Filter = fun(Key) ->
+                     Key >= {Index, Field, StartTerm} 
+                         andalso 
+                         Key =< {Index, Field, EndTerm}
+                         andalso
+                         (Size == all orelse erlang:size(element(3, Key)) == Size)
+        end,
+    MatchingKeys = lists:filter(Filter, Keys),
+    [iterator(I,F,T, Buffer) || {I,F,T} <- MatchingKeys].
+
+%% Turn a list into an iterator.
+iterate_list([]) ->
+    eof;
+iterate_list([H|T]) ->
+    {H, fun() -> iterate_list(T) end}.
 
 
 %% ===================================================================
 %% Internal functions
 %% ===================================================================
 
-write_ets(IFT, Value, Props, Tstamp, Table) ->
-    case ets:lookup(Table, {IFT, Value}) of
-        [] ->
-            ets:insert_new(Table, {{IFT, Value}, Props, Tstamp});
-        [{{IFT, Value}, _, ExistingTstamp}] ->
-            case ExistingTstamp > Tstamp of
-                true ->
-                    %% Keep existing tstamp; clearly newer
-                    ok;
-                false ->
-                    %% New value is >= existing value; take more recent write
-                    ets:insert(Table, {{IFT, Value}, Props, Tstamp})
-            end
-    end.
-
-iterate_ets('$end_of_table', _StopIFT, _Table) ->
-    eof;
-iterate_ets(CurrKey, StopIFT, Table) ->
-    case ets:lookup(Table, CurrKey) of
-        [{{IFT, Value} = Key, Props, Tstamp}] when IFT =< StopIFT ->
-            {{IFT, Value, Props, Tstamp},
-             fun() -> iterate_ets(ets:next(Table, Key), StopIFT, Table) end};
-        _->
+read_value(FH) ->
+    case file:read(FH, 2) of
+        {ok, <<Size:16/integer>>} ->
+            {ok, B} = file:read(FH, Size),
+            {ok, binary_to_term(B)};
+        eof ->
             eof
     end.
 
+write_to_file(FH, Terms) when is_list(Terms) ->
+    %% Convert all values to binaries, count the bytes.
+    F = fun(X, {SizeAcc, IOAcc}) ->
+                B1 = term_to_binary(X),
+                Size = erlang:size(B1),
+                B2 = <<Size:16/integer, B1/binary>>,
+                {SizeAcc + Size + 2, [B2|IOAcc]}
+        end,
+    {Size, ReverseIOList} = lists:foldl(F, {0, []}, Terms),
+    ok = file:write(FH, lists:reverse(ReverseIOList)),
+    Size.
 
+write_to_ets(Table, Postings) ->
+    %% Convert to {Key, Value, Props, Tstamp}
+    F = fun({Index, Field, Term, Value, Props, Tstamp}) ->
+                {{Index, Field, Term}, Value, Props, Tstamp}
+        end,
+    Postings1 = [F(X) || X <- Postings],
+    ets:insert(Table, Postings1).
 
 %% ===================================================================
 %% EUnit tests

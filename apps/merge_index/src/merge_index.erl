@@ -14,10 +14,10 @@
     %% API
     start_link/1,
     stop/1,
-    index/7,
+    index/7, index/2, 
     stream/7,
+    range/9,
     info/4,
-    info_range/6,
     is_empty/1,
     fold/3,
     drop/1,
@@ -31,19 +31,21 @@ stop(_ServerPid) ->
     ok.
 
 index(ServerPid, Index, Field, Term, Value, Props, Timestamp) ->
-    gen_server:call(ServerPid, 
-        {index, Index, Field, Term, Value, Props, Timestamp}, infinity).
+    index(ServerPid, [{Index, Field, Term, Value, Props, Timestamp}]).
+
+index(ServerPid, Postings) ->
+    gen_server:call(ServerPid, {index, Postings}, infinity).
 
 info(ServerPid, Index, Field, Term) ->
     gen_server:call(ServerPid, {info, Index, Field, Term}, infinity).
 
-info_range(ServerPid, Index, Field, StartTerm, EndTerm, Size) ->
-    gen_server:call(ServerPid,
-        {info_range, Index, Field, StartTerm, EndTerm, Size}, infinity).
-
 stream(ServerPid, Index, Field, Term, Pid, Ref, FilterFun) ->
     gen_server:call(ServerPid, 
         {stream, Index, Field, Term, Pid, Ref, FilterFun}, infinity).
+
+range(ServerPid, Index, Field, StartTerm, EndTerm, Size, Pid, Ref, FilterFun) ->
+    gen_server:call(ServerPid, 
+        {range, Index, Field, StartTerm, EndTerm, Size, Pid, Ref, FilterFun}, infinity).
 
 is_empty(ServerPid) ->
     gen_server:call(ServerPid, is_empty, infinity).

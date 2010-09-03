@@ -9,66 +9,47 @@
 -author("Rusty Klophaus <rusty@basho.com>").
 -include("merge_index.hrl").
 -export([
-    fold/3,
-    read_value/1,
-    write_value/2,
-    file_exists/1,
-    create_empty_file/1,
-    now_to_timestamp/1,
-    ets_next/2,
-    ets_info/0
+         term_compare_fun/2,
+         value_compare_fun/2,
+         ets_keys/1
 ]).
 
 
-fold(F, Acc, Resource) ->
-    case F(Resource, Acc) of
-        {ok, NewResource, NewAcc} -> fold(F, NewAcc, NewResource);
-        {eof, NewAcc} -> {ok, NewAcc}
-    end.
+%% Used by mi_server.erl to compare two terms, for merging
+%% segments. Return true if items are in order.
+term_compare_fun({Index1, Field1, Term1, Value1, _, TS1}, {Index2, Field2, Term2, Value2, _, TS2}) ->
+    (Index1 < Index2) %% Check for Index ordering. (Ascending)
+        orelse 
+        ((Index1 == Index2) andalso %% Check for Field ordering. (Ascending)
+         (Field1 < Field2)) 
+        orelse %% 
+        ((Index1 == Index2) andalso %% Check for Term ordering. (Ascending)
+         (Field1 == Field2) andalso
+         (Term1 < Term2))
+        orelse
+        ((Index1 == Index2) andalso %% Check for Value ordering. (Ascending)
+         (Field1 == Field2) andalso 
+         (Term1 == Term2) andalso 
+         (Value1 < Value2)) 
+        orelse
+        ((Index1 == Index2) andalso %% Check for Timestamp ordering. (Descending)
+         (Field1 == Field2) andalso 
+         (Term1 == Term2) andalso 
+         (Value1 == Value2) andalso 
+         (TS1 > TS2)).
 
-read_value(FH) ->
-    case file:read(FH, 2) of
-        {ok, <<Size:16/integer>>} ->
-            {ok, B} = file:read(FH, Size),
-            {ok, binary_to_term(B)};
-        eof ->
-            eof
-    end.
+%% Used by mi_server.erl to compare two values, for streaming ordered
+%% results back to a caller. Return true if items are in order.
+value_compare_fun({Value1, _, TS1}, {Value2, _, TS2}) ->
+    (Value1 < Value2) %% Check for value ordering. (Ascending)
+        orelse
+          ((Value1 == Value2) andalso  %% Check for timestamp ordering (Descending)
+           (TS1 > TS2)).
 
-write_value(FH, Term) when not is_binary(Term) ->
-    B = term_to_binary(Term),
-    write_value(FH, B);
-write_value(FH, B) ->
-    Size = size(B),
-    ok = file:write(FH, <<Size:16/integer, B/binary>>),
-    Size + 2.
-
-file_exists(Filename) ->
-    filelib:is_file(Filename).
-
-create_empty_file(Filename) ->
-    file:write_file(Filename, <<"">>).
-
-now_to_timestamp({Mega, Sec, Micro}) ->
-    <<TS:64/integer>> = <<Mega:16/integer, Sec:24/integer, Micro:24/integer>>,
-    TS.
-
-%% Return the next key greater than or equal to the supplied key.
-ets_next(Table, Key) ->
-    case Key == undefined of 
-        true ->
-             ets:first(Table);
-        false ->
-            case ets:lookup(Table, Key) of
-                [{Key, _Values}] -> 
-                    Key;
-                [] ->
-                    ets:next(Table, Key)
-            end
-    end.
-
-ets_info() ->
-    L = [{ets:info(T, name), ets:info(T, memory) * erlang:system_info(wordsize)} || T <- ets:all()],
-    Grouped = lists:foldl(fun({Name, Size}, Acc) -> orddict:update_counter(Name, Size, Acc) end,
-                          [], L),
-    lists:reverse(lists:keysort(2, Grouped)).
+ets_keys(Table) ->
+    Key = ets:first(Table),
+    ets_keys_1(Table, Key).
+ets_keys_1(_Table, '$end_of_table') ->
+    [];
+ets_keys_1(Table, Key) ->
+    [Key|ets_keys_1(Table, ets:next(Table, Key))].

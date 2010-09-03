@@ -27,12 +27,10 @@ test:
 rel: deps
 	make -C apps/qilr/java_src
 	./rebar compile generate
-	rm -rf rel/riaksearch/lib/merge_index*
 
 rellink:
 	$(foreach app,$(wildcard apps/*), rm -rf rel/riaksearch/lib/$(shell basename $(app))* && ln -sf $(abspath $(app)) rel/riaksearch/lib;)
 	$(foreach dep,$(wildcard deps/*), rm -rf rel/riaksearch/lib/$(shell basename $(dep))* && ln -sf $(abspath $(dep)) rel/riaksearch/lib;)
-	rm -rf rel/riaksearch/lib/merge_index
 
 relclean:
 	rm -rf rel/riaksearch

@@ -11,25 +11,26 @@
 -export([
     exists/1,
     open_read/1,
-    open_write/3,
+    open_write/1,
     filename/1,
     filesize/1,
-    size/1,
     delete/1,
     data_file/1,
     offsets_file/1,
     from_buffer/2,
     from_iterator/2,
-    info/2,
-    info/3,
+    info/4,
     iterator/1,
-    iterator/3
+    iterator/4
 ]).
 %% Private/debugging/useful export.
 -export([fold_iterator/3]).
 
 -include("merge_index.hrl").
 -include_lib("kernel/include/file.hrl").
+-define(BLOCK_SIZE, 65536).
+-define(BLOOM_CAPACITY, 512).
+-define(BLOOM_ERROR, 0.01).
 
 -ifdef(TEST).
 -ifdef(EQC).
@@ -40,16 +41,20 @@
 
 
 -record(segment, { root,
-                   segidx }).
+                   offsets_table }).
 
 -record(writer, { data_file,
-                  offsets_file,
-                  offsets_file_crc = 0,
-                  offset,
+                  offsets_table,
+                  start_pos = 0,
                   pos = 0,
+                  last_offset = 0,
+                  offsets = [],
                   count = 0,
-                  last_ift,
-                  last_value }).
+                  last_index,
+                  last_field,
+                  last_term,
+                  last_value,
+                  bloom}).
 
 
 exists(Root) ->
@@ -61,16 +66,16 @@ open_read(Root) ->
     DataFileExists = filelib:is_file(data_file(Root)),
     case DataFileExists of
         true  ->
-            SegIdx = read_offsets(Root),
+            OffsetsTable = read_offsets(Root),
             #segment {
                        root=Root,
-                       segidx=SegIdx
+                       offsets_table=OffsetsTable
                      };
         false ->
             throw({?MODULE, missing__file, Root})
     end.
 
-open_write(Root, _EstimatedMin, _EstimatedMax) ->
+open_write(Root) ->
     %% Create the file if it doesn't exist...
     DataFileExists = filelib:is_file(data_file(Root)),
     OffsetsFileExists = filelib:is_file(offsets_file(Root)),
@@ -79,9 +84,12 @@ open_write(Root, _EstimatedMin, _EstimatedMax) ->
             throw({?MODULE, segment_already_exists, Root});
         false ->
             %% TODO: Do we really need to go through the trouble of writing empty files here?
-            mi_utils:create_empty_file(data_file(Root)),
-            mi_utils:create_empty_file(offsets_file(Root)),
-            #segment { root = Root }
+            file:write_file(data_file(Root), <<"">>),
+            file:write_file(offsets_file(Root), <<"">>),
+            #segment {
+                       root = Root,     
+                       offsets_table = ets:new(segment_offsets, [ordered_set, public])
+                     }
     end.
 
 filename(Segment) ->
@@ -91,11 +99,9 @@ filesize(Segment) ->
     {ok, FileInfo} = file:read_file_info(data_file(Segment)),
     FileInfo#file_info.size.
 
-size(Segment) ->
-    mi_nif:segidx_entry_count(Segment#segment.segidx).
-
 delete(Segment) ->
     [ok = file:delete(X) || X <- filelib:wildcard(Segment#segment.root ++ ".*")],
+    ets:delete(Segment#segment.offsets_table),
     ok.
 
 %% Create a segment from a Buffer (see mi_buffer.erl)
@@ -105,148 +111,203 @@ from_buffer(Buffer, Segment) ->
     from_iterator(Iterator, Segment).
 
 from_iterator(Iterator, Segment) ->
-    %% Write to segment file in order...
+    %% Open the datafile...
     {ok, WriteOpts} = application:get_env(merge_index, segment_write_options),
     Opts = [write, raw, binary] ++ WriteOpts,
     {ok, DataFile} = file:open(data_file(Segment), Opts),
     mi_write_cache:setup(DataFile),
-    {ok, OffsetsFile} = file:open(offsets_file(Segment), Opts),
-    mi_write_cache:setup(OffsetsFile),
-    W = #writer { data_file = DataFile,
-                  offsets_file = OffsetsFile },
+
+    %% Open the offset table...
+    W = #writer { count = 0,
+                  start_pos = 0,
+                  last_offset = 0,
+                  offsets = [],
+                  data_file = DataFile,
+                  bloom = mi_bloom:bloom(?BLOOM_CAPACITY, ?BLOOM_ERROR),
+                  offsets_table = Segment#segment.offsets_table},
     try
         Wfinal = from_iterator_inner(W, Iterator()),
         mi_write_cache:flush(Wfinal#writer.data_file),
-        mi_write_cache:flush(Wfinal#writer.offsets_file),
-
-        %% Write the final CRC out on the offsets file
-        file:write(Wfinal#writer.offsets_file,
-                   <<(Wfinal#writer.offsets_file_crc):32/native-unsigned>>)
-
+        ok = ets:tab2file(Wfinal#writer.offsets_table, offsets_file(Segment))
     after
         mi_write_cache:purge(W#writer.data_file),
-        mi_write_cache:purge(W#writer.offsets_file),
         file:close(W#writer.data_file),
-        file:close(W#writer.offsets_file)
+        ets:delete(W#writer.offsets_table)
     end,
     Segment.
 
 
-from_iterator_inner(W, {{IFT, Value, Props, TS}, Iterator})
-  when (W#writer.last_ift /= IFT) ->
 
-    %% Close the last keyspace if it existed...
-    case (W#writer.count) > 0 of
+from_iterator_inner(W, {{Index, Field, Term, Value, Props, TS}, Iterator})
+  when (W#writer.last_term /= Term) orelse (W#writer.last_field /= Field) orelse (W#writer.last_index /= Index) ->
+    %% If we've exceeded the block size, write an entry to the offsets
+    %% file. The offsets entry contains entries less than (but not
+    %% equal to) the Key.
+    Key = {Index, Field, Term},
+    case (W#writer.pos - W#writer.start_pos > ?BLOCK_SIZE) of
         true ->
-            OffsetInfo = <<(W#writer.last_ift):64/native-unsigned,
-                           (W#writer.offset):64/native-unsigned,
-                           (W#writer.count):32/native-unsigned>>,
-            OffsetCrc = erlang:crc32(W#writer.offsets_file_crc, OffsetInfo),
-            ok = mi_write_cache:write(W#writer.offsets_file, OffsetInfo);
+            Offsets = tl(lists:reverse(W#writer.offsets)),
+            ets:insert(W#writer.offsets_table, {Key, W#writer.start_pos, Offsets, W#writer.bloom}),
+            W1 = W#writer { count = 1,
+                            start_pos = W#writer.pos,
+                            last_offset = W#writer.pos,
+                            offsets = [],
+                            bloom=mi_bloom:bloom(?BLOOM_CAPACITY, ?BLOOM_ERROR)};
         false ->
-            OffsetCrc = W#writer.offsets_file_crc
+            W1 = W
     end,
 
     %% Start a new keyspace...
-    BytesWritten1 = write_key(W#writer.data_file, IFT),
+    BytesWritten1 = write_key(W#writer.data_file, Index, Field, Term),
     BytesWritten2 = write_seg_value(W#writer.data_file, Value, Props, TS),
-    W2 = W#writer { offsets_file_crc = OffsetCrc,
-                    offset = W#writer.pos,
-                    pos = W#writer.pos + BytesWritten1 + BytesWritten2,
-                    count = 1,
-                    last_ift = IFT,
-                    last_value = Value},
-    from_iterator_inner(W2, Iterator());
+    W2 = W1#writer { last_offset = W1#writer.pos + BytesWritten1,
+                     offsets = [(W1#writer.pos-W1#writer.last_offset)|W1#writer.offsets],
+                     pos = W1#writer.pos + BytesWritten1 + BytesWritten2,
+                     last_index = Index,
+                     last_field = Field,
+                     last_term = Term,
+                     last_value = Value,
+                     bloom = mi_bloom:add_element(Key, W1#writer.bloom)},
+    IteratorResult = Iterator(),
+    from_iterator_inner(W2, IteratorResult);
 
-from_iterator_inner(W, {{IFT, Value, Props, TS}, Iterator})
-  when W#writer.last_ift == IFT andalso W#writer.last_value /= Value ->
+from_iterator_inner(W, {{Index, Field, Term, Value, Props, TS}, Iterator})
+  when (W#writer.last_term == Term) andalso (W#writer.last_field == Field) andalso (W#writer.last_index == Index) andalso (W#writer.last_value /= Value) ->
     %% Write the new value...
     BytesWritten = write_seg_value(W#writer.data_file, Value, Props, TS),
-    W2 = W#writer { pos = W#writer.pos + BytesWritten,
+    W1 = W#writer { pos = W#writer.pos + BytesWritten,
                     count = W#writer.count + 1,
-                    last_value = Value },
-    from_iterator_inner(W2, Iterator());
+                    last_value = Value},
+    from_iterator_inner(W1, Iterator());
 
-from_iterator_inner(W, {{IFT, Value, _Props, _TS}, Iterator})
-  when W#writer.last_ift == IFT andalso W#writer.last_value == Value ->
+from_iterator_inner(W, {{Index, Field, Term, Value, _Props, _TS}, Iterator})
+  when (W#writer.last_term == Term) andalso (W#writer.last_field == Field) andalso (W#writer.last_index == Index) andalso (W#writer.last_value == Value) ->
     %% Skip...
     from_iterator_inner(W, Iterator());
 
-from_iterator_inner(#writer { pos = 0, count = 0, last_ift = undefined } = W, eof) ->
+from_iterator_inner(#writer { pos = 0, count=0, last_index = undefined, last_field=undefined, last_term=undefined } = W, eof) ->
     %% No input, so just finish.
     W;
 
 from_iterator_inner(W, eof) ->
-    OffsetInfo = <<(W#writer.last_ift):64/native-unsigned,
-                   (W#writer.offset):64/native-unsigned,
-                   (W#writer.count):32/native-unsigned>>,
-    OffsetCrc = erlang:crc32(W#writer.offsets_file_crc, OffsetInfo),
-    ok = mi_write_cache:write(W#writer.offsets_file, OffsetInfo),
-    W#writer { offsets_file_crc = OffsetCrc }.
-
+    Key = {W#writer.last_index, W#writer.last_field, W#writer.last_term},
+    Offsets = tl(lists:reverse(W#writer.offsets)),
+    ets:insert(W#writer.offsets_table, {Key, W#writer.start_pos, Offsets, W#writer.bloom}),
+    W#writer { count=0 }.
 
 %% return the number of results under this IFT.
-info(IFT, Segment) ->
-    mi_nif:segidx_ift_count(Segment#segment.segidx, IFT).
+%% TODO - Fix this.
+info(Index, Field, Term, Segment) ->
+    Key = {Index, Field, Term},
+    case ets:next(Segment#segment.offsets_table, Key) of
+        '$end_of_table' -> 
+            0;
+        OffsetKey ->
+            [{_, _, _, Bloom}] = ets:lookup(Segment#segment.offsets_table, OffsetKey),
+            case mi_bloom:is_element(Key, Bloom) of
+                true  -> 1;
+                false -> 0
+            end
+    end.
 
-%% Return the number of results for IFTs between the StartIFT and
-%% StopIFT, inclusive.
-info(StartIFT, StopIFT, Segment) ->
-    mi_nif:segidx_ift_count(Segment#segment.segidx, StartIFT, StopIFT).
+%% %% Return the number of results for IFTs between the StartIFT and
+%% %% StopIFT, inclusive.
+%% info(StartIFT, StopIFT, Segment) ->
+%%     mi_nif:segidx_ift_count(Segment#segment.segidx, StartIFT, StopIFT).
 
 %% Create an iterator over the entire segment.
 iterator(Segment) ->
     {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
     {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
-    fun() -> iterate_segment(FH, undefined, undefined) end.
+    fun() -> iterate_all(FH, undefined) end.
 
-%% Create an iterator over an inclusive range of IFTs
-iterator(StartIFT, EndIFT, Segment) ->
-    case mi_nif:segidx_lookup_nearest(Segment#segment.segidx, StartIFT) of
-        {ok, IFT0, Offset, _Count} ->
-            %% Seek to the proper offset and start iteration
-            {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
-            {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
-            file:position(FH, Offset),
-            fun() -> iterate_segment(FH, IFT0, EndIFT) end;
-        not_found ->
-            fun() -> eof end
-    end.
-
-%% Iterate over a segment file, starting at whatever the current position
-%% of the provided file handle is. Release the file handle on completion.
-iterate_segment(File, CurrIFT, StopIFT) ->
+%%% Create an iterator over the entire segment.
+iterate_all(File, LastKey) ->
     case read_seg_value(File) of
-        {key, IFT} when IFT > StopIFT ->
-            file:close(File),
-            eof;
-        {key, IFT} ->
-            iterate_segment(File, IFT, StopIFT);
+        {key, Key} ->
+            iterate_all(File, Key);
         {value, {Value, Props, Ts}} ->
-            {{CurrIFT, Value, Props, Ts},
-             fun() -> iterate_segment(File, CurrIFT, StopIFT) end};
-        eof ->
+            {Index, Field, Term} = LastKey,
+            {{Index, Field, Term, Value, Props, Ts},
+             fun() -> iterate_all(File, LastKey) end};
+        _ ->
             file:close(File),
             eof
     end.
 
+
+%% Create an iterator over a single Term.
+iterator(Index, Field, Term, Segment) ->
+    Key = {Index, Field, Term},
+    case ets:next(Segment#segment.offsets_table, Key) of
+        '$end_of_table' -> 
+            fun() -> eof end;
+        OffsetKey ->
+            [{_, StartPos, Offsets, Bloom}] = ets:lookup(Segment#segment.offsets_table, OffsetKey),
+            case mi_bloom:is_element(Key, Bloom) of
+                true ->
+                    {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
+                    {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
+                    file:position(FH, StartPos),
+                    fun() -> iterate_term(FH, Offsets, Key) end;
+                false ->
+                    fun() -> eof end
+            end
+    end.
+
+%% Iterate over the segment file until we find the start of the values
+%% section we want.
+iterate_term(File, [Offset|Offsets], Key) ->
+    case read_seg_value(File) of
+        {key, CurrKey} ->
+            %% Value should be a key, otherwise error. If the key is
+            %% smaller than the one we need, keep jumping. If it's the
+            %% one we need, then iterate values. Otherwise, it's too
+            %% big, so close the file and return.
+            if 
+                CurrKey < Key ->
+                    file:read(File, Offset),
+                    iterate_term(File, Offsets, Key);
+                CurrKey == Key ->
+                    iterate_term_values(File, Key);
+                CurrKey > Key ->
+                    file:close(File),
+                    eof
+            end;
+        _ ->
+            %% Shouldn't get here. If we're here, then the Offset
+            %% values are broken in some way.
+            throw({iterate_term, offset_fail})
+    end;
+iterate_term(File, [], Key) ->
+    %% We're at the last key in the file. If it matches
+    %% our key, then iterate the values, otherwise close the file
+    %% handle.
+    case read_seg_value(File) of
+        {key, CurrKey} when CurrKey == Key ->
+            iterate_term_values(File, Key);
+        _ ->
+            file:close(File),
+            eof
+    end.
+
+iterate_term_values(File, Key) ->
+    case read_seg_value(File) of
+        {value, {Value, Props, Ts}} ->
+            {{Value, Props, Ts},
+             fun() -> iterate_term_values(File, Key) end};
+        _ ->
+            file:close(File),
+            eof
+    end.
+
+
 %% Read the offsets file from disk. If it's not found, then recreate
 %% it from the data file. Return the offsets tree.
 read_offsets(Root) ->
-    case file:read_file(offsets_file(Root)) of
-        {ok, Bin} ->
-            %% Loaded the blob from disk; check the CRC
-            DataSz = erlang:size(Bin) - 4,
-            <<Data:DataSz/binary, Crc:32/native-unsigned>> = Bin,
-            case erlang:crc32(Data) == Crc of
-                true ->
-                    %% CRC check passed -- initialize segidx
-                    {ok, SegIdx} = mi_nif:segidx_new(Data),
-                    SegIdx;
-                false ->
-                    %% CRC failed -- rebuild offsets file
-                    throw({?MODULE, offsets_file_corrupt})
-            end;
+    case ets:file2tab(offsets_file(Root)) of
+        {ok, OffsetsTable} ->
+            OffsetsTable;
         {error, Reason} ->
             %% File doesn't exist -- rebuild it
             throw({?MODULE, {offsets_file_error, Reason}})
@@ -256,8 +317,8 @@ read_offsets(Root) ->
 read_seg_value(FH) ->
     case file:read(FH, 4) of
         {ok, <<1:1/integer, Size:31/integer>>} ->
-            {ok, <<IFT:64/unsigned>>} = file:read(FH, Size),
-            {key, IFT};
+            {ok, B} = file:read(FH, Size),
+            {key, binary_to_term(B)};
         {ok, <<0:1/integer, Size:31/integer>>} ->
             {ok, <<B/binary>>} = file:read(FH, Size),
             {value, binary_to_term(B)};
@@ -265,9 +326,11 @@ read_seg_value(FH) ->
             eof
     end.
 
-write_key(FH, IFT) ->
-    ok = mi_write_cache:write(FH, <<1:1/integer, 8:31/integer, IFT:64/unsigned>>),
-    12.
+write_key(FH, Index, Field, Term) ->
+    B = term_to_binary({Index, Field, Term}),
+    Size = size(B),
+    ok = mi_write_cache:write(FH, <<1:1/integer, Size:31/unsigned, B/binary>>),
+    Size + 4.
 
 write_seg_value(FH, Value, Props, TS) ->
     B = term_to_binary({Value, Props, TS}),
@@ -340,7 +403,7 @@ prop_basic_test(Root) ->
                                               fun(Item, Acc0) -> [Item | Acc0] end, []),
 
                 %% Merge the buffer into a segment
-                from_buffer(Buffer, open_write(Root ++ "_segment", 0, 0)),
+                from_buffer(Buffer, open_write(Root ++ "_segment")),
                 Segment = open_read(Root ++ "_segment"),
 
                 %% Fold over the entire segment
