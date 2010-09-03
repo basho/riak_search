@@ -485,7 +485,7 @@ stream(Index, Field, Term, F, Buffers, Segments) ->
     stream_or_range_inner(F, undefined, GroupIterator(), []),
     ok.
 
-range(Index, Field, StartTerm, EndTerm, Size, F, Buffers, Segments) ->
+range(Index, Field, StartTerm, EndTerm, Size, F, Buffers, _Segments) ->
     %% Put together the group iterator...
     BufferIterators = lists:flatten([mi_buffer:iterators(Index, Field, StartTerm, EndTerm, Size, X) || X <- Buffers]),
     %% SegmentIterators = lists:flatten([mi_segment:iterators(Index, Field, Term, X) || X <- Segments]),
