@@ -7,7 +7,8 @@
 -module(riak_search_op_term).
 -export([
          preplan_op/2,
-         chain_op/4
+         chain_op/4,
+         calculate_score/2
         ]).
 
 -include("riak_search.hrl").
@@ -48,7 +49,9 @@ stream(Index, Field, Term, FilterFun) ->
     %% Get the primary preflist, minus any down nodes. (We don't use
     %% secondary nodes since we ultimately read results from one node
     %% anyway.)
-    Preflist = riak_search_utils:get_primary_apl(Index, Field, Term),
+    DocIdx = riak_search_utils:calc_partition(Index, Field, Term),
+    NVal = riak_search_utils:n_val(),
+    Preflist = riak_core_apl:get_primary_apl(DocIdx, NVal, riak_search),
 
     %% Try to use the local node if possible. Otherwise choose
     %% randomly.

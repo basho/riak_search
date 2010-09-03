@@ -10,7 +10,6 @@
          chain_op/4
         ]).
 -include("riak_search.hrl").
--define(RESULTVEC_SIZE, 1000).
 -define(INDEX_DOCID(Term), ({element(1, Term), element(2, Term)})).
 
 preplan_op(Op, F) ->

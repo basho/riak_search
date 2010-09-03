@@ -22,9 +22,7 @@ preplan_op(Op, F) ->
 
 
 chain_op(OpList, OutputPid, Ref, QueryProps) when is_list(OpList)->
-    plists:map(fun(Op) ->
-                       chain_op(Op, OutputPid, Ref, QueryProps) end,
-               OpList, {processes, 4}),
+    [chain_op(Op, OutputPid, Ref, QueryProps) || Op <- OpList],
     {ok, length(OpList)};
 
 chain_op(Op, OutputPid, Ref, QueryProps) ->

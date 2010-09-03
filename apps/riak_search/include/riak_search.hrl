@@ -10,13 +10,15 @@
 -define(IS_TERM_PROXIMITY(Op), (proplists:get_value(proximity, Op#term.options) /= undefined)).
 -define(IS_TERM_WILDCARD_ALL(Op), lists:member({wildcard, all}, Op#term.options)).
 -define(IS_TERM_WILDCARD_ONE(Op), lists:member({wildcard, one}, Op#term.options)).
+-define(RESULTVEC_SIZE, 1000).
 
 %% Pre-plan Operators...
 
 %% Q will be normalized to {"index", "field", "term"} in
 %% riak_search_preplan:normalize_term/2
 -record(term,             {q, options=[]}).
-
+-record(range,            {q, size, options=[]}).
+-record(range_worker,     {q, size, options=[], vnode}).
 %% Mockterm is used for QC unit tests to test middle logic. Doesn't
 %% hit a backing store.
 -record(mockterm,         {results=[]}).

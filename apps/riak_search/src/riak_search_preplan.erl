@@ -40,72 +40,69 @@ wildcard_range_to_or(#field{field=FieldName, ops=Ops}, Schema)
   when is_record(Ops, inclusive_range);
        is_record(Ops, exclusive_range)->
     Field = Schema:find_field(FieldName),
-    {_Index, FieldName, StartValue, EndValue, Size} =
-        normalize_range({Schema:name(), FieldName, range_start(Ops)},
-                        {Schema:name(), FieldName, range_end(Ops)},
-                        range_type(Ops) =:= inclusive),
-    case range_to_terms(Schema:name(), FieldName, StartValue,
-                        EndValue, Size, Schema:field_type(Field)) of
-        [] ->
-            skip;
-        Results ->
-            #lor{ops=terms_from_range_results(Schema, FieldName, Results)}
-    end;
-wildcard_range_to_or({field, FieldName, T, _}=F, Schema) when is_record(T, term) ->
-    #term{q=Q, options=Opts}=T,
-    Field = Schema:find_field(FieldName),
-    case proplists:get_value(wildcard, Opts) of
-        undefined ->
-            F;
-        all ->
-            Sz = size(Q),
-            {Start, End} = {<<Q:Sz/binary>>, <<Q:Sz/binary, 255:8/integer>>},
-            case range_to_terms(Schema:name(), FieldName, Start,
-                                End, all, Schema:field_type(Field)) of
-                [] ->
-                    skip;
-                Results ->
-                    #lor{ops=terms_from_range_results(Schema, FieldName, Results)}
-            end;
-        one ->
-            Sz = size(Q),
-            {Start, End} = {<<Q:Sz/binary>>, <<Q:Sz/binary, 255:8/integer>>},
-            case range_to_terms(Schema:name(), FieldName, Start,
-                                End, Sz + 1, Schema:field_type(Field)) of
-                [] ->
-                    skip;
-                Results ->
-                    #lor{ops=terms_from_range_results(Schema, FieldName, Results)}
-            end
-    end;
-wildcard_range_to_or(#term{q={Index, FieldName, Q}, options=Opts}=T, Schema) ->
-    Field = Schema:find_field(FieldName),
-    case proplists:get_value(wildcard, Opts) of
-        undefined ->
-            T;
-        all ->
-            Sz = size(Q),
-            {Start, End} = {<<Q:Sz/binary>>, <<Q:Sz/binary, 255:8/integer>>},
-            case range_to_terms(Index, FieldName, Start,
-                                End, all, Schema:field_type(Field)) of
-                [] ->
-                    skip;
-                Results ->
-                    #lor{ops=terms_from_range_results(Schema, FieldName, Results)}
-            end;
-        one ->
-            Sz = size(Q),
-            {Start, End} = {<<Q:Sz/binary>>, <<Q:Sz/binary, 255:8/integer>>},
-            case range_to_terms(Index, FieldName, Start,
-                                End, Sz + 1, Schema:field_type(Field)) of
-                [] ->
-                    skip;
-                Results ->
-                    #lor{ops=terms_from_range_results(Schema, FieldName, Results)}
-            end
-    end;
+    normalize_range({Schema:name(), FieldName, range_start(Ops)},
+                    {Schema:name(), FieldName, range_end(Ops)},
+                    range_type(Ops) =:= inclusive,
+                    Schema:field_type(Field));
 wildcard_range_to_or(Op, _Schema) ->
+    ?PRINT({unhandled_range, Op}),
     Op.
+
+%% wildcard_range_to_or({field, FieldName, T, _}=F, Schema) when is_record(T, term) ->
+%%     #term{q=Q, options=Opts}=T,
+%%     Field = Schema:find_field(FieldName),
+%%     case proplists:get_value(wildcard, Opts) of
+%%         undefined ->
+%%             F;
+%%         all ->
+%%             Sz = size(Q),
+%%             {Start, End} = {<<Q:Sz/binary>>, <<Q:Sz/binary, 255:8/integer>>},
+%%             case range_to_terms(Schema:name(), FieldName, Start,
+%%                                 End, all, Schema:field_type(Field)) of
+%%                 [] ->
+%%                     skip;
+%%                 Results ->
+%%                     #lor{ops=terms_from_range_results(Schema, FieldName, Results)}
+%%             end;
+%%         one ->
+%%             Sz = size(Q),
+%%             {Start, End} = {<<Q:Sz/binary>>, <<Q:Sz/binary, 255:8/integer>>},
+%%             case range_to_terms(Schema:name(), FieldName, Start,
+%%                                 End, Sz + 1, Schema:field_type(Field)) of
+%%                 [] ->
+%%                     skip;
+%%                 Results ->
+%%                     #lor{ops=terms_from_range_results(Schema, FieldName, Results)}
+%%             end
+%%     end;
+%% wildcard_range_to_or(#term{q={Index, FieldName, Q}, options=Opts}=T, Schema) ->
+%%     Field = Schema:find_field(FieldName),
+%%     case proplists:get_value(wildcard, Opts) of
+%%         undefined ->
+%%             T;
+%%         all ->
+%%             Sz = size(Q),
+%%             {Start, End} = {<<Q:Sz/binary>>, <<Q:Sz/binary, 255:8/integer>>},
+%%             case range_to_terms(Index, FieldName, Start,
+%%                                 End, all, Schema:field_type(Field)) of
+%%                 [] ->
+%%                     skip;
+%%                 Results ->
+%%                     #lor{ops=terms_from_range_results(Schema, FieldName, Results)}
+%%             end;
+%%         one ->
+%%             Sz = size(Q),
+%%             {Start, End} = {<<Q:Sz/binary>>, <<Q:Sz/binary, 255:8/integer>>},
+%%             case range_to_terms(Index, FieldName, Start,
+%%                                 End, Sz + 1, Schema:field_type(Field)) of
+%%                 [] ->
+%%                     skip;
+%%                 Results ->
+%%                     #lor{ops=terms_from_range_results(Schema, FieldName, Results)}
+%%             end
+%%     end;
+%% wildcard_range_to_or(Op, _Schema) ->
+%%     Op.
 
 %% Detect and annotate facets & node weights
 insert_facet_or_weight(T, Schema) when is_record(T, term) ->
@@ -287,47 +284,61 @@ visit(AST, _, _, Accum) ->
 
 %% Misc. helper functions
 
-%% Expand a range to a list of terms.  Handle the special cases for integer ranges
-%% for negative numbers.  -0010 TO -0005 needs to be swapped to -0005 TO -0010.
-%% If one number is positive and the other is negative then the range query needs
-%% to be broken into a positive search and a negative search
-range_to_terms(Index, Field, StartTerm, EndTerm, Size, integer) ->
-    StartPolarity = hd(StartTerm),
-    EndPolarity = hd(EndTerm),
-    case {StartPolarity,EndPolarity} of
-        {$-,$-} ->
-            info_range(Index, Field, EndTerm, StartTerm, Size);
-        {$-,_} ->
-            Len = length(StartTerm),
-            MinusOne = make_minus_one(Len),
-            Zero = make_zero(Len),
-            info_range(Index, Field, MinusOne, StartTerm, Size) ++
-                info_range(Index, Field, Zero, EndTerm, Size);
-        {_,$-} ->
-            %% Swap the range if "positive TO negative"
-            range_to_terms(Index, Field, EndTerm, StartTerm, Size, integer);
-        {_,_} ->
-            info_range(Index, Field, StartTerm, EndTerm, Size)
-    end;
-range_to_terms(Index, Field, StartTerm, EndTerm, Size, _Type) ->
-    info_range(Index, Field, StartTerm, EndTerm, Size).
+%% %% Expand a range to a list of terms.  Handle the special cases for integer ranges
+%% %% for negative numbers.  -0010 TO -0005 needs to be swapped to -0005 TO -0010.
+%% %% If one number is positive and the other is negative then the range query needs
+%% %% to be broken into a positive search and a negative search
+%% range_to_terms(Index, Field, StartTerm, EndTerm, Size, integer) ->
+%%     StartPolarity = hd(StartTerm),
+%%     EndPolarity = hd(EndTerm),
+%%     case {StartPolarity,EndPolarity} of
+%%         {$-,$-} ->
+%%             info_range(Index, Field, EndTerm, StartTerm, Size);
+%%         {$-,_} ->
+%%             Len = length(StartTerm),
+%%             MinusOne = make_minus_one(Len),
+%%             Zero = make_zero(Len),
+%%             info_range(Index, Field, MinusOne, StartTerm, Size) ++
+%%                 info_range(Index, Field, Zero, EndTerm, Size);
+%%         {_,$-} ->
+%%             %% Swap the range if "positive TO negative"
+%%             range_to_terms(Index, Field, EndTerm, StartTerm, Size, integer);
+%%         {_,_} ->
+%%             info_range(Index, Field, StartTerm, EndTerm, Size)
+%%     end;
+%% range_to_terms(Index, Field, StartTerm, EndTerm, Size, _Type) ->
+%%     info_range(Index, Field, StartTerm, EndTerm, Size).
 
-make_minus_one(1) ->
-    throw({unhandled_case, make_minus_one});
-make_minus_one(2) ->
-    "-1";
-make_minus_one(Len) ->
-    "-" ++ string:chars($0, Len-2) ++ "1".
+%% make_minus_one(1) ->
+%%     throw({unhandled_case, make_minus_one});
+%% make_minus_one(2) ->
+%%     "-1";
+%% make_minus_one(Len) ->
+%%     "-" ++ string:chars($0, Len-2) ++ "1".
 
-make_zero(Len) ->
-    string:chars($0, Len).
+%% make_zero(Len) ->
+%%     string:chars($0, Len).
 
-normalize_range({Index, Field, StartTerm}, {Index, Field, EndTerm}, Inclusive) ->
+%% TODO - Add support for negative ranges.
+normalize_range({Index, Field, StartTerm}, {Index, Field, EndTerm}, Inclusive, _Type) ->
+    %% If this is an exclusive range, then bump the StartTerm in by one
+    %% bit, and the EndTerm out by one bit.
     {StartTerm1, EndTerm1} = case Inclusive of
         true -> {StartTerm, EndTerm};
         false ->{binary_inc(StartTerm, +1), binary_inc(EndTerm, -1)}
     end,
-    {Index, Field, StartTerm1, EndTerm1, all}.
+    #range { q={Index, Field, StartTerm1, EndTerm1}, size=all};
+normalize_range({Index, Field, StartTerm}, wildcard_all, _Inclusive, _Type) ->
+    EndTerm = binary_last(StartTerm),
+    #range { q={Index, Field, StartTerm, EndTerm}, size=all};
+normalize_range({Index, Field, StartTerm}, wildcard_one, _Inclusive, _Type) ->
+    EndTerm = binary_last(StartTerm),
+    Size = size(StartTerm) + 1,
+    #range { q={Index, Field, StartTerm, EndTerm}, size=Size};
+normalize_range(A, B, C, D) ->
+    ?PRINT({unhandled_range, A, B, C, D}),
+    throw({unhandled_range, A, B, C, D}).
+    
 
 %% Uncomment these when merge_index supports wildcarding
 %% normalize_range({Index, Field, Term}, wildcard_all, _Inclusive) ->
@@ -351,6 +362,14 @@ binary_inc(Term, Amt) when is_integer(Term) ->
 binary_inc(Term, _) ->
     throw({unhandled_type, binary_inc, Term}).
 
+binary_last(Term) when is_list(Term) ->
+    Term ++ [255];
+binary_last(Term) when is_binary(Term) ->
+    <<Term/binary, 255/integer>>;
+binary_last(Term) ->
+    throw({unhandled_type, binary_end, Term}).
+
+
 range_start(#inclusive_range{start_op=Op}) ->
     Op;
 range_start(#exclusive_range{start_op=Op}) ->
@@ -366,30 +385,30 @@ range_type(#inclusive_range{}) ->
 range_type(#exclusive_range{}) ->
     exclusive.
 
-terms_from_range_results(Schema, FieldName, Results) ->
-    F = fun({Term, Node, Count}, Acc) ->
-                Opt = {node_weight, Node, Count},
-                case gb_trees:lookup(Term, Acc) of
-                    none ->
-                        gb_trees:insert(Term, [Opt], Acc);
-                    {value, Options} ->
-                        gb_trees:update(Term, [Opt|Options], Acc)
-                end
-        end,
-    Results1 = lists:foldl(F, gb_trees:empty(), lists:flatten(Results)),
-    Results2 = gb_trees:to_list(Results1),
-    Field = Schema:find_field(FieldName),
-    IsFacet = Schema:is_field_facet(Field),
-    F1 = fun({Q, Options}) ->
-                 Options1 = if
-                                IsFacet =:= true ->
-                                    [facet|Options];
-                                true ->
-                                    node_weights_for_term(Schema:name(),
-                                                          FieldName, Q) ++ Options
-                            end,
-                 #term{q={Schema:name(), FieldName, Q}, options=Options1} end,
-    [F1(X) || X <- Results2].
+%% terms_from_range_results(Schema, FieldName, Results) ->
+%%     F = fun({Term, Node, Count}, Acc) ->
+%%                 Opt = {node_weight, Node, Count},
+%%                 case gb_trees:lookup(Term, Acc) of
+%%                     none ->
+%%                         gb_trees:insert(Term, [Opt], Acc);
+%%                     {value, Options} ->
+%%                         gb_trees:update(Term, [Opt|Options], Acc)
+%%                 end
+%%         end,
+%%     Results1 = lists:foldl(F, gb_trees:empty(), lists:flatten(Results)),
+%%     Results2 = gb_trees:to_list(Results1),
+%%     Field = Schema:find_field(FieldName),
+%%     IsFacet = Schema:is_field_facet(Field),
+%%     F1 = fun({Q, Options}) ->
+%%                  Options1 = if
+%%                                 IsFacet =:= true ->
+%%                                     [facet|Options];
+%%                                 true ->
+%%                                     node_weights_for_term(Schema:name(),
+%%                                                           FieldName, Q) ++ Options
+%%                             end,
+%%                  #term{q={Schema:name(), FieldName, Q}, options=Options1} end,
+%%     [F1(X) || X <- Results2].
 
 node_weights_for_term(IndexName, FieldName, Term) ->
     Weights0 = info(IndexName, FieldName, Term),
@@ -431,22 +450,24 @@ info(Index, Field, Term) ->
     %% Get the primary preflist, minus any down nodes. (We don't use
     %% secondary nodes since we ultimately read results from one node
     %% anyway.)
-    Preflist = riak_search_utils:get_primary_apl(Index, Field, Term),
-
+    DocIdx = riak_search_utils:calc_partition(Index, Field, Term),
+    NVal = riak_search_utils:n_val(),
+    Preflist = riak_core_apl:get_primary_apl(DocIdx, NVal, riak_search),
+    
     {ok, Ref} = riak_search_vnode:info(Preflist, Index, Field, Term, self()),
     {ok, Results} = riak_search_backend:collect_info_response(length(Preflist), Ref, []),
     Results.
 
-info_range(Index, Field, StartTerm, EndTerm, Size) when EndTerm < StartTerm ->
-    info_range(Index, Field, EndTerm, StartTerm, Size);
-info_range(Index, Field, StartTerm, EndTerm, Size) ->
-    %% TODO: Duplicating current behavior for now - a PUT against a preflist with
-    %%       the N val set to the size of the ring - this will mean no failbacks
-    %%       will be available.  Instead should work out the preflist for
-    %%       each partition index and find which node is responsible for that partition
-    %%       and talk to that.
-    Preflist = riak_core_apl:active_owners(riak_search),
-    {ok, Ref} = riak_search_vnode:info_range(Preflist, Index, Field, StartTerm, EndTerm, 
-                                             Size, self()),
-    {ok, Results} = riak_search_backend:collect_info_response(length(Preflist), Ref, []),
-    Results.
+%% info_range(Index, Field, StartTerm, EndTerm, Size) when EndTerm < StartTerm ->
+%%     info_range(Index, Field, EndTerm, StartTerm, Size);
+%% info_range(Index, Field, StartTerm, EndTerm, Size) ->
+%%     %% TODO: Duplicating current behavior for now - a PUT against a preflist with
+%%     %%       the N val set to the size of the ring - this will mean no failbacks
+%%     %%       will be available.  Instead should work out the preflist for
+%%     %%       each partition index and find which node is responsible for that partition
+%%     %%       and talk to that.
+%%     Preflist = riak_core_apl:active_owners(riak_search),
+%%     {ok, Ref} = riak_search_vnode:info_range(Preflist, Index, Field, StartTerm, EndTerm, 
+%%                                              Size, self()),
+%%     {ok, Results} = riak_search_backend:collect_info_response(length(Preflist), Ref, []),
+%%     Results.

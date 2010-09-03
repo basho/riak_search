@@ -226,7 +226,7 @@ handle_call({start_compaction, CallingPid}, _From, State) ->
     spawn_opt(fun() ->
         %% Create the group iterator...
         SegmentIterators = [mi_segment:iterator(X) || X <- SegmentsToCompact],
-        GroupIterator = build_iterator_tree(SegmentIterators),
+        GroupIterator = build_iterator_tree(SegmentIterators, fun mi_utils:term_compare_fun/2),
 
         %% Create the new compaction segment...
         <<MD5:128/integer>> = erlang:md5(term_to_binary({now, make_ref()})),
@@ -345,12 +345,47 @@ handle_call({stream, Index, Field, Term, Pid, Ref, FilterFun}, _From, State) ->
                            end,
                        stream(Index, Field, Term, F, Buffers, Segments),
                        Pid ! {result, '$end_of_table', Ref},
-                       gen_server:call(Self, {stream_finished, Buffers, Segments}, infinity)
+                       gen_server:call(Self, {stream_or_range_finished, Buffers, Segments}, infinity)
                end),
 
     {reply, ok, State#state { locks=NewLocks1 }};
     
-handle_call({stream_finished, Buffers, Segments}, _From, State) ->
+handle_call({range, Index, Field, StartTerm, EndTerm, Size, Pid, Ref, FilterFun}, _From, State) ->
+    #state { locks=Locks, buffers=Buffers, segments=Segments } = State,
+
+    %% Add locks to all buffers...
+    F1 = fun(Buffer, Acc) ->
+                 mi_locks:claim(mi_buffer:filename(Buffer), Acc)
+         end,
+    NewLocks = lists:foldl(F1, Locks, Buffers),
+
+    %% Add locks to all segments...
+    F2 = fun(Segment, Acc) ->
+                 mi_locks:claim(mi_segment:filename(Segment), Acc)
+         end,
+    NewLocks1 = lists:foldl(F2, NewLocks, Segments),
+
+    Self = self(),
+    spawn_link(fun() ->
+                       F = fun(Results) ->
+                                   WrappedFilter = fun({Value, Props}) -> 
+                                                           FilterFun(Value, Props) == true
+                                                   end,
+                                   case lists:filter(WrappedFilter, Results) of
+                                       [] -> 
+                                           skip;
+                                       FilteredResults ->
+                                           Pid ! {result_vec, FilteredResults, Ref}
+                                   end
+                           end,
+                       range(Index, Field, StartTerm, EndTerm, Size, F, Buffers, Segments),
+                       Pid ! {result, '$end_of_table', Ref},
+                       gen_server:call(Self, {stream_or_range_finished, Buffers, Segments}, infinity)
+               end),
+
+    {reply, ok, State#state { locks=NewLocks1 }};
+    
+handle_call({stream_or_range_finished, Buffers, Segments}, _From, State) ->
     #state { locks=Locks } = State,
 
     %% Remove locks from all buffers...
@@ -368,6 +403,7 @@ handle_call({stream_finished, Buffers, Segments}, _From, State) ->
     %% Return...
     {reply, ok, State#state { locks=NewLocks1 }};
 
+
 handle_call({fold, FoldFun, Acc}, _From, State) ->
     #state { buffers=Buffers, segments=Segments } = State,
 
@@ -381,7 +417,7 @@ handle_call({fold, FoldFun, Acc}, _From, State) ->
     %% Assemble the group iterator...
     BufferIterators = [mi_buffer:iterator(X) || X <- Buffers],
     SegmentIterators = [mi_segment:iterator(X) || X <- Segments],
-    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators),
+    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators, fun mi_utils:term_compare_fun/2),
 
     %% Fold over everything...
     %% SLF TODO: If filter fun or other crashes, server crashes.
@@ -443,80 +479,77 @@ stream(Index, Field, Term, F, Buffers, Segments) ->
     %% Put together the group iterator...
     BufferIterators = [mi_buffer:iterator(Index, Field, Term, X) || X <- Buffers],
     SegmentIterators = [mi_segment:iterator(Index, Field, Term, X) || X <- Segments],
-    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators),
+    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators, fun mi_utils:value_compare_fun/2),
 
     %% Start streaming...
-    stream_inner(F, undefined, undefined, undefined, undefined, GroupIterator(), []),
+    stream_or_range_inner(F, undefined, GroupIterator(), []),
     ok.
-stream_inner(F, LastIndex, LastField, LastTerm, LastValue, Iterator, Acc) 
+
+range(Index, Field, StartTerm, EndTerm, Size, F, Buffers, Segments) ->
+    %% Put together the group iterator...
+    BufferIterators = lists:flatten([mi_buffer:iterators(Index, Field, StartTerm, EndTerm, Size, X) || X <- Buffers]),
+    %% SegmentIterators = lists:flatten([mi_segment:iterators(Index, Field, Term, X) || X <- Segments]),
+    SegmentIterators = [],
+    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators, fun mi_utils:value_compare_fun/2),
+
+    %% Start rangeing...
+    stream_or_range_inner(F, undefined, GroupIterator(), []),
+    ok.
+
+stream_or_range_inner(F, LastValue, Iterator, Acc) 
   when length(Acc) > ?RESULTVEC_SIZE ->
     F(lists:reverse(Acc)),
-    stream_inner(F, LastIndex, LastField, LastTerm, LastValue, Iterator, []);
-stream_inner(F, LastIndex, LastField, LastTerm, LastValue, {{Index, Field, Term, Value, Props, _TS}, Iter}, Acc) ->
-    %% Check in reverse order, more efficient.
-    IsDuplicate = (LastValue == Value) andalso (LastTerm == Term) andalso (LastField == Field) andalso (LastIndex == Index),
+    stream_or_range_inner(F, LastValue, Iterator, []);
+stream_or_range_inner(F, LastValue, {{Value, Props, _TS}, Iter}, Acc) ->
+    IsDuplicate = (LastValue == Value),
     IsDeleted = (Props == undefined),
     case (not IsDuplicate) andalso (not IsDeleted) of
         true  -> 
-            stream_inner(F, Index, Field, Term, Value, Iter(), [{Value, Props}|Acc]);
+            stream_or_range_inner(F, Value, Iter(), [{Value, Props}|Acc]);
         false -> 
-            stream_inner(F, Index, Field, Term, Value, Iter(), Acc)
+            stream_or_range_inner(F, Value, Iter(), Acc)
     end;
-stream_inner(F, _, _, _, _, eof, Acc) -> 
+stream_or_range_inner(F, _, eof, Acc) -> 
     F(lists:reverse(Acc)),
     ok.
 
+%% BACKHERE - Pass in the compare fun and use a different one for
+%% different circumstances. We *don't* want to use the
+%% Index/Field/Term when doing a range search, but we do want it for
+%% building super-segments as well as sorting a dumped buffer.
+
 %% Chain a list of iterators into what looks like one single iterator.
-build_iterator_tree(Iterators) ->
-    case build_iterator_tree_inner(Iterators) of
+build_iterator_tree([], _CompareFun) ->
+    fun() -> eof end;
+build_iterator_tree(Iterators, CompareFun) ->
+    case build_iterator_tree_inner(Iterators, CompareFun) of
         [OneIterator] -> OneIterator;
-        ManyIterators -> build_iterator_tree(ManyIterators)
+        ManyIterators -> build_iterator_tree(ManyIterators, CompareFun)
     end.
-build_iterator_tree_inner([]) ->
+build_iterator_tree_inner([], _) ->
     [];
-build_iterator_tree_inner([Iterator]) ->
+build_iterator_tree_inner([Iterator], _) ->
     [Iterator];
-build_iterator_tree_inner([IteratorA,IteratorB|Rest]) ->
-    Iterator = fun() -> group_iterator(IteratorA(), IteratorB()) end,
-    [Iterator|build_iterator_tree_inner(Rest)].
-group_iterator(I1 = {Term1, Iterator1}, I2 = {Term2, Iterator2}) ->
-    case compare_fun(Term1, Term2) of
+build_iterator_tree_inner([IteratorA,IteratorB|Rest], CompareFun) ->
+    Iterator = fun() -> group_iterator(IteratorA(), IteratorB(), CompareFun) end,
+    [Iterator|build_iterator_tree_inner(Rest, CompareFun)].
+
+group_iterator(I1 = {Term1, Iterator1}, I2 = {Term2, Iterator2}, CompareFun) ->
+    case CompareFun(Term1, Term2) of
         true ->
-            NewIterator = fun() -> group_iterator(Iterator1(), I2) end,
+            NewIterator = fun() -> group_iterator(Iterator1(), I2, CompareFun) end,
             {Term1, NewIterator};
         false ->
-            NewIterator = fun() -> group_iterator(I1, Iterator2()) end,
+            NewIterator = fun() -> group_iterator(I1, Iterator2(), CompareFun) end,
             {Term2, NewIterator}
     end;
-group_iterator(eof, I) -> group_iterator(I);
-group_iterator(I, eof) -> group_iterator(I).
-group_iterator({Term, Iterator}) ->
-    NewIterator = fun() -> group_iterator(Iterator()) end,
-    {Term, NewIterator};
-group_iterator(eof) ->
-    eof.
+group_iterator(eof, eof, _) -> 
+    eof;
+group_iterator(eof, Iterator, _) -> 
+    Iterator;
+group_iterator(Iterator, eof, _) -> 
+    Iterator.
 
-%% Return true if the two tuples are in sorted order. 
-compare_fun({Index1, Field1, Term1, Value1, _, TS1}, {Index2, Field2, Term2, Value2, _, TS2}) ->
-    (Index1 < Index2) %% Check for Index ordering. (Ascending)
-        orelse 
-        ((Index1 == Index2) andalso %% Check for Field ordering. (Ascending)
-         (Field1 < Field2)) 
-        orelse %% 
-        ((Index1 == Index2) andalso %% Check for Term ordering. (Ascending)
-         (Field1 == Field2) andalso
-         (Term1 < Term2))
-        orelse
-        ((Index1 == Index2) andalso %% Check for Value ordering. (Ascending)
-         (Field1 == Field2) andalso 
-         (Term1 == Term2) andalso 
-         (Value1 < Value2)) 
-        orelse
-        ((Index1 == Index2) andalso %% Check for Timestamp ordering. (Descending)
-         (Field1 == Field2) andalso 
-         (Term1 == Term2) andalso 
-         (Value1 == Value2) andalso 
-         (TS1 > TS2)).
 
 %% Return the ID number of a Segment/Buffer/Filename...
 %% Files can be named:
