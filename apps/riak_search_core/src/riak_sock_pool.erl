@@ -91,15 +91,15 @@ current_count(Name) ->
 init([{OpenMod, CloseMod}, CountFun]) ->
     {ok, #state{countfun=CountFun, openmod=OpenMod, closemod=CloseMod}}.
 
-handle_call(checkout, _From,
+handle_call(checkout, From,
             #state{initialized=false,
                    countfun=CountFun,
                    openmod=ConnMod
                   }=State) ->
     %% we've never started any connections - fire them all up
     Conns = CountFun(),
-    [H|T] = add_to_pool(ConnMod, Conns),
-    {reply, {ok, H}, State#state{pool=T, initialized=true}};
+    Pool = add_to_pool(ConnMod, Conns),
+    handle_call(checkout, From, State#state{initialized=true, pool=Pool});
 handle_call(checkout, _From, #state{pool=[]}=State) ->
     %% nothing available for checkout right now
     {reply, empty_pool, State};
