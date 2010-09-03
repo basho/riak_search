@@ -234,7 +234,7 @@ choose(Array) when element(1, Array) == array ->
 ets_keys(Table) ->
     Key = ets:first(Table),
     ets_keys_1(Table, Key).
-ets_keys_1(Table, '$end_of_table') ->
+ets_keys_1(_Table, '$end_of_table') ->
     [];
 ets_keys_1(Table, Key) ->
     [Key|ets_keys_1(Table, ets:next(Table, Key))].
