@@ -89,7 +89,6 @@ current_count(Name) ->
     gen_server:call(Name, current_count, infinity).
 
 init([{OpenMod, CloseMod}, CountFun]) ->
-    process_flag(trap_exit, true),
     {ok, #state{countfun=CountFun, openmod=OpenMod, closemod=CloseMod}}.
 
 handle_call(checkout, _From,
