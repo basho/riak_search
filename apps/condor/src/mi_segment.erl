@@ -84,8 +84,8 @@ open_write(Root) ->
             throw({?MODULE, segment_already_exists, Root});
         false ->
             %% TODO: Do we really need to go through the trouble of writing empty files here?
-            mi_utils:create_empty_file(data_file(Root)),
-            mi_utils:create_empty_file(offsets_file(Root)),
+            file:write_file(data_file(Root), <<"">>),
+            file:write_file(offsets_file(Root), <<"">>),
             #segment {
                        root = Root,     
                        offsets_table = ets:new(segment_offsets, [ordered_set, public])
@@ -294,8 +294,7 @@ iterate_term(File, [], Key) ->
 iterate_term_values(File, Key) ->
     case read_seg_value(File) of
         {value, {Value, Props, Ts}} ->
-            {Index, Field, Term} = Key,
-            {{Index, Field, Term, Value, Props, Ts},
+            {{Value, Props, Ts},
              fun() -> iterate_term_values(File, Key) end};
         _ ->
             file:close(File),

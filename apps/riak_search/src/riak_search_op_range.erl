@@ -114,6 +114,9 @@ make_dedup_iterator(Iterator) ->
 dedup_iterator({Term, _, Iterator}, LastTerm) when ?INDEX_DOCID(Term) /= ?INDEX_DOCID(LastTerm) ->
     %% Term is different from last term, so return the iterator.
     {Term, ignore, fun() -> dedup_iterator(Iterator(), Term) end};
+dedup_iterator({Term, _, Iterator}, undefined) ->
+    %% We don't yet have a last term, so return the iterator.
+    {Term, ignore, fun() -> dedup_iterator(Iterator(), Term) end};
 dedup_iterator({Term, _, Iterator}, LastTerm) when ?INDEX_DOCID(Term) == ?INDEX_DOCID(LastTerm) ->
     %% Term is same as last term, so skip it.
     dedup_iterator(Iterator(), LastTerm);

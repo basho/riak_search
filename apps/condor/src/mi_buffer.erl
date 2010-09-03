@@ -17,7 +17,7 @@
     size/1,
     write/7, write/2,
     info/4,
-    iterator/1, iterator/4, iterator/5
+    iterator/1, iterator/4, iterators/6
 ]).
 
 
@@ -48,7 +48,7 @@ new(Filename) ->
                                     {read_ahead, ReadBuffer}] ++ WriteOpts),
 
     %% Read into an ets table...
-    Table = ets:new(buffer, [ordered_set, public]),
+    Table = ets:new(buffer, [duplicate_bag, public]),
     open_inner(FH, Table),
     {ok, Size} = file:position(FH, cur),
 
@@ -107,41 +107,41 @@ info(Index, Field, Term, Buffer) ->
     Spec = [{{{Index, Field, Term, '_'}, '_', '_'}, [], [true]}],
     ets:select_count(Buffer#buffer.table, Spec).
 
-
-%% %% Return the number of results for IFTs between the StartIFT and
-%% %% StopIFT, inclusive.
-%% info(Index, Field, StartTerm, EndTerm, Buffer) ->
-%%     Spec = [{{{'$1', '_'}, '_', '_'},
-%%              [{'=<', StartIFT, '$1'}, {'=<', '$1', EndIFT}],
-%%              [true]}],
-%%     ets:select_count(Buffer#buffer.table, Spec).
-
-%%
-%% Return an iterator that traverses the entire buffer
-%%
+%% Return an iterator that traverses the entire buffer.
 iterator(Buffer) ->
     Table = Buffer#buffer.table,
-    List = lists:sort(ets:tab2list(Table)),
-    fun() -> iterate_list(List) end.
+    List1 = ets:tab2list(Table),
+    List2 = [{I,F,T,V,P,K} || {{I,F,T},V,P,K} <- List1],
+    List3 = lists:sort(fun mi_utils:term_compare_fun/2, List2),
+    fun() -> iterate_list(List3) end.
 
+%% Return an iterator that traverses a range of the buffer.
+iterator(Index, Field, Term, Buffer) ->
+    Table = Buffer#buffer.table,
+    List1 = ets:lookup(Table, {Index, Field, Term}),
+    List2 = [{V,P,K} || {_Key,V,P,K} <- List1],
+    List3 = lists:sort(fun mi_utils:value_compare_fun/2, List2),
+    fun() -> iterate_list(List3) end.
+
+%% Return a list of iterators over a range.
+iterators(Index, Field, StartTerm, EndTerm, Size, Buffer) ->
+    Table = Buffer#buffer.table,
+    Keys = mi_utils:ets_keys(Table),
+    Filter = fun(Key) ->
+                     Key >= {Index, Field, StartTerm} 
+                         andalso 
+                         Key =< {Index, Field, EndTerm}
+                         andalso
+                         (Size == all orelse erlang:size(element(3, Key)) == Size)
+        end,
+    MatchingKeys = lists:filter(Filter, Keys),
+    [iterator(I,F,T, Buffer) || {I,F,T} <- MatchingKeys].
+
+%% Turn a list into an iterator.
 iterate_list([]) ->
     eof;
 iterate_list([H|T]) ->
-    {{Index, Field, Term, Value}, Props, Tstamp} = H, 
-    {{Index, Field, Term, Value, Props, Tstamp},
-     fun() -> iterate_list(T) end}.
-    
-
-%%
-%% Return an iterator that traverses a range of the buffer
-%%
-iterator(Index, Field, Term, Buffer) ->
-    iterator(Index, Field, Term, Term, Buffer).
-iterator(Index, Field, StartTerm, EndTerm, Buffer) ->
-    Table = Buffer#buffer.table,
-    StartKey = ets:next(Table, {Index, Field, StartTerm, <<>>}),
-    EndKey = {Index, Field, EndTerm, <<>>},
-    fun() -> iterate_ets(StartKey, EndKey, Table) end.
+    {H, fun() -> iterate_list(T) end}.
 
 
 %% ===================================================================
@@ -169,39 +169,13 @@ write_to_file(FH, Terms) when is_list(Terms) ->
     ok = file:write(FH, lists:reverse(ReverseIOList)),
     Size.
 
-write_to_ets(_, []) ->
-    ok;
-write_to_ets(Table, [{Index, Field, Term, Value, Props, Tstamp}|Postings]) ->
-    Key = {Index, Field, Term, Value},
-    case ets:insert_new(Table, {Key, Props, Tstamp}) of
-        true ->
-            ok;
-        false ->
-            [{Key, _, ExistingTstamp}] = ets:lookup(Table, Key),
-            case ExistingTstamp > Tstamp of
-                true ->
-                    %% Keep existing tstamp; clearly newer
-                    ok;
-                false ->
-                    %% New value is >= existing value; take more recent write
-                    ets:update_element(Table, Key, [{2, Props}, {3, Tstamp}])
-            end
-    end,
-    write_to_ets(Table, Postings).
-
-iterate_ets(Key = {Index, Field, Term, Value}, EndKey = {Index, Field, EndTerm, _}, Table) 
-  when EndTerm == undefined orelse Term =< EndTerm ->
-    case ets:lookup(Table, Key) of
-        [{Key, Props, Tstamp}] ->
-            {{Index, Field, Term, Value, Props, Tstamp},
-             fun() -> iterate_ets(ets:next(Table, Key), EndKey, Table) end};
-        _->
-            eof
-    end;
-iterate_ets(_, _, _Table) ->
-    eof.
-
-
+write_to_ets(Table, Postings) ->
+    %% Convert to {Key, Value, Props, Tstamp}
+    F = fun({Index, Field, Term, Value, Props, Tstamp}) ->
+                {{Index, Field, Term}, Value, Props, Tstamp}
+        end,
+    Postings1 = [F(X) || X <- Postings],
+    ets:insert(Table, Postings1).
 
 %% ===================================================================
 %% EUnit tests

@@ -233,14 +233,11 @@ choose(Array) when element(1, Array) == array ->
 %% Given an ETS table, return a list of keys.
 ets_keys(Table) ->
     Key = ets:first(Table),
-    [Key|ets_keys_1(Table, Key)].
+    ets_keys_1(Table, Key).
+ets_keys_1(Table, '$end_of_table') ->
+    [];
 ets_keys_1(Table, Key) ->
-    case ets:next(Table, Key) of
-        '$end_of_table' -> 
-            [];
-        NextKey -> 
-            [NextKey|ets_keys_1(Table, NextKey)]
-    end.
+    [Key|ets_keys_1(Table, ets:next(Table, Key))].
 
 
 
