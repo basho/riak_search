@@ -16,7 +16,7 @@
 
 -include_lib("kernel/include/file.hrl").
 -define(BLOCK_SIZE, 8192).
--define(FILE_BUFFER_SIZE, 10485760).
+-define(FILE_BUFFER_SIZE, 1048576).
 -define(VALUES_STAGING_SIZE, 10000).
 -define(VALUES_COMPRESSION_THRESHOLD, 5).
 -define(BLOOM_CAPACITY, 512).
