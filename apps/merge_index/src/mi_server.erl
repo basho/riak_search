@@ -343,9 +343,14 @@ handle_call({stream, Index, Field, Term, Pid, Ref, FilterFun}, _From, State) ->
                                            Pid ! {result_vec, FilteredResults, Ref}
                                    end
                            end,
-                       stream(Index, Field, Term, F, Buffers, Segments),
-                       Pid ! {result, '$end_of_table', Ref},
-                       gen_server:call(Self, {stream_or_range_finished, Buffers, Segments}, infinity)
+                       try
+                           stream(Index, Field, Term, F, Buffers, Segments)
+                       catch Type : Error ->
+                               ?PRINT({Type, Error, erlang:get_stacktrace()})
+                       after
+                           Pid ! {result, '$end_of_table', Ref},
+                           gen_server:call(Self, {stream_or_range_finished, Buffers, Segments}, infinity)
+                       end
                end),
 
     {reply, ok, State#state { locks=NewLocks1 }};
