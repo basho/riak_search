@@ -9,16 +9,14 @@
 -author("Rusty Klophaus <rusty@basho.com>").
 
 -export([
-    from_iterator/2,
-    edit_signature/2,
-    longest_prefix/2
+    from_iterator/2
 ]).
 
 -include("merge_index.hrl").
 
 -include_lib("kernel/include/file.hrl").
--define(BLOCK_SIZE, 65536).
--define(BUFFER_SIZE, 10485760).
+-define(BLOCK_SIZE, 8192).
+-define(FILE_BUFFER_SIZE, 10485760).
 -define(VALUES_STAGING_SIZE, 10000).
 -define(VALUES_COMPRESSION_THRESHOLD, 5).
 -define(BLOOM_CAPACITY, 512).
@@ -26,12 +24,6 @@
 -define(INDEX_FIELD_TERM(X), {element(1, X), element(2, X), element(3, X)}).
 -define(VALUE(X), element(4, X)).
 -define(VALUE_PROPS_TSTAMP(X), {element(4, X), element(5, X), element(6, X)}).
-
--compile({inline,[edit_signature/2, edit_signature_1/2, 
-                  longest_prefix/2, longest_prefix_1/2]}).
-
--record(segment, { root,
-                   offsets_table }).
 
 -record(writer, {data_file,
                  offsets_table,
@@ -52,7 +44,7 @@ from_iterator(Iterator, Segment) ->
     %% Open the data file...
     {ok, WriteOpts} = application:get_env(merge_index, segment_write_options),
     Opts = [write, raw, binary] ++ WriteOpts,
-    {ok, DataFile} = file:open(data_file(Segment), Opts),
+    {ok, DataFile} = file:open(mi_segment:data_file(Segment), Opts),
 
     %% Open the zlib stream...
     ZStream=zlib:open(),
@@ -66,7 +58,7 @@ from_iterator(Iterator, Segment) ->
 
     try
         from_iterator(Iterator(), undefined, undefined, W),
-        ok = ets:tab2file(W#writer.offsets_table, offsets_file(Segment))
+        ok = ets:tab2file(W#writer.offsets_table, mi_segment:offsets_file(Segment))
     after
         zlib:close(W#writer.zstream),
         file:close(W#writer.data_file),
@@ -75,21 +67,9 @@ from_iterator(Iterator, Segment) ->
     ok.
     
 
-data_file(Segment) when is_record(Segment, segment) ->
-    data_file(Segment#segment.root);
-data_file(Root) ->
-    Root ++ ".data".
-
-offsets_file(Segment) when is_record(Segment, segment) ->
-    offsets_file(Segment#segment.root);
-offsets_file(Root) ->
-    Root ++ ".offsets".
-
 %% from_iterator_inner/4 - responsible for taking an iterator,
-%% removing duplicate values, and creating start_segment, start_term,
-%% value, end_term, and end_segment directives. Fun(Directive) is
-%% called and should return NewFun. Function clauses are ordered for
-%% speed, most common clauses first.
+%% removing duplicate values, and then calling the correct
+%% from_iterator_process_*/N functions, which should update the state variable.
 from_iterator({Entry, Iterator}, StartIFT, LastValue, W) 
   when ?INDEX_FIELD_TERM(Entry) == StartIFT andalso
        ?VALUE(Entry) /= LastValue ->
@@ -151,8 +131,9 @@ from_iterator_process_value(Value, W) ->
              values_count = W#writer.values_count + 1
             },
 
-    %% If we have enough, feed values through the ZStream and write to
-    %% file. Return the updated #writer record...
+    %% If we have accumulated enough values, then "write" the values,
+    %% which may or may not compress them and then adds the result to
+    %% the file buffer.
     case length(W1#writer.values_staging) > ?VALUES_STAGING_SIZE of
         true -> 
             W2 = from_iterator_write_values(W1),
@@ -184,20 +165,21 @@ from_iterator_process_end_term(Key, W) ->
 
 
 from_iterator_process_end_block(W) when W#writer.keys /= [] -> 
-    %% Calculate the bloom filter...
+    {FinalKey, _, _, _} = hd(W#writer.keys),
+
+    %% Calculate the bloom filter and longest prefix.
     F1 = fun({Key, _, _, _}, {BloomAcc, LongestPrefixAcc}) ->
                  {_, _, Term} = Key,
-                 {mi_bloom:add_element(Key, BloomAcc), longest_prefix(LongestPrefixAcc, Term)}
+                 {mi_bloom:add_element(Key, BloomAcc), mi_utils:longest_prefix(LongestPrefixAcc, Term)}
         end,
     NewBloom = mi_bloom:bloom(?BLOOM_CAPACITY, ?BLOOM_ERROR),
     {Bloom, LongestPrefix} = lists:foldl(F1, {NewBloom, undefined}, W#writer.keys),
 
     %% Calculate offset table entries...
-    {FinalKey, _, _, _} = hd(W#writer.keys),
     {_, _, FinalTerm} = FinalKey,
     F2 = fun({Key, KeySize, ValuesSize, Count}) ->
                  {_, _, Term} = Key,
-                 {edit_signature(FinalTerm, Term), KeySize, ValuesSize, Count}
+                 {mi_utils:edit_signature(FinalTerm, Term), KeySize, ValuesSize, Count}
         end,
     KeyInfoList = [F2(X) || X <- lists:reverse(W#writer.keys)],
     
@@ -245,13 +227,14 @@ from_iterator_write_values_1(W, Flush)
        (W#writer.compressed_values == true) ->
     %% Run the values through compression.
     UncompressedBytes = term_to_binary(lists:reverse(W#writer.values_staging)),
-    Bytes = zlib:deflate(W#writer.zstream, [UncompressedBytes], Flush),
+    Bytes = zlib:deflate(W#writer.zstream, UncompressedBytes, Flush),
 
-    %% Write to the disk, get bytes written.
+    %% Figure out what we want to write to disk.
     Size = erlang:iolist_size(Bytes),
     Output = [<<0:1/integer, 1:1/integer, Size:30/unsigned-integer>>, Bytes],
     
-    %% Update file position, and reset the values_staging.
+    %% Add output to file buffer, update file position, and reset
+    %% values_staging.
     W1 = W#writer {
            pos = W#writer.pos + Size + 4,
            values_staging = [],
@@ -262,11 +245,13 @@ from_iterator_write_values_1(W, Flush)
     from_iterator_flush_buffer(W1, false);
 from_iterator_write_values_1(W, true) 
   when length(W#writer.values_staging) == 0 ->
+    %% If we're here, then we're trying to write an empty list of
+    %% uncompressed values. Just do nothing.
     W;
 from_iterator_write_values_1(W, _Flush) ->
     %% Write to the disk, get bytes written.
     Bytes = term_to_binary(lists:reverse(W#writer.values_staging)),
-    Size = erlang:iolist_size(Bytes),
+    Size = erlang:size(Bytes),
     Output = [<<0:1/integer, 0:1/integer, Size:30/unsigned-integer>>, Bytes],
     
     %% Update file position, and reset the values_staging.
@@ -279,7 +264,7 @@ from_iterator_write_values_1(W, _Flush) ->
     from_iterator_flush_buffer(W1, false).
 
 from_iterator_flush_buffer(W, Force) ->
-    case (W#writer.buffer_size > ?BUFFER_SIZE) orelse Force of
+    case (W#writer.buffer_size > ?FILE_BUFFER_SIZE) orelse Force of
         true ->
             ok = file:write(W#writer.data_file, lists:reverse(W#writer.buffer)),
             W#writer {
@@ -289,32 +274,3 @@ from_iterator_flush_buffer(W, Force) ->
         false ->
             W
     end.
-
-%% longest_prefix/2 - Given two terms, calculate the longest common
-%% prefix of the terms.
-longest_prefix(A, B) ->
-    list_to_binary(longest_prefix_1(A, B)).
-longest_prefix_1(<<C, A/binary>>, <<C, B/binary>>) ->
-    [C|longest_prefix_1(A, B)];
-longest_prefix_1(undefined, B) ->
-    [B];
-longest_prefix_1(_, _) ->
-    [].
-
-
-%% edit_signature/2 - Given an A term and a B term, return a bitstring
-%% consisting of a 0 bit for each matching char and a 1 bit for each
-%% non-matching char.
-edit_signature(A, B) ->
-    list_to_bitstring(edit_signature_1(A, B)).
-edit_signature_1(<<C, A/binary>>, <<C, B/binary>>) ->
-    [<<0:1/integer>>|edit_signature_1(A, B)];
-edit_signature_1(<<_, A/binary>>, <<_, B/binary>>) ->
-    [<<1:1/integer>>|edit_signature_1(A, B)];
-edit_signature_1(<<>>, <<_, B/binary>>) ->
-    [<<1:1/integer>>|edit_signature_1(<<>>, B)];
-edit_signature_1(<<_/binary>>, <<>>) ->
-    [];
-edit_signature_1(<<>>, <<>>) ->
-    [].    
-

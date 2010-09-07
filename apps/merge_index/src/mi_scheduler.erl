@@ -108,7 +108,7 @@ worker_loop(Parent) ->
             ElapsedSecs = timer:now_diff(now(), Start) / 1000000,
             case Result of
                 {ok, OldSegments, OldBytes} ->
-                    case ElapsedSecs > 30 of
+                    case ElapsedSecs > 1 of
                         true ->
                             error_logger:info_msg(
                               "Pid ~p compacted ~p segments for ~p bytes in ~p seconds, ~.2f MB/sec\n",

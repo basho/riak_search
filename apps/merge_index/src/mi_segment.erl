@@ -42,23 +42,6 @@
 -endif.
 
 
--record(segment, { root,
-                   offsets_table }).
-
--record(writer, { data_file,
-                  offsets_table,
-                  start_pos = 0,
-                  pos = 0,
-                  last_offset = 0,
-                  offsets = [],
-                  count = 0,
-                  last_index,
-                  last_field,
-                  last_term,
-                  last_value,
-                  bloom}).
-
-
 exists(Root) ->
     filelib:is_file(data_file(Root)).
 
@@ -159,23 +142,33 @@ iterator(Index, Field, Term, Segment) ->
     case get_offset_entry(Key, Segment) of
         undefined ->
             fun() -> eof end;
-        {_, BlockStart, Bloom, _LongestPrefix, KeyInfoList} ->
+        {OffsetEntryKey, BlockStart, Bloom, _LongestPrefix, KeyInfoList} ->
             %% If the Key exists in the bloom filter, then continue
             %% reading from the segment, otherwise, end.
             case mi_bloom:is_element(Key, Bloom) of
                 true ->
-                    {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
-                    {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
-                    file:position(FH, BlockStart),
-                    fun() -> iterate_term(FH, KeyInfoList, Key) end;
+                    {_, _, OffsetEntryTerm} = OffsetEntryKey,
+                    EditSignature = mi_utils:edit_signature(OffsetEntryTerm, Term),
+                    iterate_keyinfo(Key, EditSignature, BlockStart, KeyInfoList, Segment);
                 false ->
                     fun() -> eof end
             end
     end.
 
+%% Iterate over the keyinfo list until we find a matching EditSignature.
+iterate_keyinfo(_, _, _, [], _) ->
+    fun() -> eof end;
+iterate_keyinfo(Key, EditSignature, FileOffset, [Match={EditSignature, _, _, _}|Rest], Segment) ->
+    {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
+    {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
+    file:position(FH, FileOffset),
+    fun() -> iterate_term(FH, [Match|Rest], Key) end;
+iterate_keyinfo(Key, EditSignature, FileOffset, [{_, KeySize, ValuesSize, _}|Rest], Segment) ->
+    iterate_keyinfo(Key, EditSignature, FileOffset + KeySize + ValuesSize, Rest, Segment).
+
 %% Iterate over the segment file until we find the start of the values
 %% section we want.
-iterate_term(File, [KeyInfo = {_, _, ValuesSize, _}|KeyInfoList], Key) ->
+iterate_term(File, [{_, _, ValuesSize, _}|KeyInfoList], Key) ->
     %% Read the next entry in the segment file.  Value should be a
     %% key, otherwise error. 
     case read_seg_entry(File) of
@@ -199,10 +192,9 @@ iterate_term(File, [KeyInfo = {_, _, ValuesSize, _}|KeyInfoList], Key) ->
                     file:close(File),
                     eof
             end;
-        Other ->
+        _ ->
             %% Shouldn't get here. If we're here, then the Offset
             %% values are broken in some way.
-            ?PRINT(Other),
             file:close(File),
             throw({iterate_term, offset_fail})
     end.
@@ -225,16 +217,20 @@ iterate_term(File, [KeyInfo = {_, _, ValuesSize, _}|KeyInfoList], Key) ->
 
 %% PRIVATE FUNCTIONS
 
-
 %% Given a key, look up the entry in the offsets table and return
 %% {OffsetKey, StartPos, Offsets, Bloom} or 'undefined'.
 get_offset_entry(Key, Segment) ->
-    case ets:next(Segment#segment.offsets_table, Key) of
-        '$end_of_table' -> 
-            undefined;
-        OffsetKey ->
-            %% Look up the offset information.
-            hd(ets:lookup(Segment#segment.offsets_table, OffsetKey))
+    case ets:lookup(Segment#segment.offsets_table, Key) of
+        [] ->
+            case ets:next(Segment#segment.offsets_table, Key) of
+                '$end_of_table' -> 
+                    undefined;
+                OffsetKey ->
+                    %% Look up the offset information.
+                    hd(ets:lookup(Segment#segment.offsets_table, OffsetKey))
+            end;
+        [Entry] ->
+            Entry
     end.
 
 iterate_values(File, ZStream, TransformFun, WhenDoneFun) ->
@@ -280,19 +276,19 @@ read_offsets(Root) ->
 
 read_seg_entry(FH) ->
     case file:read(FH, 1) of
-        {ok, <<0:1/integer, 0:1/integer, Size1:6/integer>>} ->
-            {ok, <<Size2:24/integer>>} = file:read(FH, 3),
-            <<TotalSize:30/integer>> = <<Size1:6/integer, Size2:24/integer>>,
+        {ok, <<0:1/integer, 0:1/integer, Size1:6/bitstring>>} ->
+            {ok, <<Size2:24/bitstring>>} = file:read(FH, 3),
+            <<TotalSize:30/unsigned-integer>> = <<Size1:6/bitstring, Size2:24/bitstring>>,
             {ok, B} = file:read(FH, TotalSize),
             {values, B};
-        {ok, <<0:1/integer, 1:1/integer, Size1:6/integer>>} ->
-            {ok, <<Size2:24/integer>>} = file:read(FH, 3),
-            <<TotalSize:30/integer>> = <<Size1:6/integer, Size2:24/integer>>,
+        {ok, <<0:1/integer, 1:1/integer, Size1:6/bitstring>>} ->
+            {ok, <<Size2:24/bitstring>>} = file:read(FH, 3),
+            <<TotalSize:30/unsigned-integer>> = <<Size1:6/bitstring, Size2:24/bitstring>>,
             {ok, B} = file:read(FH, TotalSize),
             {compressed_values, B};
-        {ok, <<1:1/integer, Size1:7/integer>>} ->
-            {ok, <<Size2:8/integer>>} = file:read(FH, 1),
-            <<TotalSize:15/integer>> = <<Size1:7/integer, Size2:8/integer>>,
+        {ok, <<1:1/integer, Size1:7/bitstring>>} ->
+            {ok, <<Size2:8/bitstring>>} = file:read(FH, 1),
+            <<TotalSize:15/unsigned-integer>> = <<Size1:7/bitstring, Size2:8/bitstring>>,
             {ok, B} = file:read(FH, TotalSize),
             {key, B};
         eof ->

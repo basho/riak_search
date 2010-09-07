@@ -2,3 +2,7 @@
 -define(TIMEON, erlang:put(debug_timer, [now()|case erlang:get(debug_timer) == undefined of true -> []; false -> erlang:get(debug_timer) end])).
 -define(TIMEOFF(Var, Count), io:format("~s :: ~p @ ~10.2fms (~10.2f total) : ~p : ~p~n", [string:copies(" ", length(erlang:get(debug_timer))), Count, (timer:now_diff(now(), hd(erlang:get(debug_timer)))/1000/(Count+1)),(timer:now_diff(now(), hd(erlang:get(debug_timer)))/1000), ??Var, Var]), erlang:put(debug_timer, tl(erlang:get(debug_timer)))).
 
+-record(segment, {root,
+                  offsets_table }).
+
+
