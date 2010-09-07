@@ -134,6 +134,7 @@ iterator(Segment) ->
     {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
     {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
     ZStream = zlib:open(),
+    zlib:inflateInit(ZStream),
     fun() -> 
             iterate_all(FH, ZStream, undefined) 
     end.
@@ -197,6 +198,7 @@ iterate_term(File, [Offset|Offsets], Key) ->
                 CurrKey == Key ->
                     Transform = fun(Value) -> Value end,
                     ZStream = zlib:open(),
+                    zlib:inflateInit(ZStream),
                     WhenDone = fun(_) -> zlib:close(ZStream), file:close(File), eof end,
                     iterate_values(File, ZStream, Transform, WhenDone);
                 CurrKey > Key ->
@@ -241,25 +243,31 @@ get_offset_entry(Key, Segment) ->
     end.
 
 iterate_values(File, ZStream, TransformFun, WhenDoneFun) ->
-    zlib:inflateInit(ZStream),
-    iterate_values_1(File, ZStream, TransformFun, WhenDoneFun).
-iterate_values_1(File, ZStream, TransformFun, WhenDoneFun) ->
+    iterate_values_1(File, ZStream, TransformFun, WhenDoneFun, false).
+iterate_values_1(File, ZStream, TransformFun, WhenDoneFun, WasCompressed) ->
     %% Read the next value, expose as iterator.
     case read_seg_entry(File) of
         {values, <<>>} ->
-            iterate_values_1(File, ZStream, TransformFun, WhenDoneFun);
-        {values, CompressedValueBytes} ->
+            iterate_values_1(File, ZStream, TransformFun, WhenDoneFun, WasCompressed);
+        {values, ValueBytes} ->
+            Results = binary_to_term(ValueBytes),
+            iterate_values_2(Results, File, ZStream, TransformFun, WhenDoneFun, WasCompressed);
+        {compressed_values, <<>>} ->
+            iterate_values_1(File, ZStream, TransformFun, WhenDoneFun, true);
+        {compressed_values, CompressedValueBytes} ->
             ValueBytes = zlib:inflate(ZStream, CompressedValueBytes),
             Results = binary_to_term(list_to_binary([ValueBytes])),
-            iterate_values_2(Results, File, ZStream, TransformFun, WhenDoneFun);
-        Other ->
-            zlib:inflateEnd(ZStream),
+            iterate_values_2(Results, File, ZStream, TransformFun, WhenDoneFun, true);
+        Other when (WasCompressed == true) ->
+            zlib:inflateReset(ZStream),
+            WhenDoneFun(Other);
+        Other when not WasCompressed ->
             WhenDoneFun(Other)
     end.
-iterate_values_2([Result|Results], File, ZStream, TransformFun, WhenDoneFun) ->
-    {TransformFun(Result), fun() -> iterate_values_2(Results, File, ZStream, TransformFun, WhenDoneFun) end};
-iterate_values_2([], File, ZStream, TransformFun, WhenDoneFun) ->
-    iterate_values_1(File, ZStream, TransformFun, WhenDoneFun).
+iterate_values_2([Result|Results], File, ZStream, TransformFun, WhenDoneFun, WasCompressed) ->
+    {TransformFun(Result), fun() -> iterate_values_2(Results, File, ZStream, TransformFun, WhenDoneFun, WasCompressed) end};
+iterate_values_2([], File, ZStream, TransformFun, WhenDoneFun, WasCompressed) ->
+    iterate_values_1(File, ZStream, TransformFun, WhenDoneFun, WasCompressed).
 
 
 
@@ -277,11 +285,16 @@ read_offsets(Root) ->
 
 read_seg_entry(FH) ->
     case file:read(FH, 1) of
-        {ok, <<0:1/integer, Size1:7/integer>>} ->
+        {ok, <<0:1/integer, 0:1/integer, Size1:6/integer>>} ->
             {ok, <<Size2:24/integer>>} = file:read(FH, 3),
-            <<TotalSize:31/integer>> = <<Size1:7/integer, Size2:24/integer>>,
+            <<TotalSize:30/integer>> = <<Size1:6/integer, Size2:24/integer>>,
             {ok, B} = file:read(FH, TotalSize),
             {values, B};
+        {ok, <<0:1/integer, 1:1/integer, Size1:6/integer>>} ->
+            {ok, <<Size2:24/integer>>} = file:read(FH, 3),
+            <<TotalSize:30/integer>> = <<Size1:6/integer, Size2:24/integer>>,
+            {ok, B} = file:read(FH, TotalSize),
+            {compressed_values, B};
         {ok, <<1:1/integer, Size1:7/integer>>} ->
             {ok, <<Size2:8/integer>>} = file:read(FH, 1),
             <<TotalSize:15/integer>> = <<Size1:7/integer, Size2:8/integer>>,

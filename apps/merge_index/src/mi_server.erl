@@ -235,9 +235,7 @@ handle_call({start_compaction, CallingPid}, _From, State) ->
         CompactSegment = mi_segment:open_write(SName),
         
         %% Run the compaction...
-        Start = now(),
         mi_segment:from_iterator(GroupIterator, CompactSegment),
-        ?PRINT({compacted, length(SegmentIterators), timer:now_diff(now(), Start) / 1000 / 1000, lists:sum([mi_segment:filesize(X) || X <- SegmentsToCompact])}),
         gen_server:call(Pid, {compacted, CompactSegment, SegmentsToCompact, BytesToCompact, CallingPid, CallingRef}, infinity)
     end, [link, {fullsweep_after, 0}]),
     {reply, {ok, CallingRef}, State#state { is_compacting=true }};

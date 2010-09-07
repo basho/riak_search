@@ -18,12 +18,17 @@
 
 -include_lib("kernel/include/file.hrl").
 -define(BLOCK_SIZE, 65536).
--define(VALUES_STAGING_SIZE, 1000).
+-define(BUFFER_SIZE, 10485760).
+-define(VALUES_STAGING_SIZE, 10000).
+-define(VALUES_COMPRESSION_THRESHOLD, 5).
 -define(BLOOM_CAPACITY, 512).
 -define(BLOOM_ERROR, 0.01).
 -define(INDEX_FIELD_TERM(X), {element(1, X), element(2, X), element(3, X)}).
 -define(VALUE(X), element(4, X)).
 -define(VALUE_PROPS_TSTAMP(X), {element(4, X), element(5, X), element(6, X)}).
+
+-compile({inline,[edit_signature/2, edit_signature_1/2, 
+                  longest_prefix/2, longest_prefix_1/2]}).
 
 -record(segment, { root,
                    offsets_table }).
@@ -37,7 +42,10 @@
                  key_start=0,
                  values_start=0,
                  values_count=0,
-                 values_staging=[]
+                 values_staging=[],
+                 compressed_values=false,
+                 buffer=[],
+                 buffer_size=0
          }).
 
 from_iterator(Iterator, Segment) ->
@@ -48,6 +56,7 @@ from_iterator(Iterator, Segment) ->
 
     %% Open the zlib stream...
     ZStream=zlib:open(),
+    ok = zlib:deflateInit(ZStream, best_speed),
 
     W = #writer {
       data_file=DataFile,
@@ -85,8 +94,16 @@ from_iterator({Entry, Iterator}, StartIFT, LastValue, W)
   when ?INDEX_FIELD_TERM(Entry) == StartIFT andalso
        ?VALUE(Entry) /= LastValue ->
     %% Add the next value to the segment.
-    W1 = from_iterator_inner({value, ?VALUE_PROPS_TSTAMP(Entry)}, W),
+    W1 = from_iterator_process_value(?VALUE_PROPS_TSTAMP(Entry), W),
     from_iterator(Iterator(), StartIFT, ?VALUE(Entry), W1);
+
+from_iterator({Entry, Iterator}, StartIFT, _LastValue, W) 
+  when ?INDEX_FIELD_TERM(Entry) /= StartIFT andalso StartIFT /= undefined ->
+    %% Start a new term.
+    W1 = from_iterator_process_end_term(StartIFT, W),
+    W2 = from_iterator_process_start_term(?INDEX_FIELD_TERM(Entry), W1),
+    W3 = from_iterator_process_value(?VALUE_PROPS_TSTAMP(Entry), W2),
+    from_iterator(Iterator(), ?INDEX_FIELD_TERM(Entry), ?VALUE(Entry), W3);
 
 from_iterator({Entry, Iterator}, StartIFT, LastValue, W) 
   when ?INDEX_FIELD_TERM(Entry) == StartIFT andalso
@@ -94,34 +111,40 @@ from_iterator({Entry, Iterator}, StartIFT, LastValue, W)
     %% Eliminate a duplicate value.
     from_iterator(Iterator(), StartIFT, LastValue, W);
 
-from_iterator({Entry, Iterator}, StartIFT, _LastValue, W) 
-  when ?INDEX_FIELD_TERM(Entry) /= StartIFT andalso StartIFT /= undefined ->
-    %% Start a new term.
-    W1 = from_iterator_inner({end_term, StartIFT}, W),
-    W2 = from_iterator_inner({start_term, ?INDEX_FIELD_TERM(Entry)}, W1),
-    W3 = from_iterator_inner({value, ?VALUE_PROPS_TSTAMP(Entry)}, W2),
-    from_iterator(Iterator(), ?INDEX_FIELD_TERM(Entry), ?VALUE(Entry), W3);
-
 from_iterator({Entry, Iterator}, undefined, undefined, W) ->
     %% Start of segment.
-    W1 = from_iterator_inner(start_segment, W),
-    W2 = from_iterator_inner({start_term, ?INDEX_FIELD_TERM(Entry)}, W1),
-    W3 = from_iterator_inner({value, ?VALUE_PROPS_TSTAMP(Entry)}, W2),
+    W1 = from_iterator_process_start_segment(W),
+    W2 = from_iterator_process_start_term(?INDEX_FIELD_TERM(Entry), W1),
+    W3 = from_iterator_process_value(?VALUE_PROPS_TSTAMP(Entry), W2),
     from_iterator(Iterator(), ?INDEX_FIELD_TERM(Entry), ?VALUE(Entry), W3);
 
 from_iterator(eof, StartIFT, _LastValue, W) ->
     %% End of segment.
-    W1 = from_iterator_inner({end_term, StartIFT}, W),
-    W2 = from_iterator_inner(end_segment, W1),
+    W1 = from_iterator_process_end_term(StartIFT, W),
+    W2 = from_iterator_process_end_segment(W1),
     W2.
 
-%% from_iterator_inner/2 - called repeatedly by from_iterator/4 with
-%% one of the following directives: segment_start, term_start, value,
-%% term_end, or segment_end. It is responsible for writing data to the
-%% data_file and performing bookkeeping to write hints to the
-%% offsets_table. Function clauses are ordered for speed, most common
-%% clauses first.
-from_iterator_inner({value, Value}, W) ->
+
+%% One method below for each different stage of writing a segment: start_segment, start_block, start_term, value, end_term, end_block, end_segment.
+
+from_iterator_process_start_segment(W) -> 
+    from_iterator_process_start_block(W).
+
+from_iterator_process_start_block(W) -> 
+    %% Set the block_start position, and zero out keys for this block..
+    W#writer {
+      block_start = W#writer.pos,
+      keys = []
+     }.
+
+from_iterator_process_start_term(Key, W) -> 
+    %% Reset the zlib stream...
+    ok = zlib:deflateReset(W#writer.zstream),
+
+    %% Write the key entry to the data file...
+    from_iterator_write_key(W, Key).
+
+from_iterator_process_value(Value, W) ->
     %% Build up the set of values...
     W1 = W#writer { 
              values_staging=[Value|W#writer.values_staging],
@@ -132,24 +155,15 @@ from_iterator_inner({value, Value}, W) ->
     %% file. Return the updated #writer record...
     case length(W1#writer.values_staging) > ?VALUES_STAGING_SIZE of
         true -> 
-            from_iterator_write_values(W1);
+            W2 = from_iterator_write_values(W1),
+            W2;
         false ->
             W1
-    end;
+    end.
 
-from_iterator_inner({start_term, Key}, W) -> 
-    %% Initialize the zlib stream...
-    ok = zlib:deflateInit(W#writer.zstream, default),
-
-    %% Write the key entry to the data file...
-    from_iterator_write_key(W, Key);
-
-from_iterator_inner({end_term, Key}, W) -> 
+from_iterator_process_end_term(Key, W) -> 
     %% Write our remaining values...
-    W1 = from_iterator_write_values_flush(W),
-
-    %% End the zlib stream...
-    ok = zlib:deflateEnd(W#writer.zstream),
+    W1 = from_iterator_write_values_end(W),
 
     %% Add the key to state...
     KeySize = W#writer.values_start - W#writer.key_start,
@@ -162,24 +176,17 @@ from_iterator_inner({end_term, Key}, W) ->
     %% a new block...
     case W2#writer.pos - W2#writer.block_start > ?BLOCK_SIZE of
         true ->
-            W3 = from_iterator_inner(close_block, W2),
-            from_iterator_inner(open_block, W3);
+            W3 = from_iterator_process_end_block(W2),
+            from_iterator_process_start_block(W3);
         false ->
             W2
-    end;
+    end.
 
-from_iterator_inner(open_block, W) -> 
-    %% Set the block_start position, and zero out keys for this block..
-    W#writer {
-      block_start = W#writer.pos,
-      keys = []
-     };
 
-from_iterator_inner(close_block, W) when W#writer.keys /= [] -> 
+from_iterator_process_end_block(W) when W#writer.keys /= [] -> 
     %% Calculate the bloom filter...
     F1 = fun({Key, _, _, _}, {BloomAcc, LongestPrefixAcc}) ->
                  {_, _, Term} = Key,
-                 %% {mi_bloom:add_element(Key, BloomAcc), longest_prefix(LongestPrefixAcc, Term)}
                  {mi_bloom:add_element(Key, BloomAcc), longest_prefix(LongestPrefixAcc, Term)}
         end,
     NewBloom = mi_bloom:bloom(?BLOOM_CAPACITY, ?BLOOM_ERROR),
@@ -198,52 +205,87 @@ from_iterator_inner(close_block, W) when W#writer.keys /= [] ->
     Entry = {FinalKey, W#writer.block_start, Bloom, LongestPrefix, KeyInfoList},
     true = ets:insert(W#writer.offsets_table, Entry),
     W;
+from_iterator_process_end_block(W) when W#writer.keys == [] -> 
+    W.
 
-from_iterator_inner(close_block, W) when W#writer.keys == [] -> 
-    W;
-
-from_iterator_inner(start_segment, W) -> 
-    from_iterator_inner(open_block, W);
-
-from_iterator_inner(end_segment, W) -> 
-    from_iterator_inner(close_block, W).
+from_iterator_process_end_segment(W) -> 
+    W1 = from_iterator_process_end_block(W),
+    from_iterator_flush_buffer(W1, true).
 
 
 %% Write a key to the data file.
 from_iterator_write_key(W, Key) ->
     Bytes = term_to_binary(Key),
     Size = erlang:size(Bytes),
-    ok = file:write(W#writer.data_file, [<<1:1/integer, Size:15/unsigned-integer>>, Bytes]),
-    W#writer {
-      key_start = W#writer.pos,
-      values_start = W#writer.pos + Size + 2,
-      pos = W#writer.pos + Size + 2
-     }.
+    Output = [<<1:1/integer, Size:15/unsigned-integer>>, Bytes],
+    W1 = W#writer {
+           key_start = W#writer.pos,
+           values_start = W#writer.pos + Size + 2,
+           pos = W#writer.pos + Size + 2,
+           buffer_size = W#writer.buffer_size + Size + 2,
+           buffer = [Output|W#writer.buffer],
+           compressed_values = false
+          },
+    from_iterator_flush_buffer(W1, false).
 
 %% Write compressed values to the data file, don't flush zlib.
 from_iterator_write_values(W) ->
     from_iterator_write_values_1(W, none).
 
 %% Write compressed values to the data file, flush zlib.
-from_iterator_write_values_flush(W) ->
+from_iterator_write_values_end(W) ->
     from_iterator_write_values_1(W, finish).
 
 %% Write compressed values to the data file.
-from_iterator_write_values_1(W, Flush) ->
+from_iterator_write_values_1(W, Flush) 
+  when (length(W#writer.values_staging) > ?VALUES_COMPRESSION_THRESHOLD) orelse 
+       (W#writer.compressed_values == true) ->
     %% Run the values through compression.
     UncompressedBytes = term_to_binary(W#writer.values_staging),
     Bytes = zlib:deflate(W#writer.zstream, [UncompressedBytes], Flush),
 
     %% Write to the disk, get bytes written.
     Size = erlang:iolist_size(Bytes),
-    ok = file:write(W#writer.data_file, [<<0:1/integer, Size:31/unsigned-integer>>, Bytes]),
+    Output = [<<0:1/integer, 1:1/integer, Size:30/unsigned-integer>>, Bytes],
     
     %% Update file position, and reset the values_staging.
-    W#writer {
-      pos = W#writer.pos + Size + 4,
-      values_staging = []
-     }.
+    W1 = W#writer {
+           pos = W#writer.pos + Size + 4,
+           values_staging = [],
+           compressed_values = true,
+           buffer_size = W#writer.buffer_size + Size + 2,
+           buffer = [Output|W#writer.buffer]
+     },
+    from_iterator_flush_buffer(W1, false);
+from_iterator_write_values_1(W, true) 
+  when length(W#writer.values_staging) == 0 ->
+    W;
+from_iterator_write_values_1(W, _Flush) ->
+    %% Write to the disk, get bytes written.
+    Bytes = term_to_binary(W#writer.values_staging),
+    Size = erlang:iolist_size(Bytes),
+    Output = [<<0:1/integer, 0:1/integer, Size:30/unsigned-integer>>, Bytes],
+    
+    %% Update file position, and reset the values_staging.
+    W1 = W#writer {
+           pos = W#writer.pos + Size + 4,
+           values_staging = [],
+           buffer_size = W#writer.buffer_size + Size + 2,
+           buffer = [Output|W#writer.buffer]
+     },
+    from_iterator_flush_buffer(W1, false).
 
+from_iterator_flush_buffer(W, Force) ->
+    case (W#writer.buffer_size > ?BUFFER_SIZE) orelse Force of
+        true ->
+            ok = file:write(W#writer.data_file, lists:reverse(W#writer.buffer)),
+            W#writer {
+              buffer_size = 0,
+              buffer = []
+             };
+        false ->
+            W
+    end.
 
 %% longest_prefix/2 - Given two terms, calculate the longest common
 %% prefix of the terms.
