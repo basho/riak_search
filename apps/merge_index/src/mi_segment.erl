@@ -159,15 +159,15 @@ iterator(Index, Field, Term, Segment) ->
     case get_offset_entry(Key, Segment) of
         undefined ->
             fun() -> eof end;
-        {_, StartPos, Offsets, Bloom} ->
+        {_, BlockStart, Bloom, _LongestPrefix, KeyInfoList} ->
             %% If the Key exists in the bloom filter, then continue
             %% reading from the segment, otherwise, end.
             case mi_bloom:is_element(Key, Bloom) of
                 true ->
                     {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
                     {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
-                    file:position(FH, StartPos),
-                    fun() -> iterate_term(FH, Offsets, Key) end;
+                    file:position(FH, BlockStart),
+                    fun() -> iterate_term(FH, KeyInfoList, Key) end;
                 false ->
                     fun() -> eof end
             end
@@ -175,14 +175,7 @@ iterator(Index, Field, Term, Segment) ->
 
 %% Iterate over the segment file until we find the start of the values
 %% section we want.
-iterate_term(File, [Offset|Offsets], Key) ->
-    %% To simplify logic in this function, each Offsets list starts
-    %% with 0. So for the first set of entries, this statement really
-    %% does nothing. Also, a file:read/N operation is much much faster
-    %% than a file:pseek/N operation, probably because read is using
-    %% the read buffer.
-    file:read(File, Offset),
-
+iterate_term(File, [KeyInfo = {_, _, ValuesSize, _}|KeyInfoList], Key) ->
     %% Read the next entry in the segment file.  Value should be a
     %% key, otherwise error. 
     case read_seg_entry(File) of
@@ -194,7 +187,8 @@ iterate_term(File, [Offset|Offsets], Key) ->
             %% return.
             if 
                 CurrKey < Key ->
-                    iterate_term(File, Offsets, Key);
+                    file:read(File, ValuesSize),
+                    iterate_term(File, KeyInfoList, Key);
                 CurrKey == Key ->
                     Transform = fun(Value) -> Value end,
                     ZStream = zlib:open(),
@@ -205,9 +199,10 @@ iterate_term(File, [Offset|Offsets], Key) ->
                     file:close(File),
                     eof
             end;
-        _ ->
+        Other ->
             %% Shouldn't get here. If we're here, then the Offset
             %% values are broken in some way.
+            ?PRINT(Other),
             file:close(File),
             throw({iterate_term, offset_fail})
     end.

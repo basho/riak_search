@@ -166,8 +166,8 @@ from_iterator_process_end_term(Key, W) ->
     W1 = from_iterator_write_values_end(W),
 
     %% Add the key to state...
-    KeySize = W#writer.values_start - W#writer.key_start,
-    ValuesSize = W#writer.pos - W#writer.values_start,
+    KeySize = W1#writer.values_start - W1#writer.key_start,
+    ValuesSize = W1#writer.pos - W1#writer.values_start,
     W2 = W1#writer {
            keys = [{Key, KeySize, ValuesSize, W#writer.values_count}|W1#writer.keys]
           },
@@ -199,7 +199,7 @@ from_iterator_process_end_block(W) when W#writer.keys /= [] ->
                  {_, _, Term} = Key,
                  {edit_signature(FinalTerm, Term), KeySize, ValuesSize, Count}
         end,
-    KeyInfoList = [F2(X) || X <- W#writer.keys],
+    KeyInfoList = [F2(X) || X <- lists:reverse(W#writer.keys)],
     
     %% Add entry to offsets table...
     Entry = {FinalKey, W#writer.block_start, Bloom, LongestPrefix, KeyInfoList},
@@ -222,6 +222,7 @@ from_iterator_write_key(W, Key) ->
            key_start = W#writer.pos,
            values_start = W#writer.pos + Size + 2,
            pos = W#writer.pos + Size + 2,
+           values_count = 0,
            buffer_size = W#writer.buffer_size + Size + 2,
            buffer = [Output|W#writer.buffer],
            compressed_values = false
@@ -236,12 +237,14 @@ from_iterator_write_values(W) ->
 from_iterator_write_values_end(W) ->
     from_iterator_write_values_1(W, finish).
 
-%% Write compressed values to the data file.
+%% Write either compressed or uncompressed values to the file,
+%% depending on whether there are more than
+%% ?VALUES_COMPRESSION_THRESHOLD values in the values_staging list.
 from_iterator_write_values_1(W, Flush) 
   when (length(W#writer.values_staging) > ?VALUES_COMPRESSION_THRESHOLD) orelse 
        (W#writer.compressed_values == true) ->
     %% Run the values through compression.
-    UncompressedBytes = term_to_binary(W#writer.values_staging),
+    UncompressedBytes = term_to_binary(lists:reverse(W#writer.values_staging)),
     Bytes = zlib:deflate(W#writer.zstream, [UncompressedBytes], Flush),
 
     %% Write to the disk, get bytes written.
@@ -253,7 +256,7 @@ from_iterator_write_values_1(W, Flush)
            pos = W#writer.pos + Size + 4,
            values_staging = [],
            compressed_values = true,
-           buffer_size = W#writer.buffer_size + Size + 2,
+           buffer_size = W#writer.buffer_size + Size + 4,
            buffer = [Output|W#writer.buffer]
      },
     from_iterator_flush_buffer(W1, false);
@@ -262,7 +265,7 @@ from_iterator_write_values_1(W, true)
     W;
 from_iterator_write_values_1(W, _Flush) ->
     %% Write to the disk, get bytes written.
-    Bytes = term_to_binary(W#writer.values_staging),
+    Bytes = term_to_binary(lists:reverse(W#writer.values_staging)),
     Size = erlang:iolist_size(Bytes),
     Output = [<<0:1/integer, 0:1/integer, Size:30/unsigned-integer>>, Bytes],
     
@@ -270,7 +273,7 @@ from_iterator_write_values_1(W, _Flush) ->
     W1 = W#writer {
            pos = W#writer.pos + Size + 4,
            values_staging = [],
-           buffer_size = W#writer.buffer_size + Size + 2,
+           buffer_size = W#writer.buffer_size + Size + 4,
            buffer = [Output|W#writer.buffer]
      },
     from_iterator_flush_buffer(W1, false).
