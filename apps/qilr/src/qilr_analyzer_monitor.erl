@@ -106,5 +106,17 @@ build_env() ->
         undefined ->
             throw({error, missing_java_home});
         {ok, JH} ->
-            [{"JAVA_HOME", JH}]
+            JavaPath = filename:join([JH,"bin","java"]),
+            case filelib:is_file(JavaPath) of
+                false ->
+                    error_logger:error_msg(
+                      "Unable to find java executable.~n"
+                      "Please check the java_home setting in the"
+                      " riak_search section of your app.config.~n"
+                      "(~s does not exist)~n",
+                      [JavaPath]),
+                    throw({error, invalid_java_home});
+                true ->
+                    [{"JAVA_HOME", JH}]
+            end
     end.
