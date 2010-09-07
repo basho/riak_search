@@ -259,8 +259,7 @@ get_term_positions(Terms) ->
 %% Given a term and a list of positions, generate a list of
 %% properties.
 build_props(Positions, Facets) ->
-    [{word_pos, Positions},
-     {freq, length(Positions)} | Facets].
+    [{p, Positions}| Facets].
 
 %% Returns a Riak object.
 get_obj(RiakClient, DocIndex, DocID) ->
