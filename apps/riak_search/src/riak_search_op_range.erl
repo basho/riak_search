@@ -7,7 +7,8 @@
 -module(riak_search_op_range).
 -export([
          preplan_op/2,
-         chain_op/4
+         chain_op/4,
+         get_range_preflist/3
         ]).
 
 -include("riak_search.hrl").
@@ -61,6 +62,24 @@ start_loop(Op, OutputPid, OutputRef, QueryProps) ->
     %% Return.
     {ok, 1}.
 
+%% get_range_preflist/3 - Get a list of VNodes that is guaranteed to
+%% cover all of the data (it may duplicate some data.) Given nodes
+%% numbered from 0 to 7, this function creates a structure like this:
+%%
+%% [
+%%  [{0,[]}, {1,[6,7]}, {2,[7]}],
+%%  [{3,[]}, {4,[1,2]}, {5,[2]}],
+%%  [{6,[]}, {7,[4,5]}, {0,[5]}]
+%% ]
+%%
+%% This means that, for example, if node 3 is down, then we need to
+%% use node 4 plus either node 1 or node 2 to get complete
+%% coverage. If node 3 AND 4 are down, then we need node 5 and node
+%% 2. It then picks out the nodes from the structure and returns the
+%% final unique preflist.
+%% 
+%% To create the structure, we first take the original set of X nodes,
+%% figure out how many iterations we need via ceiling(
 get_range_preflist(NVal, VNodes, UpNodes) ->
     %% Create an ordered set for fast repeated checking.
     UpNodesSet = ordsets:from_list(UpNodes),
@@ -69,29 +88,59 @@ get_range_preflist(NVal, VNodes, UpNodes) ->
     random:seed(now()),
     RotationFactor = random:uniform(NVal),
     {Pre, Post} = lists:split(RotationFactor, VNodes),
+    VNodes1 = Post ++ Pre,
+    Iterations = ceiling(length(VNodes1), NVal),
+
+    %% Create the preflist structure and then choose the preflist based on up nodes.
+    Structure = create_preflist_structure(Iterations, NVal, VNodes1 ++ VNodes1),
+    lists:usort(choose_preflist(Structure, UpNodesSet)).
     
-    %% Calculate the preflist.
-    Preflist1 = get_range_preflist_1(NVal, Post ++ Pre, UpNodesSet),
-    Preflist2 = [VNode || VNode <- Preflist1, VNode /= undefined],
-    lists:usort(Preflist2).
-get_range_preflist_1(_, [], _) ->
+create_preflist_structure(0, _NVal, _VNodes) -> 
     [];
-get_range_preflist_1(NVal, VNodes, UpNodesSet) ->
-    %% Get the first set of nodes...
-    {Group, Rest} = lists:split(NVal, VNodes),
+create_preflist_structure(Iterations, NVal, VNodes) -> 
+    {Backup, VNodes1} = lists:split(NVal, VNodes),
+    {Primary, _} = lists:split(NVal, VNodes1),
+    Group = [{hd(Primary), []}] ++ create_preflist_structure_1(tl(Primary), tl(Backup)),
+    [Group|create_preflist_structure(Iterations - 1, NVal, VNodes1)].
+create_preflist_structure_1([], []) -> 
+    [];
+create_preflist_structure_1([H|T], Backups) ->
+    [{H, Backups}|create_preflist_structure_1(T, tl(Backups))].
+    
+%% Given a preflist structure, return the preflist.
+choose_preflist([Group|Rest], UpNodesSet) ->
+    choose_preflist_1(Group, UpNodesSet) ++ choose_preflist(Rest, UpNodesSet);
+choose_preflist([], _) -> 
+    [].
+choose_preflist_1([{Primary, Backups}|Rest], UpNodesSet) ->
+    {_, PrimaryNode} = Primary,
+    AvailableBackups = filter_upnodes(Backups, UpNodesSet),
+    case ordsets:is_element(PrimaryNode, UpNodesSet) of 
+        true when AvailableBackups == [] ->
+            [Primary];
+        true when AvailableBackups /= [] ->
+            [Primary, riak_search_utils:choose(AvailableBackups)];
+        false ->
+            choose_preflist_1(Rest, UpNodesSet)
+    end;
+choose_preflist_1([], _) -> 
+    [].
 
-    %% Filter out any down nodes...
-    VNode = get_first_up_node(Group, UpNodesSet),
-    [VNode|get_range_preflist_1(NVal, Rest, UpNodesSet)].
+%% Given a list of VNodes, filter out any that are offline.
+filter_upnodes([{Index,Node}|VNodes], UpNodesSet) ->
+    case ordsets:is_element(Node, UpNodesSet) of
+        true -> 
+            [{Index, Node}|filter_upnodes(VNodes, UpNodesSet)];
+        false ->
+            filter_upnodes(VNodes, UpNodesSet)
+    end;
+filter_upnodes([], _) ->
+    [].
 
-%% Return the first active vnode in a set of vnodes.
-get_first_up_node([], _UpNodesSet) ->
-    undefined;
-get_first_up_node([{Index, Node}|Rest], UpNodesSet) ->
-    IsUp = ordsets:is_element(Node, UpNodesSet),
-    case IsUp of
-        true -> {Index, Node};
-        false -> get_first_up_node(Rest, UpNodesSet)
+ceiling(Numerator, Denominator) ->
+    case Numerator rem Denominator of
+        0 -> Numerator div Denominator;
+        _ -> (Numerator div Denominator) + 1
     end.
 
 gather_results(OutputPid, OutputRef, {Term, Op, Iterator}, Acc)
