@@ -195,7 +195,6 @@ iterate_by_term(File, [{_, _, _, ValuesSize, _}|KeyInfoList], Key) ->
             %% return.
             if 
                 CurrKey < Key ->
-                    ?PRINT(skipped_file),
                     file:read(File, ValuesSize),
                     iterate_by_term(File, KeyInfoList, Key);
                 CurrKey == Key ->
