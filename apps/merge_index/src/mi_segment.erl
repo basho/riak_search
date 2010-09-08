@@ -329,35 +329,6 @@ read_seg_entry(FH) ->
             eof
     end.
 
-    %% case file:read(FH, 4) of
-    %%     {ok, <<1:1/integer, Size:31/integer>>} ->
-    %%         {ok, B} = file:read(FH, Size),
-    %%         {key, binary_to_term(B)};
-    %%     {ok, <<0:1/integer, Size:31/integer>>} ->
-    %%         {ok, <<B/binary>>} = file:read(FH, Size),
-    %%         {value, binary_to_term(B)};
-    %%     eof ->
-    %%         eof
-    %% end.
-
-%% write_seg_key(FH, Key) ->
-%%     B = term_to_binary(Key),
-%%     Size = size(B),
-%%     ok = mi_write_cache:write(FH, <<1:1/integer, Size:31/unsigned, B/binary>>),
-%%     Size + 4.
-
-%% write_seg_key(FH, Index, Field, Term) ->
-%%     B = term_to_binary({Index, Field, Term}),
-%%     Size = size(B),
-%%     ok = mi_write_cache:write(FH, <<1:1/integer, Size:31/unsigned, B/binary>>),
-%%     Size + 4.
-
-%% write_seg_value(FH, Value, Props, TS) ->
-%%     B = term_to_binary({Value, Props, TS}),
-%%     Size = erlang:size(B),
-%%     ok = mi_write_cache:write(FH, <<0:1/integer, Size:31/integer, B/binary>>),
-%%     Size + 4.
-
 data_file(Segment) when is_record(Segment, segment) ->
     data_file(Segment#segment.root);
 data_file(Root) ->
@@ -377,120 +348,120 @@ fold_iterator_inner({Term, NextItr}, Fn, Acc0) ->
     Acc = Fn(Term, Acc0),
     fold_iterator_inner(NextItr(), Fn, Acc).
 
-%% ===================================================================
-%% EUnit tests
-%% ===================================================================
--ifdef(TEST).
+%% %% ===================================================================
+%% %% EUnit tests
+%% %% ===================================================================
+%% -ifdef(TEST).
 
--ifdef(EQC).
+%% -ifdef(EQC).
 
--define(QC_OUT(P),
-        eqc:on_output(fun(Str, Args) -> io:format(user, Str, Args) end, P)).
+%% -define(QC_OUT(P),
+%%         eqc:on_output(fun(Str, Args) -> io:format(user, Str, Args) end, P)).
 
--define(POW_2(N), trunc(math:pow(2, N))).
+%% -define(POW_2(N), trunc(math:pow(2, N))).
 
-g_ift() ->
-    choose(0, ?POW_2(62)).
+%% g_ift() ->
+%%     choose(0, ?POW_2(62)).
 
-g_value() ->
-    non_empty(binary()).
+%% g_value() ->
+%%     non_empty(binary()).
 
-g_props() ->
-    list({oneof([word_pos, offset]), choose(0, ?POW_2(31))}).
+%% g_props() ->
+%%     list({oneof([word_pos, offset]), choose(0, ?POW_2(31))}).
 
-g_tstamp() ->
-    choose(0, ?POW_2(31)).
+%% g_tstamp() ->
+%%     choose(0, ?POW_2(31)).
 
-make_buffer([], B) ->
-    B;
-make_buffer([{Ift, Value, Props, Tstamp} | Rest], B0) ->
-    B = mi_buffer:write(Ift, Value, Props, Tstamp, B0),
-    make_buffer(Rest, B).
-
-
-prop_basic_test(Root) ->
-    ?FORALL(Entries, list({g_ift(), g_value(), g_props(), g_tstamp()}),
-            begin
-                %% Delete old files
-                [file:delete(X) || X <- filelib:wildcard(filename:dirname(Root) ++ "/*")],
-
-                %% Setup a buffer
-                Buffer = make_buffer(Entries, mi_buffer:new(Root ++ "_buffer")),
-
-                %% Build a list of what was actually stored in the buffer -- this is what
-                %% we expect to be present in the segment
-                BufferEntries = fold_iterator(mi_buffer:iterator(Buffer),
-                                              fun(Item, Acc0) -> [Item | Acc0] end, []),
-
-                %% Merge the buffer into a segment
-                from_buffer(Buffer, open_write(Root ++ "_segment")),
-                Segment = open_read(Root ++ "_segment"),
-
-                %% Fold over the entire segment
-                SegEntries = fold_iterator(iterator(Segment), fun(Item, Acc0) -> [Item | Acc0] end, []),
-
-                ?assertEqual(BufferEntries, SegEntries),
-                true
-            end).
+%% make_buffer([], B) ->
+%%     B;
+%% make_buffer([{Ift, Value, Props, Tstamp} | Rest], B0) ->
+%%     B = mi_buffer:write(Ift, Value, Props, Tstamp, B0),
+%%     make_buffer(Rest, B).
 
 
-prop_basic_test_() ->
-    {timeout, 60, fun() ->
-                          os:cmd("rm -rf /tmp/test_mi; mkdir -p /tmp/test_mi"),
-                          ?assert(eqc:quickcheck(?QC_OUT(prop_basic_test("/tmp/test_mi/t1"))))
-                  end}.
+%% prop_basic_test(Root) ->
+%%     ?FORALL(Entries, list({g_ift(), g_value(), g_props(), g_tstamp()}),
+%%             begin
+%%                 %% Delete old files
+%%                 [file:delete(X) || X <- filelib:wildcard(filename:dirname(Root) ++ "/*")],
+
+%%                 %% Setup a buffer
+%%                 Buffer = make_buffer(Entries, mi_buffer:new(Root ++ "_buffer")),
+
+%%                 %% Build a list of what was actually stored in the buffer -- this is what
+%%                 %% we expect to be present in the segment
+%%                 BufferEntries = fold_iterator(mi_buffer:iterator(Buffer),
+%%                                               fun(Item, Acc0) -> [Item | Acc0] end, []),
+
+%%                 %% Merge the buffer into a segment
+%%                 from_buffer(Buffer, open_write(Root ++ "_segment")),
+%%                 Segment = open_read(Root ++ "_segment"),
+
+%%                 %% Fold over the entire segment
+%%                 SegEntries = fold_iterator(iterator(Segment), fun(Item, Acc0) -> [Item | Acc0] end, []),
+
+%%                 ?assertEqual(BufferEntries, SegEntries),
+%%                 true
+%%             end).
 
 
--endif. % EQC
+%% prop_basic_test_() ->
+%%     {timeout, 60, fun() ->
+%%                           os:cmd("rm -rf /tmp/test_mi; mkdir -p /tmp/test_mi"),
+%%                           ?assert(eqc:quickcheck(?QC_OUT(prop_basic_test("/tmp/test_mi/t1"))))
+%%                   end}.
 
--endif.
 
-%% test() ->
-%%     %% Clean up old files...
-%%     [file:delete(X) || X <- filelib:wildcard("/tmp/test_merge_index_*")],
+%% -endif. % EQC
 
-%%     %% Create a buffer...
-%%     BufferA = mi_buffer:open("/tmp/test_merge_index_bufferA", [write]),
-%%     BufferA1 = mi_buffer:write(<<1>>, 1, [], 1, BufferA),
-%%     BufferA2 = mi_buffer:write(<<2>>, 2, [], 1, BufferA1),
-%%     BufferA3 = mi_buffer:write(<<3>>, 3, [], 1, BufferA2),
-%%     BufferA4 = mi_buffer:write(<<4>>, 4, [], 1, BufferA3),
-%%     BufferA5 = mi_buffer:write(<<4>>, 5, [], 1, BufferA4),
+%% -endif.
 
-%%     %% Merge into the segment...
-%%     SegmentA = from_buffer("/tmp/test_merge_index_segment", BufferA5),
+%% %% test() ->
+%% %%     %% Clean up old files...
+%% %%     [file:delete(X) || X <- filelib:wildcard("/tmp/test_merge_index_*")],
+
+%% %%     %% Create a buffer...
+%% %%     BufferA = mi_buffer:open("/tmp/test_merge_index_bufferA", [write]),
+%% %%     BufferA1 = mi_buffer:write(<<1>>, 1, [], 1, BufferA),
+%% %%     BufferA2 = mi_buffer:write(<<2>>, 2, [], 1, BufferA1),
+%% %%     BufferA3 = mi_buffer:write(<<3>>, 3, [], 1, BufferA2),
+%% %%     BufferA4 = mi_buffer:write(<<4>>, 4, [], 1, BufferA3),
+%% %%     BufferA5 = mi_buffer:write(<<4>>, 5, [], 1, BufferA4),
+
+%% %%     %% Merge into the segment...
+%% %%     SegmentA = from_buffer("/tmp/test_merge_index_segment", BufferA5),
     
-%%     %% Check the results...
-%%     SegmentIteratorA = iterator(SegmentA),
-%%     {{<<1>>, 1, [], 1}, SegmentIteratorA1} = SegmentIteratorA(),
-%%     {{<<2>>, 2, [], 1}, SegmentIteratorA2} = SegmentIteratorA1(),
-%%     {{<<3>>, 3, [], 1}, SegmentIteratorA3} = SegmentIteratorA2(),
-%%     {{<<4>>, 4, [], 1}, SegmentIteratorA4} = SegmentIteratorA3(),
-%%     {{<<4>>, 5, [], 1}, SegmentIteratorA5} = SegmentIteratorA4(),
-%%     eof = SegmentIteratorA5(),
+%% %%     %% Check the results...
+%% %%     SegmentIteratorA = iterator(SegmentA),
+%% %%     {{<<1>>, 1, [], 1}, SegmentIteratorA1} = SegmentIteratorA(),
+%% %%     {{<<2>>, 2, [], 1}, SegmentIteratorA2} = SegmentIteratorA1(),
+%% %%     {{<<3>>, 3, [], 1}, SegmentIteratorA3} = SegmentIteratorA2(),
+%% %%     {{<<4>>, 4, [], 1}, SegmentIteratorA4} = SegmentIteratorA3(),
+%% %%     {{<<4>>, 5, [], 1}, SegmentIteratorA5} = SegmentIteratorA4(),
+%% %%     eof = SegmentIteratorA5(),
 
-%%     %% Do a partial iterator...
-%%     SegmentIteratorB = iterator(<<2>>, <<3>>, SegmentA),
-%%     {{<<2>>, 2, [], 1}, SegmentIteratorB1} = SegmentIteratorB(),
-%%     {{<<3>>, 3, [], 1}, SegmentIteratorB2} = SegmentIteratorB1(),
-%%     eof = SegmentIteratorB2(),
+%% %%     %% Do a partial iterator...
+%% %%     SegmentIteratorB = iterator(<<2>>, <<3>>, SegmentA),
+%% %%     {{<<2>>, 2, [], 1}, SegmentIteratorB1} = SegmentIteratorB(),
+%% %%     {{<<3>>, 3, [], 1}, SegmentIteratorB2} = SegmentIteratorB1(),
+%% %%     eof = SegmentIteratorB2(),
 
-%%     %% Check out the infos...
-%%     1 = info(<<2>>, SegmentA),
-%%     2 = info(<<4>>, SegmentA),
-%%     4 = info(<<2>>, <<4>>, SegmentA),
+%% %%     %% Check out the infos...
+%% %%     1 = info(<<2>>, SegmentA),
+%% %%     2 = info(<<4>>, SegmentA),
+%% %%     4 = info(<<2>>, <<4>>, SegmentA),
 
-%%     %% Read from an existing segment...
-%%     SegmentB = open_read(SegmentA#segment.root),
-%%     1 = info(<<2>>, SegmentB),
-%%     2 = info(<<4>>, SegmentB),
-%%     4 = info(<<2>>, <<4>>, SegmentB),
+%% %%     %% Read from an existing segment...
+%% %%     SegmentB = open_read(SegmentA#segment.root),
+%% %%     1 = info(<<2>>, SegmentB),
+%% %%     2 = info(<<4>>, SegmentB),
+%% %%     4 = info(<<2>>, <<4>>, SegmentB),
 
-%%     %% Test offset repair...
-%%     file:delete(offsets_file(SegmentA)),
-%%     SegmentC = open_read(SegmentA#segment.root),
-%%     1 = info(<<2>>, SegmentC),
-%%     2 = info(<<4>>, SegmentC),
-%%     4 = info(<<2>>, <<4>>, SegmentC),
+%% %%     %% Test offset repair...
+%% %%     file:delete(offsets_file(SegmentA)),
+%% %%     SegmentC = open_read(SegmentA#segment.root),
+%% %%     1 = info(<<2>>, SegmentC),
+%% %%     2 = info(<<4>>, SegmentC),
+%% %%     4 = info(<<2>>, <<4>>, SegmentC),
 
-%%     all_tests_passed.
+%% %%     all_tests_passed.
