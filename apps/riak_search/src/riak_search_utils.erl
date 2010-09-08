@@ -116,14 +116,9 @@ combine_terms({Index, DocID, Props1}, {Index, DocID, Props2}) ->
     ScoreList = ScoreList1++ScoreList2,
 
     %% word position is concatentation of each term's scores
-    WordPos1 = proplists:get_value(word_pos, Props1, []),
-    WordPos2 = proplists:get_value(word_pos, Props2, []),
+    WordPos1 = proplists:get_value(p, Props1, []),
+    WordPos2 = proplists:get_value(p, Props2, []),
     WordPos = WordPos1++WordPos2,
-
-    %% frequency is sum of each term's frequency
-    Freq1 = proplists:get_value(freq, Props1, 0),
-    Freq2 = proplists:get_value(freq, Props2, 0),
-    Freq = Freq1+Freq2,
 
     %% only include the common properties from the rest of the list
     Intersection = sets:to_list(sets:intersection(sets:from_list(Props1),
@@ -135,8 +130,7 @@ combine_terms({Index, DocID, Props1}, {Index, DocID, Props2}) ->
                            end,
                            Intersection,
                            [{score, ScoreList},
-                            {word_pos, WordPos},
-                            {freq, Freq}]
+                            {p, WordPos}]
                            ),
     {Index, DocID, NewProps};
 combine_terms(Other1, Other2) ->

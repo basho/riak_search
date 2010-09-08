@@ -421,8 +421,12 @@ find_heaviest_node(Ops) ->
                 Weight1 >= Weight2 end,
     case NodeWeights of
         [] ->
-            Node = hd(Ops),
-            Node#node.node;
+            case hd(Ops) of
+                Node when is_record(Node, node) ->
+                    Node#node.node;
+                _ ->
+                    node()
+            end;
         _ ->
             {Node, _Weight} = hd(lists:sort(F, NodeWeights)),
             Node
@@ -443,7 +447,7 @@ collect_node_weights([#term{options=Opts}|T], Accum) ->
 collect_node_weights([#lnot{ops=Ops}|T], Accum) ->
     NewAccum = collect_node_weights(Ops, Accum),
     collect_node_weights(T, NewAccum);
-collect_node_weights([_|T], Accum) ->
+collect_node_weights([Other|T], Accum) ->
     collect_node_weights(T, Accum).
 
 info(Index, Field, Term) ->

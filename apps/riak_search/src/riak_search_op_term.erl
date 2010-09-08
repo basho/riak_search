@@ -97,7 +97,7 @@ calculate_score(ScoringVars, Props) ->
     NumDocs = ScoringVars#scoring_vars.num_docs + 1,
 
     %% Pull freq from Props. (If no exist, use 1).
-    Frequency = proplists:get_value(freq, Props, 1),
+    Frequency = length(proplists:get_value(p, Props, [])),
     DocFieldBoost = proplists:get_value(boost, Props, 1),
 
     %% Calculate the score for this term, based roughly on Lucene
