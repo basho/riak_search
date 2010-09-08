@@ -20,11 +20,11 @@ parse_solr_xml(IndexOrSchema, Body) when is_binary(Body) ->
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
 
     %% Parse the xml...
-    %% {ok, Command, Entries} = riak_solr_xml_xform:xform(Body),
 
-    %% DEBUG - Testing new parser.
     ?TIMEON,
-    {ok, Command, Entries} = riak_solr_xml:parse(Body),
+    {ok, Command, Entries} = riak_solr_xml_xform:xform(Body),
+    %% DEBUG - Testing new parser.
+    %% {ok, Command, Entries} = riak_solr_xml:parse(Body),
     ?TIMEOFF("Finished parsing document."),
 
     ?TIMEON,
