@@ -16,9 +16,9 @@
 
 -include_lib("kernel/include/file.hrl").
 -define(BLOCK_SIZE, 8192).
--define(FILE_BUFFER_SIZE, 1048576).
--define(VALUES_STAGING_SIZE, 10000).
--define(VALUES_COMPRESSION_THRESHOLD, 5).
+-define(FILE_BUFFER_SIZE, 51200).
+-define(VALUES_STAGING_SIZE, 1000).
+-define(VALUES_COMPRESS_THRESHOLD, 3).
 -define(BLOOM_CAPACITY, 512).
 -define(BLOOM_ERROR, 0.01).
 -define(INDEX_FIELD_TERM(X), {element(1, X), element(2, X), element(3, X)}).
@@ -27,7 +27,6 @@
 
 -record(writer, {data_file,
                  offsets_table,
-                 zstream,
                  pos=0,
                  block_start=0,
                  keys=[],
@@ -46,21 +45,15 @@ from_iterator(Iterator, Segment) ->
     Opts = [write, raw, binary] ++ WriteOpts,
     {ok, DataFile} = file:open(mi_segment:data_file(Segment), Opts),
 
-    %% Open the zlib stream...
-    ZStream=zlib:open(),
-    ok = zlib:deflateInit(ZStream, best_speed),
-
     W = #writer {
       data_file=DataFile,
-      offsets_table=Segment#segment.offsets_table,
-      zstream=ZStream
+      offsets_table=Segment#segment.offsets_table
      },
 
     try
         from_iterator(Iterator(), undefined, undefined, W),
         ok = ets:tab2file(W#writer.offsets_table, mi_segment:offsets_file(Segment))
     after
-        zlib:close(W#writer.zstream),
         file:close(W#writer.data_file),
         ets:delete(W#writer.offsets_table)
     end,    
@@ -118,9 +111,6 @@ from_iterator_process_start_block(W) ->
      }.
 
 from_iterator_process_start_term(Key, W) -> 
-    %% Reset the zlib stream...
-    ok = zlib:deflateReset(W#writer.zstream),
-
     %% Write the key entry to the data file...
     from_iterator_write_key(W, Key).
 
@@ -143,14 +133,13 @@ from_iterator_process_value(Value, W) ->
     end.
 
 from_iterator_process_end_term(Key, W) -> 
-    %% Write our remaining values...
-    W1 = from_iterator_write_values_end(W),
+    W1 = from_iterator_write_values(W),
 
     %% Add the key to state...
     KeySize = W1#writer.values_start - W1#writer.key_start,
     ValuesSize = W1#writer.pos - W1#writer.values_start,
     W2 = W1#writer {
-           keys = [{Key, KeySize, ValuesSize, W#writer.values_count}|W1#writer.keys]
+           keys = [{Key, KeySize, ValuesSize, W#writer.values_count}|W#writer.keys]
           },
 
     %% If this block is big enough, then close the old block and open
@@ -211,53 +200,31 @@ from_iterator_write_key(W, Key) ->
           },
     from_iterator_flush_buffer(W1, false).
 
-%% Write compressed values to the data file, don't flush zlib.
+%% Write a block of values to the data file buffer. An early version
+%% of this used zlib, but after some investigation there weren't any
+%% noticable gains in size or speed compared to using
+%% term_to_binary/compressed, plus using term_to_binary makes the code
+%% simpler.
 from_iterator_write_values(W) ->
-    from_iterator_write_values_1(W, none).
-
-%% Write compressed values to the data file, flush zlib.
-from_iterator_write_values_end(W) ->
-    from_iterator_write_values_1(W, finish).
-
-%% Write either compressed or uncompressed values to the file,
-%% depending on whether there are more than
-%% ?VALUES_COMPRESSION_THRESHOLD values in the values_staging list.
-from_iterator_write_values_1(W, Flush) 
-  when (length(W#writer.values_staging) > ?VALUES_COMPRESSION_THRESHOLD) orelse 
-       (W#writer.compressed_values == true) ->
-    %% Run the values through compression.
-    UncompressedBytes = term_to_binary(lists:reverse(W#writer.values_staging)),
-    Bytes = zlib:deflate(W#writer.zstream, UncompressedBytes, Flush),
-
+    %% Serialize and compress the values.
+    ValuesStaging = lists:reverse(W#writer.values_staging),
+    case length(W#writer.values_staging) =< ?VALUES_COMPRESS_THRESHOLD of
+        true ->
+            Bytes = term_to_binary(ValuesStaging);
+        false ->
+            Bytes = term_to_binary(ValuesStaging, [{compressed, 1}])
+    end,
+    
     %% Figure out what we want to write to disk.
     Size = erlang:iolist_size(Bytes),
-    Output = [<<0:1/integer, 1:1/integer, Size:30/unsigned-integer>>, Bytes],
-    
+    Output = [<<0:1/integer, Size:31/unsigned-integer>>, Bytes],
+
     %% Add output to file buffer, update file position, and reset
     %% values_staging.
     W1 = W#writer {
            pos = W#writer.pos + Size + 4,
            values_staging = [],
            compressed_values = true,
-           buffer_size = W#writer.buffer_size + Size + 4,
-           buffer = [Output|W#writer.buffer]
-     },
-    from_iterator_flush_buffer(W1, false);
-from_iterator_write_values_1(W, true) 
-  when length(W#writer.values_staging) == 0 ->
-    %% If we're here, then we're trying to write an empty list of
-    %% uncompressed values. Just do nothing.
-    W;
-from_iterator_write_values_1(W, _Flush) ->
-    %% Write to the disk, get bytes written.
-    Bytes = term_to_binary(lists:reverse(W#writer.values_staging)),
-    Size = erlang:size(Bytes),
-    Output = [<<0:1/integer, 0:1/integer, Size:30/unsigned-integer>>, Bytes],
-    
-    %% Update file position, and reset the values_staging.
-    W1 = W#writer {
-           pos = W#writer.pos + Size + 4,
-           values_staging = [],
            buffer_size = W#writer.buffer_size + Size + 4,
            buffer = [Output|W#writer.buffer]
      },

@@ -22,6 +22,7 @@
     info/4,
     iterator/1,
     iterator/4,
+    iterators/6,
 
     %% Used by QC tests, this is here to make compiler happy.
     fold_iterator/3
@@ -116,64 +117,64 @@ info(Index, Field, Term, Segment) ->
 iterator(Segment) ->
     {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
     {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
-    ZStream = zlib:open(),
-    zlib:inflateInit(ZStream),
     fun() -> 
-            iterate_all(FH, ZStream, undefined) 
+            iterate_all(FH, undefined) 
     end.
 
-%%% Iterate over the entire segment.
-iterate_all(File, ZStream, {key, KeyBytes}) ->
-    {I,F,T} = binary_to_term(KeyBytes),
+iterate_all(File, {key, Key}) ->
+    {I,F,T} = Key,
     Transform = fun({V,P,K}) -> {I,F,T,V,P,K} end,
-    WhenDone = fun(NextEntry) -> iterate_all(File, ZStream, NextEntry) end,
-    iterate_values(File, ZStream, Transform, WhenDone);
-iterate_all(File, ZStream, undefined) ->
-    iterate_all(File, ZStream, read_seg_entry(File));
-iterate_all(File, ZStream, eof) ->
+    WhenDone = fun(NextEntry) -> iterate_all(File, NextEntry) end,
+    iterate_by_term_values(File, Transform, WhenDone);
+iterate_all(File, undefined) ->
+    iterate_all(File, read_seg_entry(File));
+iterate_all(File, eof) ->
     file:close(File),
-    zlib:close(ZStream),
     eof.
 
-%% Create an iterator over a single Term.
+%%% Iterate over a single Term.
 iterator(Index, Field, Term, Segment) ->
     %% Find the Key containing the offset information we need.
     Key = {Index, Field, Term},
     case get_offset_entry(Key, Segment) of
-        undefined ->
-            fun() -> eof end;
         {OffsetEntryKey, BlockStart, Bloom, _LongestPrefix, KeyInfoList} ->
-            %% If the Key exists in the bloom filter, then continue
-            %% reading from the segment, otherwise, end.
+            %% If we're aiming for an exact match, then check the
+            %% bloom filter.
             case mi_bloom:is_element(Key, Bloom) of
-                true ->
+                true -> 
                     {_, _, OffsetEntryTerm} = OffsetEntryKey,
                     EditSignature = mi_utils:edit_signature(OffsetEntryTerm, Term),
-                    iterate_keyinfo(Key, EditSignature, BlockStart, KeyInfoList, Segment);
+                    iterate_by_keyinfo(Key, EditSignature, BlockStart, KeyInfoList, Segment);
                 false ->
                     fun() -> eof end
-            end
+            end;
+        undefined ->
+            fun() -> eof end
     end.
 
-%% Iterate over the keyinfo list until we find a matching EditSignature.
-iterate_keyinfo(_, _, _, [], _) ->
-    fun() -> eof end;
-iterate_keyinfo(Key, EditSignature, FileOffset, [Match={EditSignature, _, _, _}|Rest], Segment) ->
-    {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
-    {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
-    file:position(FH, FileOffset),
-    fun() -> iterate_term(FH, [Match|Rest], Key) end;
-iterate_keyinfo(Key, EditSignature, FileOffset, [{_, KeySize, ValuesSize, _}|Rest], Segment) ->
-    iterate_keyinfo(Key, EditSignature, FileOffset + KeySize + ValuesSize, Rest, Segment).
+%% Use the provided KeyInfo list to skip over terms that don't match
+%% based on the edit signature. Clauses are ordered for most common
+%% paths first.
+iterate_by_keyinfo(Key, EditSignatureA, FileOffset, [Match={EditSignatureB, KeySize, ValuesSize, _}|Rest], Segment) ->
+    case EditSignatureA /= EditSignatureB of
+        true ->
+            iterate_by_keyinfo(Key, EditSignatureA, FileOffset + KeySize + ValuesSize, Rest, Segment);
+        false ->
+            {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
+            {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
+            file:position(FH, FileOffset),
+            iterate_by_term(FH, [Match|Rest], Key)
+    end;
+iterate_by_keyinfo(_, _, _, [], _) ->
+    fun() -> eof end.
 
 %% Iterate over the segment file until we find the start of the values
 %% section we want.
-iterate_term(File, [{_, _, ValuesSize, _}|KeyInfoList], Key) ->
+iterate_by_term(File, [{_, _, ValuesSize, _}|KeyInfoList], Key) ->
     %% Read the next entry in the segment file.  Value should be a
     %% key, otherwise error. 
     case read_seg_entry(File) of
-        {key, CurrKeyBytes} ->
-            CurrKey = binary_to_term(CurrKeyBytes),
+        {key, CurrKey} ->
             %% If the key is smaller than the one we need, keep
             %% jumping. If it's the one we need, then iterate
             %% values. Otherwise, it's too big, so close the file and
@@ -181,39 +182,105 @@ iterate_term(File, [{_, _, ValuesSize, _}|KeyInfoList], Key) ->
             if 
                 CurrKey < Key ->
                     file:read(File, ValuesSize),
-                    iterate_term(File, KeyInfoList, Key);
+                    iterate_by_term(File, KeyInfoList, Key);
                 CurrKey == Key ->
                     Transform = fun(Value) -> Value end,
-                    ZStream = zlib:open(),
-                    zlib:inflateInit(ZStream),
-                    WhenDone = fun(_) -> zlib:close(ZStream), file:close(File), eof end,
-                    iterate_values(File, ZStream, Transform, WhenDone);
+                    WhenDone = fun(_) -> file:close(File), eof end,
+                    fun() -> iterate_by_term_values(File, Transform, WhenDone) end;
                 CurrKey > Key ->
                     file:close(File),
-                    eof
+                    fun() -> eof end
             end;
         _ ->
             %% Shouldn't get here. If we're here, then the Offset
             %% values are broken in some way.
             file:close(File),
             throw({iterate_term, offset_fail})
+    end;
+iterate_by_term(File, [], _) ->
+    file:close(File),
+    fun() -> eof end.
+    
+iterate_by_term_values(File, TransformFun, WhenDoneFun) ->
+    %% Read the next value, expose as iterator.
+    case read_seg_entry(File) of
+        {values, Results} ->
+            iterate_by_term_values_1(Results, File, TransformFun, WhenDoneFun);
+        Other ->
+            WhenDoneFun(Other)
+    end.
+iterate_by_term_values_1([Result|Results], File, TransformFun, WhenDoneFun) ->
+    {TransformFun(Result), fun() -> iterate_by_term_values_1(Results, File, TransformFun, WhenDoneFun) end};
+iterate_by_term_values_1([], File, TransformFun, WhenDoneFun) ->
+    iterate_by_term_values(File, TransformFun, WhenDoneFun).
+
+%% iterators/5 - Return a list of iterators for all the terms in a
+%% given range.
+iterators(Index, Field, StartTerm, EndTerm, Size, Segment) ->
+    %% Find the Key containing the offset information we need.
+    StartKey = {Index, Field, StartTerm},
+    EndKey = {Index, Field, EndTerm},
+    case get_offset_entry(StartKey, Segment) of
+        {_, BlockStart, _, _, _} ->
+            {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
+            {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
+            file:position(FH, BlockStart),
+            iterate_range_by_term(FH, StartKey, EndKey, Size);
+        undefined ->
+            [fun() -> eof end]
     end.
 
+%% iterate_range_by_term/5 - Generate a list of iterators matching the
+%% provided range. Keep everything in memory for now. Returns the list
+%% of iterators. TODO - In the future, once we've amassed enough
+%% iterators, write the data out to a separate temporary file.
+iterate_range_by_term(File, StartKey, EndKey, Size) ->
+    iterate_range_by_term_1(File, StartKey, EndKey, Size, false, [], []).
+iterate_range_by_term_1(File, StartKey, EndKey, Size, IterateOverValues, ResultsAcc, IteratorsAcc) ->
+    case read_seg_entry(File) of
+        {key, CurrKey} ->
+            %% If the key is smaller than the one we need, keep
+            %% jumping. If it's in the range we need, then iterate
+            %% values. Otherwise, it's too big, so close the file and
+            %% return.
+            if 
+                CurrKey < StartKey ->
+                    iterate_range_by_term_1(File, StartKey, EndKey, Size, false, [], IteratorsAcc);
+                CurrKey =< EndKey ->
+                    NewIteratorsAcc = possibly_add_iterator(ResultsAcc, IteratorsAcc),
+                    case Size == 'all' orelse size(element(3, CurrKey)) == Size of
+                        true ->
+                            iterate_range_by_term_1(File, StartKey, EndKey, Size, true, [], NewIteratorsAcc);
+                        false ->
+                            iterate_range_by_term_1(File, StartKey, EndKey, Size, false, [], NewIteratorsAcc)
+                    end;
+                CurrKey > EndKey ->
+                    file:close(File),
+                    possibly_add_iterator(ResultsAcc, IteratorsAcc)
+            end;
+        {values, Results} when IterateOverValues ->
+            iterate_range_by_term_1(File, StartKey, EndKey, Size, true, [Results|ResultsAcc], IteratorsAcc);
+        {values, _Results} when not IterateOverValues ->
+            iterate_range_by_term_1(File, StartKey, EndKey, Size, false, [], IteratorsAcc);
+        eof ->
+            %% Shouldn't get here. If we're here, then the Offset
+            %% values are broken in some way.
+            file:close(File),
+            possibly_add_iterator(ResultsAcc, IteratorsAcc)
+    end.
 
-%% iterators(Index, Field, StartTerm, EndTerm, Size, Segment) ->
-%%     %% Find the Key containing the offset information we need.
-%%     StartKey = {Index, Field, StartTerm},
-%%     EndKey = {Index, Field, EndTerm},
-%%     case get_offset_entry(StartKey, Segment) of
-%%         undefined ->
-%%             [fun() -> eof end];
-%%         {_, StartPos, Offsets, Bloom} ->
-%%             {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
-%%             {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
-%%             file:position(FH, StartPos),
-%%             fun() -> iterate_range(FH, Offsets, StartKey) end
-%%     end.
+possibly_add_iterator([], IteratorsAcc) ->
+    IteratorsAcc;
+possibly_add_iterator(Results, IteratorsAcc) ->
+    Results1 = lists:flatten(lists:reverse(Results)),
+    Iterator = fun() -> iterate_list(Results1) end,
+    [Iterator, IteratorsAcc].
     
+%% Turn a list into an iterator.
+iterate_list([]) ->
+    eof;
+iterate_list([H|T]) ->
+    {H, fun() -> iterate_list(T) end}.
 
 %% PRIVATE FUNCTIONS
 
@@ -225,41 +292,13 @@ get_offset_entry(Key, Segment) ->
             case ets:next(Segment#segment.offsets_table, Key) of
                 '$end_of_table' -> 
                     undefined;
-                OffsetKey ->
+                OffsetKey ->    
                     %% Look up the offset information.
                     hd(ets:lookup(Segment#segment.offsets_table, OffsetKey))
             end;
         [Entry] ->
             Entry
     end.
-
-iterate_values(File, ZStream, TransformFun, WhenDoneFun) ->
-    iterate_values_1(File, ZStream, TransformFun, WhenDoneFun, false).
-iterate_values_1(File, ZStream, TransformFun, WhenDoneFun, WasCompressed) ->
-    %% Read the next value, expose as iterator.
-    case read_seg_entry(File) of
-        {values, <<>>} ->
-            iterate_values_1(File, ZStream, TransformFun, WhenDoneFun, WasCompressed);
-        {values, ValueBytes} ->
-            Results = binary_to_term(ValueBytes),
-            iterate_values_2(Results, File, ZStream, TransformFun, WhenDoneFun, WasCompressed);
-        {compressed_values, <<>>} ->
-            iterate_values_1(File, ZStream, TransformFun, WhenDoneFun, true);
-        {compressed_values, CompressedValueBytes} ->
-            ValueBytes = zlib:inflate(ZStream, CompressedValueBytes),
-            Results = binary_to_term(list_to_binary([ValueBytes])),
-            iterate_values_2(Results, File, ZStream, TransformFun, WhenDoneFun, true);
-        Other when (WasCompressed == true) ->
-            zlib:inflateReset(ZStream),
-            WhenDoneFun(Other);
-        Other when not WasCompressed ->
-            WhenDoneFun(Other)
-    end.
-iterate_values_2([Result|Results], File, ZStream, TransformFun, WhenDoneFun, WasCompressed) ->
-    {TransformFun(Result), fun() -> iterate_values_2(Results, File, ZStream, TransformFun, WhenDoneFun, WasCompressed) end};
-iterate_values_2([], File, ZStream, TransformFun, WhenDoneFun, WasCompressed) ->
-    iterate_values_1(File, ZStream, TransformFun, WhenDoneFun, WasCompressed).
-
 
 
 %% Read the offsets file from disk. If it's not found, then recreate
@@ -276,21 +315,16 @@ read_offsets(Root) ->
 
 read_seg_entry(FH) ->
     case file:read(FH, 1) of
-        {ok, <<0:1/integer, 0:1/integer, Size1:6/bitstring>>} ->
+        {ok, <<0:1/integer, Size1:7/bitstring>>} ->
             {ok, <<Size2:24/bitstring>>} = file:read(FH, 3),
-            <<TotalSize:30/unsigned-integer>> = <<Size1:6/bitstring, Size2:24/bitstring>>,
+            <<TotalSize:31/unsigned-integer>> = <<Size1:7/bitstring, Size2:24/bitstring>>,
             {ok, B} = file:read(FH, TotalSize),
-            {values, B};
-        {ok, <<0:1/integer, 1:1/integer, Size1:6/bitstring>>} ->
-            {ok, <<Size2:24/bitstring>>} = file:read(FH, 3),
-            <<TotalSize:30/unsigned-integer>> = <<Size1:6/bitstring, Size2:24/bitstring>>,
-            {ok, B} = file:read(FH, TotalSize),
-            {compressed_values, B};
+            {values, binary_to_term(B)};
         {ok, <<1:1/integer, Size1:7/bitstring>>} ->
             {ok, <<Size2:8/bitstring>>} = file:read(FH, 1),
             <<TotalSize:15/unsigned-integer>> = <<Size1:7/bitstring, Size2:8/bitstring>>,
             {ok, B} = file:read(FH, TotalSize),
-            {key, B};
+            {key, binary_to_term(B)};
         eof ->
             eof
     end.
