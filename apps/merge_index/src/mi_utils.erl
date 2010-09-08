@@ -13,7 +13,8 @@
          value_compare_fun/2,
          ets_keys/1,
          longest_prefix/2,
-         edit_signature/2
+         edit_signature/2,
+         hash_signature/1
 ]).
 
 %% Used by mi_server.erl to compare two terms, for merging
@@ -82,3 +83,20 @@ edit_signature_1(<<_/binary>>, <<>>) ->
 edit_signature_1(<<>>, <<>>) ->
     [].    
 
+%% hash_signature/1 - Given a term, repeatedly xor and rotate the bits
+%% of the field to calculate a unique 1-byte signature. This is used
+%% for speedier matches.
+hash_signature(Term) ->
+    hash_signature(Term, 0).
+hash_signature(<<C, Rest/binary>>, Acc) ->
+    case Acc rem 2 of
+        0 -> 
+            RotatedAcc = ((Acc bsl 1) band 255),
+            hash_signature(Rest, RotatedAcc bxor C);
+        1 -> 
+            RotatedAcc = (((Acc bsl 1) + 1) band 255),
+            hash_signature(Rest, RotatedAcc bxor C)
+    end;
+hash_signature(<<>>, Acc) ->
+    Acc.
+    

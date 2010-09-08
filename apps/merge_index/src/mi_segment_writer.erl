@@ -15,7 +15,7 @@
 -include("merge_index.hrl").
 
 -include_lib("kernel/include/file.hrl").
--define(BLOCK_SIZE, 8192).
+-define(BLOCK_SIZE, 32767).
 -define(FILE_BUFFER_SIZE, 51200).
 -define(VALUES_STAGING_SIZE, 1000).
 -define(VALUES_COMPRESS_THRESHOLD, 3).
@@ -168,12 +168,13 @@ from_iterator_process_end_block(W) when W#writer.keys /= [] ->
     {_, _, FinalTerm} = FinalKey,
     F2 = fun({Key, KeySize, ValuesSize, Count}) ->
                  {_, _, Term} = Key,
-                 {mi_utils:edit_signature(FinalTerm, Term), KeySize, ValuesSize, Count}
+                 {mi_utils:edit_signature(FinalTerm, Term), mi_utils:hash_signature(Term), KeySize, ValuesSize, Count}
         end,
     KeyInfoList = [F2(X) || X <- lists:reverse(W#writer.keys)],
     
     %% Add entry to offsets table...
-    Entry = {FinalKey, W#writer.block_start, Bloom, LongestPrefix, KeyInfoList},
+    Value = term_to_binary({W#writer.block_start, Bloom, LongestPrefix, KeyInfoList}, [{compressed, 1}]),
+    Entry = {FinalKey, Value},
     true = ets:insert(W#writer.offsets_table, Entry),
     W;
 from_iterator_process_end_block(W) when W#writer.keys == [] -> 

@@ -102,15 +102,27 @@ from_iterator(Iterator, Segment) ->
 %% Return the number of results under this IFT.
 info(Index, Field, Term, Segment) ->
     Key = {Index, Field, Term},
-    case ets:next(Segment#segment.offsets_table, Key) of
-        '$end_of_table' -> 
-            0;
-        OffsetKey ->
-            [{_, _, Bloom, _, _}] = ets:lookup(Segment#segment.offsets_table, OffsetKey),
+    case get_offset_entry(Key, Segment) of
+        {OffsetEntryKey, {_, Bloom, _, KeyInfoList}} ->
             case mi_bloom:is_element(Key, Bloom) of
-                true  -> 1;
-                false -> 0
-            end
+                true  -> 
+                    {_, _, OffsetEntryTerm} = OffsetEntryKey,
+                    EditSig = mi_utils:edit_signature(OffsetEntryTerm, Term),
+                    HashSig = mi_utils:hash_signature(Term),
+                    F = fun({EditSig2, HashSig2, _, _, Count}, Acc) ->
+                                case EditSig == EditSig2 andalso HashSig == HashSig2 of
+                                    true ->
+                                        Acc + Count;
+                                    false -> 
+                                        Acc
+                                end
+                        end,
+                    lists:foldl(F, 0, KeyInfoList);
+                false -> 
+                    0
+            end;
+        _ ->
+            0
     end.
 
 %% Create an iterator over the entire segment.
@@ -137,14 +149,15 @@ iterator(Index, Field, Term, Segment) ->
     %% Find the Key containing the offset information we need.
     Key = {Index, Field, Term},
     case get_offset_entry(Key, Segment) of
-        {OffsetEntryKey, BlockStart, Bloom, _LongestPrefix, KeyInfoList} ->
+        {OffsetEntryKey, {BlockStart, Bloom, _LongestPrefix, KeyInfoList}} ->
             %% If we're aiming for an exact match, then check the
             %% bloom filter.
             case mi_bloom:is_element(Key, Bloom) of
                 true -> 
                     {_, _, OffsetEntryTerm} = OffsetEntryKey,
-                    EditSignature = mi_utils:edit_signature(OffsetEntryTerm, Term),
-                    iterate_by_keyinfo(Key, EditSignature, BlockStart, KeyInfoList, Segment);
+                    EditSig = mi_utils:edit_signature(OffsetEntryTerm, Term),
+                    HashSig = mi_utils:hash_signature(Term),
+                    iterate_by_keyinfo(Key, EditSig, HashSig, BlockStart, KeyInfoList, Segment);
                 false ->
                     fun() -> eof end
             end;
@@ -155,22 +168,23 @@ iterator(Index, Field, Term, Segment) ->
 %% Use the provided KeyInfo list to skip over terms that don't match
 %% based on the edit signature. Clauses are ordered for most common
 %% paths first.
-iterate_by_keyinfo(Key, EditSignatureA, FileOffset, [Match={EditSignatureB, KeySize, ValuesSize, _}|Rest], Segment) ->
-    case EditSignatureA /= EditSignatureB of
+iterate_by_keyinfo(Key, EditSigA, HashSigA, FileOffset, [Match={EditSigB, HashSigB, KeySize, ValuesSize, _}|Rest], Segment) ->
+    %% In order to consider this a match, both the edit signature AND the hash signature must match.
+    case EditSigA /= EditSigB orelse HashSigA /= HashSigB of
         true ->
-            iterate_by_keyinfo(Key, EditSignatureA, FileOffset + KeySize + ValuesSize, Rest, Segment);
+            iterate_by_keyinfo(Key, EditSigA, HashSigA, FileOffset + KeySize + ValuesSize, Rest, Segment);
         false ->
             {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
             {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
             file:position(FH, FileOffset),
             iterate_by_term(FH, [Match|Rest], Key)
     end;
-iterate_by_keyinfo(_, _, _, [], _) ->
+iterate_by_keyinfo(_, _, _, _, [], _) ->
     fun() -> eof end.
 
 %% Iterate over the segment file until we find the start of the values
 %% section we want.
-iterate_by_term(File, [{_, _, ValuesSize, _}|KeyInfoList], Key) ->
+iterate_by_term(File, [{_, _, _, ValuesSize, _}|KeyInfoList], Key) ->
     %% Read the next entry in the segment file.  Value should be a
     %% key, otherwise error. 
     case read_seg_entry(File) of
@@ -181,6 +195,7 @@ iterate_by_term(File, [{_, _, ValuesSize, _}|KeyInfoList], Key) ->
             %% return.
             if 
                 CurrKey < Key ->
+                    ?PRINT(skipped_file),
                     file:read(File, ValuesSize),
                     iterate_by_term(File, KeyInfoList, Key);
                 CurrKey == Key ->
@@ -221,7 +236,7 @@ iterators(Index, Field, StartTerm, EndTerm, Size, Segment) ->
     StartKey = {Index, Field, StartTerm},
     EndKey = {Index, Field, EndTerm},
     case get_offset_entry(StartKey, Segment) of
-        {_, BlockStart, _, _, _} ->
+        {_, {BlockStart, _, _, _}} ->
             {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
             {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
             file:position(FH, BlockStart),
@@ -294,10 +309,11 @@ get_offset_entry(Key, Segment) ->
                     undefined;
                 OffsetKey ->    
                     %% Look up the offset information.
-                    hd(ets:lookup(Segment#segment.offsets_table, OffsetKey))
+                    [{OffsetKey, Value}] = ets:lookup(Segment#segment.offsets_table, OffsetKey),
+                    {OffsetKey, binary_to_term(Value)}
             end;
-        [Entry] ->
-            Entry
+        [{OffsetKey, Value}] ->
+            {OffsetKey, binary_to_term(Value)}
     end.
 
 
