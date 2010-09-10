@@ -57,11 +57,4 @@ drop(ServerPid) ->
     gen_server:call(ServerPid, drop, infinity).
 
 compact(ServerPid) ->
-    {ok, Ref} = gen_server:call(ServerPid, {start_compaction, self()}, infinity),
-
-    %% TODO - This is shaky, but good enough for version one. If the
-    %% compaction process crashes, then we sit here waiting forever.
-    receive 
-        {compaction_complete, Ref, OldSegments, OldBytes} -> 
-            {ok, OldSegments, OldBytes}
-    end.
+    gen_server:call(ServerPid, start_compaction, infinity).

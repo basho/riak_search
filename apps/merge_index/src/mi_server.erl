@@ -52,6 +52,10 @@ init([Root]) ->
         is_compacting = false
     },
 
+    %% trap exits so compaction and stream/range spawned processes
+    %% don't pull down this merge_index if they fail
+    process_flag(trap_exit, true),
+
     %% Return.
     {ok, State}.
 
@@ -198,15 +202,13 @@ handle_call({buffer_to_segment, Buffer, SegmentWO}, _From, State) ->
     %% Return.
     {reply, ok, NewState2};
 
-handle_call({start_compaction, CallingPid}, _From, State) 
-  when State#state.is_compacting == true orelse length(State#state.segments) =< 5 ->
+handle_call(start_compaction, _From, State) 
+  when is_tuple(State#state.is_compacting) orelse length(State#state.segments) =< 5 ->
     %% Don't compact if we are already compacting, or if we have fewer
     %% than four open segments.
-    Ref = make_ref(),
-    CallingPid ! {compaction_complete, Ref, 0, 0},
-    {reply, {ok, Ref}, State#state { scheduled_compaction=false }};
+    {reply, {ok, 0, 0}, State#state { scheduled_compaction=false }};
 
-handle_call({start_compaction, CallingPid}, _From, State) ->
+handle_call(start_compaction, From, State) ->
     %% Get list of segments to compact. Do this by getting filesizes,
     %% and then lopping off files larger than the average. This could be
     %% optimized with tuning, but probably a good enough solution.
@@ -222,8 +224,7 @@ handle_call({start_compaction, CallingPid}, _From, State) ->
     
     %% Spawn a function to merge a bunch of segments into one...
     Pid = self(),
-    CallingRef = make_ref(),
-    spawn_opt(fun() ->
+    CompactingPid = spawn_opt(fun() ->
         %% Create the group iterator...
         SegmentIterators = [mi_segment:iterator(X) || X <- SegmentsToCompact],
         GroupIterator = build_iterator_tree(SegmentIterators, fun mi_utils:term_compare_fun/2),
@@ -236,11 +237,11 @@ handle_call({start_compaction, CallingPid}, _From, State) ->
         
         %% Run the compaction...
         mi_segment:from_iterator(GroupIterator, CompactSegment),
-        gen_server:call(Pid, {compacted, CompactSegment, SegmentsToCompact, BytesToCompact, CallingPid, CallingRef}, infinity)
+        gen_server:call(Pid, {compacted, CompactSegment, SegmentsToCompact, BytesToCompact, From}, infinity)
     end, [link, {fullsweep_after, 0}]),
-    {reply, {ok, CallingRef}, State#state { is_compacting=true }};
+    {noreply, State#state { is_compacting={From, CompactingPid} }};
 
-handle_call({compacted, CompactSegmentWO, OldSegments, OldBytes, CallingPid, CallingRef}, _From, State) ->
+handle_call({compacted, CompactSegmentWO, OldSegments, OldBytes, CallingFrom}, _From, State) ->
     #state { locks=Locks, segments=Segments } = State,
 
     %% Clean up. Remove delete flag on the new segment. Add delete
@@ -266,7 +267,7 @@ handle_call({compacted, CompactSegmentWO, OldSegments, OldBytes, CallingPid, Cal
     },
 
     %% Tell the awaiting process that we've finished compaction.
-    CallingPid ! {compaction_complete, CallingRef, length(OldSegments), OldBytes},
+    gen_server:reply(CallingFrom, {ok, length(OldSegments), OldBytes}),
     {reply, ok, NewState};
 
 %% Instead of count, return an actual weight. The weight will either
@@ -465,6 +466,25 @@ handle_cast(Msg, State) ->
     ?PRINT({unhandled_cast, Msg}),
     {noreply, State}.
 
+handle_info({'EXIT', CompactingPid, Reason},
+            #state{is_compacting={From, CompactingPid}}=State) ->
+    %% the spawned compaction process exited
+    case Reason of
+        normal ->
+            %% compaction finished normally: nothing to be done
+            %% handle_call({compacted... already sent the reply
+            ok;
+        _ ->
+            %% compaction failed: not too much to worry about
+            %% (it should be safe to try again later)
+            %% but we need to let the compaction-requester know
+            %% that we're not compacting any more
+            gen_server:reply(From, {error, Reason})
+    end,
+
+    %% clear out compaction flags, so we try again when necessary
+    {noreply, State#state{is_compacting=false,
+                          scheduled_compaction=false}};
 handle_info(_Info, State) ->
     {noreply, State}.
 
