@@ -18,6 +18,10 @@
     terminate/2,
     code_change/3
 ]).
+%% Private spawn exports
+-export([
+         buffer_converter/2
+        ]).
 
 -record(state, { 
     root,
@@ -29,10 +33,12 @@
     buffers,
     next_id,
     scheduled_compaction,
-    is_compacting
+    is_compacting,
+    buffer_converter
 }).
 
 -define(RESULTVEC_SIZE, 1000).
+-define(DELETEME_FLAG, ".deleted").
 
 init([Root]) ->
     %% Load from disk...
@@ -40,6 +46,13 @@ init([Root]) ->
     io:format("Loading merge_index from '~s'~n", [Root]),
     {NextID, Buffer, Segments} = read_buf_and_seg(Root),
     io:format("Finished loading merge_index from '~s'~n", [Root]),
+
+    %% trap exits so compaction and stream/range spawned processes
+    %% don't pull down this merge_index if they fail
+    process_flag(trap_exit, true),
+
+    %% Use a dedicated worker sub-process to do the 
+    Converter = spawn_link(?MODULE, buffer_converter, [self(), Root]),
 
     %% Create the state...
     State = #state {
@@ -49,23 +62,20 @@ init([Root]) ->
         segments = Segments,
         next_id  = NextID,
         scheduled_compaction = false,
-        is_compacting = false
+        is_compacting = false,
+        buffer_converter = Converter
     },
-
-    %% trap exits so compaction and stream/range spawned processes
-    %% don't pull down this merge_index if they fail
-    process_flag(trap_exit, true),
 
     %% Return.
     {ok, State}.
 
 %% Return {Buffers, Segments}, after cleaning up/repairing any partially merged buffers.
 read_buf_and_seg(Root) ->
-    %% Delete any files that have a ".deleted" flag. This means that
+    %% Delete any files that have a ?DELETEME_FLAG flag. This means that
     %% the system stopped before proper cleanup.
     io:format("Cleaning up...~n"),
     F1 = fun(Filename) ->
-        Basename = filename:basename(Filename, ".deleted"),
+        Basename = filename:basename(Filename, ?DELETEME_FLAG),
         Basename1 = filename:join(Root, Basename ++ ".*"),
         io:format("Deleting '~s'~n", [Basename1]),
         io:format("~p~n", [filelib:wildcard(Basename1)]),
@@ -138,21 +148,12 @@ handle_call({index, Postings}, _From, State) ->
     {ok, RolloverSize} = application:get_env(merge_index, buffer_rollover_size),
     case mi_buffer:filesize(CurrentBuffer) > RolloverSize of
         true ->
-            #state { root=Root, next_id=NextID } = NewState,
+            #state { next_id=NextID } = NewState,
             
             %% Close the buffer filehandle. Needs to be done in the owner process.
             mi_buffer:close_filehandle(CurrentBuffer),
-            Pid = self(),
             
-            spawn_link(fun() ->
-                %% Calculate the segment filename, open the segment, and convert.
-                SNum  = get_id_number(mi_buffer:filename(CurrentBuffer)),
-                SName = join(Root, "segment." ++ integer_to_list(SNum)),
-                set_deleteme_flag(SName),
-                SegmentWO = mi_segment:open_write(SName),
-                mi_segment:from_buffer(CurrentBuffer, SegmentWO),
-                gen_server:call(Pid, {buffer_to_segment, CurrentBuffer, SegmentWO}, infinity)
-            end),
+            State#state.buffer_converter ! {convert, CurrentBuffer},
             
             %% Create a new empty buffer...
             BName = join(NewState, "buffer." ++ integer_to_list(NextID)),
@@ -166,41 +167,6 @@ handle_call({index, Postings}, _From, State) ->
         false ->
             {reply, ok, NewState}
     end;
-
-handle_call({buffer_to_segment, Buffer, SegmentWO}, _From, State) ->
-    #state { locks=Locks, buffers=Buffers, segments=Segments, scheduled_compaction=ScheduledCompaction } = State,
-
-    %% Clean up by clearing delete flag on the segment, adding delete
-    %% flag to the buffer, and telling the system to delete the buffer
-    %% as soon as the last lock is released.
-    clear_deleteme_flag(mi_segment:filename(SegmentWO)),
-    BName = mi_buffer:filename(Buffer),
-    set_deleteme_flag(BName),
-    NewLocks = mi_locks:when_free(BName, fun() -> mi_buffer:delete(Buffer) end, Locks),
-
-    %% Open the segment as read only...
-    SegmentRO = mi_segment:open_read(mi_segment:filename(SegmentWO)),
-
-    %% Update state...
-    NewSegments = [SegmentRO|Segments],
-    NewState1 = State#state {
-        locks=NewLocks,
-        buffers=Buffers -- [Buffer],
-        segments=NewSegments
-    },
-
-    %% Give us the opportunity to do a merge...
-    SegmentsToMerge = get_segments_to_merge(NewSegments),
-    case length(SegmentsToMerge) of
-        Num when Num =< 2 orelse ScheduledCompaction == true-> 
-            NewState2 = NewState1;
-        _ -> 
-            mi_scheduler:schedule_compaction(self()),
-            NewState2 = NewState1#state { scheduled_compaction=true }
-    end,
-    
-    %% Return.
-    {reply, ok, NewState2};
 
 handle_call(start_compaction, _From, State) 
   when is_tuple(State#state.is_compacting) orelse length(State#state.segments) =< 5 ->
@@ -461,6 +427,40 @@ handle_cast({compacted, CompactSegmentWO, OldSegments, OldBytes, From}, State) -
     %% Tell the awaiting process that we've finished compaction.
     gen_server:reply(From, {ok, length(OldSegments), OldBytes}),
     {noreply, NewState};
+
+handle_cast({buffer_to_segment, Buffer, SegmentWO}, State) ->
+    #state { locks=Locks, buffers=Buffers, segments=Segments, scheduled_compaction=ScheduledCompaction } = State,
+
+    %% Clean up by clearing delete flag on the segment, adding delete
+    %% flag to the buffer, and telling the system to delete the buffer
+    %% as soon as the last lock is released.
+    clear_deleteme_flag(mi_segment:filename(SegmentWO)),
+    BName = mi_buffer:filename(Buffer),
+    set_deleteme_flag(BName),
+    NewLocks = mi_locks:when_free(BName, fun() -> mi_buffer:delete(Buffer) end, Locks),
+
+    %% Open the segment as read only...
+    SegmentRO = mi_segment:open_read(mi_segment:filename(SegmentWO)),
+
+    %% Update state...
+    NewSegments = [SegmentRO|Segments],
+    NewState1 = State#state {
+        locks=NewLocks,
+        buffers=Buffers -- [Buffer],
+        segments=NewSegments
+    },
+
+    %% Give us the opportunity to do a merge...
+    SegmentsToMerge = get_segments_to_merge(NewSegments),
+    case length(SegmentsToMerge) of
+        Num when Num =< 2 orelse ScheduledCompaction == true-> 
+            NewState2 = NewState1;
+        _ -> 
+            mi_scheduler:schedule_compaction(self()),
+            NewState2 = NewState1#state { scheduled_compaction=true }
+    end,
+    {noreply, NewState2};
+
 handle_cast(Msg, State) ->
     ?PRINT({unhandled_cast, Msg}),
     {noreply, State}.
@@ -484,6 +484,18 @@ handle_info({'EXIT', CompactingPid, Reason},
     %% clear out compaction flags, so we try again when necessary
     {noreply, State#state{is_compacting=false,
                           scheduled_compaction=false}};
+handle_info({'EXIT', ConverterPid, _Reason},
+            #state{buffer_converter=ConverterPid,
+                   buffers=Buffers,
+                   root=Root}=State) ->
+    %% the buffer converter died - start a new one
+    NewConverter = spawn_link(?MODULE, buffer_converter, [self(), Root]),
+    
+    %% current buffer is hd(Buffers), so just convert tl(Buffers)
+    [ NewConverter ! {convert, B} || B <- tl(Buffers) ],
+
+    {noreply, State#state{buffer_converter = NewConverter}};
+
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -570,6 +582,28 @@ group_iterator(Iterator, eof, _) ->
     Iterator.
 
 
+buffer_converter(ServerPid, Root) ->
+    receive
+        {convert, Buffer} ->
+            %% Calculate the segment filename, open the segment, and convert.
+            SNum  = get_id_number(mi_buffer:filename(Buffer)),
+            SName = join(Root, "segment." ++ integer_to_list(SNum)),
+
+            case has_deleteme_flag(SName) of
+                true ->
+                    %% remove files from a previously-failed conversion
+                    file:delete(mi_segment:data_file(SName)),
+                    file:delete(mi_segment:offsets_file(SName));
+                false ->
+                    set_deleteme_flag(SName)
+            end,
+
+            SegmentWO = mi_segment:open_write(SName),
+            mi_segment:from_buffer(Buffer, SegmentWO),
+            gen_server:cast(ServerPid, {buffer_to_segment, Buffer, SegmentWO}),
+            ?MODULE:buffer_converter(ServerPid, Root)
+    end.
+
 %% Return the ID number of a Segment/Buffer/Filename...
 %% Files can be named:
 %%   - buffer.N
@@ -602,10 +636,13 @@ get_id_number(Filename) ->
     end.
 
 set_deleteme_flag(Filename) ->
-    file:write_file(Filename ++ ".deleted", "").
+    file:write_file(Filename ++ ?DELETEME_FLAG, "").
 
 clear_deleteme_flag(Filename) ->
-    file:delete(Filename ++ ".deleted").
+    file:delete(Filename ++ ?DELETEME_FLAG).
+
+has_deleteme_flag(Filename) ->
+    filelib:is_file(Filename ++ ?DELETEME_FLAG).
 
 %% Figure out which files to merge. Take the average of file sizes,
 %% return anything smaller than the average for merging.
