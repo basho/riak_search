@@ -237,38 +237,9 @@ handle_call(start_compaction, From, State) ->
         
         %% Run the compaction...
         mi_segment:from_iterator(GroupIterator, CompactSegment),
-        gen_server:call(Pid, {compacted, CompactSegment, SegmentsToCompact, BytesToCompact, From}, infinity)
+        gen_server:cast(Pid, {compacted, CompactSegment, SegmentsToCompact, BytesToCompact, From})
     end, [link, {fullsweep_after, 0}]),
     {noreply, State#state { is_compacting={From, CompactingPid} }};
-
-handle_call({compacted, CompactSegmentWO, OldSegments, OldBytes, CallingFrom}, _From, State) ->
-    #state { locks=Locks, segments=Segments } = State,
-
-    %% Clean up. Remove delete flag on the new segment. Add delete
-    %% flags to the old segments. Register to delete the old segments
-    %% when the locks are freed.
-    clear_deleteme_flag(mi_segment:filename(CompactSegmentWO)),
-
-    %% Open the segment as read only...
-    CompactSegmentRO = mi_segment:open_read(mi_segment:filename(CompactSegmentWO)),
-
-    [set_deleteme_flag(mi_segment:filename(X)) || X <- OldSegments],
-    F = fun(X, Acc) ->
-        mi_locks:when_free(mi_segment:filename(X), fun() -> mi_segment:delete(X) end, Acc)
-    end,
-    NewLocks = lists:foldl(F, Locks, OldSegments),
-
-    %% Update State and return...
-    NewState = State#state {
-        locks=NewLocks,
-        segments=[CompactSegmentRO|(Segments -- OldSegments)],
-        scheduled_compaction=false,
-        is_compacting=false
-    },
-
-    %% Tell the awaiting process that we've finished compaction.
-    gen_server:reply(CallingFrom, {ok, length(OldSegments), OldBytes}),
-    {reply, ok, NewState};
 
 %% Instead of count, return an actual weight. The weight will either
 %% be 0 (if the term is in a block with other terms) or the size of
@@ -462,6 +433,34 @@ handle_call(Request, _From, State) ->
     ?PRINT({unhandled_call, Request}),
     {reply, ok, State}.
 
+handle_cast({compacted, CompactSegmentWO, OldSegments, OldBytes, From}, State) ->
+    #state { locks=Locks, segments=Segments } = State,
+
+    %% Clean up. Remove delete flag on the new segment. Add delete
+    %% flags to the old segments. Register to delete the old segments
+    %% when the locks are freed.
+    clear_deleteme_flag(mi_segment:filename(CompactSegmentWO)),
+
+    %% Open the segment as read only...
+    CompactSegmentRO = mi_segment:open_read(mi_segment:filename(CompactSegmentWO)),
+
+    [set_deleteme_flag(mi_segment:filename(X)) || X <- OldSegments],
+    F = fun(X, Acc) ->
+        mi_locks:when_free(mi_segment:filename(X), fun() -> mi_segment:delete(X) end, Acc)
+    end,
+    NewLocks = lists:foldl(F, Locks, OldSegments),
+
+    %% Update State and return...
+    NewState = State#state {
+        locks=NewLocks,
+        segments=[CompactSegmentRO|(Segments -- OldSegments)],
+        scheduled_compaction=false,
+        is_compacting=false
+    },
+
+    %% Tell the awaiting process that we've finished compaction.
+    gen_server:reply(From, {ok, length(OldSegments), OldBytes}),
+    {noreply, NewState};
 handle_cast(Msg, State) ->
     ?PRINT({unhandled_cast, Msg}),
     {noreply, State}.
