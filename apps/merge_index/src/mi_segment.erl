@@ -7,7 +7,6 @@
 %% -------------------------------------------------------------------
 -module(mi_segment).
 -author("Rusty Klophaus <rusty@basho.com>").
-
 -export([
     exists/1,
     open_read/1,
@@ -52,10 +51,14 @@ open_read(Root) ->
     DataFileExists = filelib:is_file(data_file(Root)),
     case DataFileExists of
         true  ->
+            %% Get the fileinfo...
+            {ok, FileInfo} = file:read_file_info(data_file(Root)),
+
             OffsetsTable = read_offsets(Root),
             #segment {
                        root=Root,
-                       offsets_table=OffsetsTable
+                       offsets_table=OffsetsTable,
+                       size = FileInfo#file_info.size
                      };
         false ->
             throw({?MODULE, missing__file, Root})
@@ -82,8 +85,7 @@ filename(Segment) ->
     Segment#segment.root.
 
 filesize(Segment) ->
-    {ok, FileInfo} = file:read_file_info(data_file(Segment)),
-    FileInfo#file_info.size.
+    Segment#segment.size.
 
 delete(Segment) ->
     [ok = file:delete(X) || X <- filelib:wildcard(Segment#segment.root ++ ".*")],
@@ -130,17 +132,18 @@ iterator(Segment) ->
     {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
     {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
     fun() -> 
-            iterate_all(FH, undefined) 
+            iterate_all(FH, undefined, undefined) 
     end.
 
-iterate_all(File, {key, Key}) ->
-    {I,F,T} = Key,
+iterate_all(File, BaseKey, {key, ShrunkenKey}) ->
+    CurrKey = expand_key(BaseKey, ShrunkenKey),
+    {I,F,T} = CurrKey,
     Transform = fun({V,P,K}) -> {I,F,T,V,P,K} end,
-    WhenDone = fun(NextEntry) -> iterate_all(File, NextEntry) end,
+    WhenDone = fun(NextEntry) -> iterate_all(File, CurrKey, NextEntry) end,
     iterate_by_term_values(File, Transform, WhenDone);
-iterate_all(File, undefined) ->
-    iterate_all(File, read_seg_entry(File));
-iterate_all(File, eof) ->
+iterate_all(File, BaseKey, undefined) ->
+    iterate_all(File, BaseKey, read_seg_entry(File));
+iterate_all(File, _, eof) ->
     file:close(File),
     eof.
 
@@ -157,7 +160,7 @@ iterator(Index, Field, Term, Segment) ->
                     {_, _, OffsetEntryTerm} = OffsetEntryKey,
                     EditSig = mi_utils:edit_signature(OffsetEntryTerm, Term),
                     HashSig = mi_utils:hash_signature(Term),
-                    iterate_by_keyinfo(Key, EditSig, HashSig, BlockStart, KeyInfoList, Segment);
+                    iterate_by_keyinfo(OffsetEntryKey, Key, EditSig, HashSig, BlockStart, KeyInfoList, Segment);
                 false ->
                     fun() -> eof end
             end;
@@ -168,27 +171,28 @@ iterator(Index, Field, Term, Segment) ->
 %% Use the provided KeyInfo list to skip over terms that don't match
 %% based on the edit signature. Clauses are ordered for most common
 %% paths first.
-iterate_by_keyinfo(Key, EditSigA, HashSigA, FileOffset, [Match={EditSigB, HashSigB, KeySize, ValuesSize, _}|Rest], Segment) ->
+iterate_by_keyinfo(BaseKey, Key, EditSigA, HashSigA, FileOffset, [Match={EditSigB, HashSigB, KeySize, ValuesSize, _}|Rest], Segment) ->
     %% In order to consider this a match, both the edit signature AND the hash signature must match.
     case EditSigA /= EditSigB orelse HashSigA /= HashSigB of
         true ->
-            iterate_by_keyinfo(Key, EditSigA, HashSigA, FileOffset + KeySize + ValuesSize, Rest, Segment);
+            iterate_by_keyinfo(BaseKey, Key, EditSigA, HashSigA, FileOffset + KeySize + ValuesSize, Rest, Segment);
         false ->
             {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
             {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
             file:position(FH, FileOffset),
-            iterate_by_term(FH, [Match|Rest], Key)
+            iterate_by_term(FH, BaseKey, [Match|Rest], Key)
     end;
-iterate_by_keyinfo(_, _, _, _, [], _) ->
+iterate_by_keyinfo(_, _, _, _, _, [], _) ->
     fun() -> eof end.
 
 %% Iterate over the segment file until we find the start of the values
 %% section we want.
-iterate_by_term(File, [{_, _, _, ValuesSize, _}|KeyInfoList], Key) ->
+iterate_by_term(File, BaseKey, [{_, _, _, ValuesSize, _}|KeyInfoList], Key) ->
     %% Read the next entry in the segment file.  Value should be a
     %% key, otherwise error. 
     case read_seg_entry(File) of
-        {key, CurrKey} ->
+        {key, ShrunkenKey} ->
+            CurrKey = expand_key(BaseKey, ShrunkenKey),
             %% If the key is smaller than the one we need, keep
             %% jumping. If it's the one we need, then iterate
             %% values. Otherwise, it's too big, so close the file and
@@ -196,7 +200,7 @@ iterate_by_term(File, [{_, _, _, ValuesSize, _}|KeyInfoList], Key) ->
             if 
                 CurrKey < Key ->
                     file:read(File, ValuesSize),
-                    iterate_by_term(File, KeyInfoList, Key);
+                    iterate_by_term(File, CurrKey, KeyInfoList, Key);
                 CurrKey == Key ->
                     Transform = fun(Value) -> Value end,
                     WhenDone = fun(_) -> file:close(File), eof end,
@@ -211,7 +215,7 @@ iterate_by_term(File, [{_, _, _, ValuesSize, _}|KeyInfoList], Key) ->
             file:close(File),
             throw({iterate_term, offset_fail})
     end;
-iterate_by_term(File, [], _) ->
+iterate_by_term(File, _, [], _) ->
     file:close(File),
     fun() -> eof end.
     
@@ -235,11 +239,11 @@ iterators(Index, Field, StartTerm, EndTerm, Size, Segment) ->
     StartKey = {Index, Field, StartTerm},
     EndKey = {Index, Field, EndTerm},
     case get_offset_entry(StartKey, Segment) of
-        {_, {BlockStart, _, _, _}} ->
+        {OffsetEntryKey, {BlockStart, _, _, _}} ->
             {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
             {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
             file:position(FH, BlockStart),
-            iterate_range_by_term(FH, StartKey, EndKey, Size);
+            iterate_range_by_term(FH, OffsetEntryKey, StartKey, EndKey, Size);
         undefined ->
             [fun() -> eof end]
     end.
@@ -248,34 +252,37 @@ iterators(Index, Field, StartTerm, EndTerm, Size, Segment) ->
 %% provided range. Keep everything in memory for now. Returns the list
 %% of iterators. TODO - In the future, once we've amassed enough
 %% iterators, write the data out to a separate temporary file.
-iterate_range_by_term(File, StartKey, EndKey, Size) ->
-    iterate_range_by_term_1(File, StartKey, EndKey, Size, false, [], []).
-iterate_range_by_term_1(File, StartKey, EndKey, Size, IterateOverValues, ResultsAcc, IteratorsAcc) ->
+iterate_range_by_term(File, BaseKey, StartKey, EndKey, Size) ->
+    iterate_range_by_term_1(File, BaseKey, StartKey, EndKey, Size, false, [], []).
+iterate_range_by_term_1(File, BaseKey, StartKey, EndKey, Size, IterateOverValues, ResultsAcc, IteratorsAcc) ->
     case read_seg_entry(File) of
-        {key, CurrKey} ->
+        {key, ShrunkenKey} ->
+            %% Expand the possibly shrunken key...
+            CurrKey = expand_key(BaseKey, ShrunkenKey),
+
             %% If the key is smaller than the one we need, keep
             %% jumping. If it's in the range we need, then iterate
             %% values. Otherwise, it's too big, so close the file and
             %% return.
             if 
                 CurrKey < StartKey ->
-                    iterate_range_by_term_1(File, StartKey, EndKey, Size, false, [], IteratorsAcc);
+                    iterate_range_by_term_1(File, CurrKey, StartKey, EndKey, Size, false, [], IteratorsAcc);
                 CurrKey =< EndKey ->
                     NewIteratorsAcc = possibly_add_iterator(ResultsAcc, IteratorsAcc),
                     case Size == 'all' orelse size(element(3, CurrKey)) == Size of
                         true ->
-                            iterate_range_by_term_1(File, StartKey, EndKey, Size, true, [], NewIteratorsAcc);
+                            iterate_range_by_term_1(File, CurrKey, StartKey, EndKey, Size, true, [], NewIteratorsAcc);
                         false ->
-                            iterate_range_by_term_1(File, StartKey, EndKey, Size, false, [], NewIteratorsAcc)
+                            iterate_range_by_term_1(File, CurrKey, StartKey, EndKey, Size, false, [], NewIteratorsAcc)
                     end;
                 CurrKey > EndKey ->
                     file:close(File),
                     possibly_add_iterator(ResultsAcc, IteratorsAcc)
             end;
         {values, Results} when IterateOverValues ->
-            iterate_range_by_term_1(File, StartKey, EndKey, Size, true, [Results|ResultsAcc], IteratorsAcc);
+            iterate_range_by_term_1(File, BaseKey, StartKey, EndKey, Size, true, [Results|ResultsAcc], IteratorsAcc);
         {values, _Results} when not IterateOverValues ->
-            iterate_range_by_term_1(File, StartKey, EndKey, Size, false, [], IteratorsAcc);
+            iterate_range_by_term_1(File, BaseKey, StartKey, EndKey, Size, false, [], IteratorsAcc);
         eof ->
             %% Shouldn't get here. If we're here, then the Offset
             %% values are broken in some way.
@@ -362,6 +369,17 @@ fold_iterator_inner(eof, _Fn, Acc) ->
 fold_iterator_inner({Term, NextItr}, Fn, Acc0) ->
     Acc = Fn(Term, Acc0),
     fold_iterator_inner(NextItr(), Fn, Acc).
+
+%% expand_key/2 - Given a BaseKey and a shrunken Key, return
+%% the actual key by re-adding the field and term if
+%% encessary. Clauses ordered by most common first.
+expand_key({Index, Field, _}, Term) when not is_tuple(Term) ->
+    {Index, Field, Term};
+expand_key({Index, _, _}, {Field, Term}) ->
+    {Index, Field, Term};
+expand_key(_, {Index, Field, Term}) ->
+    {Index, Field, Term}.
+
 
 %% %% ===================================================================
 %% %% EUnit tests

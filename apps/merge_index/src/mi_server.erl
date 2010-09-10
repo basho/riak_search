@@ -18,6 +18,7 @@
     terminate/2,
     code_change/3
 ]).
+-compile({inline,[term_compare_fun/2, value_compare_fun/2]}).
 
 -record(state, { 
     root,
@@ -51,6 +52,9 @@ init([Root]) ->
         scheduled_compaction = false,
         is_compacting = false
     },
+
+    %% %% Do some profiling.
+    %% eprof:profile([self()]),
 
     %% Return.
     {ok, State}.
@@ -226,7 +230,7 @@ handle_call({start_compaction, CallingPid}, _From, State) ->
     spawn_opt(fun() ->
         %% Create the group iterator...
         SegmentIterators = [mi_segment:iterator(X) || X <- SegmentsToCompact],
-        GroupIterator = build_iterator_tree(SegmentIterators, fun mi_utils:term_compare_fun/2),
+        GroupIterator = build_iterator_tree(SegmentIterators, 'term'),
 
         %% Create the new compaction segment...
         <<MD5:128/integer>> = erlang:md5(term_to_binary({now, make_ref()})),
@@ -424,7 +428,7 @@ handle_call({fold, FoldFun, Acc}, _From, State) ->
     %% Assemble the group iterator...
     BufferIterators = [mi_buffer:iterator(X) || X <- Buffers],
     SegmentIterators = [mi_segment:iterator(X) || X <- Segments],
-    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators, fun mi_utils:term_compare_fun/2),
+    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators, 'term'),
 
     %% Fold over everything...
     %% SLF TODO: If filter fun or other crashes, server crashes.
@@ -486,7 +490,7 @@ stream(Index, Field, Term, F, Buffers, Segments) ->
     %% Put together the group iterator...
     BufferIterators = [mi_buffer:iterator(Index, Field, Term, X) || X <- Buffers],
     SegmentIterators = [mi_segment:iterator(Index, Field, Term, X) || X <- Segments],
-    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators, fun mi_utils:value_compare_fun/2),
+    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators, 'value'),
 
     %% Start streaming...
     stream_or_range_inner(F, undefined, GroupIterator(), []),
@@ -496,7 +500,7 @@ range(Index, Field, StartTerm, EndTerm, Size, F, Buffers, Segments) ->
     %% Put together the group iterator...
     BufferIterators = lists:flatten([mi_buffer:iterators(Index, Field, StartTerm, EndTerm, Size, X) || X <- Buffers]),
     SegmentIterators = lists:flatten([mi_segment:iterators(Index, Field, StartTerm, EndTerm, Size, X) || X <- Segments]),
-    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators, fun mi_utils:value_compare_fun/2),
+    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators, 'value'),
 
     %% Start rangeing...
     stream_or_range_inner(F, undefined, GroupIterator(), []),
@@ -519,41 +523,62 @@ stream_or_range_inner(F, _, eof, Acc) ->
     F(lists:reverse(Acc)),
     ok.
 
-%% BACKHERE - Pass in the compare fun and use a different one for
-%% different circumstances. We *don't* want to use the
-%% Index/Field/Term when doing a range search, but we do want it for
-%% building super-segments as well as sorting a dumped buffer.
-
-%% Chain a list of iterators into what looks like one single iterator.
-build_iterator_tree([], _CompareFun) ->
+%% Chain a list of iterators into what looks like one single
+%% iterator. The mode is either 'term' or 'value'. This selects which
+%% compare function to use. This allows us to gain performance by
+%% compiling the function inline, which we couldn't do if we passed in
+%% the actual function as an argument.
+build_iterator_tree([], _) ->
     fun() -> eof end;
-build_iterator_tree(Iterators, CompareFun) ->
-    case build_iterator_tree_inner(Iterators, CompareFun) of
+build_iterator_tree(Iterators, Mode) ->
+    case build_iterator_tree_inner(Iterators, Mode) of
         [OneIterator] -> OneIterator;
-        ManyIterators -> build_iterator_tree(ManyIterators, CompareFun)
+        ManyIterators -> build_iterator_tree(ManyIterators, Mode)
     end.
 build_iterator_tree_inner([], _) ->
     [];
 build_iterator_tree_inner([Iterator], _) ->
     [Iterator];
-build_iterator_tree_inner([IteratorA,IteratorB|Rest], CompareFun) ->
-    Iterator = fun() -> group_iterator(IteratorA(), IteratorB(), CompareFun) end,
-    [Iterator|build_iterator_tree_inner(Rest, CompareFun)].
+build_iterator_tree_inner([IteratorA,IteratorB|Rest], Mode) ->
+    case Mode of
+        'term' ->
+            Iterator = fun() -> group_iterator_term(IteratorA(), IteratorB()) end;
+        'value' ->
+            Iterator = fun() -> group_iterator_value(IteratorA(), IteratorB()) end
+    end,
+    [Iterator|build_iterator_tree_inner(Rest, Mode)].
 
-group_iterator(I1 = {Term1, Iterator1}, I2 = {Term2, Iterator2}, CompareFun) ->
-    case CompareFun(Term1, Term2) of
+%% group_iterator_term/2 - Combine two iterators into one iterator using term_compare_fun/2.
+group_iterator_term(I1 = {Term1, Iterator1}, I2 = {Term2, Iterator2}) ->
+    case term_compare_fun(Term1, Term2) of
         true ->
-            NewIterator = fun() -> group_iterator(Iterator1(), I2, CompareFun) end,
+            NewIterator = fun() -> group_iterator_term(Iterator1(), I2) end,
             {Term1, NewIterator};
         false ->
-            NewIterator = fun() -> group_iterator(I1, Iterator2(), CompareFun) end,
+            NewIterator = fun() -> group_iterator_term(I1, Iterator2()) end,
             {Term2, NewIterator}
     end;
-group_iterator(eof, eof, _) -> 
+group_iterator_term(Iterator1, Iterator2) ->
+    group_iterator(Iterator1, Iterator2).
+
+%% group_iterator_term/2 - Combine two iterators into one iterator using term_compare_fun/2.
+group_iterator_value(I1 = {Term1, Iterator1}, I2 = {Term2, Iterator2}) ->
+    case value_compare_fun(Term1, Term2) of
+        true ->
+            NewIterator = fun() -> group_iterator_value(Iterator1(), I2) end,
+            {Term1, NewIterator};
+        false ->
+            NewIterator = fun() -> group_iterator_value(I1, Iterator2()) end,
+            {Term2, NewIterator}
+    end;
+group_iterator_value(Iterator1, Iterator2) ->
+    group_iterator(Iterator1, Iterator2).
+
+group_iterator(eof, eof) -> 
     eof;
-group_iterator(eof, Iterator, _) -> 
+group_iterator(eof, Iterator) -> 
     Iterator;
-group_iterator(Iterator, eof, _) -> 
+group_iterator(Iterator, eof) -> 
     Iterator.
 
 
@@ -624,3 +649,23 @@ join(#state { root=Root }, Name) ->
 
 join(Root, Name) ->
     filename:join([Root, Name]).
+
+%% Used by mi_server.erl to compare two terms, for merging
+%% segments. Return true if items are in order. 
+term_compare_fun({I1, F1, T1, V1, _, TS1}, {I2, F2, T2, V2, _, TS2}) ->
+    (I1 < I2 orelse
+        (I1 == I2 andalso
+            (F1 < F2 orelse
+                (F1 == F2 andalso
+                    (T1 < T2 orelse
+                        (T1 == T2 andalso
+                            (V1 < V2 orelse
+                                (V1 == V2 andalso
+                                    (TS1 > TS2))))))))).
+
+%% Used by mi_server.erl to compare two values, for streaming ordered
+%% results back to a caller. Return true if items are in order.
+value_compare_fun({V1, _, TS1}, {V2, _, TS2}) ->
+    (V1 < V2 orelse
+        (V1 == V2 andalso
+            (TS1 > TS2))).

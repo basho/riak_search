@@ -16,11 +16,9 @@
 
 -include_lib("kernel/include/file.hrl").
 -define(BLOCK_SIZE, 32767).
--define(FILE_BUFFER_SIZE, 51200).
+-define(FILE_BUFFER_SIZE, 1048576).
 -define(VALUES_STAGING_SIZE, 1000).
--define(VALUES_COMPRESS_THRESHOLD, 3).
--define(BLOOM_CAPACITY, 512).
--define(BLOOM_ERROR, 0.01).
+-define(VALUES_COMPRESS_THRESHOLD, 0).
 -define(INDEX_FIELD_TERM(X), {element(1, X), element(2, X), element(3, X)}).
 -define(VALUE(X), element(4, X)).
 -define(VALUE_PROPS_TSTAMP(X), {element(4, X), element(5, X), element(6, X)}).
@@ -30,6 +28,7 @@
                  pos=0,
                  block_start=0,
                  keys=[],
+                 last_key=undefined,
                  key_start=0,
                  values_start=0,
                  values_count=0,
@@ -42,8 +41,7 @@
 from_iterator(Iterator, Segment) ->
     %% Open the data file...
     {ok, WriteOpts} = application:get_env(merge_index, segment_write_options),
-    Opts = [write, raw, binary] ++ WriteOpts,
-    {ok, DataFile} = file:open(mi_segment:data_file(Segment), Opts),
+    {ok, DataFile} = file:open(mi_segment:data_file(Segment), [write, raw, binary] ++ WriteOpts),
 
     W = #writer {
       data_file=DataFile,
@@ -101,7 +99,7 @@ from_iterator(eof, StartIFT, _LastValue, W) ->
 %% One method below for each different stage of writing a segment: start_segment, start_block, start_term, value, end_term, end_block, end_segment.
 
 from_iterator_process_start_segment(W) -> 
-    from_iterator_process_start_block(W).
+    W.
 
 from_iterator_process_start_block(W) -> 
     %% Set the block_start position, and zero out keys for this block..
@@ -111,8 +109,24 @@ from_iterator_process_start_block(W) ->
      }.
 
 from_iterator_process_start_term(Key, W) -> 
-    %% Write the key entry to the data file...
-    from_iterator_write_key(W, Key).
+    %% If the Index or Field value for this key is different from the
+    %% last one, then close the last block and start a new block. This
+    %% makes bookkeeping simpler all around.
+    LastKey = W#writer.last_key,
+    ShouldStartBlock = 
+        LastKey == undefined orelse
+        element(1, Key) /= element(1, LastKey) orelse
+        element(2, Key) /= element(2, LastKey),
+    case ShouldStartBlock of
+        true ->
+            W1 = from_iterator_process_end_block(W),
+            W2 = from_iterator_process_start_block(W1);
+        false ->
+            W2 = W
+    end,
+
+    %% Write the key entry to the data file.
+    from_iterator_write_key(W2, Key).
 
 from_iterator_process_value(Value, W) ->
     %% Build up the set of values...
@@ -156,13 +170,14 @@ from_iterator_process_end_term(Key, W) ->
 from_iterator_process_end_block(W) when W#writer.keys /= [] -> 
     {FinalKey, _, _, _} = hd(W#writer.keys),
 
-    %% Calculate the bloom filter and longest prefix.
-    F1 = fun({Key, _, _, _}, {BloomAcc, LongestPrefixAcc}) ->
-                 {_, _, Term} = Key,
-                 {mi_bloom:add_element(Key, BloomAcc), mi_utils:longest_prefix(LongestPrefixAcc, Term)}
-        end,
-    NewBloom = mi_bloom:bloom(?BLOOM_CAPACITY, ?BLOOM_ERROR),
-    {Bloom, LongestPrefix} = lists:foldl(F1, {NewBloom, undefined}, W#writer.keys),
+    %% Calculate the bloom filter...
+    Bloom = mi_bloom:new([X || {X, _, _, _} <- W#writer.keys]),
+
+    %% Calculate the longest prefix...
+    F1 = fun({{_, _, Term}, _, _, _}, Acc) ->
+                 mi_utils:longest_prefix(Acc, Term)
+         end,
+    LongestPrefix = lists:foldl(F1, undefined, W#writer.keys),
 
     %% Calculate offset table entries...
     {_, _, FinalTerm} = FinalKey,
@@ -187,10 +202,12 @@ from_iterator_process_end_segment(W) ->
 
 %% Write a key to the data file.
 from_iterator_write_key(W, Key) ->
-    Bytes = term_to_binary(Key),
+    ShrunkenKey = shrink_key(W#writer.last_key, Key),
+    Bytes = term_to_binary(ShrunkenKey),
     Size = erlang:size(Bytes),
     Output = [<<1:1/integer, Size:15/unsigned-integer>>, Bytes],
     W1 = W#writer {
+           last_key = Key,
            key_start = W#writer.pos,
            values_start = W#writer.pos + Size + 2,
            pos = W#writer.pos + Size + 2,
@@ -242,3 +259,14 @@ from_iterator_flush_buffer(W, Force) ->
         false ->
             W
     end.
+
+%% compact_key/2 - Given the LastKey and CurrentKey, return a smaller
+%% CurrentKey by removing the field and term if possible. Clauses
+%% ordered by most common first.
+shrink_key({I,F,_}, {I,F,Term}) ->
+    Term;
+shrink_key({I,_,_}, {I,Field,Term}) ->
+    {Field, Term};
+shrink_key(_, {Index,Field,Term}) ->
+    {Index, Field, Term}.
+
