@@ -108,11 +108,21 @@ info(Index, Field, Term, Buffer) ->
 %% Return an iterator that traverses the entire buffer.
 iterator(Buffer) ->
     Table = Buffer#buffer.table,
-    List1 = ets:tab2list(Table),
-    List2 = [{I,F,T,V,P,K} || {{I,F,T},V,P,K} <- List1],
-    List3 = lists:sort(fun term_compare_fun/2, List2),
-    fun() -> iterate_list(List3) end.
-
+    Keys = lists:sort(mi_utils:ets_keys(Table)),
+    fun() -> iterate_keys(Table, Keys) end.
+    
+iterate_keys(Table, [Key|Keys]) ->
+    Results1 = ets:lookup(Table, Key),
+    Results2 = [{I,F,T,V,P,K} || {{I,F,T},V,P,K} <- Results1],
+    Results3 = lists:sort(fun term_compare_fun/2, Results2),
+    iterate_keys_1(Table, Keys, Results3);
+iterate_keys(_, []) ->
+    eof.
+iterate_keys_1(Table, Keys, [Result|Results]) ->
+    {Result, fun() -> iterate_keys_1(Table, Keys, Results) end};
+iterate_keys_1(Table, Keys, []) ->
+    iterate_keys(Table, Keys).
+    
 %% Return an iterator that traverses a range of the buffer.
 iterator(Index, Field, Term, Buffer) ->
     Table = Buffer#buffer.table,
