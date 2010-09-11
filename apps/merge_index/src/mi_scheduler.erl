@@ -121,6 +121,9 @@ worker_loop(Parent) ->
                     error_logger:error_msg("Failed to compact ~p: ~p\n",
                                            [Pid, Reason])
             end,
+            ?MODULE:worker_loop(Parent);
+        _ ->
+            %% ignore unknown messages
             ?MODULE:worker_loop(Parent)
     end.
 

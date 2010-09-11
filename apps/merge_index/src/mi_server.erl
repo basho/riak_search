@@ -601,6 +601,9 @@ buffer_converter(ServerPid, Root) ->
             SegmentWO = mi_segment:open_write(SName),
             mi_segment:from_buffer(Buffer, SegmentWO),
             gen_server:cast(ServerPid, {buffer_to_segment, Buffer, SegmentWO}),
+            ?MODULE:buffer_converter(ServerPid, Root);
+        _ ->
+            %% ignore unknown messages
             ?MODULE:buffer_converter(ServerPid, Root)
     end.
 
