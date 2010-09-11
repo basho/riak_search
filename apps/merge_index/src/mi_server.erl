@@ -34,8 +34,17 @@
     next_id,
     scheduled_compaction,
     is_compacting,
-    buffer_converter
+    buffer_converter,
+    stream_range_pids
 }).
+
+-record(stream_range, {
+          pid,
+          caller,
+          ref,
+          buffers,
+          segments
+         }).
 
 -define(RESULTVEC_SIZE, 1000).
 -define(DELETEME_FLAG, ".deleted").
@@ -63,7 +72,8 @@ init([Root]) ->
         next_id  = NextID,
         scheduled_compaction = false,
         is_compacting = false,
-        buffer_converter = Converter
+        buffer_converter = Converter,
+        stream_range_pids = []
     },
 
     %% Return.
@@ -268,8 +278,7 @@ handle_call({stream, Index, Field, Term, Pid, Ref, FilterFun}, _From, State) ->
     %% SLF TODO: How does caller know if worker proc has crashed?
     %%     TODO: If filter fun or other crashes, linked server
     %%           also crashes.
-    Self = self(),
-    spawn_link(fun() ->
+    StreamPid = spawn_link(fun() ->
                        F = fun(Results) ->
                                    WrappedFilter = fun({Value, Props}) -> 
                                                            FilterFun(Value, Props) == true
@@ -282,11 +291,17 @@ handle_call({stream, Index, Field, Term, Pid, Ref, FilterFun}, _From, State) ->
                                    end
                            end,
                        stream(Index, Field, Term, F, Buffers, Segments),
-                       Pid ! {result, '$end_of_table', Ref},
-                       gen_server:call(Self, {stream_or_range_finished, Buffers, Segments}, infinity)
+                       Pid ! {result, '$end_of_table', Ref}
                end),
 
-    {reply, ok, State#state { locks=NewLocks1 }};
+    NewPids = [ #stream_range{pid=StreamPid,
+                              caller=Pid,
+                              ref=Ref,
+                              buffers=Buffers,
+                              segments=Segments}
+                | State#state.stream_range_pids ],
+    {reply, ok, State#state { locks=NewLocks1,
+                              stream_range_pids=NewPids }};
     
 handle_call({range, Index, Field, StartTerm, EndTerm, Size, Pid, Ref, FilterFun}, _From, State) ->
     #state { locks=Locks, buffers=Buffers, segments=Segments } = State,
@@ -303,8 +318,7 @@ handle_call({range, Index, Field, StartTerm, EndTerm, Size, Pid, Ref, FilterFun}
          end,
     NewLocks1 = lists:foldl(F2, NewLocks, Segments),
 
-    Self = self(),
-    spawn_link(fun() ->
+    RangePid = spawn_link(fun() ->
                        F = fun(Results) ->
                                    WrappedFilter = fun({Value, Props}) -> 
                                                            FilterFun(Value, Props) == true
@@ -317,31 +331,18 @@ handle_call({range, Index, Field, StartTerm, EndTerm, Size, Pid, Ref, FilterFun}
                                    end
                            end,
                        range(Index, Field, StartTerm, EndTerm, Size, F, Buffers, Segments),
-                       Pid ! {result, '$end_of_table', Ref},
-                       gen_server:call(Self, {stream_or_range_finished, Buffers, Segments}, infinity)
+                       Pid ! {result, '$end_of_table', Ref}
                end),
 
-    {reply, ok, State#state { locks=NewLocks1 }};
+    NewPids = [ #stream_range{pid=RangePid,
+                              caller=Pid,
+                              ref=Ref,
+                              buffers=Buffers,
+                              segments=Segments}
+                | State#state.stream_range_pids ],
+    {reply, ok, State#state { locks=NewLocks1,
+                              stream_range_pids=NewPids }};
     
-handle_call({stream_or_range_finished, Buffers, Segments}, _From, State) ->
-    #state { locks=Locks } = State,
-
-    %% Remove locks from all buffers...
-    F1 = fun(Buffer, Acc) ->
-        mi_locks:release(mi_buffer:filename(Buffer), Acc)
-    end,
-    NewLocks = lists:foldl(F1, Locks, Buffers),
-
-    %% Remove locks from all segments...
-    F2 = fun(Segment, Acc) ->
-        mi_locks:release(mi_segment:filename(Segment), Acc)
-    end,
-    NewLocks1 = lists:foldl(F2, NewLocks, Segments),
-
-    %% Return...
-    {reply, ok, State#state { locks=NewLocks1 }};
-
-
 handle_call({fold, FoldFun, Acc}, _From, State) ->
     #state { buffers=Buffers, segments=Segments } = State,
 
@@ -495,6 +496,44 @@ handle_info({'EXIT', ConverterPid, _Reason},
     [ NewConverter ! {convert, B} || B <- tl(Buffers) ],
 
     {noreply, State#state{buffer_converter = NewConverter}};
+
+handle_info({'EXIT', Pid, Reason},
+            #state{stream_range_pids=SRPids}=State) ->
+
+    case lists:keytake(Pid, #stream_range.pid, SRPids) of
+        {value, SR, NewSRPids} ->
+            %% One of our stream or range processes exited
+
+            case Reason of
+                normal ->
+                    %% we've already sent the end-of-table message
+                    ok;
+                _Error ->
+                    %% send the end-of-table so the listener exits
+                    SR#stream_range.caller !
+                        {result, '$end_of_table', SR#stream_range.ref}
+            end,
+
+            %% Remove locks from all buffers...
+            F1 = fun(Buffer, Acc) ->
+                mi_locks:release(mi_buffer:filename(Buffer), Acc)
+            end,
+            NewLocks = lists:foldl(F1, State#state.locks,
+                                   SR#stream_range.buffers),
+
+            %% Remove locks from all segments...
+            F2 = fun(Segment, Acc) ->
+                mi_locks:release(mi_segment:filename(Segment), Acc)
+            end,
+            NewLocks1 = lists:foldl(F2, NewLocks,
+                                   SR#stream_range.segments),
+
+            {noreply, State#state { locks=NewLocks1,
+                                    stream_range_pids=NewSRPids }};
+        false ->
+            %% some random other process exited: ignore
+            {noreply, State}
+    end;
 
 handle_info(_Info, State) ->
     {noreply, State}.
