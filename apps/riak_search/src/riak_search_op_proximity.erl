@@ -104,12 +104,12 @@ get_min_max(_LastMin, Min, Max, [], NextPass) ->
     
 %% Normalize, throw away the operators, replace with a list of lists of positions.
 select_fun({{Index, DocID, Props}, Op, Iterator}, I2) when is_record(Op, term) ->
-    Positions = proplists:get_value(word_pos, Props, []),
+    Positions = proplists:get_value(p, Props, []),
     Positions1 = lists:sort(Positions),
     select_fun({{Index, DocID, Props}, [Positions1], Iterator}, I2);
 
 select_fun(I1, {{Index, DocID, Props}, Op, Iterator}) when is_record(Op, term) ->
-    Positions = proplists:get_value(word_pos, Props, []),
+    Positions = proplists:get_value(p, Props, []),
     Positions1 = lists:sort(Positions),
     select_fun(I1, {{Index, DocID, Props}, [Positions1], Iterator});
 

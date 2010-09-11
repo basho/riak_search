@@ -259,8 +259,7 @@ get_term_positions(Terms) ->
 %% Given a term and a list of positions, generate a list of
 %% properties.
 build_props(Positions, Facets) ->
-    [{word_pos, Positions},
-     {freq, length(Positions)} | Facets].
+    [{p, Positions}| Facets].
 
 %% Returns a Riak object.
 get_obj(RiakClient, DocIndex, DocID) ->
@@ -336,15 +335,15 @@ normalize_fields_test() ->
     {ok, Schema} = riak_search_schema_parser:from_eterm(is_skip_test, SchemaDef),
 
     ?assertEqual({[], []}, normalize_fields([], Schema)),    
-    ?assertEqual({[{"afield",<<"data">>, []}], []}, normalize_fields([{"afield","data"}], Schema)),
-    ?assertEqual({[{"afield",<<"data">>, []}], []}, normalize_fields([{"afieldtoo","data"}], Schema)),
-    ?assertEqual({[{"afield",<<"one two three">>, []}], []}, 
+    ?assertEqual({[{<<"afield">>,<<"data">>, []}], []}, normalize_fields([{"afield","data"}], Schema)),
+    ?assertEqual({[{<<"afield">>,<<"data">>, []}], []}, normalize_fields([{"afieldtoo","data"}], Schema)),
+    ?assertEqual({[{<<"afield">>,<<"one two three">>, []}], []}, 
                  normalize_fields([{"afieldtoo","one"},
                                    {"afield","two"},
                                    {"afieldtoo", "three"}], Schema)),
-    ?assertEqual({[{"anotherfield", <<"abc def ghi">>, []},
-                   {"afield",<<"one two three">>, []}],
-                  [{"afacet", <<"first second">>, []}]},
+    ?assertEqual({[{<<"anotherfield">>, <<"abc def ghi">>, []},
+                   {<<"afield">>,<<"one two three">>, []}],
+                  [{<<"afacet">>, <<"first second">>, []}]},
                  normalize_fields([{"anotherfield","abc"},
                                    {"afieldtoo","one"},
                                    {"skipme","skippable terms"},

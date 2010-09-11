@@ -14,7 +14,7 @@ preplan(AST, Schema) ->
     %% pass 3 - Inject facets or node weights for terms
     AST3 = visit(AST2, ?VISITOR(insert_facet_or_weight, Schema), true),
     %% pass 4 - convert range and wildcard expressions
-    AST4 = visit(AST3, ?VISITOR(wildcard_range_to_or, Schema), true),
+    AST4 = visit(AST3, ?VISITOR(wildcard_and_range, Schema), true),
     %% pass 5 - pick node for boolean ops
     AST5 = visit(AST4, ?VISITOR(select_node, Schema), true),
     %% Return.
@@ -36,7 +36,7 @@ select_node(Op, _Schema) ->
     Op.
 
 %% Convert wildcards and ranges into lor operations
-wildcard_range_to_or(#field{field=FieldName, ops=Ops}, Schema)
+wildcard_and_range(#field{field=FieldName, ops=Ops}, Schema)
   when is_record(Ops, inclusive_range);
        is_record(Ops, exclusive_range)->
     Field = Schema:find_field(FieldName),
@@ -44,7 +44,18 @@ wildcard_range_to_or(#field{field=FieldName, ops=Ops}, Schema)
                     {Schema:name(), FieldName, range_end(Ops)},
                     range_type(Ops) =:= inclusive,
                     Schema:field_type(Field));
-wildcard_range_to_or(Op, _Schema) ->
+wildcard_and_range(Op, _Schema) when is_record(Op, term) ->
+    IsWildcardOne = ?IS_TERM_WILDCARD_ONE(Op),
+    IsWildcardAll = ?IS_TERM_WILDCARD_ALL(Op),
+    if 
+        IsWildcardOne ->
+            normalize_range(Op#term.q, wildcard_one, ignored, ignored);
+        IsWildcardAll ->
+            normalize_range(Op#term.q, wildcard_all, ignored, ignored);
+        true ->
+            Op
+    end;
+wildcard_and_range(Op, _Schema) ->
     ?PRINT({unhandled_range, Op}),
     Op.
 
@@ -284,41 +295,6 @@ visit(AST, _, _, Accum) ->
 
 %% Misc. helper functions
 
-%% %% Expand a range to a list of terms.  Handle the special cases for integer ranges
-%% %% for negative numbers.  -0010 TO -0005 needs to be swapped to -0005 TO -0010.
-%% %% If one number is positive and the other is negative then the range query needs
-%% %% to be broken into a positive search and a negative search
-%% range_to_terms(Index, Field, StartTerm, EndTerm, Size, integer) ->
-%%     StartPolarity = hd(StartTerm),
-%%     EndPolarity = hd(EndTerm),
-%%     case {StartPolarity,EndPolarity} of
-%%         {$-,$-} ->
-%%             info_range(Index, Field, EndTerm, StartTerm, Size);
-%%         {$-,_} ->
-%%             Len = length(StartTerm),
-%%             MinusOne = make_minus_one(Len),
-%%             Zero = make_zero(Len),
-%%             info_range(Index, Field, MinusOne, StartTerm, Size) ++
-%%                 info_range(Index, Field, Zero, EndTerm, Size);
-%%         {_,$-} ->
-%%             %% Swap the range if "positive TO negative"
-%%             range_to_terms(Index, Field, EndTerm, StartTerm, Size, integer);
-%%         {_,_} ->
-%%             info_range(Index, Field, StartTerm, EndTerm, Size)
-%%     end;
-%% range_to_terms(Index, Field, StartTerm, EndTerm, Size, _Type) ->
-%%     info_range(Index, Field, StartTerm, EndTerm, Size).
-
-%% make_minus_one(1) ->
-%%     throw({unhandled_case, make_minus_one});
-%% make_minus_one(2) ->
-%%     "-1";
-%% make_minus_one(Len) ->
-%%     "-" ++ string:chars($0, Len-2) ++ "1".
-
-%% make_zero(Len) ->
-%%     string:chars($0, Len).
-
 %% TODO - Add support for negative ranges.
 normalize_range({Index, Field, StartTerm}, {Index, Field, EndTerm}, Inclusive, _Type) ->
     %% If this is an exclusive range, then bump the StartTerm in by one
@@ -338,17 +314,8 @@ normalize_range({Index, Field, StartTerm}, wildcard_one, _Inclusive, _Type) ->
 normalize_range(A, B, C, D) ->
     ?PRINT({unhandled_range, A, B, C, D}),
     throw({unhandled_range, A, B, C, D}).
+
     
-
-%% Uncomment these when merge_index supports wildcarding
-%% normalize_range({Index, Field, Term}, wildcard_all, _Inclusive) ->
-%%     {StartTerm, EndTerm} = wildcard(Term),
-%%     {Index, Field, StartTerm, EndTerm, all};
-
-%% normalize_range({Index, Field, Term}, wildcard_one, _Inclusive) ->
-%%     {StartTerm, EndTerm} = wildcard(Term),
-%%     {Index, Field, StartTerm, EndTerm, typesafe_size(Term) + 1};
-
 binary_inc(Term, Amt) when is_list(Term) ->
     NewTerm = binary_inc(list_to_binary(Term), Amt),
     binary_to_list(NewTerm);
@@ -421,8 +388,12 @@ find_heaviest_node(Ops) ->
                 Weight1 >= Weight2 end,
     case NodeWeights of
         [] ->
-            Node = hd(Ops),
-            Node#node.node;
+            case hd(Ops) of
+                Node when is_record(Node, node) ->
+                    Node#node.node;
+                _ ->
+                    node()
+            end;
         _ ->
             {Node, _Weight} = hd(lists:sort(F, NodeWeights)),
             Node
@@ -443,7 +414,7 @@ collect_node_weights([#term{options=Opts}|T], Accum) ->
 collect_node_weights([#lnot{ops=Ops}|T], Accum) ->
     NewAccum = collect_node_weights(Ops, Accum),
     collect_node_weights(T, NewAccum);
-collect_node_weights([_|T], Accum) ->
+collect_node_weights([_Other|T], Accum) ->
     collect_node_weights(T, Accum).
 
 info(Index, Field, Term) ->
@@ -457,17 +428,3 @@ info(Index, Field, Term) ->
     {ok, Ref} = riak_search_vnode:info(Preflist, Index, Field, Term, self()),
     {ok, Results} = riak_search_backend:collect_info_response(length(Preflist), Ref, []),
     Results.
-
-%% info_range(Index, Field, StartTerm, EndTerm, Size) when EndTerm < StartTerm ->
-%%     info_range(Index, Field, EndTerm, StartTerm, Size);
-%% info_range(Index, Field, StartTerm, EndTerm, Size) ->
-%%     %% TODO: Duplicating current behavior for now - a PUT against a preflist with
-%%     %%       the N val set to the size of the ring - this will mean no failbacks
-%%     %%       will be available.  Instead should work out the preflist for
-%%     %%       each partition index and find which node is responsible for that partition
-%%     %%       and talk to that.
-%%     Preflist = riak_core_apl:active_owners(riak_search),
-%%     {ok, Ref} = riak_search_vnode:info_range(Preflist, Index, Field, StartTerm, EndTerm, 
-%%                                              Size, self()),
-%%     {ok, Results} = riak_search_backend:collect_info_response(length(Preflist), Ref, []),
-%%     Results.
