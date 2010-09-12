@@ -281,9 +281,6 @@ handle_call({stream, Index, Field, Term, Pid, Ref, FilterFun}, _From, State) ->
     NewLocks1 = lists:foldl(F2, NewLocks, Segments),
 
     %% Spawn a streaming function...
-    %% SLF TODO: How does caller know if worker proc has crashed?
-    %%     TODO: If filter fun or other crashes, linked server
-    %%           also crashes.
     StreamPid = spawn_link(fun() ->
                        F = fun(Results) ->
                                    WrappedFilter = fun({Value, Props}) -> 
@@ -370,7 +367,6 @@ handle_call({fold, FoldFun, Acc}, _From, State) ->
     GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators, 'term'),
 
     %% Fold over everything...
-    %% SLF TODO: If filter fun or other crashes, server crashes.
     NewAcc = fold(WrappedFun, Acc, GroupIterator()),
 
     %% Reply...
