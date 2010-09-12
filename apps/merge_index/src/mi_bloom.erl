@@ -12,6 +12,13 @@
 -export([new/1, is_element/2]).
 -include("merge_index.hrl").
 
+-ifdef(TEST).
+-ifdef(EQC).
+-include_lib("eqc/include/eqc.hrl").
+-endif.
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 %% These settings give us a max 256 keys with 0.05 error rate.
 -define(M, 1600).
 -define(K, 4).
@@ -25,11 +32,12 @@ generate_bits(Pos, [NextOnPos|T]) ->
     Gap = NextOnPos - Pos - 1,
     case Gap > 0 of
         true ->
-            Bits = <<0:Gap/integer, 1:1/integer>>;
+            Bits = <<0:Gap/integer, 1:1/integer>>,
+            [Bits|generate_bits(Pos + Gap + 1, T)];
         false ->
-            Bits = <<1:1/integer>>
-    end,
-    [Bits|generate_bits(Pos + Gap + 1, T)];
+            Bits = <<1:1/integer>>,
+            [Bits|generate_bits(Pos + 1, T)]
+    end;
 generate_bits(Pos, []) ->
     Gap = ?M - Pos,
     [<<0:Gap/integer>>].
@@ -69,3 +77,27 @@ calc_idxs(I, X, Y, Acc) ->
     Xi = (X+Y) rem ?M,
     Yi = (Y+I) rem ?M,
     calc_idxs(I-1, Xi, Yi, [Xi | Acc]).
+
+%% UNIT TESTS
+
+-ifdef(TEST).
+
+-ifdef(EQC).
+
+prop_bloom_test_() ->
+    {timeout, 60, fun() -> ?assert(eqc:quickcheck(prop_bloom())) end}.
+
+g_keys() ->
+    non_empty(list(non_empty(binary()))).
+
+prop_bloom() ->
+    ?FORALL(Keys, g_keys(),
+            begin
+                Bloom = ?MODULE:new(Keys),
+                F = fun(X) -> is_element(X, Bloom) end,
+                lists:all(F, Keys)
+            end).
+
+-endif.
+
+-endif.
