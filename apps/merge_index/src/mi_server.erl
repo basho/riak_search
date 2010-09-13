@@ -33,7 +33,6 @@
     segments,
     buffers,
     next_id,
-    scheduled_compaction,
     is_compacting,
     buffer_converter,
     stream_range_pids
@@ -71,7 +70,6 @@ init([Root]) ->
         buffers  = [Buffer],
         segments = Segments,
         next_id  = NextID,
-        scheduled_compaction = false,
         is_compacting = false,
         buffer_converter = Converter,
         stream_range_pids = []
@@ -186,7 +184,7 @@ handle_call(start_compaction, _From, State)
   when is_tuple(State#state.is_compacting) orelse length(State#state.segments) =< 5 ->
     %% Don't compact if we are already compacting, or if we have fewer
     %% than four open segments.
-    {reply, {ok, 0, 0}, State#state { scheduled_compaction=false }};
+    {reply, {ok, 0, 0}, State};
 
 handle_call(start_compaction, From, State) ->
     %% Get list of segments to compact. Do this by getting filesizes,
@@ -428,7 +426,6 @@ handle_cast({compacted, CompactSegmentWO, OldSegments, OldBytes, From}, State) -
     NewState = State#state {
         locks=NewLocks,
         segments=[CompactSegmentRO|(Segments -- OldSegments)],
-        scheduled_compaction=false,
         is_compacting=false
     },
 
@@ -437,7 +434,7 @@ handle_cast({compacted, CompactSegmentWO, OldSegments, OldBytes, From}, State) -
     {noreply, NewState};
 
 handle_cast({buffer_to_segment, Buffer, SegmentWO}, State) ->
-    #state { locks=Locks, buffers=Buffers, segments=Segments, scheduled_compaction=ScheduledCompaction } = State,
+    #state { locks=Locks, buffers=Buffers, segments=Segments, is_compacting=IsCompacting } = State,
 
     %% Clean up by clearing delete flag on the segment, adding delete
     %% flag to the buffer, and telling the system to delete the buffer
@@ -452,7 +449,7 @@ handle_cast({buffer_to_segment, Buffer, SegmentWO}, State) ->
 
     %% Update state...
     NewSegments = [SegmentRO|Segments],
-    NewState1 = State#state {
+    NewState = State#state {
         locks=NewLocks,
         buffers=Buffers -- [Buffer],
         segments=NewSegments
@@ -461,13 +458,12 @@ handle_cast({buffer_to_segment, Buffer, SegmentWO}, State) ->
     %% Give us the opportunity to do a merge...
     SegmentsToMerge = get_segments_to_merge(NewSegments),
     case length(SegmentsToMerge) of
-        Num when Num =< 2 orelse ScheduledCompaction == true-> 
-            NewState2 = NewState1;
+        Num when Num =< 2 orelse is_tuple(IsCompacting) -> 
+            ok;
         _ -> 
-            mi_scheduler:schedule_compaction(self()),
-            NewState2 = NewState1#state { scheduled_compaction=true }
+            mi_scheduler:schedule_compaction(self())
     end,
-    {noreply, NewState2};
+    {noreply, NewState};
 
 handle_cast(Msg, State) ->
     ?PRINT({unhandled_cast, Msg}),
@@ -490,8 +486,7 @@ handle_info({'EXIT', CompactingPid, Reason},
     end,
 
     %% clear out compaction flags, so we try again when necessary
-    {noreply, State#state{is_compacting=false,
-                          scheduled_compaction=false}};
+    {noreply, State#state{is_compacting=false}};
 handle_info({'EXIT', ConverterPid, _Reason},
             #state{buffer_converter=ConverterPid,
                    buffers=Buffers,
