@@ -10,6 +10,11 @@
 -include("merge_index.hrl").
 
 -export([
+    get_id_number/1,
+    has_deleteme_flag/1,
+    set_deleteme_flag/1,
+    register_buffer_converter/2,
+    buffer_to_segment/3,
     %% GEN SERVER
     init/1,
     handle_call/3,
@@ -18,10 +23,6 @@
     terminate/2,
     code_change/3
 ]).
-%% Private spawn exports
--export([
-         buffer_converter/2
-        ]).
 -compile({inline,[term_compare_fun/2, value_compare_fun/2]}).
 
 -record(state, { 
@@ -49,6 +50,12 @@
 -define(RESULTVEC_SIZE, 1000).
 -define(DELETEME_FLAG, ".deleted").
 
+register_buffer_converter(ServerPid, ConverterPid) ->
+    gen_server:cast(ServerPid, {register_buffer_converter, ConverterPid}).
+
+buffer_to_segment(ServerPid, Buffer, SegmentWO) ->
+    gen_server:cast(ServerPid, {buffer_to_segment, Buffer, SegmentWO}).
+
 init([Root]) ->
     %% Load from disk...
     filelib:ensure_dir(join(Root, "ignore")),
@@ -61,7 +68,7 @@ init([Root]) ->
     process_flag(trap_exit, true),
 
     %% Use a dedicated worker sub-process to do the 
-    Converter = spawn_link(?MODULE, buffer_converter, [self(), Root]),
+    {ok, ConverterSup} = mi_buffer_converter:start_link(self(), Root),
 
     %% Create the state...
     State = #state {
@@ -71,7 +78,7 @@ init([Root]) ->
         segments = Segments,
         next_id  = NextID,
         is_compacting = false,
-        buffer_converter = Converter,
+        buffer_converter = {ConverterSup, undefined},
         stream_range_pids = []
     },
 
@@ -149,7 +156,9 @@ read_buffers(Root, [{BNum, BName}|Rest], NextID, Segments) ->
 
 handle_call({index, Postings}, _From, State) ->
     %% Write to the buffer...
-    #state { buffers=[CurrentBuffer0|Buffers] } = State,
+    #state { buffers=[CurrentBuffer0|Buffers],
+             buffer_converter={_,ConverterWorker},
+             root=Root} = State,
     %% Index, Field, Term, Value, Props, TS
     CurrentBuffer = mi_buffer:write(Postings, CurrentBuffer0),
 
@@ -165,7 +174,8 @@ handle_call({index, Postings}, _From, State) ->
             %% Close the buffer filehandle. Needs to be done in the owner process.
             mi_buffer:close_filehandle(CurrentBuffer),
             
-            State#state.buffer_converter ! {convert, CurrentBuffer},
+            mi_buffer_converter:convert(
+              ConverterWorker, Root, CurrentBuffer),
             
             %% Create a new empty buffer...
             BName = join(NewState, "buffer." ++ integer_to_list(NextID)),
@@ -465,6 +475,19 @@ handle_cast({buffer_to_segment, Buffer, SegmentWO}, State) ->
     end,
     {noreply, NewState};
 
+handle_cast({register_buffer_converter, ConverterWorker},
+            #state{buffer_converter={ConverterSup,_},
+                   buffers=Buffers,
+                   root=Root}=State) ->
+    %% a new buffer converter started - queue all buffers but the
+    %% current one for conversion to segments
+    
+    %% current buffer is hd(Buffers), so just convert tl(Buffers)
+    [ mi_buffer_converter:convert(ConverterWorker, Root, B)
+      || B <- tl(Buffers) ],
+
+    {noreply, State#state{buffer_converter={ConverterSup, ConverterWorker}}};
+
 handle_cast(Msg, State) ->
     ?PRINT({unhandled_cast, Msg}),
     {noreply, State}.
@@ -487,17 +510,10 @@ handle_info({'EXIT', CompactingPid, Reason},
 
     %% clear out compaction flags, so we try again when necessary
     {noreply, State#state{is_compacting=false}};
-handle_info({'EXIT', ConverterPid, _Reason},
-            #state{buffer_converter=ConverterPid,
-                   buffers=Buffers,
-                   root=Root}=State) ->
-    %% the buffer converter died - start a new one
-    NewConverter = spawn_link(?MODULE, buffer_converter, [self(), Root]),
-    
-    %% current buffer is hd(Buffers), so just convert tl(Buffers)
-    [ NewConverter ! {convert, B} || B <- tl(Buffers) ],
-
-    {noreply, State#state{buffer_converter = NewConverter}};
+handle_info({'EXIT', ConverterSup, Reason},
+            #state{buffer_converter={ConverterSup, _}}=State) ->
+    %% if our converter's supervisor died, there's a problem: exit
+    {stop, {buffer_converter_death, Reason}, State};
 
 handle_info({'EXIT', Pid, Reason},
             #state{stream_range_pids=SRPids}=State) ->
@@ -642,31 +658,6 @@ group_iterator(eof, Iterator) ->
 group_iterator(Iterator, eof) -> 
     Iterator.
 
-
-buffer_converter(ServerPid, Root) ->
-    receive
-        {convert, Buffer} ->
-            %% Calculate the segment filename, open the segment, and convert.
-            SNum  = get_id_number(mi_buffer:filename(Buffer)),
-            SName = join(Root, "segment." ++ integer_to_list(SNum)),
-
-            case has_deleteme_flag(SName) of
-                true ->
-                    %% remove files from a previously-failed conversion
-                    file:delete(mi_segment:data_file(SName)),
-                    file:delete(mi_segment:offsets_file(SName));
-                false ->
-                    set_deleteme_flag(SName)
-            end,
-
-            SegmentWO = mi_segment:open_write(SName),
-            mi_segment:from_buffer(Buffer, SegmentWO),
-            gen_server:cast(ServerPid, {buffer_to_segment, Buffer, SegmentWO}),
-            ?MODULE:buffer_converter(ServerPid, Root);
-        _ ->
-            %% ignore unknown messages
-            ?MODULE:buffer_converter(ServerPid, Root)
-    end.
 
 %% Return the ID number of a Segment/Buffer/Filename...
 %% Files can be named:
