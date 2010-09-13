@@ -41,7 +41,8 @@
                        index="search",
                        fields=[],
                        props=[],
-                       facets=[]}).
+                       facets=[],
+                       analyzed_flag=false}).
 
 -record(riak_search_ref, {id,
                           termcount,

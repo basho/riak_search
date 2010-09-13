@@ -146,6 +146,10 @@ analyze(IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
 
 %% Parse a #riak_idx_doc{} record using the provided analyzer pid.
 %% Return {ok, [{Index, FieldName, Term, DocID, Props}]}.
+analyze(IdxDoc, _AnalyzerPid) 
+  when is_record(IdxDoc, riak_idx_doc) andalso IdxDoc#riak_idx_doc.analyzed_flag == true ->
+    %% Don't re-analyze an already analyzed idx doc.
+    IdxDoc;
 analyze(IdxDoc, AnalyzerPid) when is_record(IdxDoc, riak_idx_doc) ->
     %% Extract fields, get schema...
     DocIndex = ?MODULE:index(IdxDoc),
@@ -164,7 +168,7 @@ analyze(IdxDoc, AnalyzerPid) when is_record(IdxDoc, riak_idx_doc) ->
 
     %% For each Facet = {FieldName, FieldValue, _}, split the FieldValue
     %% into terms and build a list of positions for those terms.
-    {ok, IdxDoc#riak_idx_doc{ fields=NewFields, facets=NewFacets }}.
+    {ok, IdxDoc#riak_idx_doc{ fields=NewFields, facets=NewFacets, analyzed_flag=true }}.
 
 %% Normalize the list of input fields against the schema
 %% - drop any skip fields
