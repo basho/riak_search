@@ -13,10 +13,10 @@
 
 
 %% Mimics the DefaultAnalyzerFactory.
-default_analyzer_factory(Text, []) ->
-    default_analyzer_factory(Text, [3]);
 default_analyzer_factory(Text, [MinLength]) ->
-    {ok, default(Text, MinLength, [])}.
+    {ok, default(Text, MinLength, [])};
+default_analyzer_factory(Text, _Other) ->
+    default_analyzer_factory(Text, [3]).
 
 default(<<H, T/binary>>, MinLength, Acc) when ?UPPERCHAR(H) ->
     H1 = H + ($a - $A),
