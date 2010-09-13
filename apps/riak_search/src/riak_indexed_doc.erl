@@ -244,16 +244,24 @@ analyze_field(FieldName, FieldValue, Schema, AnalyzerPid) ->
 %% @private Given a list of tokens, build a gb_tree mapping words to a
 %% list of word positions.
 get_term_positions(Terms) ->
-    F = fun(Term, {Pos, Acc}) ->
-        case gb_trees:lookup(Term, Acc) of
-            {value, Positions} ->
-                {Pos + 1, gb_trees:update(Term, [Pos|Positions], Acc)};
-            none ->
-                {Pos + 1, gb_trees:insert(Term, [Pos], Acc)}
-        end
-    end,
-    {_, Tree} = lists:foldl(F, {1, gb_trees:empty()}, Terms),
-    gb_trees:to_list(Tree).
+    %% Use a table to accumulate a list of term positions.
+    Table = ets:new(positions, [duplicate_bag]),
+    F1 = fun(Term, Pos) ->
+                ets:insert(Table, [{Term, Pos}]),
+                Pos + 1
+        end,
+    lists:foldl(F1, 0, Terms),
+
+    %% Look up the keys for the table...
+    F2 = fun(Term) ->
+                 {Term, [Pos || {_, Pos} <- ets:lookup(Table, Term)]}
+         end,
+    Keys = riak_search_utils:ets_keys(Table),
+    Positions = [F2(X) || X <- Keys],
+    
+    %% Delete the table and return.
+    ets:delete(Table),
+    Positions.
 
 %% @private
 %% Given a term and a list of positions, generate a list of

@@ -30,17 +30,17 @@
 
 -define(HANDOFF_VER,1).
 
-index(Preflist, IFTVPList) ->
+index(IndexNode, IFTVPList) ->
     Req = #index_v1{
       iftvp_list = IFTVPList
      },
-    sync_spawn_command(Preflist, Req).    
+    sync_command(IndexNode, Req).    
 
-delete(Preflist, IFTVList) ->
+delete(IndexNode, IFTVList) ->
     Req = #delete_v1{
       iftv_list = IFTVList
      },
-    sync_spawn_command(Preflist, Req).    
+    sync_command(IndexNode, Req).    
 
 info(Preflist, Index, Field, Term, ReplyTo) ->
     Req = #info_v1{
@@ -85,13 +85,8 @@ command(PrefList, Req, Sender) ->
     riak_core_vnode_master:command(PrefList, Req, Sender,
                                    riak_search_vnode_master).
 
-sync_spawn_command(Preflist, Msg) ->
-    F = fun({Index, Node}) ->
-                riak_core_vnode_master:sync_spawn_command({Index, Node}, Msg, riak_search_vnode_master)
-        end,
-    plists:map(F, Preflist, {processes, 4}).
-
-
+sync_command(IndexNode, Msg) ->
+    riak_core_vnode_master:sync_command(IndexNode, Msg, riak_search_vnode_master).
 
 %%
 %% Callbacks for riak_core_vnode

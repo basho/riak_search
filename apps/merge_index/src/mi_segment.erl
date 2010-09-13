@@ -127,25 +127,46 @@ info(Index, Field, Term, Segment) ->
             0
     end.
 
-%% Create an iterator over the entire segment.
-iterator(Segment) ->
-    {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
-    {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
-    fun() -> 
-            iterate_all(FH, undefined, undefined) 
-    end.
 
-iterate_all(File, BaseKey, {key, ShrunkenKey}) ->
-    CurrKey = expand_key(BaseKey, ShrunkenKey),
-    {I,F,T} = CurrKey,
-    Transform = fun({V,P,K}) -> {I,F,T,V,P,K} end,
-    WhenDone = fun(NextEntry) -> iterate_all(File, CurrKey, NextEntry) end,
-    iterate_by_term_values(File, Transform, WhenDone);
-iterate_all(File, BaseKey, undefined) ->
-    iterate_all(File, BaseKey, read_seg_entry(File));
-iterate_all(File, _, eof) ->
-    file:close(File),
+iterator(Segment) ->
+    {ok, Bytes} = file:read_file(data_file(Segment)),
+    fun() -> iterate_all(undefined, Bytes) end.
+
+iterate_all(LastKey, <<1:1/integer, Size:15/unsigned-integer, Bytes:Size/binary, Rest/binary>>) ->
+    Key = expand_key(LastKey, binary_to_term(Bytes)),
+    iterate_all(Key, Rest);
+iterate_all(Key, <<0:1/integer, Size:31/unsigned-integer, Bytes:Size/binary, Rest/binary>>) ->
+    Results = binary_to_term(Bytes),
+    iterate_all_1(Key, Results, Rest);
+iterate_all(_, <<>>) ->
     eof.
+iterate_all_1(Key, [Result|Results], Rest) ->
+    {I,F,T} = Key,
+    {P,V,TS} = Result,
+    {{I,F,T,P,V,TS}, fun() -> iterate_all_1(Key, Results, Rest) end};
+iterate_all_1(Key, [], Rest) ->
+    iterate_all(Key, Rest).
+    
+
+%% %% Create an iterator over the entire segment.
+%% iterator(Segment) ->
+%%     {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
+%%     {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
+%%     fun() -> 
+%%             iterate_all(FH, undefined, undefined) 
+%%     end.
+
+%% iterate_all(File, BaseKey, {key, ShrunkenKey}) ->
+%%     CurrKey = expand_key(BaseKey, ShrunkenKey),
+%%     {I,F,T} = CurrKey,
+%%     Transform = fun({V,P,K}) -> {I,F,T,V,P,K} end,
+%%     WhenDone = fun(NextEntry) -> iterate_all(File, CurrKey, NextEntry) end,
+%%     iterate_by_term_values(File, Transform, WhenDone);
+%% iterate_all(File, BaseKey, undefined) ->
+%%     iterate_all(File, BaseKey, read_seg_entry(File));
+%% iterate_all(File, _, eof) ->
+%%     file:close(File),
+%%     eof.
 
 %%% Iterate over a single Term.
 iterator(Index, Field, Term, Segment) ->

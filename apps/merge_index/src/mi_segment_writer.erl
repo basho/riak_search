@@ -16,7 +16,7 @@
 
 -include_lib("kernel/include/file.hrl").
 -define(BLOCK_SIZE, 32767).
--define(FILE_BUFFER_SIZE, 1048576).
+-define(FILE_BUFFER_SIZE, 20971520).
 -define(VALUES_STAGING_SIZE, 1000).
 -define(VALUES_COMPRESS_THRESHOLD, 0).
 -define(INDEX_FIELD_TERM(X), {element(1, X), element(2, X), element(3, X)}).

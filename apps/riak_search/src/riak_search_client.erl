@@ -123,16 +123,21 @@ index_doc(IdxDoc, AnalyzerPid) ->
 index_term(Index, Field, Term, DocID, Props) ->
     index_terms([{Index, Field, Term, DocID, Props}]).
 
+index_terms(Terms) ->
+    IndexFun = fun(VNode, Postings) -> 
+                       riak_search_vnode:index(VNode, Postings)
+               end,
+    process_terms(IndexFun, Terms).
+
 %% Given a list of terms of the form {I,F,T,V,P,K}, pull them off in
 %% chunks, batch them according to preflist, and then index them in
 %% parallel.
-index_terms(Terms) ->
-    BatchSize = app_helper:get_env(riak_search, index_batch_size, 10000),
-    PartitionFun = riak_search_utils:partition_fun(),
-    index_terms_1(Terms, BatchSize, PartitionFun, gb_trees:empty()).
-index_terms_1([], _, _, _) ->
+process_terms(IndexFun, Terms) ->
+    BatchSize = app_helper:get_env(riak_search, index_batch_size, 1000),
+    process_terms_1(IndexFun, BatchSize, gb_trees:empty(), Terms).
+process_terms_1(_, _, _, []) ->
     ok;
-index_terms_1(Terms, BatchSize, PartitionFun, PreflistCache) ->
+process_terms_1(IndexFun, BatchSize, PreflistCache, Terms) ->
     %% Split off the next chunk of terms.
     case length(Terms) > BatchSize of
         true -> 
@@ -142,18 +147,15 @@ index_terms_1(Terms, BatchSize, PartitionFun, PreflistCache) ->
     end,
 
     %% Create a table for grouping terms.
-    Table = ets:new(batch, [protected, duplicate_bag]),
+    SubBatchTable = ets:new(batch, [protected, duplicate_bag]),
+    ReplicaTable = ets:new(batch, [protected, duplicate_bag]),
     try
         %% SubBatch the postings by partition...
-        F1 = fun(Posting = {I,F,T,_V,_P,_K}) ->
-                     Partition = PartitionFun(I,F,T),
-                     ets:insert(Table, {Partition, Posting})
-             end,
-        [F1(X) || X <- Batch],
+        Batch1 = riak_search_utils:zip_with_partitions(Batch),
+        ets:insert(SubBatchTable, Batch1),
 
-        %% Get the list of partitions we have. For each partition,
-        %% look up the preflist unless it's already in cache.
-        F2 = fun(Partition, Cache) ->
+        %% Ensure the PreflistCache contains all needed entries...
+        F1 = fun(Partition, Cache) ->
                      case gb_trees:lookup(Partition, Cache) of
                          {value, _} -> 
                              PreflistCache;
@@ -166,25 +168,34 @@ index_terms_1(Terms, BatchSize, PartitionFun, PreflistCache) ->
                              gb_trees:insert(Partition, Preflist, Cache)
                      end
              end,
-        Partitions = riak_search_utils:ets_keys(Table),
-        NewPreflistCache = lists:foldl(F2, PreflistCache, Partitions),
+        Partitions = riak_search_utils:ets_keys(SubBatchTable),
+        NewPreflistCache = lists:foldl(F1, PreflistCache, Partitions),
 
-        %% Store the batches.
-        F3 = fun(Partition) ->
-                     %% Read SubBatch from ets, strip off the Partition
-                     %% number, and then index the batch.  TODO: Catch the
-                     %% output of the delete statement, make sure it was
-                     %% successful, if not then try again.
+        %% For each SubBatch, look up the preflists that should
+        %% contain those postings, and group them together.
+        F2 = fun(Partition) ->
+                     %% Get the preflist.
                      {value, Preflist} = gb_trees:lookup(Partition, NewPreflistCache),
-                     SubBatch = [Posting || {_, Posting} <- ets:lookup(Table, Partition)],
-                     riak_search_vnode:index(Preflist, SubBatch)
+
+                     %% Get the SubBatch, add replica for each entry in the preflist.
+                     Replicas = [{VNode, Posting} || {_, Posting} <- ets:lookup(SubBatchTable, Partition), VNode <- Preflist],
+                     ets:insert(ReplicaTable, Replicas)
              end,
-        plists:map(F3, Partitions, {processes, 4}),
+        [F2(X) || X <- Partitions],
+
+        %% Index the postings.
+        F3 = fun(VNode) ->
+                     Postings = [Posting || {_, Posting} <- ets:lookup(ReplicaTable, VNode)],
+                     IndexFun(VNode, Postings)
+             end,
+        VNodes = riak_search_utils:ets_keys(ReplicaTable),
+        plists:map(F3, VNodes, {processes, 4}),
 
         %% Repeat until there are no more terms...
-        index_terms_1(Rest, BatchSize, PartitionFun, NewPreflistCache)
+        process_terms_1(IndexFun, BatchSize, NewPreflistCache, Rest)
     after
-        ets:delete(Table)
+        ets:delete(SubBatchTable),
+        ets:delete(ReplicaTable)
     end.
         
 
@@ -203,74 +214,11 @@ delete_term(Index, Field, Term, DocID) ->
     K =  riak_search_utils:current_key_clock(),
     delete_terms([{Index, Field, Term, DocID, K}]).
 
-%% Given a list of terms of the form {I,F,T,V,P,K}, pull them off in
-%% chunks, batch them according to preflist, and then delete them in
-%% parallel.
 delete_terms(Terms) ->
-    BatchSize = app_helper:get_env(riak_search, index_batch_size, 10000),
-    PartitionFun = riak_search_utils:partition_fun(),
-    delete_terms_1(Terms, BatchSize, PartitionFun, gb_trees:empty()).
-delete_terms_1([], _, _, _) ->
-    ok;
-delete_terms_1(Terms, BatchSize, PartitionFun, PreflistCache) ->
-    %% Split off the next chunk of terms.
-    case length(Terms) > BatchSize of
-        true -> 
-            {Batch, Rest} = lists:split(BatchSize, Terms);
-        false -> 
-            {Batch, Rest} = {Terms, []}
-    end,
-
-    %% Create a table for grouping terms.
-    Table = ets:new(batch, [protected, duplicate_bag]),
-    try
-        %% SubBatch the postings by partition...
-        F1 = fun
-                 ({I,F,T,V,_P,K}) ->    
-                     Partition = PartitionFun(I,F,T),
-                     ets:insert(Table, {Partition, {I,F,T,V,K}});
-                 ({I,F,T,V,K}) ->
-                     Partition = PartitionFun(I,F,T),
-                     ets:insert(Table, {Partition, {I,F,T,V,K}})
-             end,
-        [F1(X) || X <- Batch],
-
-        %% Get the list of partitions we have. For each partition,
-        %% look up the preflist unless it's already in cache.
-        F2 = fun(Partition, Cache) ->
-                     case gb_trees:lookup(Partition, Cache) of
-                         {value, _} -> 
-                             PreflistCache;
-                         none -> 
-                             %% Create a sample DocIdx in the section
-                             %% of the ring where we want a partition.
-                             DocIdx = <<(Partition - 1):160/integer>>,
-                             NVal = riak_search_utils:n_val(),
-                             Preflist = riak_core_apl:get_apl(DocIdx, NVal, riak_search),
-                             gb_trees:insert(Partition, Preflist, Cache)
-                     end
-             end,
-        Partitions = riak_search_utils:ets_keys(Table),
-        NewPreflistCache = lists:foldl(F2, PreflistCache, Partitions),
-
-        %% Store the batches.
-        F3 = fun(Partition) ->
-                     %% Read SubBatch from ets, strip off the Partition
-                     %% number, and then delete the batch.  TODO: Catch the
-                     %% output of the delete statement, make sure it was
-                     %% successful, if not then try again.
-                     {value, Preflist} = gb_trees:lookup(Partition, NewPreflistCache),
-                     SubBatch = [Posting || {_, Posting} <- ets:lookup(Table, Partition)],
-                     riak_search_vnode:delete(Preflist, SubBatch)
-             end,
-        plists:map(F3, Partitions, {processes, 4}),
-
-        %% Repeat until there are no more terms...
-        delete_terms_1(Rest, BatchSize, PartitionFun, NewPreflistCache)
-    after
-        ets:delete(Table)
-    end.
-
+    DeleteFun = fun(VNode, Postings) ->
+                        riak_search_vnode:delete(VNode, Postings)
+                end,
+    process_terms(DeleteFun, Terms).
 
 truncate_list(QueryStart, QueryRows, List) ->
     %% Remove the first QueryStart results...

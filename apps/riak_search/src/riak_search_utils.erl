@@ -22,7 +22,7 @@
     current_key_clock/0,
     choose/1,
     ets_keys/1,
-    partition_fun/0,
+    zip_with_partitions/1,
     calc_partition/3
 ]).
 
@@ -241,26 +241,44 @@ ets_keys_1(Table, Key) ->
 % (not the DocIdx) of an Index/Field/Term combination. NOTE: This, or something like it,
 % should probably get moved to Riak Core in the future. 
 -define(RINGTOP, trunc(math:pow(2,160)-1)).  % SHA-1 space
-partition_fun() ->
+
+zip_with_partitions(Postings) ->
     %% Get the number of partitions.
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     {chstate, _, _, CHash, _} = Ring,
     {NumPartitions, _} = CHash,
+    RingTop = ?RINGTOP,
+    Inc = ?RINGTOP div NumPartitions,
 
-    %% Return a function to calculate the partition.
-    fun(Index, Field, Term) ->
-            <<IndexAsInt:160/integer>> = calc_partition(Index, Field, Term),
-            Inc = ?RINGTOP div NumPartitions,
-            RingPos = (IndexAsInt div Inc) + 1,
-            case RingPos == NumPartitions of
-                true -> 0;
-                false -> RingPos * Inc
-            end
-    end.
+    F = fun(Posting = {I,F,T,_,_,_}) ->
+                <<IndexAsInt:160/integer>> = calc_partition(I, F, T),
+                case (IndexAsInt - (IndexAsInt rem Inc) + Inc) of
+                    RingTop -> {0, Posting};
+                    Partition -> {Partition, Posting}
+                end;
+           (Posting = {I,F,T,_,_}) ->
+                <<IndexAsInt:160/integer>> = calc_partition(I, F, T),
+                case (IndexAsInt - (IndexAsInt rem Inc) + Inc) of
+                    RingTop -> {0, Posting};
+                    Partition -> {Partition, Posting}
+                end
+        end,
+    [F(X) || X <- Postings].
+
+    %% %% Return a function to calculate the partition.
+    %% fun(Index, Field, Term) ->
+    %%         Inc = ?RINGTOP div NumPartitions,
+    %%         RingPos = (IndexAsInt div Inc) + 1,
+    %%         case RingPos == NumPartitions of
+    %%             true -> 0;
+    %%             false -> RingPos * Inc
+    %%         end
+    %% end.
 
 calc_partition(Index, Field, Term) ->
     %% Work out which partition to use
     IndexBin = riak_search_utils:to_binary(Index),
     FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-    riak_core_util:chash_key({IndexBin, FieldTermBin}).
+    crypto:sha(term_to_binary({IndexBin, FieldTermBin})).
+    %% riak_core_util:chash_key({IndexBin, FieldTermBin}).
 
