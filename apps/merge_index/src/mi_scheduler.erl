@@ -87,7 +87,7 @@ handle_info(worker_ready, #state { queue = Q } = State) ->
     end;
 handle_info({'EXIT', Pid, Reason}, #state { worker = Pid } = State) ->
     error_logger:error_msg("Compaction worker PID exited: ~p\n", [Reason]),
-    {stop, State}.
+    {stop, {compaction_deatch, Reason}, State}.
 
 terminate(_Reason, _State) ->
     ok.
