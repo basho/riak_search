@@ -32,6 +32,7 @@ start_index(Index, Dir, StatusFn) ->
     %% Spawn master worker; do _not_ link to calling process to avoid
     %% issues when running on console
     Master = spawn(fun() -> index_master_loop0(Index, Dir, StatusFn) end),
+    %% eprof:start_profiling([Master]),
     Master.
 
 index(Index, Dir) ->
