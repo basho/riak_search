@@ -146,10 +146,11 @@ normalize_padding_char(_BadValue, Field) ->
 %% Checks to see if an alias is exact or a wildcard (and if
 %% it is a wildcard, precompile the pattern to match)
 calculate_alias_pattern(Alias) ->
-    case string:chr(Alias, $*) of
-        0 ->
+    IsWildcard = binary_contains($*, Alias),
+    case IsWildcard of
+        false ->
             {exact, Alias};
-        _ ->
+        true ->
             case re:compile(calculate_name_pattern_regex(Alias)) of
                 {ok, MP} ->
                     {re, Alias, MP};
@@ -157,6 +158,13 @@ calculate_alias_pattern(Alias) ->
                     throw({error, {bad_alias_wildcard, {Alias, ErrSpec}}})
             end
     end.
+
+binary_contains(H, <<H,_/binary>>) -> 
+    true;
+binary_contains(H, <<_,T/binary>>) -> 
+    binary_contains(H, T);
+binary_contains(_, <<>>) ->
+    false.
 
 %% A name pattern must have a wildcard. Check for it and
 %% replace it with the regex ".*"
@@ -249,22 +257,22 @@ normalize_padding_char_test() ->
     
 
 bad_alias_regexp_test() ->
-    SchemaProps = [{version, 1},{default_field, "field"}],
-    FieldDefs =  [{field, [{name, "badaliaswildre"},
-                           {alias, "[*"}]}],
+    SchemaProps = [{version, 1},{default_field, <<"field">>}],
+    FieldDefs =  [{field, [{name, <<"badaliaswildre">>},
+                           {alias, <<"[*">>}]}],
     SchemaDef = {schema, SchemaProps, FieldDefs},
     ?assertThrow({error, {bad_alias_wildcard,
-                           {"[*",
+                           {<<"[*">>,
                             {"missing terminating ] for character class",3}}}},
-                 from_eterm(bad_alias_regexp_test, SchemaDef)).
+                 from_eterm(<<"bad_alias_regexp_test">>, SchemaDef)).
 
 alias_on_dynamic_field_invalid_test() ->
-    SchemaProps = [{version, 1},{default_field, "field"}],
-    FieldDefs =  [{dynamic_field, [{name, "field_*"},
-                                   {alias, "analias"}]}],
+    SchemaProps = [{version, 1},{default_field, <<"field">>}],
+    FieldDefs =  [{dynamic_field, [{name, <<"field_*">>},
+                                   {alias, <<"analias">>}]}],
     SchemaDef = {schema, SchemaProps, FieldDefs},
     ?assertThrow({error, {malformed_schema, no_dynamic_field_aliases, _FieldProps}},
-                 from_eterm(bad_alias_regexp_test, SchemaDef)).
+                 from_eterm(<<"bad_alias_regexp_test">>, SchemaDef)).
  
 
 

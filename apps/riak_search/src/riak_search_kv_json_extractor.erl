@@ -92,7 +92,7 @@ json_test() ->
               [{"one_two_three", <<"go">>}]},
 
              {<<"[\"abc\"]">>,
-              [{"value", <<"abc">>}]},
+              [{<<"value">>, <<"abc">>}]},
 
              {<<"
 {\"menu\": {

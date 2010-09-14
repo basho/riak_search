@@ -190,7 +190,11 @@ normalize_fields(DocFields, Schema) ->
                               false ->
                                   {[Field | Regular], Facets}
                           end
-                  end
+                  end;
+             (Other, Acc) ->
+                  ?PRINT({unexpected_field, Other}),
+                  ?PRINT({unexpected_acc, Acc}),
+                  Acc
           end,
     {RevRegular, RevFacets} = lists:foldl(Fun, {[], []}, DocFields),
     
@@ -323,43 +327,50 @@ idx_doc_bucket(Bucket) when is_binary(Bucket) ->
 -ifdef(TEST).
 
 normalize_fields_test() ->
-    SchemaProps = [{version, 1},{default_field, "afield"}],
-    FieldDefs =  [{field, [{name, "skipme"},
-                           {alias, "skipmetoo"},
+    SchemaProps = [{version, 1},{default_field, <<"afield">>}],
+    FieldDefs =  [{field, [{name, <<"skipme">>},
+                           {alias, <<"skipmetoo">>},
                            skip]},
-                  {field, [{name, "afield"},
-                           {alias, "afieldtoo"}]},
-                  {field, [{name, "anotherfield"},
-                           {alias, "anotherfieldtoo"}]},
-                  {field, [{name, "afacet"},
-                           {alias, "afacettoo"},
+                  {field, [{name, <<"afield">>},
+                           {alias, <<"afieldtoo">>}]},
+                  {field, [{name, <<"anotherfield">>},
+                           {alias, <<"anotherfieldtoo">>}]},
+                  {field, [{name, <<"afacet">>},
+                           {alias, <<"afacettoo">>},
                            facet]},
-                  {field, [{name, "anotherfacet"},
-                           {alias, "anotherfacettoo"},
+                  {field, [{name, <<"anotherfacet">>},
+                           {alias, <<"anotherfacettoo">>},
                            {facet, true}]}],
     
     SchemaDef = {schema, SchemaProps, FieldDefs},
-    {ok, Schema} = riak_search_schema_parser:from_eterm(is_skip_test, SchemaDef),
+    {ok, Schema} = riak_search_schema_parser:from_eterm(<<"is_skip_test">>, SchemaDef),
 
-    ?assertEqual({[], []}, normalize_fields([], Schema)),    
-    ?assertEqual({[{<<"afield">>,<<"data">>, []}], []}, normalize_fields([{"afield","data"}], Schema)),
-    ?assertEqual({[{<<"afield">>,<<"data">>, []}], []}, normalize_fields([{"afieldtoo","data"}], Schema)),
+    ?assertEqual({[], []}, 
+                 normalize_fields([], Schema)),    
+
+    ?assertEqual({[{<<"afield">>,<<"data">>, []}], []}, 
+                 normalize_fields([{<<"afield">>,<<"data">>}], Schema)),
+
+    ?assertEqual({[{<<"afield">>,<<"data">>, []}], []}, 
+                 normalize_fields([{<<"afieldtoo">>,<<"data">>}], Schema)),
+
     ?assertEqual({[{<<"afield">>,<<"one two three">>, []}], []}, 
-                 normalize_fields([{"afieldtoo","one"},
-                                   {"afield","two"},
-                                   {"afieldtoo", "three"}], Schema)),
+                 normalize_fields([{<<"afieldtoo">>,<<"one">>},
+                                   {<<"afield">>,<<"two">>},
+                                   {<<"afieldtoo">>, <<"three">>}], Schema)),
+
     ?assertEqual({[{<<"anotherfield">>, <<"abc def ghi">>, []},
                    {<<"afield">>,<<"one two three">>, []}],
                   [{<<"afacet">>, <<"first second">>, []}]},
-                 normalize_fields([{"anotherfield","abc"},
-                                   {"afieldtoo","one"},
-                                   {"skipme","skippable terms"},
-                                   {"anotherfieldtoo", "def"},
-                                   {"afield","two"},
-                                   {"skipmetoo","not needed"},
-                                   {"anotherfield","ghi"},
-                                   {"afieldtoo", "three"},
-                                   {"afacet", "first"},
-                                   {"afacettoo", "second"}], Schema)).
+                 normalize_fields([{<<"anotherfield">>,<<"abc">>},
+                                   {<<"afieldtoo">>,<<"one">>},
+                                   {<<"skipme">>,<<"skippable terms">>},
+                                   {<<"anotherfieldtoo">>,<<"def">>},
+                                   {<<"afield">>,<<"two">>},
+                                   {<<"skipmetoo">>,<<"not needed">>},
+                                   {<<"anotherfield">>,<<"ghi">>},
+                                   {<<"afieldtoo">>,<<"three">>},
+                                   {<<"afacet">>,<<"first">>},
+                                   {<<"afacettoo">>,<<"second">>}], Schema)).
 
 -endif. % TEST

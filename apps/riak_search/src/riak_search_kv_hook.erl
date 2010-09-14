@@ -299,8 +299,8 @@ strip_precommit(BucketProps) ->
 
 install_test() ->
     application:load(riak_core),
-    {ok, RingEvtPid} = riak_core_ring_events:start_link(),
-    {ok, RingMgrPid} = riak_core_ring_manager:start_link(),
+    RingEvtPid = maybe_start_link(riak_core_ring_events:start_link()),
+    RingMgrPid = maybe_start_link(riak_core_ring_manager:start_link()),
 
     WithoutPrecommitProps = [{n_val,3},
                              {allow_mult,false},
@@ -337,10 +337,8 @@ install_test() ->
     install("other_precommit"),
     ?assertEqual(true, search_hook_present("other_precommit")),
 
-    unlink(RingMgrPid),
-    unlink(RingEvtPid),
-    exit(RingMgrPid, kill),
-    exit(RingEvtPid, kill),
+    stop_pid(RingMgrPid),
+    stop_pid(RingEvtPid),
     ok.
 
 search_hook_present(Bucket) ->
@@ -383,8 +381,8 @@ run_qfun_extract_test() ->
 anon_js_extract_test() ->
     maybe_start_app(sasl),
     maybe_start_app(erlang_js),
-    {ok, JsSup} = riak_kv_js_sup:start_link(),
-    {ok, JsMgr} = riak_kv_js_manager:start_link(2),
+    JsSup = maybe_start_link(riak_kv_js_sup:start_link()),
+    JsMgr = maybe_start_link(riak_kv_js_manager:start_link(2)),
 
     %% Anonymous JSON function with default argument
     %% Join together all the values in a search field
@@ -432,12 +430,19 @@ conflict_test_object() ->
 
 maybe_start_app(App) ->
     case application:start(App) of
-        {error, {already_started, App}} ->
+        {error, {already_started, _}} ->
             ok;
         ok ->
             ok
     end.
 
+maybe_start_link({ok, Pid}) -> 
+    Pid;
+maybe_start_link({error, {already_started, _}}) ->
+    undefined.
+        
+stop_pid(undefined) ->
+    ok;
 stop_pid(Pid) ->
     unlink(Pid),
     exit(Pid, kill).

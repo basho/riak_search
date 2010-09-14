@@ -77,7 +77,7 @@ extractor_test() ->
                  {"t1_t2", <<"two">>},
                  {"t1", <<"def">>}],
     PlainData = <<"the quick brown fox">>,
-    PlainFields = [{"value", <<"the quick brown fox">>}],
+    PlainFields = [{<<"value">>, <<"the quick brown fox">>}],
 
     Tests = [{JsonData, "application/json", JsonFields},
              {JsonData, "application/x-javascript", JsonFields},
