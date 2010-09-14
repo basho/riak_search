@@ -186,7 +186,7 @@ index_worker_loop(QueuePid, Client, AnalyzerPid, Index, DefaultField) ->
                 {ok, Data} ->
                     DocID = filename:basename(FName),
                     Fields = [{DefaultField, binary_to_list(Data)}],
-                    IdxDoc = riak_indexed_doc:new(DocID, Fields, [], Index),
+                    IdxDoc = riak_indexed_doc:new(Index, DocID, Fields, []),
                     Client:index_doc(IdxDoc, AnalyzerPid),
                     QueuePid ! {next_file, self(), size(Data)};
 

@@ -226,8 +226,8 @@ make_indexed_doc(Index, DocId, RiakObject, Extractor) ->
             deleted;
         false ->
             Fields = run_extract(RiakObject, Extractor),
-            IdxDoc0 = riak_indexed_doc:new(DocId, Fields, [], Index),
-            {ok, IdxDoc} = riak_indexed_doc:analyze(IdxDoc0),
+            IdxDoc0 = riak_indexed_doc:new(Index, DocId, Fields, []),
+            IdxDoc = riak_indexed_doc:analyze(IdxDoc0),
             IdxDoc
     end.
  

@@ -31,7 +31,7 @@
     graph/1, graph/2,
 
     %% Indexing.
-    index_doc/2, index_doc/3, index_doc/4,
+    index_doc/2, index_doc/3, index_doc/4, index_docs/1,
     index_dir/1, index_dir/2,
 
     %% Deletion.
@@ -105,11 +105,28 @@ index_doc(Index, ID, Fields) ->
 %% @param Fields - A list of {Key, Value} fields.
 %% @param Props - A list of {Key, Value} props.
 index_doc(Index, ID, Fields, Props) ->
+    IdxDoc = riak_indexed_doc:new(ID, Fields, Props, Index),
+    index_docs([IdxDoc]).
+
+index_docs(Docs) ->
+    %% Convert to IdxDocs...
+    F = fun(IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
+                IdxDoc;
+           ({ID, Fields}) ->
+                riak_indexed_doc:new(?DEFAULT_INDEX, ID, Fields, []);
+           ({Index, ID, Fields}) ->
+                riak_indexed_doc:new(Index, ID, Fields, []);
+           ({ID, Fields, Props, Index}) ->
+                riak_indexed_doc:new(Index, ID, Fields, Props)
+        end,
+    IdxDocs = [F(X) || X <- Docs],
+
+    
+    %% Index the IdxDocs...
     {ok, Client} = riak_search:local_client(),
     {ok, AnalyzerPid} = qilr:new_analyzer(),
-    IdxDoc = riak_indexed_doc:new(ID, Fields, Props, Index),
     try
-        Client:index_doc(IdxDoc, AnalyzerPid)
+        Client:index_docs(IdxDocs, AnalyzerPid)
     after
         qilr:close_analyzer(AnalyzerPid)
     end,

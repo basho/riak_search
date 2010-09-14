@@ -57,10 +57,16 @@ new(_Id) ->
 run('index', KeyGen, ValueGen, State) ->
     %% Make the index call...
     Node = choose(State#state.nodes),
-    ID = KeyGen(),
-    RawFields = ValueGen(State#state.fields, State#state.terms),
-    Fields = [{X, string:join(Y, " ")} || {X, Y} <- RawFields],
-    ok = rpc:call(Node, search, index_doc, [ID, Fields]),
+    F = fun(_, {DocsAccIn, _}) ->
+                ID = KeyGen(),
+                NewRawFields = ValueGen(State#state.fields, State#state.terms),
+                Fields = [{X, string:join(Y, " ")} || {X, Y} <- NewRawFields],
+                {[{ID, Fields}|DocsAccIn], NewRawFields}
+        end,
+    %% Get a list of docs, plus the last RawFields entry (we only need
+    %% one, so accumulating would slow us down.).
+    {Docs, RawFields} = lists:foldl(F, {[], []}, lists:seq(1, 10)),
+    ok = rpc:call(Node, search, index_docs, [Docs]),
 
     %% Always keep a buffer of things to query.
     Queries = State#state.queries,

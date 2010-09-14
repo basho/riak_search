@@ -26,6 +26,7 @@
 
     %% Indexing...
     index_doc/2,
+    index_docs/1, index_docs/2,
     index_term/5,
     index_terms/1, 
 
@@ -114,10 +115,62 @@ explain(IndexOrSchema, QueryOps) ->
 
 %% Index a specified #riak_idx_doc
 index_doc(IdxDoc, AnalyzerPid) ->
-    {ok, IdxDoc2} = riak_indexed_doc:analyze(IdxDoc, AnalyzerPid),
-    Postings = riak_indexed_doc:postings(IdxDoc2),
-    index_terms(Postings),
-    riak_indexed_doc:put(RiakClient, IdxDoc2).
+    index_docs([IdxDoc], AnalyzerPid).
+
+index_docs(IdxDocs) ->
+    {ok, AnalyzerPid} = qilr:new_analyzer(),
+    try
+        index_docs(IdxDocs, AnalyzerPid)
+    after
+        qilr:close_analyzer(AnalyzerPid)
+    end,
+    ok.
+
+index_docs(IdxDocs, AnalyzerPid) ->
+    %% For each doc, update the object stored in Riak KV, and generate
+    %% a list of postings to add and delete.
+    F = fun(IdxDoc0, {RiakObjsAccIn, DeleteAccIn, IndexAccIn}) ->
+                %% Analyze the doc...
+                IdxDoc = riak_indexed_doc:analyze(IdxDoc0, AnalyzerPid),
+
+                %% Get the terms to delete...
+                Index = riak_indexed_doc:index(IdxDoc), 
+                DocId = riak_indexed_doc:id(IdxDoc),
+                case riak_indexed_doc:get_obj(RiakClient, Index, DocId) of
+                    {ok, OldRiakObj} ->
+                        OldIdxDoc = riak_object:get_value(OldRiakObj),
+                        DeleteTerms = riak_indexed_doc:postings(OldIdxDoc);
+                    {error, notfound} ->
+                        OldRiakObj = riak_indexed_doc:new_obj(Index, DocId),
+                        DeleteTerms = []
+                end,
+                NewDeleteAcc = [DeleteTerms|DeleteAccIn],
+
+                %% Get the terms to index...
+                IndexTerms = riak_indexed_doc:postings(IdxDoc),
+                NewIndexAcc = [IndexTerms|IndexAccIn],
+                
+                %% Store the document...
+                RiakObj = riak_object:update_value(OldRiakObj, IdxDoc),
+                NewRiakObjsAcc = [RiakObj|RiakObjsAccIn],
+                
+                %% Return.
+                {NewRiakObjsAcc, NewDeleteAcc, NewIndexAcc}
+        end,
+    {RiakObjsAcc, DeleteAcc, IndexAcc} = lists:foldl(F, {[], [],[]}, IdxDocs),
+
+    %% Create the Riak objects...
+    [riak_indexed_doc:put_obj(RiakClient, X) || X <- RiakObjsAcc],
+    
+    %% Delete the old postings...
+    FlatDeleteAcc = lists:flatten(DeleteAcc),
+    delete_terms(FlatDeleteAcc),
+
+    %% Add the new postings...
+    FlatIndexAcc = lists:flatten(IndexAcc),
+    index_terms(FlatIndexAcc),
+    ok.
+    
 
 %% Index the specified term - better to use the plural 'terms' interfaces
 index_term(Index, Field, Term, DocID, Props) ->

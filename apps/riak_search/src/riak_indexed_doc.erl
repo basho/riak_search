@@ -26,7 +26,7 @@
 -import(riak_search_utils, [to_binary/1]).
 
 %% Create a new indexed doc
-new(Id, Fields, Props, Index) ->
+new(Index, Id, Fields, Props) ->
     {ok, Schema} = riak_search_config:get_schema(Index),
     {RegularFields, FacetFields} = normalize_fields(Fields, Schema),
     #riak_idx_doc{ index=to_binary(Index),
@@ -168,7 +168,7 @@ analyze(IdxDoc, AnalyzerPid) when is_record(IdxDoc, riak_idx_doc) ->
 
     %% For each Facet = {FieldName, FieldValue, _}, split the FieldValue
     %% into terms and build a list of positions for those terms.
-    {ok, IdxDoc#riak_idx_doc{ fields=NewFields, facets=NewFacets, analyzed_flag=true }}.
+    IdxDoc#riak_idx_doc{ fields=NewFields, facets=NewFacets, analyzed_flag=true }.
 
 %% Normalize the list of input fields against the schema
 %% - drop any skip fields
