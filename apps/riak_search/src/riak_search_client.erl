@@ -31,15 +31,10 @@
     index_terms/1, 
 
     %% Delete
-    delete_doc/1,
+    delete_docs/1,
     delete_doc_terms/1,
     delete_term/4,
     delete_terms/1
-]).
-
--import(riak_search_utils, [
-    from_binary/1,
-    to_binary/1
 ]).
 
 mapred(DefaultIndex, SearchQuery, MRQuery, ResultTransformer, Timeout) ->
@@ -56,7 +51,7 @@ mapred_stream(DefaultIndex, SearchQuery, MRQuery, ClientPid, ResultTransformer, 
 
 %% Parse the provided query. Returns either {ok, QueryOps} or {error,
 %% Error}.
-parse_query(IndexOrSchema, Query) ->
+parse_query(IndexOrSchema, Query) when is_list(Query) ->
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
     {ok, AnalyzerPid} = qilr:new_analyzer(),
     try
@@ -157,11 +152,11 @@ index_docs(IdxDocs, AnalyzerPid) ->
                 %% Return.
                 {NewRiakObjsAcc, NewDeleteAcc, NewIndexAcc}
         end,
-    {RiakObjsAcc, DeleteAcc, IndexAcc} = lists:foldl(F, {[], [],[]}, IdxDocs),
+    {RiakObjsAcc, DeleteAcc, IndexAcc} = lists:foldl(F, {[],[],[]}, IdxDocs),
 
     %% Create the Riak objects...
     [riak_indexed_doc:put_obj(RiakClient, X) || X <- RiakObjsAcc],
-    
+
     %% Delete the old postings...
     FlatDeleteAcc = lists:flatten(DeleteAcc),
     delete_terms(FlatDeleteAcc),
@@ -250,11 +245,31 @@ process_terms_1(IndexFun, BatchSize, PreflistCache, Terms) ->
         ets:delete(SubBatchTable),
         ets:delete(ReplicaTable)
     end.
-        
 
-delete_doc(IdxDoc) ->
-    delete_doc_terms(IdxDoc),
-    riak_indexed_doc:delete(RiakClient, IdxDoc).
+
+%% Docs is a list of the form [{DocIndex, DocID}].
+delete_docs(Docs) ->
+    F = fun({DocIndex, DocID}, {ObjsAccIn, DeleteAccIn}) ->
+                case riak_indexed_doc:get(RiakClient, DocIndex, DocID) of
+                    IdxDoc when is_record(IdxDoc, riak_idx_doc) ->
+                        DeleteTerms = riak_indexed_doc:postings(IdxDoc),
+                        NewObjsAcc = [{DocIndex, DocID}|ObjsAccIn],
+                        NewDeleteAcc = [DeleteTerms|DeleteAccIn],
+                        {NewObjsAcc, NewDeleteAcc};
+                    {error, notfound} ->
+                        {ObjsAccIn, DeleteAccIn}
+                end
+        end,
+    {ExistingObjs, DeleteAcc} = lists:foldl(F, {[],[]}, Docs),
+    
+    %% Delete the postings...
+    FlatDeleteAcc = lists:flatten(DeleteAcc),
+    delete_terms(FlatDeleteAcc),
+    
+    %% Delete the Riak objects...
+    [RiakClient:delete(DocIndex, DocID) || {DocIndex, DocID} <- ExistingObjs],
+    ok.
+
 
 %% Delete all of the indexed terms in the IdxDoc - does not remove the IdxDoc itself
 delete_doc_terms(IdxDoc) ->

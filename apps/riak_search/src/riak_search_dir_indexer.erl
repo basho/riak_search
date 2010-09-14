@@ -184,8 +184,8 @@ index_worker_loop(QueuePid, Client, AnalyzerPid, Index, DefaultField) ->
         {file, FName} ->
             case file:read_file(FName) of
                 {ok, Data} ->
-                    DocID = filename:basename(FName),
-                    Fields = [{DefaultField, binary_to_list(Data)}],
+                    DocID = riak_search_utils:to_binary(filename:basename(FName)),
+                    Fields = [{DefaultField, Data}],
                     IdxDoc = riak_indexed_doc:new(Index, DocID, Fields, []),
                     Client:index_doc(IdxDoc, AnalyzerPid),
                     QueuePid ! {next_file, self(), size(Data)};

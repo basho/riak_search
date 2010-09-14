@@ -27,14 +27,9 @@ mapred_search(FlowPid, Options, Timeout) ->
     %% Get the Index and Query from properties...
     [DefaultIndex, Query] = Options,
 
-    %% TODO - This is temporary until we fix data types.
-    DefaultIndexB = riak_search_utils:to_binary(DefaultIndex),
-    QueryL = riak_search_utils:to_list(Query),
-    
-    
     %% Parse the query...
     {ok, Client} = riak_search:local_client(),
-    case Client:parse_query(DefaultIndexB, QueryL) of
+    case Client:parse_query(DefaultIndex, Query) of
         {ok, Ops} ->
             QueryOps = Ops;
         {error, ParseError} ->

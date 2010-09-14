@@ -7,30 +7,40 @@
 -module(riak_solr_sort).
 
 -export([sort/3]).
+-include_lib("riak_search/include/riak_search.hrl").
+-import(riak_search_utils, [to_binary/1, to_atom/1, to_integer/1]).
+
+
 
 sort(Data, "none", _Schema) ->
     Data;
-sort(Data, Flags, Schema) ->
-    PFlags = parse_flags(Flags, Schema),
+sort(Data, SortClauses, Schema) ->
+    SortFlags = parse_flags(SortClauses, Schema),
     F = fun(F, S) ->
                 F1 = riak_indexed_doc:fields(F),
                 S1 = riak_indexed_doc:fields(S),
-                compare(F1, S1, PFlags) > -1 
+                compare(F1, S1, SortFlags) > -1 
         end,
     lists:sort(F, Data).
 
-parse_flags(Flags, Schema) ->
-    Stmts = string:tokens(Flags, ","),
-    [{string:strip(Field, both),
-      string:strip(Dir, both),
-      compare_type(Field, Schema)} || [Field, Dir] <- [format(string:tokens(Stmt, " ")) || Stmt <- Stmts]].
+parse_flags(SortClauses, Schema) ->
+    F = fun(SortClause) ->
+                {FieldName, Dir} = normalize_sort_clause(SortClause),
+                CompareType = compare_type(FieldName, Schema),
+                {FieldName, Dir, CompareType}
+        end,
+    [F(X) || X <- string:tokens(SortClauses, ",")].
 
-format([Field]) ->
-    [Field, "asc"];
-format([Field, Dir]) ->
-    [Field, Dir];
-format([Field|_]) ->
-    [Field, "asc"].
+normalize_sort_clause(SortClause) ->
+    case string:tokens(SortClause, " ") of
+        [Field, Dir] when Dir == "asc" orelse Dir == "desc" -> 
+            Field1 = to_binary(string:strip(Field, both)),
+            Dir1 = to_atom(string:strip(Dir, both)),
+            {Field1, Dir1};
+        [Field|_] -> 
+            Field1 = to_binary(string:strip(Field, both)),
+            {Field1, 'asc'}
+    end.
 
 compare_type(Name, Schema) ->
     Field = Schema:find_field(Name),
@@ -54,7 +64,7 @@ compare(F, S, {Field, Dir, CompareType}) ->
     FV = get_value(Field, F, CompareType),
     SV = get_value(Field, S, CompareType),
     case Dir of
-        "asc" ->
+        'asc' ->
             if
                 FV > SV ->
                     -1;
@@ -63,7 +73,7 @@ compare(F, S, {Field, Dir, CompareType}) ->
                 true ->
                     0
             end;
-        "desc" ->
+        'desc' ->
             if
                 FV > SV ->
                     1;
@@ -77,7 +87,7 @@ compare(F, S, {Field, Dir, CompareType}) ->
 %% Extract the field value and convert it to the correct type for comparison.
 get_value(Field, Props, intstr) ->  %% Field contains an integer stored in string representation
     V = proplists:get_value(Field, Props),
-    list_to_integer(binary_to_list(V));
+    to_integer(V);
 get_value(Field, Props, binary) ->  %% Compare in binary form
     proplists:get_value(Field, Props).
     

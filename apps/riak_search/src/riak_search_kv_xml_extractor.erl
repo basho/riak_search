@@ -11,8 +11,6 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--define(DEFAULT_FIELD, "value").
-
 -record(state, {name_stack=[], fields=[]}).
 
 extract(RiakObject, _Args) ->

@@ -58,7 +58,7 @@ wildcard_and_range(Op, _Schema) when is_record(Op, term) ->
             Op
     end;
 wildcard_and_range(Op, _Schema) ->
-    ?PRINT({unhandled_range, Op}),
+    %% ?PRINT({unhandled_range, Op}),
     Op.
 
 %% wildcard_range_to_or({field, FieldName, T, _}=F, Schema) when is_record(T, term) ->
@@ -317,7 +317,6 @@ normalize_range(A, B, C, D) ->
     ?PRINT({unhandled_range, A, B, C, D}),
     throw({unhandled_range, A, B, C, D}).
 
-    
 binary_inc(Term, Amt) when is_list(Term) ->
     NewTerm = binary_inc(list_to_binary(Term), Amt),
     binary_to_list(NewTerm);

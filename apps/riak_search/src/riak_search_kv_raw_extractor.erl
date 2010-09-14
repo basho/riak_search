@@ -7,7 +7,7 @@
 -export([extract/2,
          extract_value/2]).
 
--define(DEFAULT_FIELD, "value").
+-include("riak_search.hrl").
 
 extract(RiakObject, _Args) ->
     Values = riak_object:get_values(RiakObject),

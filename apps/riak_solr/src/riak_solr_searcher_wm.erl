@@ -22,11 +22,11 @@
                 query_ops,
                 sort}).
 
--define(DEFAULT_INDEX, "search").
 -define(DEFAULT_RESULT_SIZE, 10).
 -define(DEFAULT_TIMEOUT, 60000).
 
 init(_) ->
+    ?PRINT(here),
     {ok, Client} = riak_search:local_client(),
     {ok, #state{ client=Client }}.
 
@@ -160,5 +160,5 @@ replace_schema_defaults(SQuery, Schema0) ->
         undefined ->
             Schema1;
         Field ->
-            Schema1:set_default_field(Field)
+            Schema1:set_default_field(to_binary(Field))
     end.

@@ -20,7 +20,6 @@
     drop/1
 ]).
 
--import(riak_search_utils, [to_binary/1]).
 -include_lib("riak_search/include/riak_search.hrl").
 
 % @type state() = term().
@@ -51,15 +50,20 @@ index(IFTVPKList, State) ->
     %% [F(X) || X <- IFTVPKList],
     {reply, {indexed, node()}, State}.
 
-delete(IFTVKList, State) ->
+delete(IFTVPKList, State) ->
     Pid = State#state.pid,
-    IFTVKList1 = [{I,F,T,V,undefined,K} || {I,F,T,V,K} <- IFTVKList],
-    merge_index:index(Pid, IFTVKList1),
+    %% Merge_index deletes a posting when you send it into the system
+    %% with properties set to 'undefined'.
+    F = fun ({I,F,T,V,_,K}) -> {I,F,T,V,undefined,K};
+            ({I,F,T,V,K}) -> {I,F,T,V,undefined,K}
+        end,
+    IFTVPKList1 = [F(X) || X <- IFTVPKList],
+    merge_index:index(Pid, IFTVPKList1),
     {reply, {deleted, node()}, State}.
 
 info(Index, Field, Term, Sender, State) ->
     Pid = State#state.pid,
-    {ok, Info} = merge_index:info(Pid, to_binary(Index), to_binary(Field), to_binary(Term)),
+    {ok, Info} = merge_index:info(Pid, Index, Field, Term),
     Info1 = [{Term, node(), Count} || {_, Count} <- Info],
     riak_search_backend:info_response(Sender, Info1),
     noreply.
@@ -68,14 +72,14 @@ stream(Index, Field, Term, FilterFun, Sender, State) ->
     Pid = State#state.pid,
     OutputRef = make_ref(),
     OutputPid = spawn_link(fun() -> result_loop(OutputRef, Sender) end),
-    merge_index:stream(Pid, to_binary(Index), to_binary(Field), to_binary(Term), OutputPid, OutputRef, FilterFun),
+    merge_index:stream(Pid, Index, Field, Term, OutputPid, OutputRef, FilterFun),
     noreply.
 
 range(Index, Field, StartTerm, EndTerm, Size, FilterFun, Sender, State) ->
     Pid = State#state.pid,
     OutputRef = make_ref(),
     OutputPid = spawn_link(fun() -> result_loop(OutputRef, Sender) end),
-    merge_index:range(Pid, to_binary(Index), to_binary(Field), to_binary(StartTerm), to_binary(EndTerm), Size, OutputPid, OutputRef, FilterFun),
+    merge_index:range(Pid, Index, Field, StartTerm, EndTerm, Size, OutputPid, OutputRef, FilterFun),
     noreply.
 
 result_loop(Ref, Sender) ->

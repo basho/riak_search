@@ -58,9 +58,9 @@ run('index', KeyGen, ValueGen, State) ->
     %% Make the index call...
     Node = choose(State#state.nodes),
     F = fun(_, {DocsAccIn, _}) ->
-                ID = KeyGen(),
+                ID = list_to_binary(KeyGen()),
                 NewRawFields = ValueGen(State#state.fields, State#state.terms),
-                Fields = [{X, string:join(Y, " ")} || {X, Y} <- NewRawFields],
+                Fields = [{X, list_to_binary(string:join(Y, " "))} || {X, Y} <- NewRawFields],
                 {[{ID, Fields}|DocsAccIn], NewRawFields}
         end,
     %% Get a list of docs, plus the last RawFields entry (we only need

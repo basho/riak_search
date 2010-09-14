@@ -35,12 +35,10 @@
     index_dir/1, index_dir/2,
 
     %% Deletion.
-    delete_doc/1, delete_doc/2,
+    delete_doc/2, delete_docs/1,
     delete_dir/1, delete_dir/2
 ]).
 
--define(IS_CHAR(C), ((C >= $A andalso C =< $Z) orelse (C >= $a andalso C =< $z))).
--define(DEFAULT_INDEX, "search").
 -include("riak_search.hrl").
 
 search(Q) ->
@@ -150,16 +148,18 @@ delete_dir(Index, Directory) ->
     riak_search_utils:index_recursive(F, Directory),
     ok.
 
-delete_doc(DocID) ->
-    delete_doc(?DEFAULT_INDEX, DocID).
+delete_doc(DocIndex, DocID) ->
+    delete_docs([{DocIndex, DocID}]).
 
-delete_doc(Index, DocId) ->
-    {ok, RiakClient} = riak:local_client(),
-    case riak_indexed_doc:get(RiakClient, Index, DocId) of
-        {error, notfound} ->
-            {error, notfound};
-        IdxDoc ->
-            {ok, Client} = riak_search:local_client(),
-            Client:delete_doc(IdxDoc),
-            ok
-    end.
+delete_docs(Docs) ->
+    %% Convert to {DocIndex,DocID}...
+    F = fun(IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
+                {riak_indexed_doc:index(IdxDoc), riak_indexed_doc:id(IdxDoc)};
+           ({DocIndex, DocID}) ->
+                {DocIndex, DocID}
+        end,
+    DocIndexIds = [F(X) || X <- Docs],
+
+    %% Delete the DocIndexIds...
+    {ok, Client} = riak_search:local_client(),
+    Client:delete_docs(DocIndexIds).

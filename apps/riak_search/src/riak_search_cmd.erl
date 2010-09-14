@@ -17,9 +17,6 @@
 
 -import(riak_search_utils, [to_list/1]).
 
--define(DEFAULT_INDEX, "search").
-
-
 usage() ->
     Usage = "~nUsage:
 
@@ -111,7 +108,7 @@ command(_) ->
     usage().
 
 set_schema(Index, SchemaFile) -> 
-    IndexB = list_to_binary(Index),
+    IndexB = riak_search_utils:to_binary(Index),
     io:format("~n :: Updating schema for '~s'...~n", [IndexB]),
     case file:read_file(SchemaFile) of
         {ok, B} ->
@@ -136,7 +133,7 @@ set_schema(Index, SchemaFile) ->
     end.
 
 show_schema(Index) -> 
-    IndexB = list_to_binary(Index),
+    IndexB = riak_search_utils:to_binary(Index),
     io:format("~n :: Fetching schema for '~s'...~n", [Index]),
     {ok, Client} = riak:local_client(),
     case riak_search_config:get_raw_schema(Client, IndexB) of
@@ -160,9 +157,7 @@ search(DefaultIndex, Query) ->
         {Length, Results} ->
             F = fun(X) ->
                 {Index, DocID, Props} = X,
-                IndexS = to_list(Index),
-                DocIDS = to_list(DocID),
-                io:format("index/id: ~s/~s~n", [IndexS, DocIDS]),
+                io:format("index/id: ~s/~s~n", [Index, DocID]),
                 [io:format("~p -> ~p~n", [Key, Value]) || 
                 {Key, Value} <- Props],
                 io:format("~n------------------------------~n~n")
@@ -180,9 +175,9 @@ search_doc(DefaultIndex, Query) ->
         {Length, MaxScore, Results} ->
             F = fun(X) ->
                 %% Index.
-                IndexS = to_list(X#riak_idx_doc.index),
-                DocIDS = to_list(X#riak_idx_doc.id),
-                io:format("index/id: ~s/~s~n", [IndexS, DocIDS]),
+                Index = X#riak_idx_doc.index,
+                DocID = X#riak_idx_doc.id,
+                io:format("index/id: ~s/~s~n", [Index, DocID]),
 
                 %% Fields...
                 [io:format("~p => ~p~n", [Key, Value]) ||

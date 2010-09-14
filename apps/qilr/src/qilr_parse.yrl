@@ -279,7 +279,7 @@ make_term({term, WordText, Opts0}) ->
 
 
 make_field(FieldName, FieldBody, Opts) ->
-    {field, extract_text(FieldName), FieldBody, Opts}.
+    {field, list_to_binary(extract_text(FieldName)), FieldBody, Opts}.
 
 make_fuzzy_prox_suffix({word, LineNum, Text}) ->
     %% Does text have a decimal point

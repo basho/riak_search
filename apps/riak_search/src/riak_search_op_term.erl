@@ -38,12 +38,7 @@ start_loop(Op, OutputPid, OutputRef, QueryProps) ->
     %% Start streaming the results...
     {Index, Field, Term} = Op#term.q,
     {ok, Ref} = stream(Index, Field, Term, Fun),
-
-    %% Gather the results...
-    %% TODO - This type conversion should be removed in bug 484
-    %% "Standardize on a string representation".
-    IndexB = riak_search_utils:to_binary(Index),
-    loop(IndexB, ScoringVars, Ref, OutputPid, OutputRef).
+    loop(Index, ScoringVars, Ref, OutputPid, OutputRef).
 
 stream(Index, Field, Term, FilterFun) ->
     %% Get the primary preflist, minus any down nodes. (We don't use

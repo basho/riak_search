@@ -9,8 +9,10 @@
          run_solr_command/3
 ]).
 
--define(DEFAULT_INDEX, "search").
 -define(DEFAULT_TIMEOUT, 60000).
+
+-import(riak_search_utils, [to_list/1, to_binary/1]).
+
 
 -include_lib("riak_search/include/riak_search.hrl").
 
@@ -20,36 +22,33 @@ parse_solr_xml(IndexOrSchema, Body) when is_binary(Body) ->
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
 
     %% Parse the xml...
-
-    ?TIMEON,
     {ok, Command, Entries} = riak_solr_xml_xform:xform(Body),
-    %% DEBUG - Testing new parser.
-    %% {ok, Command, Entries} = riak_solr_xml:parse(Body),
-    ?TIMEOFF("Finished parsing document."),
 
-    ?TIMEON,
+    %% TESTING - This is a faster parser, but doesn't handle deletes
+    %% yet, and doesn't do any validation.  {ok, Command, Entries} =
+    %% riak_solr_xml:parse(Body),
+
     ParsedDocs = [parse_solr_entry(Schema, Command, X) || X <- Entries],
-    ?TIMEOFF("Finished parsing solr entries."),
     {ok, Command, ParsedDocs}.
 
 %% @private
 %% Parse a document to add...
-parse_solr_entry(Schema, add, {"doc", Entry}) ->
+parse_solr_entry(Schema, add, {<<"doc">>, Entry}) ->
     IdxDoc0 = to_riak_idx_doc(Schema, Entry),
     IdxDoc = riak_indexed_doc:analyze(IdxDoc0),
     IdxDoc;
 
 %% Deletion by ID or Query. If query, then parse...
-parse_solr_entry(Schema, delete, {"id", ID}) ->
-    case string:tokens(binary_to_list(ID), ":") of
+parse_solr_entry(Schema, delete, {<<"id">>, ID}) ->
+    case string:tokens(to_list(ID), ":") of
         [] ->
             throw({?MODULE, empty_id_on_solr_delete});
         [H] -> 
-            {'id', Schema:name(), H};
+            {'id', Schema:name(), to_binary(H)};
         [H|T] -> 
-            {'id', H, string:join(T, ":")}
+            {'id', to_binary(H), to_binary(string:join(T, ":"))}
     end;
-parse_solr_entry(Schema, delete, {"query", Query}) ->
+parse_solr_entry(Schema, delete, {<<"query">>, Query}) ->
     Index = Schema:name(),
     case SearchClient:parse_query(Index, binary_to_list(Query)) of
         {ok, QueryOps} ->
@@ -91,36 +90,19 @@ run_solr_command(_Schema, add, Docs) ->
     ok;
 
 %% Delete a document by ID...
-run_solr_command(Schema, delete, [{'id', Index, ID}|IDs]) ->
-    delete_doc(Index, ID),
-    run_solr_command(Schema, delete, IDs);
-
-%% Delete documents by query...
-run_solr_command(Schema, delete, [{'query', QueryOps}|Queries]) ->
-    Index = Schema:name(),
-    {_NumFound, _MaxScore, Docs} = SearchClient:search_doc(Schema:name(), QueryOps, 0, infinity, ?DEFAULT_TIMEOUT),
-    [delete_doc(Index, X#riak_idx_doc.id) || X <- Docs, X /= {error, notfound}],
-    run_solr_command(Schema, delete, Queries);
+run_solr_command(Schema, delete, Docs) ->
+    F = fun({'id', Index, ID}, Acc) ->
+                [{Index, ID}|Acc];
+           ({'query', QueryOps}, Acc) ->
+                {_, Results} = SearchClient:search(Schema, QueryOps, 0, infinity, ?DEFAULT_TIMEOUT),
+                L = [{DocIndex, DocID} || {DocIndex, DocID, _} <- Results],
+                L ++ Acc
+        end,
+    Docs1 = lists:foldl(F, [], Docs),
+    SearchClient:delete_docs(Docs1),
+    ok;
 
 %% Unknown command, so error...
 run_solr_command(_Schema, Command, _Docs) ->
     error_logger:error_msg("Unknown solr command: ~p~n", [Command]),
     throw({unknown_solr_command, Command}).
-
-delete_doc(Index, DocId) ->
-    case riak_indexed_doc:get(RiakClient, Index, DocId) of
-        {error, notfound} ->
-            {error, notfound};
-        IdxDoc ->
-            SearchClient:delete_doc(IdxDoc),
-            ok
-    end.
-
-%% delete_doc_terms(Index, DocId) ->
-%%     case riak_indexed_doc:get(RiakClient, Index, DocId) of
-%%         {error, notfound} ->
-%%             {error, notfound};
-%%         IdxDoc ->
-%%             SearchClient:delete_doc_terms(IdxDoc),
-%%             ok
-%%     end.

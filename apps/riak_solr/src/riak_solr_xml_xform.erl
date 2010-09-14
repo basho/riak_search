@@ -12,6 +12,7 @@
 -define(PRINT(Var), io:format("DEBUG: ~p:~p - ~p~n~n ~p~n~n", [?MODULE, ?LINE, ??Var, Var])).
 -endif.
 
+-import(riak_search_utils, [to_binary/1, to_atom/1, to_utf8/1]).
 
 -record(state, {
     result,
@@ -43,27 +44,27 @@ test() ->
 xform(Data) ->
     Options = [{event_fun, fun sax_cb/3}, {event_state, #state{}}],
     {ok, {Cmd, Entries}, _} = xmerl_sax_parser:stream(Data, Options),
-    {ok, list_to_atom(Cmd), Entries}.
+    {ok, to_atom(Cmd), Entries}.
 
 %% @private
 %% xmerl_sax_parser callback to parse an XML document into a nested
 %% tuple, resulting in something like this:
 %%
 %% {"add", [
-%%    {"doc", [{"id", "ID"}, {"title", "Title"}, ...}
-%%    {"doc", [{"id", "ID1"}, {"title", "Title2"}, ...}
+%%    {"doc", [{<<"id">>, <<"ID">>}, {<<"title">>, <<"Title">>}, ...}
+%%    {"doc", [{<<"id">>, <<"ID1">>}, {<<"title">>, <<"Title2">>}, ...}
 %% ]}.
 %%
 %% Start of a new element, add it to the stack...
 sax_cb({startElement, _Uri, Name, _QualName, Attrs}, _Location, State) ->
     Stack = State#state.stack,
-    NewStack = [#partial { name=Name, attrs=Attrs }|Stack],
+    NewStack = [#partial { name=to_binary(Name), attrs=Attrs }|Stack],
     State#state { stack=NewStack };
 
 %% Got a value, set it to the value of the topmost element in the stack...
 sax_cb({characters, Value}, _Location, State) ->
     [Head|Tail] = State#state.stack,
-    NewStack = [Head#partial { value = riak_search_utils:to_utf8(Value) }|Tail],
+    NewStack = [Head#partial { value = to_utf8(Value) }|Tail],
     State#state { stack=NewStack };
 
 %% End of an element, collapse it into the previous item on the stack...
@@ -72,10 +73,10 @@ sax_cb({endElement, _Uri, _Name, _QualName}, _Location, State) ->
 
     %% Special cases, if the partial is named "field" then look for
     %% "name" attribute. (Otherwise, the element name itself is used.)
-    case Head0#partial.name == "field" of
+    case Head0#partial.name == <<"field">> of
         true ->
             NewName = find_attr("name", Head0#partial.attrs),
-            Head = Head0#partial { name=NewName };
+            Head = Head0#partial { name=to_binary(NewName) };
         false ->
             Head = Head0
     end,

@@ -51,8 +51,9 @@ get_schema(Schema) when is_tuple(Schema) ->
         _ ->
             {error, badarg}
     end;
-get_schema(Schema) ->
-    gen_server:call(?SERVER, {get_schema, riak_search_utils:to_binary(Schema)}, infinity).
+get_schema(Index) ->
+    IndexB = riak_search_utils:to_binary(Index),
+    gen_server:call(?SERVER, {get_schema, IndexB}, infinity).
 
 
 init([]) ->
@@ -135,7 +136,7 @@ parse_raw_schema(RawSchemaBinary) ->
             Error
     end.
 
-load_default_schema(SchemaName) ->
+load_default_schema(SchemaName) when is_binary(SchemaName) ->
     case get_raw_schema_default() of
         {ok, RawSchemaBinary} ->
             case parse_raw_schema(RawSchemaBinary) of
@@ -161,7 +162,7 @@ load_default_schema(SchemaName) ->
 %% Set the schema for an index.
 %% @param Index - the name of an index.
 %% @param RawSchemaBinary - Binary representing the RawSchema file.
-put_raw_schema(Client, SchemaName, RawSchemaBinary) ->
+put_raw_schema(Client, SchemaName, RawSchemaBinary) when is_binary(SchemaName), is_binary(RawSchemaBinary) ->
     case Client:get(?SCHEMA_BUCKET, SchemaName) of
         {ok, Obj} ->
             NewObj = riak_object:update_value(Obj, RawSchemaBinary);
@@ -173,7 +174,7 @@ put_raw_schema(Client, SchemaName, RawSchemaBinary) ->
 %% Return the schema for an index.
 %% @param Index - the name of an index.
 %% @return {ok, RawSchemaBinary}, or 'undefined' if not found.
-get_raw_schema(Client, SchemaName) ->
+get_raw_schema(Client, SchemaName) when is_binary(SchemaName) ->
     case Client:get(?SCHEMA_BUCKET, SchemaName) of
         {ok, Entry} ->
             {ok, riak_object:get_value(Entry)};

@@ -7,11 +7,11 @@
 -export([extract/2,
          extract_value/2]).
 
+-include("riak_search.hrl").
+
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
-
--define(DEFAULT_FIELD, "value").
 
 extract(RiakObject, _Args) ->
     try

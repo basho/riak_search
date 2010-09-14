@@ -23,14 +23,12 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--import(riak_search_utils, [to_binary/1]).
-
 %% Create a new indexed doc
 new(Index, Id, Fields, Props) ->
     {ok, Schema} = riak_search_config:get_schema(Index),
     {RegularFields, FacetFields} = normalize_fields(Fields, Schema),
-    #riak_idx_doc{ index=to_binary(Index),
-                   id=to_binary(Id), 
+    #riak_idx_doc{ index=Index,
+                   id=Id, 
                    fields=RegularFields, 
                    facets=FacetFields, 
                    props=Props }.
@@ -91,12 +89,11 @@ to_mochijson2(Doc) ->
     to_mochijson2(F, Doc).
 
 to_mochijson2(XForm, #riak_idx_doc{id=Id, index=Index, fields=Fields, facets=Facets, props=Props}) ->
-    {struct, [{id, riak_search_utils:to_binary(Id)},
-              {index, riak_search_utils:to_binary(Index)},
-              {fields, {struct, [{riak_search_utils:to_binary(Name),
+    {struct, [{id, Id},
+              {index, Index},
+              {fields, {struct, [{Name,
                                   XForm({Name, Value})} || {Name, Value, _} <- lists:keysort(1, Fields ++ Facets)]}},
-              {props, {struct, [{riak_search_utils:to_binary(Name),
-                                 riak_search_utils:to_binary(Value)} || {Name, Value} <- Props]}}]}.
+              {props, {struct, Props}}]}.
 
 %% Currently Unused?
 %% from_json(Json) ->
@@ -185,7 +182,7 @@ normalize_fields(DocFields, Schema) ->
                           %% placeholder for term positions. This gets
                           %% filled when we analyze the document.
                           NormFieldName = normalize_field_name(InFieldName, FieldDef, Schema),
-                          NormFieldValue = to_binary(FieldValue),
+                          NormFieldValue = FieldValue,
                           Field = {NormFieldName, NormFieldValue, []},
                           case Schema:is_field_facet(FieldDef) of
                               true ->
@@ -210,9 +207,9 @@ normalize_fields(DocFields, Schema) ->
 normalize_field_name(FieldName, FieldDef, Schema) ->
     case Schema:is_dynamic(FieldDef) of
         true ->
-            to_binary(FieldName);
+            FieldName;
         _ ->
-            to_binary(Schema:field_name(FieldDef))
+            Schema:field_name(FieldDef)
     end.
 
 %% @private
@@ -276,7 +273,7 @@ build_props(Positions, Facets) ->
 %% Returns a Riak object.
 get_obj(RiakClient, DocIndex, DocID) ->
     Bucket = idx_doc_bucket(DocIndex),
-    Key = to_binary(DocID),
+    Key = DocID,
     RiakClient:get(Bucket, Key).
 
 %% Returns a #riak_idx_doc record.
@@ -289,21 +286,21 @@ get(RiakClient, DocIndex, DocID) ->
     end.
 
 new_obj(DocIndex, DocID) ->
-    DocBucket = idx_doc_bucket(DocIndex),
-    DocKey = to_binary(DocID),
-    riak_object:new(DocBucket, DocKey, undefined).
+    Bucket = idx_doc_bucket(DocIndex),
+    Key = DocID,
+    riak_object:new(Bucket, Key, undefined).
 
 %% Write the object to Riak.
 put(RiakClient, IdxDoc) ->
     DocIndex = index(IdxDoc),
     DocID = id(IdxDoc),
-    DocBucket = idx_doc_bucket(DocIndex),
-    DocKey = to_binary(DocID),
-    case RiakClient:get(DocBucket, DocKey) of
+    Bucket = idx_doc_bucket(DocIndex),
+    Key = DocID,
+    case RiakClient:get(Bucket, Key) of
         {ok, Obj} -> 
             DocObj = riak_object:update_value(Obj, IdxDoc);
         {error, notfound} ->
-            DocObj = riak_object:new(DocBucket, DocKey, IdxDoc)
+            DocObj = riak_object:new(Bucket, Key, IdxDoc)
     end,
     RiakClient:put(DocObj).
 
@@ -316,14 +313,12 @@ delete(RiakClient, IdxDoc) ->
 
 delete(RiakClient, DocIndex, DocID) ->
     DocBucket = idx_doc_bucket(DocIndex),
-    DocKey = to_binary(DocID),
+    DocKey = DocID,
     RiakClient:delete(DocBucket, DocKey).
 
 
 idx_doc_bucket(Bucket) when is_binary(Bucket) ->
-    <<"_rsid_", Bucket/binary>>;
-idx_doc_bucket(Bucket) ->
-    idx_doc_bucket(to_binary(Bucket)).
+    <<"_rsid_", Bucket/binary>>.
 
 -ifdef(TEST).
 

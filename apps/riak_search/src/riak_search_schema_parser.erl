@@ -13,17 +13,17 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
--import(riak_search_utils, [to_list/1, to_atom/1, to_binary/1]).
+-import(riak_search_utils, [to_list/1, to_atom/1, to_binary/1, to_boolean/1, to_integer/1]).
 
 
 
 %% Given an Erlang term (see riak_search/priv/search.def for example)
 %% parse the term into a riak_search_schema parameterized module.
-from_eterm(SchemaName, {schema, SchemaProps, FieldDefs}) ->
+from_eterm(SchemaName, {schema, SchemaProps, FieldDefs}) when is_binary(SchemaName) ->
     %% Read fields...
     Version = to_list(proplists:get_value(version, SchemaProps)),
-    DefaultField = to_list(proplists:get_value(default_field, SchemaProps)),
-    UniqueKey = to_list(proplists:get_value(unique_key, SchemaProps, "id")),
+    DefaultField = to_binary(proplists:get_value(default_field, SchemaProps)),
+    UniqueKey = to_binary(proplists:get_value(unique_key, SchemaProps, "id")),
     SchemaAnalyzer = proplists:get_value(analyzer_factory, SchemaProps),
     DefaultOp = to_atom(proplists:get_value(default_op, SchemaProps, "or")),
 
@@ -55,13 +55,13 @@ parse_fields([{FieldClass, FieldProps}|T], SchemaAnalyzer, Fields)
 when FieldClass == field orelse FieldClass == dynamic_field ->
     %% Read fields...
     IsDynamic = (FieldClass == dynamic_field),
-    Name = proplists:get_value(name, FieldProps),
-    Type = proplists:get_value(type, FieldProps, string),
+    Name = to_binary(proplists:get_value(name, FieldProps)),
+    Type = to_atom(proplists:get_value(type, FieldProps, string)),
     IsRequired = (not IsDynamic) andalso (proplists:get_value(required, FieldProps, false) == true),
-    IsSkip = proplists:get_value(skip, FieldProps, false),
-    Aliases = proplists:get_all_values(alias, FieldProps),
-    DefaultPaddingSize = get_default_padding_size(Type),
-    PaddingSize = proplists:get_value(padding_size, FieldProps, DefaultPaddingSize),
+    IsSkip = to_boolean(proplists:get_value(skip, FieldProps, false)),
+    Aliases = [to_binary(X) || X <- proplists:get_all_values(alias, FieldProps)],
+    DefaultPaddingSize = to_integer(get_default_padding_size(Type)),
+    PaddingSize = to_integer(proplists:get_value(padding_size, FieldProps, DefaultPaddingSize)),
     DefaultPaddingChar = get_default_padding_char(Type),
     PaddingChar = proplists:get_value(padding_char, FieldProps, DefaultPaddingChar),
     DefaultFieldAnalyzer = get_default_field_analyzer(Type, SchemaAnalyzer),
@@ -86,7 +86,7 @@ when FieldClass == field orelse FieldClass == dynamic_field ->
         field  -> 
             NewName = Name;
         dynamic_field ->
-            NewName = calculate_name_pattern(Name)
+            NewName = calculate_name_pattern_regex(Name)
     end,
 
     %% Create the field...
@@ -150,7 +150,7 @@ calculate_alias_pattern(Alias) ->
         0 ->
             {exact, Alias};
         _ ->
-            case re:compile(calculate_name_pattern_1(Alias)) of
+            case re:compile(calculate_name_pattern_regex(Alias)) of
                 {ok, MP} ->
                     {re, Alias, MP};
                 {error, ErrSpec} ->
@@ -160,21 +160,14 @@ calculate_alias_pattern(Alias) ->
 
 %% A name pattern must have a wildcard. Check for it and
 %% replace it with the regex ".*"
-calculate_name_pattern(Name) ->
-    case string:chr(Name, $*) of
-        0 -> % Not found
-            throw({error, {bad_dynamic_name, Name}});
-        _ -> 
-            calculate_name_pattern_1(Name)
-    end.
-       
-%% Replace "*" with ".*" in a string.
-calculate_name_pattern_1([]) -> 
-    [];
-calculate_name_pattern_1([$*|T]) -> 
-    [$.,$*|calculate_name_pattern_1(T)];
-calculate_name_pattern_1([H|T]) -> 
-    [H|calculate_name_pattern_1(T)].
+calculate_name_pattern_regex(Name) ->
+    list_to_binary(calculate_name_pattern_regex_1(Name)).
+calculate_name_pattern_regex_1(<<$*, T/binary>>) -> 
+    [$.,$*|calculate_name_pattern_regex_1(T)];
+calculate_name_pattern_regex_1(<<H, T/binary>>) -> 
+    [H|calculate_name_pattern_regex_1(T)];
+calculate_name_pattern_regex_1(<<>>) -> 
+    [].
 
 %% Calculate the arguments to send across to qilr for the analyzer_factory
 calculate_analyzer_args(Field=#riak_search_field{analyzer_args=Args}) when 

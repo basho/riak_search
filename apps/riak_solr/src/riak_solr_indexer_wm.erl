@@ -13,7 +13,6 @@
 
 
 -record(state, {solr_client, method, schema, command, entries}).
--define(DEFAULT_INDEX, "search").
 
 init(_) ->
     {ok, SolrClient} = riak_solr_app:local_client(),

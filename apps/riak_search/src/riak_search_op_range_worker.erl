@@ -44,12 +44,7 @@ start_loop(Op, OutputPid, OutputRef, _QueryProps) ->
     Size = Op#range_worker.size,
     VNode = Op#range_worker.vnode,
     {ok, Ref} = range(VNode, Index, Field, StartTerm, EndTerm, Size, Fun),
-
-    %% Gather the results...
-    %% TODO - This type conversion should be removed in bug 484
-    %% "Standardize on a string representation".
-    IndexB = riak_search_utils:to_binary(Index),
-    loop(IndexB, ScoringVars, Ref, OutputPid, OutputRef).
+    loop(Index, ScoringVars, Ref, OutputPid, OutputRef).
 
 range(VNode, Index, Field, StartTerm, EndTerm, Size, FilterFun) ->
     riak_search_vnode:range(VNode, Index, Field, StartTerm, EndTerm, Size, FilterFun, self()).

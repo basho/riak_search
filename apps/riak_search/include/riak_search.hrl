@@ -4,6 +4,8 @@
 -define(TIMEOFF(Var), io:format("~s :: ~10.2f ms : ~p : ~p~n", [string:copies(" ", length(erlang:get(debug_timer))), (timer:now_diff(now(), hd(erlang:get(debug_timer)))/1000), ??Var, Var]), erlang:put(debug_timer, tl(erlang:get(debug_timer)))).
 -endif.
 
+-define(DEFAULT_INDEX, <<"search">>).
+-define(DEFAULT_FIELD, <<"value">>).
 -define(IS_TERM_PROHIBITED(Op), lists:member(prohibited, Op#term.options)).
 -define(IS_TERM_REQUIRED(Op), lists:member(required, Op#term.options)).
 -define(IS_TERM_FACET(Op), lists:member(facet, Op#term.options)).
@@ -37,8 +39,8 @@
 -record(node,             {ops, node}).
 -record(proximity,        {ops, proximity}).
 
--record(riak_idx_doc, {id,
-                       index="search",
+-record(riak_idx_doc, {index,
+                       id,
                        fields=[],
                        props=[],
                        facets=[],

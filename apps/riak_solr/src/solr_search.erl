@@ -10,7 +10,6 @@
     index_dir/2
 ]).
 
--define(DEFAULT_INDEX, "search").
 -include_lib("riak_search/include/riak_search.hrl").
 
 %% Full text index the specified file or directory, which is expected

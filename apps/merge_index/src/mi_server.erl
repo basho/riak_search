@@ -246,32 +246,6 @@ handle_call({info, Index, Field, Term}, _From, State) ->
     %% Return...
     {reply, {ok, Counts}, State};
 
-
-%% Handle this later. We need a range. Roll through the index to get
-%% the size from the first to the last found term in the index. Use
-%% this range for query planning. Again, this will make query planning 
-%% go as expected.
-%% handle_call({info_range, Index, Field, StartTerm, EndTerm, _Size}, _From, State) ->
-%%     %% TODO: Why do we need size here?
-%%     %% Get the IDs...
-%%     #state { buffers=Buffers, segments=Segments } = State,
-
-%%     %% For each term, determine the number of entries
-%%     Total = 
-%%         lists:sum([mi_buffer:info_range(Index, Field, StartTerm, EndTerm, X) || X <- Buffers]) +
-%%         lists:sum([mi_segment:info_range(Index, Field, StartTerm, EndTerm, X) || X <- Segments]),
-
-%%     F = fun({Term, IFT}, Acc) ->
-%%                 case Total > 0 of
-%%                     true ->
-%%                         [{Term, Total} | Acc];
-%%                     false ->
-%%                         Acc
-%%                 end
-%%         end,
-%%     Counts = lists:reverse(mi_ift_server:fold_ifts(Index, Field, StartTerm, EndTerm, F, [])),
-%%     {reply, {ok, Counts}, State};
-
 handle_call({stream, Index, Field, Term, Pid, Ref, FilterFun}, _From, State) ->
     %% Get the IDs...
     #state { locks=Locks, buffers=Buffers, segments=Segments } = State,
