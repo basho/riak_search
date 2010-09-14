@@ -6,7 +6,7 @@
 
 -define(VISITOR(FUNNAME, ARGS), fun(N) -> FUNNAME(N, ARGS) end).
 
-preplan([{lnot, _}], Schema) ->
+preplan([{lnot, _}], _Schema) ->
     [];
 preplan(AST, Schema) ->
     %% pass 1 - Convert field & terms
