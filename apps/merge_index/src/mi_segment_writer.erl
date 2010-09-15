@@ -15,10 +15,11 @@
 -include("merge_index.hrl").
 
 -include_lib("kernel/include/file.hrl").
--define(BLOCK_SIZE, 32767).
--define(FILE_BUFFER_SIZE, 20971520).
--define(VALUES_STAGING_SIZE, 1000).
--define(VALUES_COMPRESS_THRESHOLD, 0).
+-define(BLOCK_SIZE(W), W#writer.segment_block_size).
+-define(FILE_BUFFER_SIZE(W), W#writer.segment_file_buffer_size).
+-define(VALUES_STAGING_SIZE(W), W#writer.segment_values_staging_size).
+-define(VALUES_COMPRESS_THRESHOLD(W), W#writer.segment_values_compression_threshold).
+-define(VALUES_COMPRESS_LEVEL(W), W#writer.segment_values_compression_level).
 -define(INDEX_FIELD_TERM(X), {element(1, X), element(2, X), element(3, X)}).
 -define(VALUE(X), element(4, X)).
 -define(VALUE_PROPS_TSTAMP(X), {element(4, X), element(5, X), element(6, X)}).
@@ -35,7 +36,17 @@
                  values_staging=[],
                  compressed_values=false,
                  buffer=[],
-                 buffer_size=0
+                 buffer_size=0,
+                 
+                 %% We are caching these settings in the #writer state
+                 %% to avoid looking them up repeatedly. This saves
+                 %% quite a bit of time, as 100,000 lookups on my
+                 %% computer is about 1/2 second.
+                 segment_block_size=element(2,application:get_env(merge_index, segment_block_size)),
+                 segment_file_buffer_size=element(2,application:get_env(merge_index, segment_file_buffer_size)),
+                 segment_values_staging_size=element(2,application:get_env(merge_index, segment_values_staging_size)),
+                 segment_values_compression_threshold=element(2,application:get_env(merge_index, segment_values_compression_threshold)),
+                 segment_values_compression_level=element(2,application:get_env(merge_index, segment_values_compression_level))
          }).
 
 from_iterator(Iterator, Segment) ->
@@ -138,7 +149,7 @@ from_iterator_process_value(Value, W) ->
     %% If we have accumulated enough values, then "write" the values,
     %% which may or may not compress them and then adds the result to
     %% the file buffer.
-    case length(W1#writer.values_staging) > ?VALUES_STAGING_SIZE of
+    case length(W1#writer.values_staging) > ?VALUES_STAGING_SIZE(W1) of
         true -> 
             W2 = from_iterator_write_values(W1),
             W2;
@@ -158,7 +169,7 @@ from_iterator_process_end_term(Key, W) ->
 
     %% If this block is big enough, then close the old block and open
     %% a new block...
-    case W2#writer.pos - W2#writer.block_start > ?BLOCK_SIZE of
+    case W2#writer.pos - W2#writer.block_start > ?BLOCK_SIZE(W2) of
         true ->
             W3 = from_iterator_process_end_block(W2),
             from_iterator_process_start_block(W3);
@@ -226,11 +237,11 @@ from_iterator_write_key(W, Key) ->
 from_iterator_write_values(W) ->
     %% Serialize and compress the values.
     ValuesStaging = lists:reverse(W#writer.values_staging),
-    case length(W#writer.values_staging) =< ?VALUES_COMPRESS_THRESHOLD of
+    case length(W#writer.values_staging) =< ?VALUES_COMPRESS_THRESHOLD(W) of
         true ->
             Bytes = term_to_binary(ValuesStaging);
         false ->
-            Bytes = term_to_binary(ValuesStaging, [{compressed, 1}])
+            Bytes = term_to_binary(ValuesStaging, [{compressed, ?VALUES_COMPRESS_LEVEL(W)}])
     end,
     
     %% Figure out what we want to write to disk.
@@ -249,7 +260,7 @@ from_iterator_write_values(W) ->
     from_iterator_flush_buffer(W1, false).
 
 from_iterator_flush_buffer(W, Force) ->
-    case (W#writer.buffer_size > ?FILE_BUFFER_SIZE) orelse Force of
+    case (W#writer.buffer_size > ?FILE_BUFFER_SIZE(W)) orelse Force of
         true ->
             ok = file:write(W#writer.data_file, lists:reverse(W#writer.buffer)),
             W#writer {

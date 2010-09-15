@@ -128,47 +128,56 @@ info(Index, Field, Term, Segment) ->
     end.
 
 
+%% iterator/1 - Create an iterator over the entire segment.
 iterator(Segment) ->
-    {ok, Bytes} = file:read_file(data_file(Segment)),
-    fun() -> iterate_all(undefined, Bytes) end.
+    %% Check if the segment is small enough such that we want to read
+    %% the entire thing into memory.
+    {ok, SegmentFullReadSize} = application:get_env(merge_index, segment_full_read_size),
+    case filesize(Segment) =< SegmentFullReadSize of
+        true ->
+            %% Read the entire segment into memory.
+            {ok, Bytes} = file:read_file(data_file(Segment)),
+            fun() -> iterate_all_bytes(undefined, Bytes) end;
+        false ->
+            %% Open a filehandle to the start of the segment.
+            {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
+            {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
+            fun() -> iterate_all_filehandle(FH, undefined, undefined) end
+    end.
 
-iterate_all(LastKey, <<1:1/integer, Size:15/unsigned-integer, Bytes:Size/binary, Rest/binary>>) ->
+%% @private Create an iterator over a binary which represents the
+%% entire segment.
+iterate_all_bytes(LastKey, <<1:1/integer, Size:15/unsigned-integer, Bytes:Size/binary, Rest/binary>>) ->
     Key = expand_key(LastKey, binary_to_term(Bytes)),
-    iterate_all(Key, Rest);
-iterate_all(Key, <<0:1/integer, Size:31/unsigned-integer, Bytes:Size/binary, Rest/binary>>) ->
+    iterate_all_bytes(Key, Rest);
+iterate_all_bytes(Key, <<0:1/integer, Size:31/unsigned-integer, Bytes:Size/binary, Rest/binary>>) ->
     Results = binary_to_term(Bytes),
-    iterate_all_1(Key, Results, Rest);
-iterate_all(_, <<>>) ->
+    iterate_all_bytes_1(Key, Results, Rest);
+iterate_all_bytes(_, <<>>) ->
     eof.
-iterate_all_1(Key, [Result|Results], Rest) ->
+iterate_all_bytes_1(Key, [Result|Results], Rest) ->
     {I,F,T} = Key,
     {P,V,TS} = Result,
-    {{I,F,T,P,V,TS}, fun() -> iterate_all_1(Key, Results, Rest) end};
-iterate_all_1(Key, [], Rest) ->
-    iterate_all(Key, Rest).
+    {{I,F,T,P,V,TS}, fun() -> iterate_all_bytes_1(Key, Results, Rest) end};
+iterate_all_bytes_1(Key, [], Rest) ->
+    iterate_all_bytes(Key, Rest).
     
+%% @private Create an iterator over a filehandle starting at position
+%% 0 of the segment.
+iterate_all_filehandle(File, BaseKey, {key, ShrunkenKey}) ->
+    CurrKey = expand_key(BaseKey, ShrunkenKey),
+    {I,F,T} = CurrKey,
+    Transform = fun({V,P,K}) -> {I,F,T,V,P,K} end,
+    WhenDone = fun(NextEntry) -> iterate_all_filehandle(File, CurrKey, NextEntry) end,
+    iterate_by_term_values(File, Transform, WhenDone);
+iterate_all_filehandle(File, BaseKey, undefined) ->
+    iterate_all_filehandle(File, BaseKey, read_seg_entry(File));
+iterate_all_filehandle(File, _, eof) ->
+    file:close(File),
+    eof.
 
-%% %% Create an iterator over the entire segment.
-%% iterator(Segment) ->
-%%     {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
-%%     {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
-%%     fun() -> 
-%%             iterate_all(FH, undefined, undefined) 
-%%     end.
 
-%% iterate_all(File, BaseKey, {key, ShrunkenKey}) ->
-%%     CurrKey = expand_key(BaseKey, ShrunkenKey),
-%%     {I,F,T} = CurrKey,
-%%     Transform = fun({V,P,K}) -> {I,F,T,V,P,K} end,
-%%     WhenDone = fun(NextEntry) -> iterate_all(File, CurrKey, NextEntry) end,
-%%     iterate_by_term_values(File, Transform, WhenDone);
-%% iterate_all(File, BaseKey, undefined) ->
-%%     iterate_all(File, BaseKey, read_seg_entry(File));
-%% iterate_all(File, _, eof) ->
-%%     file:close(File),
-%%     eof.
-
-%%% Iterate over a single Term.
+%%% Create an iterater over a single Term.
 iterator(Index, Field, Term, Segment) ->
     %% Find the Key containing the offset information we need.
     Key = {Index, Field, Term},
