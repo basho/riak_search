@@ -26,7 +26,6 @@
 -define(DEFAULT_TIMEOUT, 60000).
 
 init(_) ->
-    ?PRINT(here),
     {ok, Client} = riak_search:local_client(),
     {ok, #state{ client=Client }}.
 
