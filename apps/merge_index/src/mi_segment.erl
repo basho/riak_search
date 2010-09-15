@@ -132,16 +132,16 @@ info(Index, Field, Term, Segment) ->
 iterator(Segment) ->
     %% Check if the segment is small enough such that we want to read
     %% the entire thing into memory.
-    {ok, SegmentFullReadSize} = application:get_env(merge_index, segment_full_read_size),
-    case filesize(Segment) =< SegmentFullReadSize of
+    {ok, FullReadSize} = application:get_env(merge_index, segment_full_read_size),
+    case filesize(Segment) =< FullReadSize of
         true ->
             %% Read the entire segment into memory.
             {ok, Bytes} = file:read_file(data_file(Segment)),
             fun() -> iterate_all_bytes(undefined, Bytes) end;
         false ->
             %% Open a filehandle to the start of the segment.
-            {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
-            {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
+            {ok, ReadAheadSize} = application:get_env(merge_index, segment_compact_read_ahead_size),
+            {ok, FH} = file:open(data_file(Segment), [read, raw, binary, {read_ahead, ReadAheadSize}]),
             fun() -> iterate_all_filehandle(FH, undefined, undefined) end
     end.
 
@@ -207,8 +207,8 @@ iterate_by_keyinfo(BaseKey, Key, EditSigA, HashSigA, FileOffset, [Match={EditSig
         true ->
             iterate_by_keyinfo(BaseKey, Key, EditSigA, HashSigA, FileOffset + KeySize + ValuesSize, Rest, Segment);
         false ->
-            {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
-            {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
+            {ok, ReadAheadSize} = application:get_env(merge_index, segment_query_read_ahead_size),
+            {ok, FH} = file:open(data_file(Segment), [read, raw, binary, {read_ahead, ReadAheadSize}]),
             file:position(FH, FileOffset),
             iterate_by_term(FH, BaseKey, [Match|Rest], Key)
     end;
@@ -270,8 +270,8 @@ iterators(Index, Field, StartTerm, EndTerm, Size, Segment) ->
     EndKey = {Index, Field, EndTerm},
     case get_offset_entry(StartKey, Segment) of
         {OffsetEntryKey, {BlockStart, _, _, _}} ->
-            {ok, ReadOpts} = application:get_env(merge_index, segment_read_options),
-            {ok, FH} = file:open(data_file(Segment), [read, raw, binary] ++ ReadOpts),
+            {ok, ReadAheadSize} = application:get_env(merge_index, segment_query_read_ahead_size),
+            {ok, FH} = file:open(data_file(Segment), [read, raw, binary, {read_ahead, ReadAheadSize}]),
             file:position(FH, BlockStart),
             iterate_range_by_term(FH, OffsetEntryKey, StartKey, EndKey, Size);
         undefined ->

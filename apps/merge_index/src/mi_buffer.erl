@@ -42,8 +42,9 @@
 new(Filename) ->
     %% Open the existing buffer file...
     filelib:ensure_dir(Filename),
-    {ok, WriteOpts} = application:get_env(merge_index, buffer_write_options),
-    {ok, FH} = file:open(Filename, [read, write, raw, binary] ++ WriteOpts),
+    {ok, DelayedWriteSize} = application:get_env(merge_index, buffer_delayed_write_size),
+    {ok, DelayedWriteMS} = application:get_env(merge_index, buffer_delayed_write_ms),
+    {ok, FH} = file:open(Filename, [read, write, raw, binary, {delayed_write, DelayedWriteSize, DelayedWriteMS}]),
 
     %% Read into an ets table...
     Table = ets:new(buffer, [duplicate_bag, public]),

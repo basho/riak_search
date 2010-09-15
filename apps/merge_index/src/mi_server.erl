@@ -35,7 +35,8 @@
     next_id,
     is_compacting,
     buffer_converter,
-    stream_range_pids
+    stream_range_pids,
+    buffer_rollover_size
 }).
 
 -record(stream_range, {
@@ -48,6 +49,7 @@
 
 -define(RESULTVEC_SIZE, 1000).
 -define(DELETEME_FLAG, ".deleted").
+-define(ROLLOVER_SIZE(S), S#state.buffer_rollover_size).
 
 register_buffer_converter(ServerPid, ConverterPid) ->
     gen_server:cast(ServerPid, {register_buffer_converter, ConverterPid}).
@@ -78,7 +80,8 @@ init([Root]) ->
         next_id  = NextID,
         is_compacting = false,
         buffer_converter = {ConverterSup, undefined},
-        stream_range_pids = []
+        stream_range_pids = [],
+        buffer_rollover_size=element(2,application:get_env(merge_index, buffer_rollover_size))
     },
 
     %% %% Do some profiling.
@@ -165,8 +168,7 @@ handle_call({index, Postings}, _From, State) ->
     NewState = State#state {buffers = [CurrentBuffer | Buffers]},
 
     %% Possibly dump buffer to a new segment...
-    {ok, RolloverSize} = application:get_env(merge_index, buffer_rollover_size),
-    case mi_buffer:filesize(CurrentBuffer) > RolloverSize of
+    case mi_buffer:filesize(CurrentBuffer) > ?ROLLOVER_SIZE(State) of
         true ->
             #state { next_id=NextID } = NewState,
             

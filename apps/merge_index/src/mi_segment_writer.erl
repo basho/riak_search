@@ -51,8 +51,9 @@
 
 from_iterator(Iterator, Segment) ->
     %% Open the data file...
-    {ok, WriteOpts} = application:get_env(merge_index, segment_write_options),
-    {ok, DataFile} = file:open(mi_segment:data_file(Segment), [write, raw, binary] ++ WriteOpts),
+    {ok, DelayedWriteSize} = application:get_env(merge_index, segment_delayed_write_size),
+    {ok, DelayedWriteMS} = application:get_env(merge_index, segment_delayed_write_ms),
+    {ok, DataFile} = file:open(mi_segment:data_file(Segment), [write, raw, binary, {delayed_write, DelayedWriteSize, DelayedWriteMS}]),
 
     W = #writer {
       data_file=DataFile,
