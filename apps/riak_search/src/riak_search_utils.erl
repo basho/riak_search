@@ -275,10 +275,11 @@ zip_with_partitions(Postings) ->
     %%         end
     %% end.
 
+%% The call to crypto:sha/N below *should* be a call to
+%% riak_core_util:chash_key/N, but we don't allow Riak Search to
+%% specify custom hashes. It just takes too long to look up for every
+%% term and kills performance.
 calc_partition(Index, Field, Term) ->
-    %% Work out which partition to use
-    IndexBin = riak_search_utils:to_binary(Index),
-    FieldTermBin = riak_search_utils:to_binary([Field, ".", Term]),
-    crypto:sha(term_to_binary({IndexBin, FieldTermBin})).
-    %% riak_core_util:chash_key({IndexBin, FieldTermBin}).
+    crypto:sha(term_to_binary({Index, Field, Term})).
+
 
