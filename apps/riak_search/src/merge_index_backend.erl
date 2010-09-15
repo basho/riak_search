@@ -43,11 +43,6 @@ stop(State) ->
 index(IFTVPKList, State) ->
     Pid = State#state.pid,
     merge_index:index(Pid, IFTVPKList),
-    %% F = fun(IFTVPK) ->
-    %%             {Index, Field, Term, DocId, Props, KeyClock} = IFTVPK,
-    %%             merge_index:index(Pid, Index, Field, Term, DocId, Props, KeyClock)
-    %% end,
-    %% [F(X) || X <- IFTVPKList],
     {reply, {indexed, node()}, State}.
 
 delete(IFTVPKList, State) ->
