@@ -6,12 +6,13 @@
 -module(riak_search_kv_xml_extractor).
 -export([extract/2,
         extract_value/2]).
-
+-include("riak_search.hrl").
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
 -record(state, {name_stack=[], fields=[]}).
+-import(riak_search_utils, [to_utf8/1]).
 
 extract(RiakObject, _Args) ->
     try
@@ -25,7 +26,9 @@ extract(RiakObject, _Args) ->
 extract_value(Data, _Args) ->
     Options = [{event_fun, fun sax_cb/3}, {event_state, #state{}}],
     {ok, State, _Rest} = xmerl_sax_parser:stream(Data, Options),
-    lists:reverse(lists:flatten(State#state.fields)).
+    Fields = lists:reverse(lists:flatten(State#state.fields)),
+    [{to_utf8(FieldName), to_utf8(FieldValue)} || {FieldName, FieldValue} <- Fields].
+
  
 %% @private
 %% xmerl_sax_parser callback to parse an XML document into search
@@ -47,7 +50,7 @@ sax_cb({endElement, _Uri, _Name, _QualName}, _Location, State) ->
 %% Got a value, set it to the value of the topmost element in the stack...
 sax_cb({characters, Value}, _Location, 
        #state{name_stack=NameStack, fields=Fields}=State) ->
-    Field = {make_name(NameStack), riak_search_utils:to_utf8(Value) },
+    Field = {make_name(NameStack), Value},
     State#state{fields = [Field|Fields]};
 
 sax_cb(_Event, _Location, State) ->
@@ -57,7 +60,7 @@ make_attr_fields(_BaseName, [], Fields) ->
     Fields;
 make_attr_fields(BaseName, [{_Uri, _Prefix, AttrName, Value}|Attrs], Fields) ->
     FieldName = BaseName++[$@ | riak_search_kv_extractor:clean_name(AttrName)],
-    Field = {FieldName, riak_search_utils:to_utf8(Value) },
+    Field = {FieldName, Value},
     make_attr_fields(BaseName, Attrs, [Field | Fields]).
 
 %% Make a name from a stack of visted tags (innermost tag at head of list)
@@ -80,18 +83,18 @@ not_xml_test() ->
     
 
 xml_test() ->
-    Tests = [{<<"<tag>hi world</tag>">>, [{"tag", <<"hi world">>}]},
-             {<<"<t1><t2>two</t2>one</t1>">>, [{"t1_t2", <<"two">>},
-                                               {"t1", <<"one">>}]},
+    Tests = [{<<"<tag>hi world</tag>">>, [{<<"tag">>, <<"hi world">>}]},
+             {<<"<t1><t2>two</t2>one</t1>">>, [{<<"t1_t2">>, <<"two">>},
+                                               {<<"t1">>, <<"one">>}]},
              {<<"<t1><t2a>a</t2a><t2b>b</t2b></t1>">>,
-              [{"t1_t2a", <<"a">>},
-               {"t1_t2b", <<"b">>}]},
-             {<<"<t1>abc<t2>two</t2>def</t1>">>, [{"t1", <<"abc">>},
-                                                  {"t1_t2", <<"two">>},
-                                                  {"t1", <<"def">>}]},
+              [{<<"t1_t2a">>, <<"a">>},
+               {<<"t1_t2b">>, <<"b">>}]},
+             {<<"<t1>abc<t2>two</t2>def</t1>">>, [{<<"t1">>, <<"abc">>},
+                                                  {<<"t1_t2">>, <<"two">>},
+                                                  {<<"t1">>, <<"def">>}]},
              {<<"<tag attr1=\"abc\" attr2='def'/>">>,
-              [{"tag@attr1",<<"abc">>},
-               {"tag@attr2",<<"def">>}]},
+              [{<<"tag@attr1">>,<<"abc">>},
+               {<<"tag@attr2">>,<<"def">>}]},
 
              %% Check namespaces are stripped
              {<<"<root>
@@ -109,14 +112,14 @@ xml_test() ->
 </f:table>
 
 </root>">>,
-              [{"root_table_tr_td", <<"Apples">>},
-               {"root_table_tr_td", <<"Bananas">>},
-               {"root_table_name", <<"African Coffee Table">>},
-               {"root_table_width", <<"80">>},
-               {"root_table_length", <<"120">>}]},
+              [{<<"root_table_tr_td">>, <<"Apples">>},
+               {<<"root_table_tr_td">>, <<"Bananas">>},
+               {<<"root_table_name">>, <<"African Coffee Table">>},
+               {<<"root_table_width">>, <<"80">>},
+               {<<"root_table_length">>, <<"120">>}]},
 
              %% Check any dots/colons are removed from fields
-             {<<"<a.b>cde</a.b>">>, [{"a_b", <<"cde">>}]}
+             {<<"<a.b>cde</a.b>">>, [{<<"a_b">>, <<"cde">>}]}
             ],
     check_expected(Tests).
 

@@ -11,6 +11,7 @@
          precommit/1]).
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-include("riak_search.hrl").
 -export([run_mod_fun_extract_test_fun/2]).
 -endif.
 
@@ -275,9 +276,9 @@ erlify_json_extract(R) ->
 
 erlify_json_extract([], Acc) ->
     lists:reverse(Acc);
-erlify_json_extract([{BinFieldName, FieldData} | Rest], Acc) when is_binary(BinFieldName),
+erlify_json_extract([{FieldName, FieldData} | Rest], Acc) when is_binary(FieldName),
                                                                   is_binary(FieldData) ->
-    erlify_json_extract(Rest, [{binary_to_list(BinFieldName), FieldData} | Acc]);
+    erlify_json_extract(Rest, [{FieldName, FieldData} | Acc]);
 erlify_json_extract(R, _Acc) ->
     throw({fail, {bad_json_extractor, R}}).
         
@@ -356,13 +357,13 @@ run_mod_fun_extract_test() ->
     %% Try the anonymous function
     TestObj = conflict_test_object(),
     Extractor = validate_extractor({{modfun, ?MODULE, run_mod_fun_extract_test_fun}, undefined}),
-    ?assertEqual([{"data",<<"some data">>}],
+    ?assertEqual([{<<"data">>,<<"some data">>}],
                  run_extract(TestObj, Extractor)).
  
 run_mod_fun_extract_test_fun(O, _Args) ->
     StrVals = [binary_to_list(B) || B <- riak_object:get_values(O)],
     Data = string:join(StrVals, " "),
-    [{"data", list_to_binary(Data)}].
+    [{<<"data">>, list_to_binary(Data)}].
 
 run_qfun_extract_test() ->
     %% Try the anonymous function
@@ -370,10 +371,10 @@ run_qfun_extract_test() ->
     Fun1 = fun(O, _Args) ->
                    StrVals = [binary_to_list(B) || B <- riak_object:get_values(O)],
                    Data = string:join(StrVals, " "),
-                   [{"data", list_to_binary(Data)}]
+                   [{<<"data">>, list_to_binary(Data)}]
            end,
     Extractor = validate_extractor({{qfun, Fun1}, undefined}),
-    ?assertEqual([{"data",<<"some data">>}],
+    ?assertEqual([{<<"data">>,<<"some data">>}],
                  run_extract(TestObj, Extractor)).
  
     
@@ -407,15 +408,15 @@ anon_js_extract_test() ->
     %% Try the anonymous function
     O = conflict_test_object(),
     Extractor1 = validate_extractor({{jsanon, JustObjectSource}, undefined}),
-    ?assertEqual([{"data",<<"some data">>}],
+    ?assertEqual([{<<"data">>,<<"some data">>}],
                  run_extract(O, Extractor1)),
                  
     %% Anonymous JSON function with provided argument
     %% Arg = {struct [{<<"f">>,<<"v">>}]},
     Arg = {struct, [{<<"f">>,<<"v">>}]},
     Extractor2 = validate_extractor({{jsanon, ObjectArgSource}, Arg}),
-    ?assertEqual([{"data",<<"some data">>}, 
-                  {"arg", <<"v">>}],
+    ?assertEqual([{<<"data">>,<<"some data">>}, 
+                  {<<"arg">>, <<"v">>}],
                  run_extract(O, Extractor2)),
 
     stop_pid(JsMgr),

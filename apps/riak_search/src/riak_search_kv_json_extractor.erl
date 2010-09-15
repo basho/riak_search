@@ -8,6 +8,7 @@
          extract_value/2]).
 
 -include("riak_search.hrl").
+-import(riak_search_utils, [to_utf8/1]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -24,7 +25,8 @@ extract(RiakObject, _Args) ->
 
 extract_value(Data, _Args) ->
     Json = mochijson2:decode(Data),    
-    lists:reverse(lists:flatten(make_search_fields(undefined, Json, []))).
+    Fields = lists:reverse(lists:flatten(make_search_fields(undefined, Json, []))),
+    [{to_utf8(FieldName), to_utf8(FieldValue)} || {FieldName, FieldValue} <- Fields].
 
 
 make_search_fields(NamePrefix, {struct, Fields}, Output) ->
@@ -75,21 +77,21 @@ bad_json_test() ->
              
 json_test() ->
     Tests = [{<<"{\"myfield\":\"myvalue\"}">>,
-              [{"myfield",<<"myvalue">>}]},
+              [{<<"myfield">>,<<"myvalue">>}]},
 
              {<<"{\"myfield\":123}">>,
-              [{"myfield",<<"123">>}]},
+              [{<<"myfield">>,<<"123">>}]},
 
              {<<"{\"myfield\":123.456}">>,
-              [{"myfield",<<"123.456">>}]},
+              [{<<"myfield">>,<<"123.456">>}]},
 
              {<<"{\"myfield\":true}">>,
-              [{"myfield",<<"true">>}]},
+              [{<<"myfield">>,<<"true">>}]},
 
              {<<"{\"myfield\":null}">>, []},
 
              {<<"{\"one\":{\"two\":{\"three\":\"go\"}}}">>,
-              [{"one_two_three", <<"go">>}]},
+              [{<<"one_two_three">>, <<"go">>}]},
 
              {<<"[\"abc\"]">>,
               [{<<"value">>, <<"abc">>}]},
@@ -106,14 +108,14 @@ json_test() ->
     ]
   }
 }}">>,
-              [{"menu_id", <<"file">>},
-               {"menu_value", <<"File">>},
-               {"menu_popup_menuitem_value", <<"New">>},
-               {"menu_popup_menuitem_onclick", <<"CreateNewDoc()">>},
-               {"menu_popup_menuitem_value", <<"Open">>},
-               {"menu_popup_menuitem_onclick", <<"OpenDoc()">>},
-               {"menu_popup_menuitem_value", <<"Close">>},
-               {"menu_popup_menuitem_onclick", <<"CloseDoc()">>}]},
+              [{<<"menu_id">>, <<"file">>},
+               {<<"menu_value">>, <<"File">>},
+               {<<"menu_popup_menuitem_value">>, <<"New">>},
+               {<<"menu_popup_menuitem_onclick">>, <<"CreateNewDoc()">>},
+               {<<"menu_popup_menuitem_value">>, <<"Open">>},
+               {<<"menu_popup_menuitem_onclick">>, <<"OpenDoc()">>},
+               {<<"menu_popup_menuitem_value">>, <<"Close">>},
+               {<<"menu_popup_menuitem_onclick">>, <<"CloseDoc()">>}]},
              %% From http://www.ibm.com/developerworks/library/x-atom2json.html
              {<<"{ 
  \"lang\":\"en-US\", 
@@ -161,28 +163,28 @@ json_test() ->
   \"xml:base\":\"http://example.org/foo\" 
  }
 }">>,
-              [{"lang",<<"en-US">>}, 
-               {"dir",<<"ltr">>}, 
-               {"id",<<"tag:example.org,2007:/foo">>}, 
-               {"title",<<"Example Feed">>}, 
-               {"subtitle_attributes_type", <<"html">>},
-               {"subtitle_children_name", <<"p">>}, 
-               {"subtitle_children_children", <<"This is an example feed">>},
-               {"rights_attributes_type", <<"xhtml">> }, 
-               {"rights_children_name",<<"p">>}, 
-               {"rights_children_children",<<"Copyright © James M Snell" >>},
-               {"updated",<<"2007-10-14T12:12:12.000Z">>}, 
-               {"authors_name",<<"James M Snell">>}, 
-               {"authors_email",<<"jasnell@example.org">>}, 
-               {"authors_uri",<<"http://example.org/~jasnell">>},
-               {"links_href",<<"http://example.org/foo">>}, 
-               {"links_rel",<<"self">>},
-               {"links_href",<<"http://example.org/blog">>}, 
-               {"links_href",<<"http://example.org/blog;json">>}, 
-               {"links_rel",<<"alternate">>},
-               {"links_type",<<"application/json">>},
-               {"attributes_xml_lang", <<"en-US">>},
-               {"attributes_xml_base", <<"http://example.org/foo">>}]}
+              [{<<"lang">>,<<"en-US">>}, 
+               {<<"dir">>,<<"ltr">>}, 
+               {<<"id">>,<<"tag:example.org,2007:/foo">>}, 
+               {<<"title">>,<<"Example Feed">>}, 
+               {<<"subtitle_attributes_type">>, <<"html">>},
+               {<<"subtitle_children_name">>, <<"p">>}, 
+               {<<"subtitle_children_children">>, <<"This is an example feed">>},
+               {<<"rights_attributes_type">>, <<"xhtml">> }, 
+               {<<"rights_children_name">>,<<"p">>}, 
+               {<<"rights_children_children">>,<<"Copyright © James M Snell" >>},
+               {<<"updated">>,<<"2007-10-14T12:12:12.000Z">>}, 
+               {<<"authors_name">>,<<"James M Snell">>}, 
+               {<<"authors_email">>,<<"jasnell@example.org">>}, 
+               {<<"authors_uri">>,<<"http://example.org/~jasnell">>},
+               {<<"links_href">>,<<"http://example.org/foo">>}, 
+               {<<"links_rel">>,<<"self">>},
+               {<<"links_href">>,<<"http://example.org/blog">>}, 
+               {<<"links_href">>,<<"http://example.org/blog;json">>}, 
+               {<<"links_rel">>,<<"alternate">>},
+               {<<"links_type">>,<<"application/json">>},
+               {<<"attributes_xml_lang">>, <<"en-US">>},
+               {<<"attributes_xml_base">>, <<"http://example.org/foo">>}]}
             ],
     check_expected(Tests).
 

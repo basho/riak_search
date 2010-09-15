@@ -6,6 +6,7 @@
 
 -module(riak_search_kv_extractor).
 -export([extract/2, clean_name/1]).
+-include("riak_search.hrl").
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
@@ -71,11 +72,11 @@ clean_name([C | Rest], RevName) ->
 
 extractor_test() ->
     JsonData = <<"{\"one\":{\"two\":{\"three\":\"go\"}}}">>,
-    JsonFields = [{"one_two_three", <<"go">>}],
+    JsonFields = [{<<"one_two_three">>, <<"go">>}],
     XmlData = <<"<?xml version=\"1.0\"?><t1>abc<t2>two</t2>def</t1>">>, 
-    XmlFields = [{"t1", <<"abc">>},
-                 {"t1_t2", <<"two">>},
-                 {"t1", <<"def">>}],
+    XmlFields = [{<<"t1">>, <<"abc">>},
+                 {<<"t1_t2">>, <<"two">>},
+                 {<<"t1">>, <<"def">>}],
     PlainData = <<"the quick brown fox">>,
     PlainFields = [{<<"value">>, <<"the quick brown fox">>}],
 
