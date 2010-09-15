@@ -1,5 +1,3 @@
-{ok, [Count]} = SearchClient:mapred(Bucket, SearchString, Query, undefined, 10000).
-Count.
 %% Clear variables.
 f().
 
@@ -43,4 +41,3 @@ Query = [
 ].
 
 {ok, [Count]} = SearchClient:mapred(Bucket, SearchString, Query, undefined, 10000).
-Count
