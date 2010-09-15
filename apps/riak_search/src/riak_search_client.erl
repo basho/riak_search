@@ -51,6 +51,8 @@ mapred_stream(DefaultIndex, SearchQuery, MRQuery, ClientPid, ResultTransformer, 
 
 %% Parse the provided query. Returns either {ok, QueryOps} or {error,
 %% Error}.
+parse_query(IndexOrSchema, Query) when is_binary(Query) ->
+    parse_query(IndexOrSchema, riak_search_utils:to_list(Query));
 parse_query(IndexOrSchema, Query) when is_list(Query) ->
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
     {ok, AnalyzerPid} = qilr:new_analyzer(),
