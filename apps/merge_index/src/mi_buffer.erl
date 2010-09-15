@@ -55,8 +55,8 @@ new(Filename) ->
 
 open_inner(FH, Table) ->
     case read_value(FH) of
-        {ok, {Index, Field, Term, Value, Props, TS}} ->
-            write_to_ets(Table, [{Index, Field, Term, Value, Props, TS}]),
+        {ok, Postings} ->
+            write_to_ets(Table, Postings),
             open_inner(FH, Table);
         eof ->
             ok
@@ -114,7 +114,7 @@ iterator(Buffer) ->
 iterate_keys(Table, [Key|Keys]) ->
     Results1 = ets:lookup(Table, Key),
     Results2 = [{I,F,T,V,P,K} || {{I,F,T},V,P,K} <- Results1],
-    Results3 = lists:sort(fun term_compare_fun/2, Results2),
+    Results3 = lists:sort(Results2),
     iterate_keys_1(Table, Keys, Results3);
 iterate_keys(_, []) ->
     eof.
@@ -128,7 +128,7 @@ iterator(Index, Field, Term, Buffer) ->
     Table = Buffer#buffer.table,
     List1 = ets:lookup(Table, {Index, Field, Term}),
     List2 = [{V,P,K} || {_Key,V,P,K} <- List1],
-    List3 = lists:sort(fun value_compare_fun/2, List2),
+    List3 = lists:sort(List2),
     fun() -> iterate_list(List3) end.
 
 %% Return a list of iterators over a range.
@@ -156,29 +156,9 @@ iterate_list([H|T]) ->
 %% Internal functions
 %% ===================================================================
 
-%% Used by mi_server.erl to compare two terms, for merging
-%% segments. Return true if items are in order. 
-term_compare_fun({I1, F1, T1, V1, _, TS1}, {I2, F2, T2, V2, _, TS2}) ->
-    (I1 < I2 orelse
-        (I1 == I2 andalso
-            (F1 < F2 orelse
-                (F1 == F2 andalso
-                    (T1 < T2 orelse
-                        (T1 == T2 andalso
-                            (V1 < V2 orelse
-                                (V1 == V2 andalso
-                                    (TS1 > TS2))))))))).
-
-%% Used by mi_server.erl to compare two values, for streaming ordered
-%% results back to a caller. Return true if items are in order.
-value_compare_fun({V1, _, TS1}, {V2, _, TS2}) ->
-    (V1 < V2 orelse
-        (V1 == V2 andalso
-            (TS1 > TS2))).
-
 read_value(FH) ->
-    case file:read(FH, 2) of
-        {ok, <<Size:16/integer>>} ->
+    case file:read(FH, 4) of
+        {ok, <<Size:32/unsigned-integer>>} ->
             {ok, B} = file:read(FH, Size),
             {ok, binary_to_term(B)};
         eof ->
@@ -187,20 +167,21 @@ read_value(FH) ->
 
 write_to_file(FH, Terms) when is_list(Terms) ->
     %% Convert all values to binaries, count the bytes.
-    F = fun(X, {SizeAcc, IOAcc}) ->
-                B1 = term_to_binary(X),
-                Size = erlang:size(B1),
-                B2 = <<Size:16/integer, B1/binary>>,
-                {SizeAcc + Size + 2, [B2|IOAcc]}
-        end,
-    {Size, ReverseIOList} = lists:foldl(F, {0, []}, Terms),
-    ok = file:write(FH, lists:reverse(ReverseIOList)),
-    Size.
+    B = term_to_binary(Terms),
+    Size = erlang:size(B),
+    Bytes = <<Size:32/unsigned-integer, B/binary>>,
+    file:write(FH, Bytes),
+    Size + 2.
 
 write_to_ets(Table, Postings) ->
-    %% Convert to {Key, Value, Props, Tstamp}
+    %% Convert to {Key, Value, Props, Tstamp}. By multiplying the
+    %% timestamp by -1, we can take advantage of the natural ordering
+    %% of postings, eliminating the need for custom sort Functions
+    %% (which makes things much faster.) We only need to do the
+    %% multiplication here, because these values carry through to
+    %% segments.
     F = fun({Index, Field, Term, Value, Props, Tstamp}) ->
-                {{Index, Field, Term}, Value, Props, Tstamp}
+                {{Index, Field, Term}, Value, Props, -1 * Tstamp}
         end,
     Postings1 = [F(X) || X <- Postings],
     ets:insert(Table, Postings1).

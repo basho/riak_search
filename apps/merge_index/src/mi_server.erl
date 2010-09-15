@@ -23,7 +23,6 @@
     terminate/2,
     code_change/3
 ]).
--compile({inline,[term_compare_fun/2, value_compare_fun/2]}).
 
 -record(state, { 
     root,
@@ -215,7 +214,7 @@ handle_call(start_compaction, From, State) ->
     CompactingPid = spawn_opt(fun() ->
         %% Create the group iterator...
         SegmentIterators = [mi_segment:iterator(X) || X <- SegmentsToCompact],
-        GroupIterator = build_iterator_tree(SegmentIterators, 'term'),
+        GroupIterator = build_iterator_tree(SegmentIterators),
 
         %% Create the new compaction segment...
         <<MD5:128/integer>> = erlang:md5(term_to_binary({now, make_ref()})),
@@ -346,7 +345,7 @@ handle_call({fold, FoldFun, Acc}, _From, State) ->
     %% Assemble the group iterator...
     BufferIterators = [mi_buffer:iterator(X) || X <- Buffers],
     SegmentIterators = [mi_segment:iterator(X) || X <- Segments],
-    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators, 'term'),
+    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators),
 
     %% Fold over everything...
     NewAcc = fold(WrappedFun, Acc, GroupIterator()),
@@ -541,7 +540,7 @@ stream(Index, Field, Term, F, Buffers, Segments) ->
     %% Put together the group iterator...
     BufferIterators = [mi_buffer:iterator(Index, Field, Term, X) || X <- Buffers],
     SegmentIterators = [mi_segment:iterator(Index, Field, Term, X) || X <- Segments],
-    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators, 'value'),
+    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators),
 
     %% Start streaming...
     stream_or_range_inner(F, undefined, GroupIterator(), []),
@@ -551,7 +550,7 @@ range(Index, Field, StartTerm, EndTerm, Size, F, Buffers, Segments) ->
     %% Put together the group iterator...
     BufferIterators = lists:flatten([mi_buffer:iterators(Index, Field, StartTerm, EndTerm, Size, X) || X <- Buffers]),
     SegmentIterators = lists:flatten([mi_segment:iterators(Index, Field, StartTerm, EndTerm, Size, X) || X <- Segments]),
-    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators, 'value'),
+    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators),
 
     %% Start rangeing...
     stream_or_range_inner(F, undefined, GroupIterator(), []),
@@ -575,63 +574,38 @@ stream_or_range_inner(F, _, eof, Acc) ->
     ok.
 
 %% Chain a list of iterators into what looks like one single
-%% iterator. The mode is either 'term' or 'value'. This selects which
-%% compare function to use. This allows us to gain performance by
-%% compiling the function inline, which we couldn't do if we passed in
-%% the actual function as an argument.
-build_iterator_tree([], _) ->
+%% iterator. 
+build_iterator_tree([]) ->
     fun() -> eof end;
-build_iterator_tree(Iterators, Mode) ->
-    case build_iterator_tree_inner(Iterators, Mode) of
+build_iterator_tree(Iterators) ->
+    case build_iterator_tree_inner(Iterators) of
         [OneIterator] -> OneIterator;
-        ManyIterators -> build_iterator_tree(ManyIterators, Mode)
+        ManyIterators -> build_iterator_tree(ManyIterators)
     end.
-build_iterator_tree_inner([], _) ->
+build_iterator_tree_inner([]) ->
     [];
-build_iterator_tree_inner([Iterator], _) ->
+build_iterator_tree_inner([Iterator]) ->
     [Iterator];
-build_iterator_tree_inner([IteratorA,IteratorB|Rest], Mode) ->
-    case Mode of
-        'term' ->
-            Iterator = fun() -> group_iterator_term(IteratorA(), IteratorB()) end;
-        'value' ->
-            Iterator = fun() -> group_iterator_value(IteratorA(), IteratorB()) end
-    end,
-    [Iterator|build_iterator_tree_inner(Rest, Mode)].
+build_iterator_tree_inner([IteratorA,IteratorB|Rest]) ->
+    Iterator = fun() -> group_iterator(IteratorA(), IteratorB()) end,
+    [Iterator|build_iterator_tree_inner(Rest)].
 
-%% group_iterator_term/2 - Combine two iterators into one iterator using term_compare_fun/2.
-group_iterator_term(I1 = {Term1, Iterator1}, I2 = {Term2, Iterator2}) ->
-    case term_compare_fun(Term1, Term2) of
+%% group_iterator_term/2 - Combine two iterators into one iterator.
+group_iterator(I1 = {Term1, Iterator1}, I2 = {Term2, Iterator2}) ->
+    case Term1 < Term2 of
         true ->
-            NewIterator = fun() -> group_iterator_term(Iterator1(), I2) end,
+            NewIterator = fun() -> group_iterator(Iterator1(), I2) end,
             {Term1, NewIterator};
         false ->
-            NewIterator = fun() -> group_iterator_term(I1, Iterator2()) end,
+            NewIterator = fun() -> group_iterator(I1, Iterator2()) end,
             {Term2, NewIterator}
     end;
-group_iterator_term(Iterator1, Iterator2) ->
-    group_iterator(Iterator1, Iterator2).
-
-%% group_iterator_term/2 - Combine two iterators into one iterator using term_compare_fun/2.
-group_iterator_value(I1 = {Term1, Iterator1}, I2 = {Term2, Iterator2}) ->
-    case value_compare_fun(Term1, Term2) of
-        true ->
-            NewIterator = fun() -> group_iterator_value(Iterator1(), I2) end,
-            {Term1, NewIterator};
-        false ->
-            NewIterator = fun() -> group_iterator_value(I1, Iterator2()) end,
-            {Term2, NewIterator}
-    end;
-group_iterator_value(Iterator1, Iterator2) ->
-    group_iterator(Iterator1, Iterator2).
-
 group_iterator(eof, eof) -> 
     eof;
 group_iterator(eof, Iterator) -> 
     Iterator;
 group_iterator(Iterator, eof) -> 
     Iterator.
-
 
 %% Return the ID number of a Segment/Buffer/Filename...
 %% Files can be named:
@@ -689,10 +663,6 @@ get_segments_to_merge(Segments) ->
     %% Return segments less than average...
     [Segment || {Size, Segment} <- SortedSizedSegments, Size < Avg].
 
-%% get_average_segment_size(Segments) ->
-%%     TotalSize = lists:sum([mi_segment:filesize(X) || X <- Segments]),
-%%     TotalSize / length(Segments).
-
 fold(_Fun, Acc, eof) -> 
     Acc;
 fold(Fun, Acc, {Term, IteratorFun}) ->
@@ -703,23 +673,3 @@ join(#state { root=Root }, Name) ->
 
 join(Root, Name) ->
     filename:join([Root, Name]).
-
-%% Used by mi_server.erl to compare two terms, for merging
-%% segments. Return true if items are in order. 
-term_compare_fun({I1, F1, T1, V1, _, TS1}, {I2, F2, T2, V2, _, TS2}) ->
-    (I1 < I2 orelse
-        (I1 == I2 andalso
-            (F1 < F2 orelse
-                (F1 == F2 andalso
-                    (T1 < T2 orelse
-                        (T1 == T2 andalso
-                            (V1 < V2 orelse
-                                (V1 == V2 andalso
-                                    (TS1 > TS2))))))))).
-
-%% Used by mi_server.erl to compare two values, for streaming ordered
-%% results back to a caller. Return true if items are in order.
-value_compare_fun({V1, _, TS1}, {V2, _, TS2}) ->
-    (V1 < V2 orelse
-        (V1 == V2 andalso
-            (TS1 > TS2))).
