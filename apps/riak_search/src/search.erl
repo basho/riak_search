@@ -103,7 +103,7 @@ index_doc(Index, ID, Fields) ->
 %% @param Fields - A list of {Key, Value} fields.
 %% @param Props - A list of {Key, Value} props.
 index_doc(Index, ID, Fields, Props) ->
-    IdxDoc = riak_indexed_doc:new(ID, Fields, Props, Index),
+    IdxDoc = riak_indexed_doc:new(Index, ID, Fields, Props),
     index_docs([IdxDoc]).
 
 index_docs(Docs) ->
@@ -118,6 +118,7 @@ index_docs(Docs) ->
                 riak_indexed_doc:new(Index, ID, Fields, Props)
         end,
     IdxDocs = [F(X) || X <- Docs],
+    ?PRINT(IdxDocs),
 
     
     %% Index the IdxDocs...
