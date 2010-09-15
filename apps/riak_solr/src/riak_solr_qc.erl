@@ -9,11 +9,7 @@
 
 -include_lib("eqc/include/eqc.hrl").
 -include_lib("eqc/include/eqc_fsm.hrl").
-
--record(riak_idx_doc, {id,
-                       index="search",
-                       fields=[],
-                       props=[]}).
+-include_lib("riak_search/include/riak_search.hrl").
 
 -compile(export_all).
 
