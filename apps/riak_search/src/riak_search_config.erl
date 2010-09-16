@@ -89,7 +89,7 @@ handle_call({get_schema, SchemaName}, _From, State) ->
                     %% Parse and cache the schema...
                     {ok, RawSchema} = riak_search_utils:consult(RawSchemaBinary),
                     {ok, Schema} = riak_search_schema_parser:from_eterm(SchemaName, RawSchema),
-                    true = ets:insert(Table, SchemaName, Schema),
+                    true = ets:insert(Table, {SchemaName, Schema}),
 
                     %% Update buckets n_val...
                     ensure_n_val_setting(Schema),
