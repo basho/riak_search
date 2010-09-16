@@ -172,7 +172,7 @@ analyze(IdxDoc, AnalyzerPid) when is_record(IdxDoc, riak_idx_doc) ->
 %% - replace any aliased fields with the correct name
 %% - combine duplicate field names into a single field (separate by spaces)
 normalize_fields(DocFields, Schema) ->
-    Fun = fun({InFieldName, FieldValue}, {Regular, Facets}) ->
+    Fun = fun({InFieldName, FieldValue}, {Regular, Facets}) when is_binary(InFieldName), is_binary(FieldValue) ->
                   FieldDef = Schema:find_field(InFieldName),
                   case Schema:is_skip(FieldDef) of
                       true ->
@@ -191,10 +191,9 @@ normalize_fields(DocFields, Schema) ->
                                   {[Field | Regular], Facets}
                           end
                   end;
-             (Other, Acc) ->
-                  ?PRINT({unexpected_field, Other}),
-                  ?PRINT({unexpected_acc, Acc}),
-                  Acc
+             ({InFieldName, FieldValue}, _) ->
+                  ?PRINT({expected_binaries, InFieldName, FieldValue}),
+                  throw({expected_binaries, InFieldName, FieldValue})
           end,
     {RevRegular, RevFacets} = lists:foldl(Fun, {[], []}, DocFields),
     
