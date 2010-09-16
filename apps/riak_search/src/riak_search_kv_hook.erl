@@ -51,7 +51,10 @@
 -type search_data() :: string() | binary().
     
 
-%% Install the kv/search integration hook on the specified bucket     
+%% Install the kv/search integration hook on the specified bucket
+%% TODO: The code below can be
+%% simplified. riak_core_bucket:set_bucket/2 does not require you to
+%% set ALL bucket props, just the properties that have changed.
 install(Bucket) -> 
     BucketProps = riak_core_bucket:get_bucket(Bucket),
     CleanPrecommit = strip_precommit(BucketProps),

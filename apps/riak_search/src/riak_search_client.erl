@@ -200,38 +200,49 @@ process_terms_1(IndexFun, BatchSize, PreflistCache, Terms) ->
     SubBatchTable = ets:new(batch, [protected, duplicate_bag]),
     ReplicaTable = ets:new(batch, [protected, duplicate_bag]),
     try
-        %% SubBatch the postings by partition...
-        Batch1 = riak_search_utils:zip_with_partitions(Batch),
-        ets:insert(SubBatchTable, Batch1),
+        %% SubBatch the postings by {Partition, Index}. Our
+        %% terminology overlaps, so to clarify what we mean here:
+        %% Partition is the number between 0 and 2^160-1 identifying
+        %% the place on the ring. Index is the actual search index,
+        %% such as <<"products">>. We do this because later we'll need
+        %% to look up the n_val for the Index.
+        Batch1 = riak_search_utils:zip_with_partition_and_index(Batch),
+        true = ets:insert(SubBatchTable, Batch1),
 
         %% Ensure the PreflistCache contains all needed entries...
-        F1 = fun(Partition, Cache) ->
-                     case gb_trees:lookup(Partition, Cache) of
+        F1 = fun(PIKey, Cache) ->
+                     case gb_trees:lookup(PIKey, Cache) of
                          {value, _} -> 
                              PreflistCache;
                          none -> 
                              %% Create a sample DocIdx in the section
                              %% of the ring where we want a partition.
+                             {Partition, Index} = PIKey,
                              DocIdx = <<(Partition - 1):160/integer>>,
-                             NVal = riak_search_utils:n_val(),
+
+                             %% Get the n_val...
+                             {ok, Schema} = riak_search_config:get_schema(Index),
+                             NVal = Schema:n_val(),
+
+                             %% Calculate the preflist...
                              Preflist = riak_core_apl:get_apl(DocIdx, NVal, riak_search),
-                             gb_trees:insert(Partition, Preflist, Cache)
+                             gb_trees:insert(PIKey, Preflist, Cache)
                      end
              end,
-        Partitions = riak_search_utils:ets_keys(SubBatchTable),
-        NewPreflistCache = lists:foldl(F1, PreflistCache, Partitions),
+        PartitionIndexes = riak_search_utils:ets_keys(SubBatchTable),
+        NewPreflistCache = lists:foldl(F1, PreflistCache, PartitionIndexes),
 
         %% For each SubBatch, look up the preflists that should
         %% contain those postings, and group them together.
-        F2 = fun(Partition) ->
+        F2 = fun(PIKey) ->
                      %% Get the preflist.
-                     {value, Preflist} = gb_trees:lookup(Partition, NewPreflistCache),
+                     {value, Preflist} = gb_trees:lookup(PIKey, NewPreflistCache),
 
                      %% Get the SubBatch, add replica for each entry in the preflist.
-                     Replicas = [{VNode, Posting} || {_, Posting} <- ets:lookup(SubBatchTable, Partition), VNode <- Preflist],
+                     Replicas = [{VNode, Posting} || {_, Posting} <- ets:lookup(SubBatchTable, PIKey), VNode <- Preflist],
                      ets:insert(ReplicaTable, Replicas)
              end,
-        [F2(X) || X <- Partitions],
+        [F2(X) || X <- PartitionIndexes],
 
         %% Index the postings.
         F3 = fun(VNode) ->

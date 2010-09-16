@@ -18,11 +18,11 @@
     to_float/1,
     from_binary/1,
     index_recursive/2,
-    n_val/0,
     current_key_clock/0,
     choose/1,
     ets_keys/1,
-    zip_with_partitions/1,
+    consult/1,
+    zip_with_partition_and_index/1,
     calc_partition/3
 ]).
 
@@ -201,11 +201,6 @@ index_recursive_file(Callback, File) ->
             io:format("index_file(~p): error: ~p~n", [File, Err])
     end.
 
-%% @private
-%% N val for search replication - currently fixed size for all buckets
-n_val() ->
-    app_helper:get_env(riak_search, n_val, 2).
-
 %% Return a key clock to use for revisioning IFTVPs
 current_key_clock() ->
     {MegaSeconds,Seconds,MilliSeconds}=erlang:now(),
@@ -233,6 +228,28 @@ ets_keys_1(_Table, '$end_of_table') ->
 ets_keys_1(Table, Key) ->
     [Key|ets_keys_1(Table, ets:next(Table, Key))].
 
+%% Given a binary, return an Erlang term.
+consult(Binary) ->
+    case erl_scan:string(riak_search_utils:to_list(Binary)) of
+        {ok, Tokens, _} -> 
+            consult_1(Tokens);
+        Error ->
+            Error
+    end.
+consult_1(Tokens) ->
+    case erl_parse:parse_exprs(Tokens) of
+        {ok, AST} ->
+            consult_2(AST);
+        Error ->
+            Error
+    end.
+consult_2(AST) ->
+    case erl_eval:exprs(AST, []) of
+        {value, Term, _} ->
+            {ok, Term};
+        Error ->
+            Error
+    end.
 
 
 % @doc Returns a function F(Index, Field, Term) -> integer() that can
@@ -242,7 +259,7 @@ ets_keys_1(Table, Key) ->
 % should probably get moved to Riak Core in the future. 
 -define(RINGTOP, trunc(math:pow(2,160)-1)).  % SHA-1 space
 
-zip_with_partitions(Postings) ->
+zip_with_partition_and_index(Postings) ->
     %% Get the number of partitions.
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     {chstate, _, _, CHash, _} = Ring,
@@ -253,27 +270,17 @@ zip_with_partitions(Postings) ->
     F = fun(Posting = {I,F,T,_,_,_}) ->
                 <<IndexAsInt:160/integer>> = calc_partition(I, F, T),
                 case (IndexAsInt - (IndexAsInt rem Inc) + Inc) of
-                    RingTop -> {0, Posting};
-                    Partition -> {Partition, Posting}
+                    RingTop   -> {{0, I}, Posting};
+                    Partition -> {{Partition, I}, Posting}
                 end;
            (Posting = {I,F,T,_,_}) ->
                 <<IndexAsInt:160/integer>> = calc_partition(I, F, T),
                 case (IndexAsInt - (IndexAsInt rem Inc) + Inc) of
-                    RingTop -> {0, Posting};
-                    Partition -> {Partition, Posting}
+                    RingTop   -> {{0, I}, Posting};
+                    Partition -> {{Partition, I}, Posting}
                 end
         end,
     [F(X) || X <- Postings].
-
-    %% %% Return a function to calculate the partition.
-    %% fun(Index, Field, Term) ->
-    %%         Inc = ?RINGTOP div NumPartitions,
-    %%         RingPos = (IndexAsInt div Inc) + 1,
-    %%         case RingPos == NumPartitions of
-    %%             true -> 0;
-    %%             false -> RingPos * Inc
-    %%         end
-    %% end.
 
 %% The call to crypto:sha/N below *should* be a call to
 %% riak_core_util:chash_key/N, but we don't allow Riak Search to

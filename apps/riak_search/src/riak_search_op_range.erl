@@ -40,7 +40,10 @@ start_loop(Op, OutputPid, OutputRef, QueryProps) ->
     %% then just take the next vnode in the list.
 
     %% Figure out how many extra nodes to add to make the groups even.
-    NVal = riak_search_utils:n_val(),
+    Index = element(1, Op#range.q),
+    {ok, Schema} = riak_search_config:get_schema(Index),
+    NVal = Schema:n_val(),
+
     NumExtraNodes = length(VNodes) rem NVal,
     {ExtraNodes, _} = lists:split(NumExtraNodes, VNodes),
     UpNodes = riak_core_node_watcher:nodes(riak_search),

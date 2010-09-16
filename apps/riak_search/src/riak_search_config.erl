@@ -4,10 +4,17 @@
 %%
 %% -------------------------------------------------------------------
 
+%%% Riak Search schemas exist in two forms. The "raw schema" is the
+%%% schema that can be found in a schema.def file. The raw schema is
+%%% saved as a binary in a Riak object in the <<"_rs_schema">>
+%%% bucket. It is saved as a binary so that formatting and comments
+%%% are preserved.  
+%%%
+%%% The schema returned by get_schema/1 is a result of parsing the raw
+%%% schema into a riak_search_schema parameterized module.
+
 -module(riak_search_config).
-
 -include("riak_search.hrl").
-
 -behaviour(gen_server).
 
 -define(SCHEMA_BUCKET, <<"_rs_schema">>).
@@ -17,13 +24,9 @@
 -export([
     start_link/0, 
     clear/0, 
-    get_schema/1,
-
-    %% Used by riak_search_cmd
-    parse_raw_schema/1,
-    get_raw_schema/2, 
-    put_raw_schema/3,
-    get_raw_schema_default/0
+    get_schema/1, 
+    get_raw_schema/1,
+    put_raw_schema/2
 ]).
 
 %% gen_server callbacks
@@ -32,8 +35,7 @@
 
 -define(SERVER, ?MODULE).
 
--record(state, {client,
-                schemas}).
+-record(state, {client, schema_table}).
 
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
@@ -55,40 +57,98 @@ get_schema(Index) ->
     IndexB = riak_search_utils:to_binary(Index),
     gen_server:call(?SERVER, {get_schema, IndexB}, infinity).
 
+%% @doc Return the raw schema (as an Erlang term) for a given index.
+get_raw_schema(Index) ->
+    IndexB = riak_search_utils:to_binary(Index),
+    gen_server:call(?SERVER, {get_raw_schema, IndexB}, infinity).
+
+%% @doc Update Riak Search with new schema information.
+put_raw_schema(Index, RawSchemaBinary) when is_binary(RawSchemaBinary) ->
+    IndexB = riak_search_utils:to_binary(Index),
+    gen_server:call(?SERVER, {put_raw_schema, IndexB, RawSchemaBinary}, infinity).
+
 
 init([]) ->
     {ok, Client} = riak:local_client(),
-    {ok, #state{client=Client,
-                schemas=dict:new()}}.
+    Table = ets:new(table, [private, set]),
+    {ok, #state{client=Client, schema_table=Table}}.
 
 handle_call(clear, _From, State) ->
-    {reply, ok, State#state{schemas=dict:new()}};
-handle_call({get_schema, SchemaName}, _From, #state{client=Client,
-                                                    schemas=Schemas}=State) ->
-    %% Look up the schema in cache...
-    case dict:find(SchemaName, Schemas) of
-        {ok, Schema} ->
-            %% Return the schema...
+    ets:delete_all_objects(State#state.schema_table),
+    {reply, ok, State};
+
+handle_call({get_schema, SchemaName}, _From, State) ->
+    Table = State#state.schema_table,
+    case ets:lookup(Table, SchemaName) of
+        [{SchemaName, Schema}] -> 
             {reply, {ok, Schema}, State};
         _ ->
-            %% Load schema from file...
-            case load_schema(Client, SchemaName) of
-                {ok, Schema} ->
-                    NewSchemas = dict:store(SchemaName, Schema, Schemas),
-                    NewState = State#state { schemas=NewSchemas },
-                    {reply, {ok, Schema}, NewState};
+            Client = State#state.client,
+            case get_raw_schema_from_kv(Client, SchemaName) of
+                {ok, RawSchemaBinary} -> 
+                    %% Parse and cache the schema...
+                    {ok, RawSchema} = riak_search_utils:consult(RawSchemaBinary),
+                    {ok, Schema} = riak_search_schema_parser:from_eterm(SchemaName, RawSchema),
+                    true = ets:insert(Table, SchemaName, Schema),
+
+                    %% Update buckets n_val...
+                    ensure_n_val_setting(Schema),
+
+                    {reply, {ok, Schema}, State};
                 Error ->
-                    error_logger:error_msg("Error loading schema '~s': ~n~p~n", [SchemaName, Error]),
-                    {reply, undefined, State}
+                    error_logger:error_msg("Error getting schema '~s': ~n~p~n", [SchemaName, Error]),
+                    throw(Error)
             end
     end;
-handle_call(_Request, _From, State) ->
-    {reply, ignore, State}.
+        
+handle_call({get_raw_schema, SchemaName}, _From, State) ->
+    Client = State#state.client,
+    case get_raw_schema_from_kv(Client, SchemaName) of
+        {ok, RawSchema} -> 
+            {reply, {ok, RawSchema}, State};
+        Error ->
+            error_logger:error_msg("Error getting schema '~s': ~n~p~n", [SchemaName, Error]),
+            throw(Error)
+    end;
+        
+handle_call({put_raw_schema, SchemaName, RawSchemaBinary}, _From, State) ->
+    %% Parse the schema so that we can update buckets appropriately,
+    %% and so that we don't put an incorrectly formatted schema into
+    %% KV.
+    case riak_search_utils:consult(RawSchemaBinary) of
+        {ok, RawSchema} ->
+            case riak_search_schema_parser:from_eterm(SchemaName, RawSchema) of
+                {ok, Schema} ->
+                    %% Update buckets n_val...
+                    ensure_n_val_setting(Schema),
+                    
+                    %% Clear the local cache entry...
+                    Table = State#state.schema_table,
+                    true = ets:insert(Table, {SchemaName, Schema}),
+                    
+                    %% Write to Riak KV...
+                    Client = State#state.client,
+                    put_raw_schema_to_kv(Client, SchemaName, RawSchemaBinary),
+                    {reply, ok, State};
+                Error ->
+                    error_logger:error_msg("Error setting schema '~s': ~n~p~n", [SchemaName, Error]),
+                    throw(Error)
+            end;
+        Error ->
+            error_logger:log_error("Could not parse schema: ~p~n", [Error]),
+            Error
+    end;
 
-handle_cast(_Msg, State) ->
+handle_call(Request, _From, State) ->
+    ?PRINT({unhandled_call, Request}),
+    {reply, ignore, State}.
+    
+handle_cast(Msg, State) ->
+    ?PRINT({unhandled_cast, Msg}),
     {noreply, State}.
 
-handle_info(_Info, State) ->
+handle_info(Info, State) ->
+    ?PRINT({unhandled_info, Info}),
     {noreply, State}.
 
 terminate(_Reason, _State) ->
@@ -98,71 +158,22 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% Internal functions
-load_schema(Client, SchemaName) ->
-    case get_raw_schema(Client, SchemaName) of
-        {ok, RawSchemaBinary} ->
-            case parse_raw_schema(RawSchemaBinary) of
-                {ok, RawSchema} ->
-                    riak_search_schema_parser:from_eterm(SchemaName, RawSchema);
-                Error ->
-                    error_logger:error_msg("Error parsing schema ~p: ~p~n", [SchemaName, Error]),
-                    %% Error in schema definition, so let's return
-                    %% the error instead of loading the default
-                    Error
-            end;
-        undefined ->
-            %% Schema entry not found so let's load the
-            %% default schema and use it
-            error_logger:error_msg("Schema entry \"_rs_schema\" not found in bucket ~p. Using default schema.~n",
-                                   [riak_search_utils:to_list(SchemaName)]),
-            load_default_schema(SchemaName)
-    end.
 
-parse_raw_schema(RawSchemaBinary) ->
-    case erl_scan:string(riak_search_utils:to_list(RawSchemaBinary)) of
-        {ok, Tokens, _} ->
-            case erl_parse:parse_exprs(Tokens) of
-                {ok, AST} ->
-                    case erl_eval:exprs(AST, []) of
-                        {value, Schema, _} ->
-                            {ok, Schema};
-                        Error ->
-                            Error
-                    end;
-                Error ->
-                    Error
-            end;
-        Error ->
-            Error
-    end.
-
-load_default_schema(SchemaName) when is_binary(SchemaName) ->
-    case get_raw_schema_default() of
-        {ok, RawSchemaBinary} ->
-            case parse_raw_schema(RawSchemaBinary) of
-                {ok, RawSchema} ->
-                    case riak_search_schema_parser:from_eterm(SchemaName, RawSchema) of
-                        {ok, Schema} ->
-                            {ok, Schema:set_name(riak_search_utils:to_list(SchemaName))}
-                        %% Dialyzer says this clause is impossible
-                        % Error ->
-                        %     Error
-                    end;
-                Error ->
-                    error_logger:error_msg("Error parsing default schema.~n", []),
-                    %% Error in schema definition, so let's return
-                    %% the error instead of loading the default
-                    Error
-            end;
-        Error ->
-            error_logger:error_msg("Error loading default schema: ~p~n", [Error]),
-            Error
+%% Return the schema for an index. If not found, use the default.
+%% @param Index - the name of an index.
+%% @return {ok, RawSchemaBinary}.
+get_raw_schema_from_kv(Client, SchemaName) when is_binary(SchemaName) ->
+    case Client:get(?SCHEMA_BUCKET, SchemaName) of
+        {ok, Entry} ->
+            {ok, riak_object:get_value(Entry)};
+        {error, notfound} ->
+            {ok, _B} = file:read_file(?DEFAULT_SCHEMA)
     end.
 
 %% Set the schema for an index.
 %% @param Index - the name of an index.
-%% @param RawSchemaBinary - Binary representing the RawSchema file.
-put_raw_schema(Client, SchemaName, RawSchemaBinary) when is_binary(SchemaName), is_binary(RawSchemaBinary) ->
+%% @param RawSchema - The raw schema tuple.
+put_raw_schema_to_kv(Client, SchemaName, RawSchemaBinary) when is_binary(SchemaName), is_binary(RawSchemaBinary) ->
     case Client:get(?SCHEMA_BUCKET, SchemaName) of
         {ok, Obj} ->
             NewObj = riak_object:update_value(Obj, RawSchemaBinary);
@@ -171,19 +182,17 @@ put_raw_schema(Client, SchemaName, RawSchemaBinary) when is_binary(SchemaName), 
     end,
     Client:put(NewObj).
 
-%% Return the schema for an index.
-%% @param Index - the name of an index.
-%% @return {ok, RawSchemaBinary}, or 'undefined' if not found.
-get_raw_schema(Client, SchemaName) when is_binary(SchemaName) ->
-    case Client:get(?SCHEMA_BUCKET, SchemaName) of
-        {ok, Entry} ->
-            {ok, riak_object:get_value(Entry)};
-        {error, notfound} ->
-            undefined
+%% ensure_n_val_setting/1 - Ensure that the n_val setting for the
+%% bucket where riak_idx_docs are written matches the n_val setting of
+%% the schema.
+ensure_n_val_setting(Schema) ->
+    BucketName = riak_indexed_doc:idx_doc_bucket(Schema:name()),
+    BucketProps = riak_core_bucket:get_bucket(BucketName),
+    NVal = Schema:n_val(),
+    CurrentNVal = proplists:get_value(n_val,BucketProps),
+    case NVal == CurrentNVal of
+        true -> 
+            ok;
+        false ->
+            riak_core_bucket:set_bucket(BucketName, [{n_val, NVal}])
     end.
-
-get_raw_schema_default() ->
-    file:read_file(?DEFAULT_SCHEMA).
-
-
-

@@ -9,6 +9,7 @@
 -export([
     new/4,
     index/1, id/1, 
+    idx_doc_bucket/1,
     fields/1, regular_fields/1, facets/1,
     props/1, add_prop/3, set_props/2, clear_props/1, 
     postings/1,

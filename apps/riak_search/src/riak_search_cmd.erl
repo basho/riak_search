@@ -108,23 +108,14 @@ command(_) ->
     usage().
 
 set_schema(Index, SchemaFile) -> 
-    IndexB = riak_search_utils:to_binary(Index),
-    io:format("~n :: Updating schema for '~s'...~n", [IndexB]),
+    io:format("~n :: Updating schema for '~s'...~n", [Index]),
     case file:read_file(SchemaFile) of
         {ok, B} ->
-            case riak_search_config:parse_raw_schema(B) of
-                {ok, _Schema} ->
-                    {ok, Client} = riak:local_client(),
-                    case riak_search_config:put_raw_schema(Client, IndexB, B) of
-                        ok ->
-                            ok = riak_search_config:clear(),
-                            io:format(" :: Done.~n");
-                        Error ->
-                            io:format(" :: STORAGE ERROR: ~p~n", [Error]),
-                            erlang:exit(-1)
-                    end;
+            case riak_search_config:put_raw_schema(Index, B) of
+                ok ->
+                    io:format(" :: Done.~n");
                 Error ->
-                    io:format(" :: PARSING ERROR: ~p~n", [Error]),
+                    io:format(" :: ERROR: ~p~n", [Error]),
                     erlang:exit(-1)
             end;
         _Error ->
@@ -133,19 +124,13 @@ set_schema(Index, SchemaFile) ->
     end.
 
 show_schema(Index) -> 
-    IndexB = riak_search_utils:to_binary(Index),
-    io:format("~n :: Fetching schema for '~s'...~n", [Index]),
-    {ok, Client} = riak:local_client(),
-    case riak_search_config:get_raw_schema(Client, IndexB) of
-        {ok, B} -> 
-            RawSchemaBinary = B;
-        undefined ->
-            io:format(" :: Using default schema.~n"),
-            {ok, B} = riak_search_config:get_raw_schema_default(),
-            RawSchemaBinary = B
-    end,
-    io:format("~n~s~n", [RawSchemaBinary]).
-    
+    io:format("~n%% Schema for '~s'~n", [Index]),
+    case riak_search_config:get_raw_schema(Index) of
+        {ok, RawSchemaBinary} -> 
+            io:format("~n~s~n", [RawSchemaBinary]);
+        Error ->
+            io:format(" :: ERROR: ~p~n", [Error])
+    end.
 
 shell(Index) -> 
     riak_search_shell:start(Index).

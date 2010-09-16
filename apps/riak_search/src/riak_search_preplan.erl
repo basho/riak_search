@@ -423,7 +423,8 @@ info(Index, Field, Term) ->
     %% secondary nodes since we ultimately read results from one node
     %% anyway.)
     DocIdx = riak_search_utils:calc_partition(Index, Field, Term),
-    NVal = riak_search_utils:n_val(),
+    {ok, Schema} = riak_search_config:get_schema(Index),
+    NVal = Schema:n_val(),
     Preflist = riak_core_apl:get_primary_apl(DocIdx, NVal, riak_search),
     
     {ok, Ref} = riak_search_vnode:info(Preflist, Index, Field, Term, self()),

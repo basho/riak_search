@@ -5,7 +5,9 @@
 %% -------------------------------------------------------------------
 
 -module(riak_search_schema_parser).
--export([from_eterm/2]).
+-export([
+         from_eterm/2
+        ]).
 
 -include_lib("qilr/include/qilr.hrl").
 -include("riak_search.hrl").
@@ -16,12 +18,12 @@
 -import(riak_search_utils, [to_list/1, to_atom/1, to_binary/1, to_boolean/1, to_integer/1]).
 
 
-
 %% Given an Erlang term (see riak_search/priv/search.def for example)
 %% parse the term into a riak_search_schema parameterized module.
 from_eterm(SchemaName, {schema, SchemaProps, FieldDefs}) when is_binary(SchemaName) ->
     %% Read fields...
     Version = to_list(proplists:get_value(version, SchemaProps)),
+    NVal = to_integer(proplists:get_value(n_val, SchemaProps, 3)),
     DefaultField = to_binary(proplists:get_value(default_field, SchemaProps)),
     UniqueKey = to_binary(proplists:get_value(unique_key, SchemaProps, "id")),
     SchemaAnalyzer = proplists:get_value(analyzer_factory, SchemaProps),
@@ -44,7 +46,7 @@ from_eterm(SchemaName, {schema, SchemaProps, FieldDefs}) when is_binary(SchemaNa
         throw({error, {malformed_schema, default_op, {schema, SchemaProps}}}),
 
     {ok, Fields} = parse_fields(FieldDefs, SchemaAnalyzer, []),
-    {ok, riak_search_schema:new(SchemaName, Version, DefaultField, UniqueKey, 
+    {ok, riak_search_schema:new(SchemaName, Version, NVal, DefaultField, UniqueKey, 
                                 Fields, DefaultOp, SchemaAnalyzer)}.
 
 parse_fields([], _SchemaAnalyzer, Fields) ->
