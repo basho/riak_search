@@ -6,7 +6,7 @@ parse(Query) ->
     parse(Query, 'or').
 
 parse(Query, Bool) ->
-    Schema = riak_search_schema:new("search", undefined, "value", "id",
+    Schema = riak_search_schema:new("search", undefined, 2, "value", "id",
                                     [{riak_search_field, ".*", string, 0,
                                       undefined, false, true, undefined, undefined, false}],
                                     Bool, "com.basho.search.analysis.DefaultAnalyzerFactory"),

@@ -82,8 +82,8 @@ handle_info({worker_ready, WorkerPid}, #state { queue = Q } = State) ->
             NewState = State#state { queue=NewQ },
             {noreply, NewState}
     end;
-handle_info({'EXIT', Pid, Reason}, #state { worker = WorkerPid } = State) ->
-    error_logger:error_msg("Compaction worker PID exited: ~p\n", [Reason]),
+handle_info({'EXIT', WorkerPid, Reason}, #state { worker = WorkerPid } = State) ->
+    error_logger:error_msg("Compaction worker ~p exited: ~p\n", [WorkerPid, Reason]),
     %% Start a new worker.
     Self=self(),
     NewWorkerPid = spawn_link(fun() -> worker_loop(Self) end),
@@ -91,7 +91,8 @@ handle_info({'EXIT', Pid, Reason}, #state { worker = WorkerPid } = State) ->
     {noreply, NewState};
 
 handle_info(Info, State) ->
-    ?PRINT({unhandled_info, Info}).
+    ?PRINT({unhandled_info, Info}),
+    {noreply, State}.
 
 terminate(_Reason, _State) ->
     ok.
