@@ -68,7 +68,9 @@
          %% Threshold for the index FSM delaying return of index_terms call 
          {index_overload_thresh, 200},
          %% Number of workers to use when indexing a directory
-         {dir_index_workers, 32}
+         {dir_index_workers, 8},
+         {dir_index_stats_interval, 10},
+         {dir_index_batch_size, 100},
+         {dir_index_batch_bytes, 1048576}
         ]}
-
  ]}.
