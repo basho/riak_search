@@ -118,8 +118,6 @@ index_docs(Docs) ->
                 riak_indexed_doc:new(Index, ID, Fields, Props)
         end,
     IdxDocs = [F(X) || X <- Docs],
-    ?PRINT(IdxDocs),
-
     
     %% Index the IdxDocs...
     {ok, Client} = riak_search:local_client(),
