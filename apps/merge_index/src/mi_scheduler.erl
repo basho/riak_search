@@ -23,8 +23,7 @@
          terminate/2, code_change/3]).
 
 -record(state, { queue,
-                 worker,
-                 worker_ready = false}).
+                 worker }).
 
 %% ====================================================================
 %% API
@@ -62,32 +61,37 @@ handle_call({schedule_compaction, Pid}, _From, #state { queue = Q } = State) ->
         true ->
             {reply, already_queued, State};
         false ->
-            case State#state.worker_ready of
-                true ->
-                    State#state.worker ! {compaction, Pid},
-                    {reply, ok, State};
-                false ->
-                    NewState = State#state { queue = queue:in(Pid, Q) },
-                    {reply, ok, NewState}
-            end
-    end.
+            NewState = State#state { queue = queue:in(Pid, Q) },
+            {reply, ok, NewState}
+    end;
 
-handle_cast(_Msg, State) ->
+handle_call(Event, _From, State) ->
+    ?PRINT({unhandled_call, Event}),
+    {reply, ok, State}.
+
+handle_cast(Msg, State) ->
+    ?PRINT({unhandled_cast, Msg}),
     {noreply, State}.
 
-handle_info(worker_ready, #state { queue = Q } = State) ->
-    case queue:is_empty(Q) of
-        true ->
-            {noreply, State#state { worker_ready = true }};
-        false ->
-            {{value, Pid}, NewQ} = queue:out(Q),
-            State#state.worker ! {compaction, Pid},
-            NewState = State#state { queue=NewQ, worker_ready=false },
+handle_info({worker_ready, WorkerPid}, #state { queue = Q } = State) ->
+    case queue:out(Q) of
+        {empty, Q} ->
+            {noreply, State};
+        {{value, Pid}, NewQ} ->
+            WorkerPid ! {compaction, Pid},
+            NewState = State#state { queue=NewQ },
             {noreply, NewState}
     end;
-handle_info({'EXIT', Pid, Reason}, #state { worker = Pid } = State) ->
+handle_info({'EXIT', Pid, Reason}, #state { worker = WorkerPid } = State) ->
     error_logger:error_msg("Compaction worker PID exited: ~p\n", [Reason]),
-    {stop, {compaction_deatch, Reason}, State}.
+    %% Start a new worker.
+    Self=self(),
+    NewWorkerPid = spawn_link(fun() -> worker_loop(Self) end),
+    NewState = State#state { worker=NewWorkerPid },
+    {noreply, NewState};
+
+handle_info(Info, State) ->
+    ?PRINT({unhandled_info, Info}).
 
 terminate(_Reason, _State) ->
     ok.
@@ -100,7 +104,7 @@ code_change(_OldVsn, State, _Extra) ->
 %% ====================================================================
 
 worker_loop(Parent) ->
-    Parent ! worker_ready,
+    Parent ! {worker_ready, self()},
     receive
         {compaction, Pid} ->
             Start = now(),
@@ -116,7 +120,7 @@ worker_loop(Parent) ->
                         false ->
                             ok
                     end;
-
+                
                 {Error, Reason} when Error == error; Error == 'EXIT' ->
                     error_logger:error_msg("Failed to compact ~p: ~p\n",
                                            [Pid, Reason])
@@ -124,6 +128,8 @@ worker_loop(Parent) ->
             ?MODULE:worker_loop(Parent);
         _ ->
             %% ignore unknown messages
+            ?MODULE:worker_loop(Parent)
+    after 1000 ->
             ?MODULE:worker_loop(Parent)
     end.
 
