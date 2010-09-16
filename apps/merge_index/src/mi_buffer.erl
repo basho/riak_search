@@ -114,7 +114,7 @@ iterator(Buffer) ->
     
 iterate_keys(Table, [Key|Keys]) ->
     Results1 = ets:lookup(Table, Key),
-    Results2 = [{I,F,T,V,P,K} || {{I,F,T},V,P,K} <- Results1],
+    Results2 = [{I,F,T,V,K,P} || {{I,F,T},V,K,P} <- Results1],
     Results3 = lists:sort(Results2),
     iterate_keys_1(Table, Keys, Results3);
 iterate_keys(_, []) ->
@@ -128,7 +128,7 @@ iterate_keys_1(Table, Keys, []) ->
 iterator(Index, Field, Term, Buffer) ->
     Table = Buffer#buffer.table,
     List1 = ets:lookup(Table, {Index, Field, Term}),
-    List2 = [{V,P,K} || {_Key,V,P,K} <- List1],
+    List2 = [{V,K,P} || {_Key,V,K,P} <- List1],
     List3 = lists:sort(List2),
     fun() -> iterate_list(List3) end.
 
@@ -175,17 +175,7 @@ write_to_file(FH, Terms) when is_list(Terms) ->
     Size + 2.
 
 write_to_ets(Table, Postings) ->
-    %% Convert to {Key, Value, Props, Tstamp}. By multiplying the
-    %% timestamp by -1, we can take advantage of the natural ordering
-    %% of postings, eliminating the need for custom sort Functions
-    %% (which makes things much faster.) We only need to do the
-    %% multiplication here, because these values carry through to
-    %% segments.
-    F = fun({Index, Field, Term, Value, Props, Tstamp}) ->
-                {{Index, Field, Term}, Value, Props, -1 * Tstamp}
-        end,
-    Postings1 = [F(X) || X <- Postings],
-    ets:insert(Table, Postings1).
+    ets:insert(Table, Postings).
 
 %% %% ===================================================================
 %% %% EUnit tests

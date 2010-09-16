@@ -161,8 +161,20 @@ handle_call({index, Postings}, _From, State) ->
     #state { buffers=[CurrentBuffer0|Buffers],
              buffer_converter={_,ConverterWorker},
              root=Root} = State,
-    %% Index, Field, Term, Value, Props, TS
-    CurrentBuffer = mi_buffer:write(Postings, CurrentBuffer0),
+
+    %% By multiplying the timestamp by -1 and swapping order of TS and
+    %% props, we can take advantage of the natural ordering of
+    %% postings, eliminating the need for custom sort Functions (which
+    %% makes things much faster.) We only need to do the
+    %% multiplication here, because these values carry through to
+    %% segments. We also group {Index, Field, Term} into a key because
+    %% this is what mi_buffer needs to write to ets. This is a leaky
+    %% abstraction for the benefit of speed.
+    F = fun({Index, Field, Term, Value, Props, Tstamp}) ->
+                {{Index, Field, Term}, Value, -1 * Tstamp, Props}
+        end,
+    Postings1 = [F(X) || X <- Postings],
+    CurrentBuffer = mi_buffer:write(Postings1, CurrentBuffer0),
 
     %% Update the state...
     NewState = State#state {buffers = [CurrentBuffer | Buffers]},
@@ -339,9 +351,9 @@ handle_call({fold, FoldFun, Acc}, _From, State) ->
 
     %% Wrap the FoldFun so that we have a chance to do IndexID /
     %% FieldID / TermID lookups
-    WrappedFun = fun({Index, Field, Term, Value, Props, TS}, AccIn) ->
-        %% Call the fold function...
-        FoldFun(Index, Field, Term, Value, Props, TS, AccIn)
+    WrappedFun = fun({Index, Field, Term, Value, TS, Props}, AccIn) ->
+        %% Call the fold function. Undo the Timestamp inversion.
+        FoldFun(Index, Field, Term, Value, Props, -1 * TS, AccIn)
     end,
 
     %% Assemble the group iterator...
@@ -563,7 +575,7 @@ stream_or_range_inner(F, LastValue, Iterator, Acc)
   when length(Acc) > ?RESULTVEC_SIZE ->
     F(lists:reverse(Acc)),
     stream_or_range_inner(F, LastValue, Iterator, []);
-stream_or_range_inner(F, LastValue, {{Value, Props, _TS}, Iter}, Acc) ->
+stream_or_range_inner(F, LastValue, {{Value, _TS, Props}, Iter}, Acc) ->
     IsDuplicate = (LastValue == Value),
     IsDeleted = (Props == undefined),
     case (not IsDuplicate) andalso (not IsDeleted) of

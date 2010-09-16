@@ -157,8 +157,8 @@ iterate_all_bytes(_, <<>>) ->
     eof.
 iterate_all_bytes_1(Key, [Result|Results], Rest) ->
     {I,F,T} = Key,
-    {P,V,TS} = Result,
-    {{I,F,T,P,V,TS}, fun() -> iterate_all_bytes_1(Key, Results, Rest) end};
+    {V,K,P} = Result,
+    {{I,F,T,V,K,P}, fun() -> iterate_all_bytes_1(Key, Results, Rest) end};
 iterate_all_bytes_1(Key, [], Rest) ->
     iterate_all_bytes(Key, Rest).
     
@@ -167,7 +167,7 @@ iterate_all_bytes_1(Key, [], Rest) ->
 iterate_all_filehandle(File, BaseKey, {key, ShrunkenKey}) ->
     CurrKey = expand_key(BaseKey, ShrunkenKey),
     {I,F,T} = CurrKey,
-    Transform = fun({V,P,K}) -> {I,F,T,V,P,K} end,
+    Transform = fun({V,K,P}) -> {I,F,T,V,K,P} end,
     WhenDone = fun(NextEntry) -> iterate_all_filehandle(File, CurrKey, NextEntry) end,
     iterate_by_term_values(File, Transform, WhenDone);
 iterate_all_filehandle(File, BaseKey, undefined) ->
