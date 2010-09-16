@@ -7,24 +7,19 @@
      {mod, {mi_app, []}},
      {env, [
             {data_root, "data/merge_index"},
-
-            %% Maximum # of segments to compact at once
+            {buffer_rollover_size, 1048576},
+            {buffer_delayed_write_size, 524288},
+            {buffer_delayed_write_ms, 2000},
             {max_compact_segments, 100},
-
-            %% Segment read options
-            %% Default to 5MB read-ahead buffer
-            {segment_read_options, [{read_ahead, 5242880}]},
-
-            %% Segment write options
-            %% Default to 5MB/5 second delayed write
-            {segment_write_options, [{delayed_write, 5242880, 5000}]},
-
-            %% Buffer write options
-            %% Default to 1MB/2 second delayed write,
-            {buffer_write_options, [{delayed_write, 1048576, 2000}]},
-
-            %% Buffer rollover size
-            %% Default to 1MB
-            {buffer_rollover_size, 1048576}
+            {segment_query_read_ahead_size, 65536},
+            {segment_compact_read_ahead_size, 5242880},
+            {segment_file_buffer_size, 5242880},
+            {segment_delayed_write_size, 5242880},
+            {segment_delayed_write_ms, 5000},
+            {segment_full_read_size, 5242880},
+            {segment_block_size, 32767},
+            {segment_values_staging_size, 1000},
+            {segment_values_compression_threshold, 0},
+            {segment_values_compression_level, 1}
            ]}
 ]}.
