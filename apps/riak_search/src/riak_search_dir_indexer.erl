@@ -108,8 +108,8 @@ main_loop(State) when State#state.processed_files < State#state.total_files ->
             NewState = update_stats(NumFiles, NumBytes, State),
             main_loop(NewState);
         
-        Other ->
-            ?PRINT({unhandled_message, Other}),
+        _Other ->
+            %% ?PRINT({unhandled_message, Other, Ref}),
             main_loop(State)
     end;
 
@@ -232,14 +232,31 @@ update_stats(NumFiles, NumBytes, State) ->
 
 %% @private Return {NumFiles, NumBytes, Files} where files is a list
 %% of {FileSize, FilePath}.
-list_directory(Dir) ->
-    %% Recurse through the directory gathering filesize information on
-    %% each file.
-    F = fun(File, Acc) ->
-        {ok, Info} = file:read_file_info(File),
-        [{Info#file_info.size, File}|Acc]
+list_directory(Path) ->
+    %% Get list of files. If we've been passed a directory, then
+    %% recursively get all files in the directory. Otherwise, treat
+    %% the path like a wildcard.
+    F1 = fun(File, Acc) -> [File|Acc] end,
+    case filelib:fold_files(Path, ".*", true, F1, []) of
+        [] -> 
+            Files = filelib:wildcard(Path);
+        Files -> 
+            Files
     end,
-    Files = filelib:fold_files(Dir, ".*", true, F, []),
-    Num = length(Files),
-    Bytes = lists:sum([element(1, X) || X <- Files]),
-    {Num, Bytes, lists:reverse(Files)}.
+
+    %% Ensure we only have regular files, and get the filesizes.
+    F2 = fun(File, Acc) ->
+        {ok, Info} = file:read_file_info(File),
+        case Info#file_info.type of 
+            regular ->
+                [{Info#file_info.size, File}|Acc];
+            _ ->
+                Acc
+        end
+    end,
+    Files1 = lists:foldl(F2, [], Files),
+
+    %% Extract the number and bytes, and return...
+    Num = length(Files1),
+    Bytes = lists:sum([element(1, X) || X <- Files1]),
+    {Num, Bytes, lists:reverse(Files1)}.
