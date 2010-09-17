@@ -8,7 +8,7 @@
 -define(DEFAULT_FIELD, <<"value">>).
 -define(IS_TERM_PROHIBITED(Op), lists:member(prohibited, Op#term.options)).
 -define(IS_TERM_REQUIRED(Op), lists:member(required, Op#term.options)).
--define(IS_TERM_FACET(Op), lists:member(facet, Op#term.options)).
+-define(IS_TERM_INLINE(Op), lists:member(inline, Op#term.options)).
 -define(IS_TERM_PROXIMITY(Op), (proplists:get_value(proximity, Op#term.options) /= undefined)).
 -define(IS_TERM_WILDCARD_ALL(Op), lists:member({wildcard, all}, Op#term.options)).
 -define(IS_TERM_WILDCARD_ONE(Op), lists:member({wildcard, one}, Op#term.options)).
@@ -43,7 +43,7 @@
                        id,
                        fields=[],
                        props=[],
-                       facets=[],
+                       inline_fields=[],
                        analyzed_flag=false}).
 
 -record(riak_search_ref, {id,
@@ -61,4 +61,4 @@
                             dynamic=false,
                             analyzer_factory,
                             analyzer_args,
-                            facet=false}).
+                            inline=false}).

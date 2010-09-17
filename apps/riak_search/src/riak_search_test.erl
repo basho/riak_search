@@ -220,16 +220,14 @@ validate_results_inner(Length, _Results, {length, ValidLength}) ->
             {fail, io_lib:format("Expected ~p result(s), got ~p!", [ValidLength, Length])}
     end;
 validate_results_inner(_Length, Results, {property, Key, Value}) ->
-    KeyL = riak_search_utils:to_list(Key),
-    ValueB = riak_search_utils:to_binary(Value),
     F = fun({_, _, Props}) ->
-        lists:member({KeyL, ValueB}, Props)
+        lists:member({Key, Value}, Props)
     end,
-    case lists:all(F, Results) of
+    case (length(Results) > 0) andalso lists:all(F, Results) of
         true -> 
             pass;
         false ->
-            {fail, io_lib:format("Missing property: ~s -> ~s", [Key, Value])}
+            {fail, io_lib:format("Missing property: ~p -> ~p", [Key, Value])}
     end;
 validate_results_inner(_Length, Results, {docids, DocIds}) ->
     %% Check the returned docids exactly matches the list provided

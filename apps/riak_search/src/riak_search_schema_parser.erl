@@ -69,7 +69,7 @@ when FieldClass == field orelse FieldClass == dynamic_field ->
     DefaultFieldAnalyzer = get_default_field_analyzer(Type, SchemaAnalyzer),
     FieldAnalyzer = proplists:get_value(analyzer_factory, FieldProps, DefaultFieldAnalyzer),
     FieldAnalyzerArgs = proplists:get_value(analyzer_args, FieldProps, []),
-    Facet = proplists:get_value(facet, FieldProps, false),
+    Inline = proplists:get_value(inline, FieldProps, false),
 
     %% Verify that name exists...
     Name /= undefined orelse
@@ -103,7 +103,7 @@ when FieldClass == field orelse FieldClass == dynamic_field ->
       skip=IsSkip,
       analyzer_factory=FieldAnalyzer,
       analyzer_args=FieldAnalyzerArgs,
-      facet=Facet
+      inline=Inline
      },
     Field = Field0#riak_search_field{analyzer_args = calculate_analyzer_args(Field0)},
  

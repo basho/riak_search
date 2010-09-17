@@ -13,8 +13,8 @@ preplan(AST, Schema) ->
     AST1 = visit(AST, ?VISITOR(convert_terms, Schema), true),
     %% pass 2 - Flatten and consolidate boolean ops
     AST2 = visit(AST1, ?VISITOR(flatten_bool, Schema), false),
-    %% pass 3 - Inject facets or node weights for terms
-    AST3 = visit(AST2, ?VISITOR(insert_facet_or_weight, Schema), true),
+    %% pass 3 - Inject node weights for terms
+    AST3 = visit(AST2, ?VISITOR(insert_inline_or_weight, Schema), true),
     %% pass 4 - convert range and wildcard expressions
     AST4 = visit(AST3, ?VISITOR(wildcard_and_range, Schema), true),
     %% pass 5 - pick node for boolean ops
@@ -117,26 +117,26 @@ wildcard_and_range(Op, _Schema) ->
 %% wildcard_range_to_or(Op, _Schema) ->
 %%     Op.
 
-%% Detect and annotate facets & node weights
-insert_facet_or_weight(T, Schema) when is_record(T, term) ->
+%% Detect and annotate inline fields & node weights
+insert_inline_or_weight(T, Schema) when is_record(T, term) ->
     FieldName = Schema:default_field(),
-    add_facet_or_weight(T, {FieldName, Schema});
-insert_facet_or_weight(#field{field=FieldName, ops=T}, Schema) when is_record(T, term) ->
-    T1 = add_facet_or_weight(T, {FieldName, Schema}),
+    add_inline_or_weight(T, {FieldName, Schema});
+insert_inline_or_weight(#field{field=FieldName, ops=T}, Schema) when is_record(T, term) ->
+    T1 = add_inline_or_weight(T, {FieldName, Schema}),
     #field{field=FieldName, ops=T1};
-insert_facet_or_weight(#field{field=FieldName, ops=Ops}=F, Schema) when is_list(Ops) ->
-    NewOps = visit(Ops, ?VISITOR(add_facet_or_weight, {FieldName, Schema}), true),
+insert_inline_or_weight(#field{field=FieldName, ops=Ops}=F, Schema) when is_list(Ops) ->
+    NewOps = visit(Ops, ?VISITOR(add_inline_or_weight, {FieldName, Schema}), true),
     F#field{ops=NewOps};
-insert_facet_or_weight(Op, _Schema) ->
+insert_inline_or_weight(Op, _Schema) ->
     Op.
 
-add_facet_or_weight(#term{q=Q, options=Opts}=T, {FieldName, Schema}) ->
+add_inline_or_weight(#term{q=Q, options=Opts}=T, {FieldName, Schema}) ->
     Field = Schema:find_field(FieldName),
-    NewOpts = case Schema:is_field_facet(Field) of
+    NewOpts = case Schema:is_field_inline(Field) of
                   true ->
-                      case proplists:get_value(facet, Opts) of
+                      case proplists:get_value(inline, Opts) of
                           undefined ->
-                              [facet|Opts];
+                              [inline|Opts];
                           _ ->
                               Opts
                       end;
@@ -150,7 +150,7 @@ add_facet_or_weight(#term{q=Q, options=Opts}=T, {FieldName, Schema}) ->
                       node_weights_for_term(Schema:name(), FieldName, Text) ++ Opts
               end,
     T#term{options=NewOpts};
-add_facet_or_weight(Op, _) ->
+add_inline_or_weight(Op, _) ->
     Op.
 
 %% Nested bool flattening
@@ -366,11 +366,11 @@ range_type(#exclusive_range{}) ->
 %%     Results1 = lists:foldl(F, gb_trees:empty(), lists:flatten(Results)),
 %%     Results2 = gb_trees:to_list(Results1),
 %%     Field = Schema:find_field(FieldName),
-%%     IsFacet = Schema:is_field_facet(Field),
+%%     IsInline = Schema:is_field_inline(Field),
 %%     F1 = fun({Q, Options}) ->
 %%                  Options1 = if
-%%                                 IsFacet =:= true ->
-%%                                     [facet|Options];
+%%                                 IsInline =:= true ->
+%%                                     [inline|Options];
 %%                                 true ->
 %%                                     node_weights_for_term(Schema:name(),
 %%                                                           FieldName, Q) ++ Options

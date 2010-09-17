@@ -4,15 +4,15 @@
 %%
 %% -------------------------------------------------------------------
 
--module(riak_search_schema, [Name, Version, NVal, DefaultField, UniqueKey, FieldsAndFacets, DefaultOp, AnalyzerFactory]).
+-module(riak_search_schema, [Name, Version, NVal, DefaultField, UniqueKey, Fields, DefaultOp, AnalyzerFactory]).
 -export([
     %% Properties...
     name/0,
     set_name/1,
     version/0,
     n_val/0,
-    fields_and_facets/0,
-    facets/0,
+    fields_and_inlines/0,
+    inline_fields/0,
     fields/0,
     unique_key/0,
     default_field/0,
@@ -30,10 +30,9 @@
     is_field_required/1,
     analyzer_factory/1,
     analyzer_args/1,
-    is_field_facet/1,
+    is_field_inline/1,
     is_skip/1,
     aliases/1,
-    %% field_types/0,
 
     %% Field lookup
     find_field/1,
@@ -48,7 +47,7 @@ name() ->
     riak_search_utils:to_binary(Name).
 
 set_name(NewName) ->
-    ?MODULE:new(NewName, Version, NVal, DefaultField, UniqueKey, FieldsAndFacets, DefaultOp, AnalyzerFactory).
+    ?MODULE:new(NewName, Version, NVal, DefaultField, UniqueKey, Fields, DefaultOp, AnalyzerFactory).
 
 version() ->
     Version.
@@ -56,14 +55,14 @@ version() ->
 n_val() ->
     NVal.
 
-fields_and_facets() ->
-    FieldsAndFacets.
+fields_and_inlines() ->
+    Fields.
 
 fields() ->
-    [X || X <- FieldsAndFacets, X#riak_search_field.facet == false].
+    [X || X <- Fields, X#riak_search_field.inline == false].
 
-facets() ->
-    [X || X <- FieldsAndFacets, X#riak_search_field.facet == true].
+inline_fields() ->
+    [X || X <- Fields, X#riak_search_field.inline == true].
 
 unique_key() ->
     UniqueKey.
@@ -77,13 +76,13 @@ analyzer_factory() ->
     AnalyzerFactory.
 
 set_default_field(NewDefaultField) ->
-    ?MODULE:new(Name, Version, NVal, NewDefaultField, UniqueKey, FieldsAndFacets, DefaultOp, AnalyzerFactory).
+    ?MODULE:new(Name, Version, NVal, NewDefaultField, UniqueKey, Fields, DefaultOp, AnalyzerFactory).
 
 default_op() ->
     DefaultOp.
 
 set_default_op(NewDefaultOp) ->
-    ?MODULE:new(Name, Version, NVal, DefaultField, UniqueKey, FieldsAndFacets, NewDefaultOp, AnalyzerFactory).
+    ?MODULE:new(Name, Version, NVal, DefaultField, UniqueKey, Fields, NewDefaultOp, AnalyzerFactory).
 
 field_name(Field) ->
     Field#riak_search_field.name.
@@ -109,8 +108,8 @@ analyzer_factory(Field) ->
 analyzer_args(Field) ->
     Field#riak_search_field.analyzer_args.
 
-is_field_facet(Field) ->
-    Field#riak_search_field.facet == true.
+is_field_inline(Field) ->
+    Field#riak_search_field.inline == true.
 
 is_skip(Field) ->
     Field#riak_search_field.skip == true.
@@ -120,18 +119,16 @@ aliases(Field) ->
 
 %% Return the field matching the specified name, or 'undefined'
 find_field(FName) ->
-    find_field(FName, FieldsAndFacets).
+    find_field(FName, Fields).
 
-find_field(FName, []) ->
-    throw({error, missing_field, FName});
-find_field(FName, [Field|Fields]) ->
+find_field(FName, [Field|Rest]) ->
     case Field#riak_search_field.dynamic of
         true ->
             case re:run(FName, Field#riak_search_field.name) of
                 {match, _} ->
                     Field;
                 nomatch ->
-                    find_field(FName, Fields)
+                    find_field(FName, Rest)
             end;
         false ->
             case FName == Field#riak_search_field.name orelse 
@@ -139,9 +136,11 @@ find_field(FName, [Field|Fields]) ->
                 true ->
                     Field;
                 false ->                 
-                    find_field(FName, Fields)
+                    find_field(FName, Rest)
             end
-    end.
+    end;
+find_field(FName, []) ->
+    throw({error, missing_field, FName}).
 
 %% Return true if the name matches an alias
 matches_alias(_FName, []) ->
@@ -164,7 +163,7 @@ matches_alias(FName, [{re, _Alias, MP}|Aliases]) ->
 %% Verify that the schema names match. If so, then validate required
 %% and optional fields. Otherwise, return an error.
 validate_commands(add, Docs) ->
-    Required = [F || F <- FieldsAndFacets, F#riak_search_field.required =:= true],
+    Required = [F || F <- Fields, F#riak_search_field.required =:= true],
     validate_required_fields(Docs, Required);
 validate_commands(_, _) ->
     ok.

@@ -16,7 +16,7 @@
              riak_search_sup,
              riak_search_preplan,
              riak_search_preplan1,
-             riak_search_facets,
+             riak_search_inlines,
              riak_search_kv_extractor,
              riak_search_kv_hook,
              riak_search_kv_json_extractor,

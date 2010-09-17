@@ -21,8 +21,8 @@
         ]},
 
         {field, [
-            {name, "date_facet"},
-            {facet, true},
+            {name, "date_inline"},
+            {inline, true},
             {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
         ]}
     ]

@@ -10,7 +10,7 @@
     new/4,
     index/1, id/1, 
     idx_doc_bucket/1,
-    fields/1, regular_fields/1, facets/1,
+    fields/1, regular_fields/1, inline_fields/1,
     props/1, add_prop/3, set_props/2, clear_props/1, 
     postings/1,
     to_mochijson2/1, to_mochijson2/2,
@@ -27,21 +27,21 @@
 %% Create a new indexed doc
 new(Index, Id, Fields, Props) ->
     {ok, Schema} = riak_search_config:get_schema(Index),
-    {RegularFields, FacetFields} = normalize_fields(Fields, Schema),
+    {RegularFields, InlineFields} = normalize_fields(Fields, Schema),
     #riak_idx_doc{ index=Index,
                    id=Id, 
                    fields=RegularFields, 
-                   facets=FacetFields, 
+                   inline_fields=InlineFields, 
                    props=Props }.
 
 fields(IdxDoc) ->
-    regular_fields(IdxDoc) ++ facets(IdxDoc).
+    regular_fields(IdxDoc) ++ inline_fields(IdxDoc).
 
 regular_fields(#riak_idx_doc{fields=Fields}) ->
     [{FieldName, FieldValue} || {FieldName, FieldValue, _} <- Fields].
 
-facets(#riak_idx_doc{facets=Facets}) ->
-    [{FieldName, FieldValue} || {FieldName, FieldValue, _} <- Facets].
+inline_fields(#riak_idx_doc{inline_fields=InlineFields}) ->
+    [{FieldName, FieldValue} || {FieldName, FieldValue, _} <- InlineFields].
 
 index(#riak_idx_doc{index=Index}) ->
     Index.
@@ -67,14 +67,14 @@ postings(IdxDoc) ->
     %% Get some values.
     DocIndex = ?MODULE:index(IdxDoc),
     DocId = ?MODULE:id(IdxDoc),
-    Facets = ?MODULE:facets(IdxDoc),
+    InlineFields = ?MODULE:inline_fields(IdxDoc),
     K = riak_search_utils:current_key_clock(),
     
     %% Fold over each regular field, and then fold over each term in
     %% that field.
     F1 = fun({FieldName, _, TermPos}, FieldsAcc) ->
                  F2 = fun({Term, Positions}, Acc) ->
-                              Props = build_props(Positions, Facets),
+                              Props = build_props(Positions, InlineFields),
                               [{DocIndex, FieldName, Term, DocId, Props, K} | Acc]
                       end,
                  lists:foldl(F2, FieldsAcc, TermPos)
@@ -89,11 +89,11 @@ to_mochijson2(Doc) ->
     F = fun({_Name, Value}) -> Value end,
     to_mochijson2(F, Doc).
 
-to_mochijson2(XForm, #riak_idx_doc{id=Id, index=Index, fields=Fields, facets=Facets, props=Props}) ->
+to_mochijson2(XForm, #riak_idx_doc{id=Id, index=Index, fields=Fields, inline_fields=Inlines, props=Props}) ->
     {struct, [{id, Id},
               {index, Index},
               {fields, {struct, [{Name,
-                                  XForm({Name, Value})} || {Name, Value, _} <- lists:keysort(1, Fields ++ Facets)]}},
+                                  XForm({Name, Value})} || {Name, Value, _} <- lists:keysort(1, Fields ++ Inlines)]}},
               {props, {struct, Props}}]}.
 
 %% Currently Unused?
@@ -152,7 +152,7 @@ analyze(IdxDoc, AnalyzerPid) when is_record(IdxDoc, riak_idx_doc) ->
     %% Extract fields, get schema...
     DocIndex = ?MODULE:index(IdxDoc),
     RegularFields = ?MODULE:regular_fields(IdxDoc),
-    Facets = ?MODULE:facets(IdxDoc),
+    Inlines = ?MODULE:inline_fields(IdxDoc),
     {ok, Schema} = riak_search_config:get_schema(DocIndex),
     
     %% For each Field = {FieldName, FieldValue, _}, split the FieldValue
@@ -162,22 +162,22 @@ analyze(IdxDoc, AnalyzerPid) when is_record(IdxDoc, riak_idx_doc) ->
                 [{FieldName, FieldValue, get_term_positions(Terms)} | Acc2]
         end,
     NewFields = lists:foldl(F, [], RegularFields),
-    NewFacets = lists:foldl(F, [], Facets),
+    NewInlineFields = lists:foldl(F, [], Inlines),
 
-    %% For each Facet = {FieldName, FieldValue, _}, split the FieldValue
+    %% For each Inline = {FieldName, FieldValue, _}, split the FieldValue
     %% into terms and build a list of positions for those terms.
-    IdxDoc#riak_idx_doc{ fields=NewFields, facets=NewFacets, analyzed_flag=true }.
+    IdxDoc#riak_idx_doc{ fields=NewFields, inline_fields=NewInlineFields, analyzed_flag=true }.
 
 %% Normalize the list of input fields against the schema
 %% - drop any skip fields
 %% - replace any aliased fields with the correct name
 %% - combine duplicate field names into a single field (separate by spaces)
 normalize_fields(DocFields, Schema) ->
-    Fun = fun({InFieldName, FieldValue}, {Regular, Facets}) when is_binary(InFieldName), is_binary(FieldValue) ->
+    Fun = fun({InFieldName, FieldValue}, {Regular, Inlines}) when is_binary(InFieldName), is_binary(FieldValue) ->
                   FieldDef = Schema:find_field(InFieldName),
                   case Schema:is_skip(FieldDef) of
                       true ->
-                          {Regular, Facets};
+                          {Regular, Inlines};
                       false ->
                           %% Create the field. Use an empty list
                           %% placeholder for term positions. This gets
@@ -185,24 +185,24 @@ normalize_fields(DocFields, Schema) ->
                           NormFieldName = normalize_field_name(InFieldName, FieldDef, Schema),
                           NormFieldValue = FieldValue,
                           Field = {NormFieldName, NormFieldValue, []},
-                          case Schema:is_field_facet(FieldDef) of
+                          case Schema:is_field_inline(FieldDef) of
                               true ->
-                                  {Regular, [Field | Facets]};
+                                  {Regular, [Field | Inlines]};
                               false ->
-                                  {[Field | Regular], Facets}
+                                  {[Field | Regular], Inlines}
                           end
                   end;
              ({InFieldName, FieldValue}, _) ->
                   ?PRINT({expected_binaries, InFieldName, FieldValue}),
                   throw({expected_binaries, InFieldName, FieldValue})
           end,
-    {RevRegular, RevFacets} = lists:foldl(Fun, {[], []}, DocFields),
+    {RevRegular, RevInlines} = lists:foldl(Fun, {[], []}, DocFields),
     
     %% Aliasing makes it possible to have multiple entries in
     %% RevRegular.  Combine multiple entries for the same field name
     %% into a single field.
     {merge_fields(lists:reverse(RevRegular)), 
-     merge_fields(lists:reverse(RevFacets))}.
+     merge_fields(lists:reverse(RevInlines))}.
 
 %% @private
 %% Normalize the field name - if an alias of a regular field
@@ -271,8 +271,8 @@ get_term_positions(Terms) ->
 %% @private
 %% Given a term and a list of positions, generate a list of
 %% properties.
-build_props(Positions, Facets) ->
-    [{p, Positions}| Facets].
+build_props(Positions, Inlines) ->
+    [{p, Positions}| Inlines].
 
 %% Returns a Riak object.
 get_obj(RiakClient, DocIndex, DocID) ->
@@ -335,12 +335,12 @@ normalize_fields_test() ->
                            {alias, <<"afieldtoo">>}]},
                   {field, [{name, <<"anotherfield">>},
                            {alias, <<"anotherfieldtoo">>}]},
-                  {field, [{name, <<"afacet">>},
-                           {alias, <<"afacettoo">>},
-                           facet]},
-                  {field, [{name, <<"anotherfacet">>},
-                           {alias, <<"anotherfacettoo">>},
-                           {facet, true}]}],
+                  {field, [{name, <<"inline">>},
+                           {alias, <<"inlinetoo">>},
+                           inline]},
+                  {field, [{name, <<"anotherinline">>},
+                           {alias, <<"anotherinlinetoo">>},
+                           {inline, true}]}],
     
     SchemaDef = {schema, SchemaProps, FieldDefs},
     {ok, Schema} = riak_search_schema_parser:from_eterm(<<"is_skip_test">>, SchemaDef),
@@ -361,7 +361,7 @@ normalize_fields_test() ->
 
     ?assertEqual({[{<<"anotherfield">>, <<"abc def ghi">>, []},
                    {<<"afield">>,<<"one two three">>, []}],
-                  [{<<"afacet">>, <<"first second">>, []}]},
+                  [{<<"inline">>, <<"first second">>, []}]},
                  normalize_fields([{<<"anotherfield">>,<<"abc">>},
                                    {<<"afieldtoo">>,<<"one">>},
                                    {<<"skipme">>,<<"skippable terms">>},
@@ -370,7 +370,7 @@ normalize_fields_test() ->
                                    {<<"skipmetoo">>,<<"not needed">>},
                                    {<<"anotherfield">>,<<"ghi">>},
                                    {<<"afieldtoo">>,<<"three">>},
-                                   {<<"afacet">>,<<"first">>},
-                                   {<<"afacettoo">>,<<"second">>}], Schema)).
+                                   {<<"inline">>,<<"first">>},
+                                   {<<"inlinetoo">>,<<"second">>}], Schema)).
 
 -endif. % TEST

@@ -8,9 +8,9 @@
     <field name="int4">1</field>
     <field name="dyn_i">1</field>
     <field name="i_dyn">1</field>
-    <field name="facet">one</field>
-    <field name="dyn_facet">one</field>
-    <field name="facet_dyn">one</field>
+    <field name="inline">one</field>
+    <field name="dyn_inline">one</field>
+    <field name="inline_dyn">one</field>
     <field name="order1_int">1</field>
     <field name="order2_int">1</field>
   </doc>
@@ -23,9 +23,9 @@
     <field name="int4">2</field>
     <field name="dyn_i">2</field>
     <field name="i_dyn">2</field>
-    <field name="facet">two</field>
-    <field name="dyn_facet">two</field>
-    <field name="facet_dyn">two</field>
+    <field name="inline">two</field>
+    <field name="dyn_inline">two</field>
+    <field name="inline_dyn">two</field>
   </doc>
   <doc>
     <field name="id">20</field>
@@ -36,9 +36,9 @@
     <field name="int4">20</field>
     <field name="dyn_i">20</field>
     <field name="i_dyn">20</field>
-    <field name="facet">twenty</field>
-    <field name="dyn_facet">twenty</field>
-    <field name="facet_dyn">twenty</field>
+    <field name="inline">twenty</field>
+    <field name="dyn_inline">twenty</field>
+    <field name="inline_dyn">twenty</field>
   </doc>
   <doc>
     <field name="id">100</field>
@@ -48,9 +48,9 @@
     <field name="int4">100</field>
     <field name="dyn_i">100</field>
     <field name="i_dyn">100</field>
-    <field name="facet">hundred</field>
-    <field name="dyn_facet">hundred</field>
-    <field name="facet_dyn">hundred</field>
+    <field name="inline">hundred</field>
+    <field name="dyn_inline">hundred</field>
+    <field name="inline_dyn">hundred</field>
   </doc>
   <doc>
     <field name="id">1000000</field>
@@ -63,9 +63,9 @@
     <field name="i_dyn_i">1000000</field>
     <field name="sd_dyn">one two twenty hundred,a million,a</field>
     <field name="sw_dyn">one two twenty hundred,a million,a</field>
-    <field name="facet">million</field>
-    <field name="dyn_facet">million</field>
-    <field name="facet_dyn">million</field>
+    <field name="inline">million</field>
+    <field name="dyn_inline">million</field>
+    <field name="inline_dyn">million</field>
   </doc>
   <doc>
     <field name="id">-1</field>

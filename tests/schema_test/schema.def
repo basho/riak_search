@@ -41,8 +41,8 @@
         ]},
 
         {field, [
-            {name, "facet"},
-            {facet, true}
+            {name, "inline"},
+            {inline, true}
         ]},      
 
         {dynamic_field, [       
@@ -64,8 +64,8 @@
         ]},
 
         {dynamic_field, [
-            {name, "*_facet"},
-            {facet, true}
+            {name, "*_inline"},
+            {inline, true}
         ]},
 
         {dynamic_field, [       
@@ -87,8 +87,8 @@
         ]},
 
         {dynamic_field, [
-            {name, "facet_*"},
-            {facet, true}
+            {name, "inline_*"},
+            {inline, true}
         ]},
 
         %% Test ordering...

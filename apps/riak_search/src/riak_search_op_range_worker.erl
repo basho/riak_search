@@ -34,9 +34,9 @@ start_loop(Op, OutputPid, OutputRef, _QueryProps) ->
     },
 
     %% Create filter function...
-    Facets = proplists:get_all_values(facets, Op#range_worker.options),
+    Inlines = proplists:get_all_values(inlines, Op#range_worker.options),
     Fun = fun(_DocID, Props) ->
-        riak_search_facets:passes_facets(Props, Facets)
+        riak_search_inlines:passes_inlines(Props, Inlines)
     end,
 
     %% Start streaming the results...
