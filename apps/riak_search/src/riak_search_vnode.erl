@@ -86,7 +86,8 @@ command(PrefList, Req, Sender) ->
                                    riak_search_vnode_master).
 
 sync_command(IndexNode, Msg) ->
-    riak_core_vnode_master:sync_command(IndexNode, Msg, riak_search_vnode_master).
+    riak_core_vnode_master:sync_command(IndexNode, Msg, 
+                                        riak_search_vnode_master, infinity).
 
 %%
 %% Callbacks for riak_core_vnode
@@ -100,6 +101,7 @@ init([VNodeIndex]) ->
     BMod = app_helper:get_env(riak_search, search_backend),
     Configuration = app_helper:get_env(riak_search),
     {ok, BState} = BMod:start(VNodeIndex, Configuration),
+
     {ok, #vstate{idx=VNodeIndex,
                  bmod=BMod,
                  bstate=BState}}.
