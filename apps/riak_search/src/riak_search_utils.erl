@@ -17,7 +17,6 @@
     to_integer/1,
     to_float/1,
     from_binary/1,
-    index_recursive/2,
     current_key_clock/0,
     choose/1,
     ets_keys/1,
@@ -175,31 +174,6 @@ from_binary(B) when is_binary(B) ->
     binary_to_list(B);
 from_binary(L) ->
     L.
-
-%% Recursively index the provided file or directory, running
-%% the specified function on the body of any files.
-index_recursive(Callback, Directory) ->
-    io:format(" :: Traversing directory: ~s~n", [Directory]),
-    Files = filelib:wildcard(Directory),
-    io:format(" :: Found ~p files...~n", [length(Files)]),
-
-    F = fun(File) -> index_recursive_file(Callback, File) end,
-    plists:map(F, Files, {processes, 8}),
-    ok.
-
-%% @private
-%% Full-text index the specified file.
-index_recursive_file(Callback, File) ->
-    Basename = filename:basename(File),
-    io:format(" :: Processing file: ~s~n", [Basename]),
-    case file:read_file(File) of
-        {ok, Bytes} ->
-            Callback(Basename, Bytes);
-        {error, eisdir} ->
-            index_recursive(Callback, filename:join(File, "*"));
-        Err ->
-            io:format("index_file(~p): error: ~p~n", [File, Err])
-    end.
 
 %% Return a key clock to use for revisioning IFTVPs
 current_key_clock() ->

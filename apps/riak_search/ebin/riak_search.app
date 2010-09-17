@@ -27,8 +27,8 @@
              riak_search_op_lor,
              riak_search_op_lnot,
              riak_search_op_term,
-			 riak_search_op_range,
-			 riak_search_op_range_worker,
+             riak_search_op_range,
+             riak_search_op_range_worker,
              riak_search_op_phrase,
              riak_search_op_field,
              riak_search_op_inclusive_range,
@@ -70,7 +70,7 @@
          %% Number of workers to use when indexing a directory
          {dir_index_workers, 8},
          {dir_index_stats_interval, 10},
-         {dir_index_batch_size, 100},
+         {dir_index_batch_size, 10},
          {dir_index_batch_bytes, 1048576}
         ]}
  ]}.

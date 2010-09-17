@@ -135,17 +135,34 @@ index_dir(Directory) ->
 
 %% Full text index the specified directory of plain text files.
 index_dir(Index, Directory) ->
-    riak_search_dir_indexer:start_index(Index, Directory).
+    Fun = fun(Schema, AnalyzerPid, Files) ->
+                  F = fun(File) ->
+                              {ok, Data} = file:read_file(File),
+                              DocID = riak_search_utils:to_binary(filename:basename(File)),
+                              Fields = [{Schema:default_field(), Data}],
+                              riak_indexed_doc:new(Schema:name(), DocID, Fields, [])
+                      end,
+                  IdxDocs = [F(X) || X <- Files],
+                  {ok, Client} = riak_search:local_client(),
+                  Client:index_docs(IdxDocs, AnalyzerPid)
+          end,
+    riak_search_dir_indexer:index(Index, Directory, Fun).
 
 delete_dir(Directory) ->
     delete_dir(?DEFAULT_INDEX, Directory).
 
 delete_dir(Index, Directory) ->
-    F = fun(DocId, _Body) ->
-        delete_doc(Index, DocId)
-    end,
-    riak_search_utils:index_recursive(F, Directory),
-    ok.
+    Fun = fun(Schema, _AnalyzerPid, Files) ->
+                  F = fun(File) ->
+                              DocID = riak_search_utils:to_binary(filename:basename(File)),
+                              {Schema:name(), DocID}
+                      end,
+                  IdxDocs = [F(X) || X <- Files],
+                  {ok, Client} = riak_search:local_client(),
+                  Client:delete_docs(IdxDocs)
+          end,
+    riak_search_dir_indexer:index(Index, Directory, Fun).
+    
 
 delete_doc(DocIndex, DocID) ->
     delete_docs([{DocIndex, DocID}]).

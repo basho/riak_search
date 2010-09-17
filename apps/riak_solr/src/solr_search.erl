@@ -19,16 +19,14 @@ index_dir(Directory) ->
 
 %% Full text index the specified file or directory, which is expected
 %% to contain a solr formatted file.
-index_dir(IndexOrSchema, Directory) ->
+index_dir(Index, Directory) ->
     {ok, SolrClient} = riak_solr_app:local_client(),
-    {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
-    F = fun(_BaseName, Body) ->
-        try
-            {ok, Command, Docs} = SolrClient:parse_solr_xml(Schema, Body),
-            SolrClient:run_solr_command(Schema, Command, Docs)
-        catch _ : Error ->
-            M = "Could not parse docs '~s'.~n~p~n~p~n",
-            error_logger:error_msg(M, [Schema:name(), Error, erlang:get_stacktrace()])
-        end
-    end,
-    riak_search_utils:index_recursive(F, Directory).
+    Fun = fun(Schema, _AnalyzerPid, Files) ->
+                  F = fun(File) ->
+                              {ok, Body} = file:read_file(File),
+                              {ok, Command, Docs} = SolrClient:parse_solr_xml(Schema, Body),
+                              SolrClient:run_solr_command(Schema, Command, Docs)
+                  end,
+                  [F(X) || X <- Files]
+          end,
+    riak_search_dir_indexer:index(Index, Directory, Fun).

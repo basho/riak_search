@@ -188,7 +188,7 @@ explain(DefaultIndex, Query) ->
 
 index(Index, Path) -> 
     io:format("~n :: Indexing path '~s' in ~s...~n~n", [Path, Index]),
-    riak_search_dir_indexer:index(Index, Path).
+    search:index_dir(Index, Path).
 
 delete(Index, Path) -> 
     io:format("~n :: De-Indexing path '~s' in ~s...~n~n", [Path, Index]),
