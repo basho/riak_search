@@ -1,7 +1,7 @@
 {application, riak_search_core,
  [
   {description, "Generic socket connection pool"},
-  {vsn, "0.12.0"},
+  {vsn, "0.13.0pre"},
   {registered, []},
   {applications, [
                   kernel,
