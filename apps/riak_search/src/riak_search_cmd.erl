@@ -100,8 +100,10 @@ command([CurDir, "test", Path]) ->
     test(Path1);
 
 command([_CurDir, "install", Bucket]) ->
+    io:format("~n :: Installing Riak Search <--> KV hook on bucket '~s'.~n", [Bucket]),
     riak_search_kv_hook:install(riak_search_utils:to_binary(Bucket));
 command([_CurDir, "uninstall", Bucket]) ->
+    io:format("~n :: Removing Riak Search <--> KV hook from bucket '~s'.~n", [Bucket]),
     riak_search_kv_hook:uninstall(riak_search_utils:to_binary(Bucket));
 
 command(_) ->
