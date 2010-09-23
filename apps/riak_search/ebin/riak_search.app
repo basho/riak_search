@@ -1,7 +1,7 @@
 {application, riak_search,
  [
   {description, "Riak Search"},
-  {vsn, "0.12.0"},
+  {vsn, "0.13.0rc1"},
   {modules, [
              search,
              plists,
