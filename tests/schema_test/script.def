@@ -3,11 +3,8 @@
     {schema, "schema.def"},
 
     %% Index the solr in "0"...
-    {echo,   "Indexing documents..."}, 
-    {solr,   "./solr_add.xml"},
-
-    %% Let the database catch up.
-    % {sleep,  5},
+    %% {echo,   "Indexing documents..."}, 
+    %% {solr,   "./solr_add.xml"},
 
     %% {echo,   "Verify that we find all five documents containing 'one'."},
     %% {search, "one", [{length, 5}]},
@@ -20,11 +17,11 @@
     %% {search, "whitespace:million", [{length, 0}]},
     %% {search, "whitespace:million,a", [{length, 1}]},
 
-    {echo,   "Verify inline fields."},
-    {search, "key:one", [{property, <<"inline">>, <<"one">>}]}, 
-    {search, "key:one AND inline:one", [{property, <<"inline">>, <<"one">>}]}, 
-    {search, "key:twenty", [{property, <<"inline">>, <<"twenty">>}]}, 
-    {search, "key:twenty AND inline:twenty", [{property, <<"inline">>, <<"twenty">>}]}, 
+    %% {echo,   "Verify inline fields."},
+    %% {search, "key:one", [{property, <<"inline">>, <<"one">>}]}, 
+    %% {search, "key:one AND inline:one", [{property, <<"inline">>, <<"one">>}]}, 
+    %% {search, "key:twenty", [{property, <<"inline">>, <<"twenty">>}]}, 
+    %% {search, "key:twenty AND inline:twenty", [{property, <<"inline">>, <<"twenty">>}]}, 
 
     %% {echo,   "Verify dynamic string fields."},
     %% {search, "dyn_sd:million", [{length, 1}]},
