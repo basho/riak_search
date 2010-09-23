@@ -103,8 +103,9 @@ write(Postings, Buffer) ->
 
 %% Return the number of results under this IFT.
 info(Index, Field, Term, Buffer) ->
-    Spec = [{{{Index, Field, Term, '_'}, '_', '_'}, [], [true]}],
-    ets:select_count(Buffer#buffer.table, Spec).
+    Table = Buffer#buffer.table,
+    Key = {Index, Field, Term},
+    length(ets:lookup(Table, Key)).
 
 %% Return an iterator that traverses the entire buffer.
 iterator(Buffer) ->
