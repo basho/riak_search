@@ -165,10 +165,10 @@ encode_handoff_item({Index,{Field,Term}}, VPKList) ->
    
 handle_handoff_data(<<?HANDOFF_VER:8,BinObj/binary>>,
                     #vstate{bmod=BMod,bstate=BState}=VState) ->
-    {Index,Field,Term,VPKList} = binary_to_term(BinObj),
-    [noreply = BMod:index_if_newer(Index, Field, Term, DocID, Props, KeyClock, BState) ||
-        {DocID, Props, KeyClock} <- VPKList],
-    {reply, ok, VState}.
+    {I,F,T,VPKList} = binary_to_term(BinObj),
+    IFTVPKList = [{I,F,T,V,P,K} || {V,P,K} <- VPKList],
+    {reply, {indexed, _}, NewBState} = BMod:index(IFTVPKList, BState),
+    {reply, ok, VState#vstate { bstate=NewBState }}.
 
 is_empty(VState=#vstate{bmod=BMod, bstate=BState}) ->
     {BMod:is_empty(BState), VState}.

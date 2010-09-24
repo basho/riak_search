@@ -55,7 +55,8 @@ encodings() ->
                                       "application/x-javascript",
                                       "text/javascript",
                                       "text/x-javascript",
-                                      "text/x-json"]}].
+                                      "text/x-json",
+                                      "text/json"]}].
 
 %% Substitute : and . for _
 clean_name(Name) ->

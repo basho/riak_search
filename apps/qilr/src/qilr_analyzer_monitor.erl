@@ -44,7 +44,7 @@ init([]) ->
                     error_logger:error_msg("Could not start analysis server: ~p~n", [Error]),
                     {stop, Error};
                 Port when is_port(Port) ->
-                    case connect({127,0,0,1}, PortNum + 1, [], 10) of
+                    case connect({127,0,0,1}, PortNum + 1, [], 100) of
                         {ok, Sock} ->
                             erlang:link(Port),
                             erlang:link(Sock),
