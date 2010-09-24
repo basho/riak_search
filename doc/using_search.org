@@ -23,7 +23,7 @@
 
 ** Installation
 
-*** Unzip and install Riak Search*
+*** Unzip and install Riak Search
 
     Enter the riak\_search directory and run:
 
@@ -34,7 +34,7 @@
 
     : cd rel/riaksearch
 
-*** Start Riak
+*** Start Riak Search
 
     If you are running on a Mac, set JAVA\_HOME and increase your
     filehandle limit:
@@ -103,7 +103,8 @@
    The default schema treats all fields as strings, unless you suffix
    your field name as follows:
 
-   + *FIELDNAME\_num* - Numeric field. Uses Whitespace analyzer.
+   + *FIELDNAME\_num* - Numeric field. Uses Whitespace analyzer. Values
+     are padded to 10 characters.
 
    + *FIELDNAME\_dt* - Date field. Uses Whitespace analyzer. 
 
@@ -285,7 +286,7 @@
    + *<INDEX>* - The name of an index.
 
    + *<PATH>* - Relative or absolute path to the files or directories
-               to recursively index. Wildcards are permitted.
+               to recursively delete. Wildcards are permitted.
 
    For example:
 
@@ -303,10 +304,10 @@
    : search:index_dir(Path).
    : search:index_dir(Index, Path).
 
-   + *Index* - The name of the index.
+   + *Index* - The name of the index. Defaults to *search*.
 
    + *Path* - Relative or absolute path to the files or directories to
-             recursively index. Wildcards are
+             recursively index. Wildcards are permitted.
 
    For example:
 
@@ -345,7 +346,7 @@
    + *Index* - The name of the index.
 
    + *Path* - Relative or absolute path to the files or directories to
-             recursively index. Wildcards are
+             recursively delete. Wildcards are permitted.
 
    For example:
 
