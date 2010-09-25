@@ -304,6 +304,8 @@
    : search:index_dir(Path).
    : search:index_dir(Index, Path).
 
+   Parameters:
+
    + *Index* - The name of the index. Defaults to *search*.
 
    + *Path* - Relative or absolute path to the files or directories to
@@ -343,6 +345,8 @@
    : search:delete_dir(Path).
    : search:delete_dir(Index, Path).
 
+   Parameters:
+
    + *Index* - The name of the index.
 
    + *Path* - Relative or absolute path to the files or directories to
@@ -356,7 +360,7 @@
    files found will be removed from the index. The actual contents of
    the files are ignored during this operation.
 
-   Alternatively, you can provide the fields of the document to index:
+   Alternatively, you can delete a document by it's id:
 
    : search:delete_doc(Index, DocID)
 
@@ -863,7 +867,7 @@ $ curl -X PUT -H "content-type:application/json" http://localhost:8098/riak/demo
       and Arg is a static argument to pass the function.
 
     + {struct, JsonProplist}, where JsonProplist is a list of
-      2-tuples, as mochijson2 would product from decoding a JSON
+      2-tuples, as mochijson2 would produce from decoding a JSON
       object (to allow setting this field over the HTTP interface).
       Fields that must be included are:
 
