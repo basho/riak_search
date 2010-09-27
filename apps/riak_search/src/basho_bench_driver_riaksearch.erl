@@ -9,7 +9,7 @@
 -export([
     new/1,
     run/4,
-    valgen/2,
+    valgen/3,
     file_to_array/1, file_to_array/2 % Get rid of compiler warnings.
 ]).
 
@@ -60,7 +60,7 @@ run('index', KeyGen, ValueGen, State) ->
     F = fun(_, {DocsAccIn, _}) ->
                 ID = list_to_binary(KeyGen()),
                 NewRawFields = ValueGen(State#state.fields, State#state.terms),
-                Fields = [{X, list_to_binary(string:join(Y, " "))} || {X, Y} <- NewRawFields],
+                Fields = [{list_to_binary(X), list_to_binary(string:join(Y, " "))} || {X, Y} <- NewRawFields],
                 {[{ID, Fields}|DocsAccIn], NewRawFields}
         end,
     %% Get a list of docs, plus the last RawFields entry (we only need
@@ -84,7 +84,7 @@ run(search, _KeyGen, _ValueGen, State) ->
         {{value, {QueryField, QueryTerm}}, NewQueries} ->
             %% Get the next queued query, then search...
             Node = choose(State#state.nodes),
-            {_, _} = rpc:call(Node, search, search, [QueryField ++ ":" ++ QueryTerm]),
+            {_, _} = rpc:call(Node, search, search, [list_to_binary(QueryField ++ ":" ++ QueryTerm)]),
             {ok, State#state { queries=NewQueries }};
         {empty, NewQueries} ->
             %% No queries queued up, so just search for something...
@@ -122,7 +122,7 @@ file_to_array(FilePath) ->
 %% returns a valgen function that takes an array of Fields and an
 %% array of Terms. The valgen function is then called by this module
 %% (the driver).
-valgen(MaxFields, MaxTerms) ->
+valgen(_ID, MaxFields, MaxTerms) ->
     fun(Fields, Terms) ->
         %% Get the field names...
         NumFields = random:uniform(MaxFields) + 1,
