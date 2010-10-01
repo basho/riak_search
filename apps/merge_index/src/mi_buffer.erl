@@ -110,22 +110,11 @@ info(Index, Field, Term, Buffer) ->
 %% Return an iterator that traverses the entire buffer.
 iterator(Buffer) ->
     Table = Buffer#buffer.table,
-    Keys = lists:sort(mi_utils:ets_keys(Table)),
-    fun() -> iterate_keys(Table, Keys) end.
+    List1 = lists:sort(ets:tab2list(Table)),
+    List2 = [{I,F,T,V,K,P} || {{I,F,T},V,K,P} <- List1],
+    fun() -> iterate_list(List2) end.
     
-iterate_keys(Table, [Key|Keys]) ->
-    Results1 = ets:lookup(Table, Key),
-    Results2 = [{I,F,T,V,K,P} || {{I,F,T},V,K,P} <- Results1],
-    Results3 = lists:sort(Results2),
-    iterate_keys_1(Table, Keys, Results3);
-iterate_keys(_, []) ->
-    eof.
-iterate_keys_1(Table, Keys, [Result|Results]) ->
-    {Result, fun() -> iterate_keys_1(Table, Keys, Results) end};
-iterate_keys_1(Table, Keys, []) ->
-    iterate_keys(Table, Keys).
-    
-%% Return an iterator that traverses a range of the buffer.
+%% Return an iterator that traverses the values for a term in the buffer.
 iterator(Index, Field, Term, Buffer) ->
     Table = Buffer#buffer.table,
     List1 = ets:lookup(Table, {Index, Field, Term}),
