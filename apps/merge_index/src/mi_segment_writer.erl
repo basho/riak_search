@@ -22,7 +22,7 @@
 -define(VALUES_COMPRESS_LEVEL(W), W#writer.segment_values_compression_level).
 -define(INDEX_FIELD_TERM(X), {element(1, X), element(2, X), element(3, X)}).
 -define(VALUE(X), element(4, X)).
--define(VALUE_PROPS_TSTAMP(X), {element(4, X), element(5, X), element(6, X)}).
+-define(VALUE_TSTAMP_PROPS(X), {element(4, X), element(5, X), element(6, X)}).
 
 -record(writer, {data_file,
                  offsets_table,
@@ -77,7 +77,7 @@ from_iterator({Entry, Iterator}, StartIFT, LastValue, W)
   when ?INDEX_FIELD_TERM(Entry) == StartIFT andalso
        ?VALUE(Entry) /= LastValue ->
     %% Add the next value to the segment.
-    W1 = from_iterator_process_value(?VALUE_PROPS_TSTAMP(Entry), W),
+    W1 = from_iterator_process_value(?VALUE_TSTAMP_PROPS(Entry), W),
     from_iterator(Iterator(), StartIFT, ?VALUE(Entry), W1);
 
 from_iterator({Entry, Iterator}, StartIFT, _LastValue, W) 
@@ -85,7 +85,7 @@ from_iterator({Entry, Iterator}, StartIFT, _LastValue, W)
     %% Start a new term.
     W1 = from_iterator_process_end_term(StartIFT, W),
     W2 = from_iterator_process_start_term(?INDEX_FIELD_TERM(Entry), W1),
-    W3 = from_iterator_process_value(?VALUE_PROPS_TSTAMP(Entry), W2),
+    W3 = from_iterator_process_value(?VALUE_TSTAMP_PROPS(Entry), W2),
     from_iterator(Iterator(), ?INDEX_FIELD_TERM(Entry), ?VALUE(Entry), W3);
 
 from_iterator({Entry, Iterator}, StartIFT, LastValue, W) 
@@ -98,7 +98,7 @@ from_iterator({Entry, Iterator}, undefined, undefined, W) ->
     %% Start of segment.
     W1 = from_iterator_process_start_segment(W),
     W2 = from_iterator_process_start_term(?INDEX_FIELD_TERM(Entry), W1),
-    W3 = from_iterator_process_value(?VALUE_PROPS_TSTAMP(Entry), W2),
+    W3 = from_iterator_process_value(?VALUE_TSTAMP_PROPS(Entry), W2),
     from_iterator(Iterator(), ?INDEX_FIELD_TERM(Entry), ?VALUE(Entry), W3);
 
 from_iterator(eof, StartIFT, _LastValue, W) ->
