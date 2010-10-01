@@ -49,7 +49,6 @@
 
 -define(RESULTVEC_SIZE, 1000).
 -define(DELETEME_FLAG, ".deleted").
--define(ROLLOVER_SIZE(S), S#state.buffer_rollover_size).
 
 register_buffer_converter(ServerPid, ConverterPid) ->
     gen_server:cast(ServerPid, {register_buffer_converter, ConverterPid}).
@@ -58,6 +57,9 @@ buffer_to_segment(ServerPid, Buffer, SegmentWO) ->
     gen_server:cast(ServerPid, {buffer_to_segment, Buffer, SegmentWO}).
 
 init([Root]) ->
+    %% Seed the random generator...
+    random:seed(now()),
+    
     %% Load from disk...
     filelib:ensure_dir(join(Root, "ignore")),
     io:format("Loading merge_index from '~s'~n", [Root]),
@@ -81,7 +83,7 @@ init([Root]) ->
         is_compacting = false,
         buffer_converter = {ConverterSup, undefined},
         stream_range_pids = [],
-        buffer_rollover_size=element(2,application:get_env(merge_index, buffer_rollover_size))
+        buffer_rollover_size=semi_random_rollover_size()
     },
 
     %% %% Do some profiling.
@@ -179,8 +181,8 @@ handle_call({index, Postings}, _From, State) ->
     %% Update the state...
     NewState = State#state {buffers = [CurrentBuffer | Buffers]},
 
-    %% Possibly dump buffer to a new segment...
-    case mi_buffer:filesize(CurrentBuffer) > ?ROLLOVER_SIZE(State) of
+    %% Possibly dump buffer to a new segment. 
+    case mi_buffer:filesize(CurrentBuffer) > State#state.buffer_rollover_size of
         true ->
             #state { next_id=NextID } = NewState,
             
@@ -196,7 +198,8 @@ handle_call({index, Postings}, _From, State) ->
             
             NewState1 = NewState#state {
                 buffers=[NewBuffer|NewState#state.buffers],
-                next_id=NextID + 1
+                next_id=NextID + 1,
+                buffer_rollover_size = semi_random_rollover_size()
             },
             {reply, ok, NewState1};
         false ->
@@ -688,3 +691,10 @@ join(#state { root=Root }, Name) ->
 
 join(Root, Name) ->
     filename:join([Root, Name]).
+
+%% Add some random variation (plus or minus 25%) to the rollover size
+%% so that we don't get all buffers rolling over at the same time.
+semi_random_rollover_size() ->
+    ActualRolloverSize = element(2,application:get_env(merge_index, buffer_rollover_size)),
+    Scale = 1 + (((random:uniform(100) - 50)/100) * 0.50),
+    ActualRolloverSize * Scale.
