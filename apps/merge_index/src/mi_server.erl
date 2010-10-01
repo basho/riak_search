@@ -83,7 +83,7 @@ init([Root]) ->
         is_compacting = false,
         buffer_converter = {ConverterSup, undefined},
         stream_range_pids = [],
-        buffer_rollover_size=semi_random_rollover_size()
+        buffer_rollover_size=fuzzed_rollover_size()
     },
 
     %% %% Do some profiling.
@@ -199,7 +199,7 @@ handle_call({index, Postings}, _From, State) ->
             NewState1 = NewState#state {
                 buffers=[NewBuffer|NewState#state.buffers],
                 next_id=NextID + 1,
-                buffer_rollover_size = semi_random_rollover_size()
+                buffer_rollover_size = fuzzed_rollover_size()
             },
             {reply, ok, NewState1};
         false ->
@@ -694,7 +694,6 @@ join(Root, Name) ->
 
 %% Add some random variation (plus or minus 25%) to the rollover size
 %% so that we don't get all buffers rolling over at the same time.
-semi_random_rollover_size() ->
+fuzzed_rollover_size() ->
     ActualRolloverSize = element(2,application:get_env(merge_index, buffer_rollover_size)),
-    Scale = 1 + (((random:uniform(100) - 50)/100) * 0.50),
-    ActualRolloverSize * Scale.
+    mi_utils:fuzz(ActualRolloverSize, 0.25).

@@ -12,7 +12,8 @@
          ets_keys/1,
          longest_prefix/2,
          edit_signature/2,
-         hash_signature/1
+         hash_signature/1,
+         fuzz/2
 ]).
 
 ets_keys(Table) ->
@@ -71,3 +72,9 @@ hash_signature_binary(<<C, Rest/binary>>, Acc) ->
     end;
 hash_signature_binary(<<>>, Acc) ->
     Acc.
+
+%% Add some random variation (plus or minus 25%) to the rollover size
+%% so that we don't get all buffers rolling over at the same time.
+fuzz(Value, FuzzPercent) ->
+    Scale = 1 + (((random:uniform(100) - 50)/100) * FuzzPercent * 2),
+    Value * Scale.
