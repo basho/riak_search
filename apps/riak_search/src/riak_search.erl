@@ -42,7 +42,8 @@ mapred_search(FlowPid, Options, Timeout) ->
     %% Perform a search, funnel results to the mapred job...
     F = fun(Results, Acc) ->
         %% Make the list of BKeys...
-        BKeys = [{Index, DocID} || {Index, DocID, _Props} <- Results],
+        BKeys = [{{Index, DocID}, {struct, Props}}
+                 || {Index, DocID, Props} <- Results],
         luke_flow:add_inputs(FlowPid, BKeys),
         Acc
     end,
