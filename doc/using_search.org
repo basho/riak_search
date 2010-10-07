@@ -15,10 +15,11 @@
   objects stored in that bucket are also indexed seamlessly in Riak
   Search.
    
-  You can then use a Riak Client API (currently supported in the PHP,
-  Python, Ruby, and Erlang APIs) to perform queries that return a list
-  of bucket/key pairs matching the query. Alternatively, you can use a
-  search query to kick off a Riak map/reduce operation.
+  The Riak Client API can then be used to perform Search queries that
+  return a list of bucket/key pairs matching the query. Alternatively,
+  the query results can be used as the input to a Riak map/reduce
+  operation. Currently the PHP, Python, Ruby, and Erlang APIs support
+  integration with Riak Search.
    
   Operationally, Riak Search is very similar to Riak KV. An
   administrator can add nodes to a cluster on the fly with simple
@@ -45,7 +46,7 @@
   distributed indexes. Term-partitioning was chosen because it
   provides higher overall query throughput with large data sets. (This
   can come at the expense of higher-latency queries for especially
-  large *result* sets.)
+  large result sets.)
    
   Search queries use the same syntax as Lucene, and support most
   Lucene operators including term searches, field searches, boolean
@@ -209,6 +210,7 @@
    :         {version, "1.1"},
    :         {default_field, "value"},
    :         {default_op, "or"},
+   :         {n_val, 3},
    :         {analyzer_factory, "com.basho.search.analysis.DefaultAnalyzerFactory"}
    :     ],
    :     [
@@ -257,8 +259,11 @@
     + *default\_op* - Optional. Set to "and" or "or" to define the
       default boolean. Defaults to "or".
 
+    + *v\_val* - Optional. Set the number of replicas of search
+      data. Defaults to 3.
+
     + *analyzer\_factory* - Optional. Defaults to
-      "com.basho.search.analysis.DefaultAnalyzerFactory"
+      "com.basho.search.analysis.DefaultAnalyzerFactory".
 
 *** Fields and Field-Level Properties:
 
@@ -295,6 +300,14 @@
       analyzer\_factory is defined, then the field will use the
       Whitespace analyzer. Defaults to 'string'.
 
+    + *skip* - Optional. When 'true', the field is stored, but not
+      indexed. Defaults to 'false'.
+
+    + *aliases* - Optional. A list of aliases that should be mapped to
+      the current field definition, effectively indexing multiple
+      fields of different names into the same field. Defaults to an
+      empty list.
+
     + *analyzer\_factory* - Optional. Specify the analyzer factory to
       use when parsing the field. If not specified, defaults to the
       analyzer factory for the schema. (Unless the field is an integer
@@ -302,6 +315,7 @@
 
     + *padding\_size* - Optional. Values are padded up to this
       size. Defaults to 0 for string types, 10 for integer types.
+
 
 * Indexing
 
@@ -1031,6 +1045,20 @@
    Here are a few examples of how to kick off a map/reduce query with
    a Search process using other clients:
 
+*** Python Client
+    
+    See client documentation for more information.
+
+*** PHP Client
+
+    See client documentation for more information.
+
+*** Ruby Client
+   
+    See client documentation for more information.
+
+*** Erlang Client 
+
    Erlang Protocol Buffers Client (the Erlang HTTP client looks the
    same, except for a different module name):
 
@@ -1040,7 +1068,9 @@
    :     [<<"article">>, <<"text:seven">>]},
    :    [...normal mapreduce query phases...]).
 
-   TODO Python, Java, PHP, Javascript, Ruby
+*** Javascript and Java Clients
+
+    Not yet supported.
 
 * Operations and Troubleshooting
 
@@ -1066,6 +1096,9 @@
    exposing these ports to the outside world.
 
 ** Merge Index Settings
+
+   These settings can be found in the Riak Search app.config file
+   under the "merge_index" section.
 
    + data\_root :: Set to the location where data files are written,
                    relative to the Riak Search root directory.
