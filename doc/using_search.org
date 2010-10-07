@@ -1,16 +1,80 @@
 #+SETUPFILE: "basho-search-doc-style.iorg"
-#+TITLE: Riak Search 0.12 Manual
+#+TITLE: Riak Search 0.13 Manual
 #+AUTHOR: Basho Technologies
-#+DATE: 20 July 2010
+#+DATE: October 2010
 
 * Introduction
 
-  Basho Riak Search is a distributed index and full-text search engine
-  built on top of (and complementary to) Basho Riak. Just like Riak,
-  Search allows you to store your data in a distributed fashion
-  designed for easy operations. You can add physical servers to gain
-  capacity and performance, and if a node fails the cluster continues
-  to function.
+  Riak Search is a distributed, easily-scalable, failure-tolerant,
+  real-time, full-text search engine built around Riak Core and
+  tightly integrated with Riak KV.
+   
+  Riak Search allows you to find and retrieve your Riak objects using
+  the objects' values. When a Riak KV bucket has been enabled for
+  Search integration (by installing the Search pre-commit hook), any
+  objects stored in that bucket are also indexed seamlessly in Riak
+  Search.
+   
+  You can then use a Riak Client API (currently supported in the PHP,
+  Python, Ruby, and Erlang APIs) to perform queries that return a list
+  of bucket/key pairs matching the query. Alternatively, you can use a
+  search query to kick off a Riak map/reduce operation.
+   
+  Operationally, Riak Search is very similar to Riak KV. An
+  administrator can add nodes to a cluster on the fly with simple
+  commands to increase performance or capacity. Index and query
+  operations can be run from any node. Multiple replicas of data are
+  stored, allowing the cluster to continue serving full results in the
+  face of machine failure. Partitions are handed off and replicated
+  across clusters using the same mechanisms as Riak KV.
+   
+  At index time, Riak Search tokenizes a document into an inverted
+  index using standard Lucene Analyzers. (For improved performance,
+  the team re-implemented some of these in Erlang to reduce hops
+  between Erlang and Java.) Custom analyzers can be created in either
+  Java or Erlang. The system consults a schema (defined per-index) to
+  determine required fields, the unique key, the default analyzer, and
+  which analyzer should be used for each field. Field aliases
+  (grouping multiple fields into one field) and dynamic fields
+  (wildcard field matching) are supported.
+   
+  After analyzing a document into an inverted index, the system uses a
+  consistent hash to divide the inverted index entries--called
+  postings--by term across the cluster. This is called
+  term-partitioning and is a key difference from other commonly used
+  distributed indexes. Term-partitioning was chosen because it
+  provides higher overall query throughput with large data sets. (This
+  can come at the expense of higher-latency queries for especially
+  large *result* sets.)
+   
+  Search queries use the same syntax as Lucene, and support most
+  Lucene operators including term searches, field searches, boolean
+  operators, grouping, lexicographical range queries, and wildcards
+  (at the end of a word only).
+   
+  Querying has two distinct stages, planning and execution. During
+  query planning, the system creates a directed graph of the query,
+  grouping points on the graph in order to maximize data locality and
+  minimize inter-node traffic. Single term queries can be executed on
+  a single node, while range queries and fuzzy matches are executed
+  using the minimal set of nodes that cover the query.
+   
+  As the query executes, Riak Search uses a series of merge-joins,
+  merge-intersections, and filters to generate the resulting set of
+  matching bucket/key pairs.
+   
+  For a backing store, the Riak Search team developed
+  merge\_index. merge\_index takes inspiration from the Lucene file
+  format, Bitcask (our standard backing store for Riak KV), and
+  SSTables (from Google's BigTable paper), and was designed to have a
+  simple, easily-recoverable data structure, to allow simultaneous
+  reads and writes with no performance degredation, and to be
+  forgiving of write bursts while taking advantage of low-write
+  periods to perform data compactions and optimizations.
+   
+  Note that Riak Search should be considered beta software. Please be
+  aware that there may be bugs and issues that we have not yet covered
+  that may require a full data reload with the next version.
 
 ** Requirements
 
@@ -736,19 +800,15 @@
    Adding the Search precommit hook to a bucket from the command line
    is easy:
 
-```
-$ bin/search-cmd install my_bucket_name
-'''
+   : $ bin/search-cmd install my_bucket_name
 
    Any other method you would normally use to set bucket properties
    can also be used to enable the Search precommit hook as well.  For
    example, using curl to install over HTTP:
 
-```
-$ curl -X PUT -H "content-type:application/json" http://localhost:8098/riak/demo2 --data @-
-{"props":{"precommit":[{"mod":"riak_search_kv_hook","fun":"precommit"}]}}
-^D
-'''
+   : $ curl -X PUT -H "content-type:application/json" http://localhost:8098/riak/demo2 --data @-
+   : {"props":{"precommit":[{"mod":"riak_search_kv_hook","fun":"precommit"}]}}
+   : ^D
 
    Note, though, that you may want to read the bucket properties
    first, so you don't clobber any precommit hook already in place.
@@ -771,27 +831,25 @@ $ curl -X PUT -H "content-type:application/json" http://localhost:8098/riak/demo
 
     Specifying that your data is in JSON format will cause Riak
     Search to use the field names of the JSON object as index field
-    names.  Nested objects will use underscore ('_') as a field name
+    names.  Nested objects will use underscore ('\_') as a field name
     separator.
 
     For example, storing the following JSON object in a Search-enabled
     bucket:
 
-```
-{
- "name":"Alyssa P. Hacker"
- "bio":"I'm an engineer, making awesome things."
- "favorites":{
-              "book":"The Moon is a Harsh Mistress",
-              "album":"Magical Mystery Tour",
-             }
-}
-'''
+    : {
+    :  "name":"Alyssa P. Hacker"
+    :  "bio":"I'm an engineer, making awesome things."
+    :  "favorites":{
+    :               "book":"The Moon is a Harsh Mistress",
+    :               "album":"Magical Mystery Tour",
+    :              }
+    : }
 
    Would cause four fields to be indexed: "name", "bio",
-   "favorites_book", and "favorites_album".  You could later query
+   "favorites\_book", and "favorites\_album".  You could later query
    this data with queries like,
-   "bio:enginer AND favorites_album:mystery".
+   "bio:enginer AND favorites\_album:mystery".
 
 *** XML Encoded Data
 
@@ -807,25 +865,23 @@ $ curl -X PUT -H "content-type:application/json" http://localhost:8098/riak/demo
     For example, storing the following XML object in a Search-enabled
     bucket:
 
-```
-<?xml version="1.0"?>
-<person>
-   <name>Alyssa P. Hacker</name>
-   <bio>I'm an engineer, making awesome things.</bio>
-   <favorites>
-      <item type="book">The Moon is a Harsh Mistress</item>
-      <item type="album">Magical Mystery Tour</item>
-   </favorites>
-</person>
-'''
+    : <?xml version="1.0"?>
+    : <person>
+    :    <name>Alyssa P. Hacker</name>
+    :    <bio>I'm an engineer, making awesome things.</bio>
+    :    <favorites>
+    :       <item type="book">The Moon is a Harsh Mistress</item>
+    :       <item type="album">Magical Mystery Tour</item>
+    :    </favorites>
+    : </person>
 
-   Would cause four fields to be indexed: "person_name", "person_bio",
-   "person_favorites_item", and "person_favorite_item@type".  The
-   values of the "..._item" and "..._item@type" fields will be the
+   Would cause four fields to be indexed: "person\_name", "person\_bio",
+   "person\_favorites\_item", and "person\_favorite\_item@type".  The
+   values of the "...\_item" and "...\_item@type" fields will be the
    concatenation of the two distinct elements in the object ("The Moon
    is a Harsh Mistress Magical Mystery Tour" and "book album",
    respectively).  You could later query this data with queries like,
-   "person_bio:enginer AND person_favorites_item:mystery".
+   "person\_bio:enginer AND person\_favorites\_item:mystery".
 
 *** Plain-text Data
 
@@ -844,7 +900,7 @@ $ curl -X PUT -H "content-type:application/json" http://localhost:8098/riak/demo
     field name or value extraction to behave differently, you may also
     write your own extractor.  To tell Riak Search where to find your
     customer extractor for your bucket, set the bucket property
-    'rs_extractfun' to one of the following values:
+    'rs\_extractfun' to one of the following values:
 
     + {modfun, Module, Function}, where Module and Function name an
       Erlang module and function to call for extraction (more on that
@@ -860,7 +916,7 @@ $ curl -X PUT -H "content-type:application/json" http://localhost:8098/riak/demo
       function to call for extraction.
 
     + {jsfun, Name}, where Name is the name of a pre-defined
-      Javascript function, stored in a file in your js_path, to call
+      Javascript function, stored in a file in your js\_path, to call
       for extraction.
 
     + {FunTerm, Arg}, where FunTerm is any of the above constructions,
@@ -890,7 +946,7 @@ $ curl -X PUT -H "content-type:application/json" http://localhost:8098/riak/demo
       + "arg", optional, a static argument to pass the function
 
       Any of the extractor forms must name a function that takes two
-      arguments.  The first argument will be a riak_object to index,
+      arguments.  The first argument will be a riak\_object to index,
       and the second argument will be the static arguments given (or
       'undefined' if none are given).
 
@@ -898,26 +954,22 @@ $ curl -X PUT -H "content-type:application/json" http://localhost:8098/riak/demo
       field-name:value pairs.  Erlang functions should do this with a
       list of 2-tuples, with each element being a binary, as in:
 
-```
-[
- {<<"field1">>,<<"value1">>},
- {<<"field2">>,<<"value2">>}
-]
-'''
+      : [
+      :  {<<"field1">>,<<"value1">>},
+      :  {<<"field2">>,<<"value2">>}
+      : ]
 
       Javascript functions should return their results with an object,
       as in:
 
-```
-{
- "field1":"value1",
- "field2":"value2"
-}
-'''
+      : {
+      :  "field1":"value1",
+      :  "field2":"value2"
+      : }
 
-    The modules riak_search_kv_json_extractor,
-    riak_search_kv_xml_extractor, and riak_search_kv_raw_extractor
-    should be referred to for examples.
+      The modules riak\_search\_kv\_json\_extractor,
+      riak\_search\_kv\_xml\_extractor, and riak\_search\_kv\_raw\_extractor
+      should be referred to for examples.
 
 *** Field Types
 
@@ -928,7 +980,7 @@ $ curl -X PUT -H "content-type:application/json" http://localhost:8098/riak/demo
 
     If you do not specify a schema, the default will be used.  The
     default schema indexes all fields as string values, unless they
-    end in "_num" or "_dt", where they will be indexed as integers or
+    end in "\_num" or "\_dt", where they will be indexed as integers or
     dates, respectively.
 
     You may define your own schema for your KV indexes, in the same
@@ -944,30 +996,26 @@ $ curl -X PUT -H "content-type:application/json" http://localhost:8098/riak/demo
 
    The syntax is fairly simple.  In the "inputs" section of your
    map/reduce query, use the new "modfun" specification, naming
-   "riak_search" as your module, "mapred_search" as your function, and
+   "riak\_search" as your module, "mapred\_search" as your function, and
    your index and query as the arguments.
 
    For example, if you wanted to search the "article" bucket for
    objects that had the word "seven" in their "text" field, you would
    normally issue a Solr query like:
 
-```
-$ curl http://localhost:8098/solr/article/select?q=text:seven
-'''
+   : $ curl http://localhost:8098/solr/article/select?q=text:seven
 
    Kicking off a map/reduce query with the same result set over HTTP
    would use a POST body like this:
 
-```
-{
- "inputs": {
-            "module":"riak_search",
-            "function":"mapred_search",
-            "arg":["article","text:seven"]
-           },
- "query":...
-}
-'''
+   : {
+   :  "inputs": {
+   :             "module":"riak_search",
+   :             "function":"mapred_search",
+   :             "arg":["article","text:seven"]
+   :            },
+   :  "query":...
+   : }
 
    The phases in the "query" field should be exactly the same as
    usual.  An initial map phase will be given each object matching the
@@ -986,13 +1034,11 @@ $ curl http://localhost:8098/solr/article/select?q=text:seven
    Erlang Protocol Buffers Client (the Erlang HTTP client looks the
    same, except for a different module name):
 
-```
-riak_pb_socket:mapred(
-   Client,
-   {modfun, riak_search, mapred_search,
-    [<<"article">>, <<"text:seven">>]},
-   [...normal mapreduce query phases...]).
-'''
+   : riak_pb_socket:mapred(
+   :    Client,
+   :    {modfun, riak_search, mapred_search,
+   :     [<<"article">>, <<"text:seven">>]},
+   :    [...normal mapreduce query phases...]).
 
    TODO Python, Java, PHP, Javascript, Ruby
 
@@ -1024,15 +1070,15 @@ riak_pb_socket:mapred(
    + data\_root :: Set to the location where data files are written,
                    relative to the Riak Search root directory.
 
-   + buffer_rollover_size :: Maximum size of the in-memory buffer
+   + buffer\_rollover\_size :: Maximum size of the in-memory buffer
         before it is transformed to a segment and written to
         disk. Higher numbers will result in faster indexing
         but more memory usage.
 
-   + buffer_delayed_write_size :: Bytes to accumulate in the
+   + buffer\_delayed\_write\_size :: Bytes to accumulate in the
         write-ahead log before flushing to disk.
 
-   + buffer_delayed_write_ms :: Interval to flush write-ahead log to disk.
+   + buffer\_delayed\_write\_ms :: Interval to flush write-ahead log to disk.
 
    + max\_compact\_segments :: The maximum number of segments to
         compact during a compaction. Smaller values will to quicker
@@ -1040,43 +1086,43 @@ riak_pb_socket:mapred(
         partition, at the expense of more frequent compactions, and a
         higher likelihood of compacting the same data multiple times.
 
-   + segment_query_read_ahead_size :: Size of the file read-ahead
+   + segment\_query\_read\_ahead\_size :: Size of the file read-ahead
         buffer, in bytes, to use when looking up results in a query.
 
-   + segment_compact_read_ahead_size :: Size of the file read-ahead
+   + segment\_compact\_read\_ahead\_size :: Size of the file read-ahead
         buffer, in bytes, to use when reading a segment for compaction.
 
-   + segment_file_buffer_size :: Amount of segment compaction data to
+   + segment\_file\_buffer\_size :: Amount of segment compaction data to
         batch, in bytes, before writing to the file handle. This should be less
-        than or equal to segment_delayed_write_size, otherwise that
+        than or equal to segment\_delayed\_write\_size, otherwise that
         setting will have no effect.
 
-   + segment_delayed_write_size :: Size of the delayed write buffer in
+   + segment\_delayed\_write\_size :: Size of the delayed write buffer in
         bytes. Once this is exceeded, the compaction buffer is flushed
         to disk.
 
-   + segment_delayed_write_ms :: Interval at which data will be
+   + segment\_delayed\_write\_ms :: Interval at which data will be
         written to a file during compaction.
 
-   + segment_full_read_size :: Segment files below this size will be
+   + segment\_full\_read\_size :: Segment files below this size will be
         read into memory during a compaction for higher performance at
         the cost of more RAM usage. This setting plus
-        *max_compact_segments* directly affects the maximum amount of
+        *max\_compact\_segments* directly affects the maximum amount of
         RAM that a compaction can take.
 
-   + segment_block_size :: Determines the block size across which a
+   + segment\_block\_size :: Determines the block size across which a
         segment will calculate offsets and lookup information. Setting
         to a lower value will increase query performance, but will
         also lead to more RAM and disk usage.
 
-   + segment_values_staging_size :: Maximum number of values to hold
+   + segment\_values\_staging\_size :: Maximum number of values to hold
         in memory before compressing the batch and adding to the
         output buffer.
 
-   + segment_values_compression_threshold :: Since compression is more
+   + segment\_values\_compression\_threshold :: Since compression is more
         effective with a larger number of values, this is the number
         of values that must be present in a batch before the system
         compresses the batch.
 
-   + segment_values_compression_level :: zlib compression level to use
+   + segment\_values\_compression\_level :: zlib compression level to use
         when compressing a batch of values.
