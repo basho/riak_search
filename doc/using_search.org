@@ -746,6 +746,67 @@
 
    : curl "http://localhost:8098/solr/books/select?start=0&rows=10000&q=prog*"
 
+** Querying via the Riak Client API
+*** Basic Querying
+
+    The Riak Client API's have been updated to support querying of
+    Riak Search. See the client documentation for more
+    information. Currently, the Ruby, Python, PHP, and Erlang clients
+    are supported.
+
+    The API takes a default search index as well as as search query,
+    and returns a list of bucket/key pairs. Some clients transform
+    this list into objects specific to that client.
+
+*** Querying Integrated with Map/Reduce
+
+    The Riak Client APIs that integrate with Riak Search also support
+    using a search query to generate inputs for a map/reduce
+    operation. This allows you to perform powerful analysis and
+    computation across your data based on a search query. See the
+    client documentation for more information. Currently, the Ruby,
+    Python, PHP, and Erlang clients are supported.
+
+*** Querying via HTTP/Curl
+ 
+    Developers who are using a language without an official Riak API
+    or prefer to use the pure HTTP API can still execute a
+    search-based map/reduce operation.
+
+    The syntax is fairly simple.  In the "inputs" section of your
+    map/reduce query, use the new "modfun" specification, naming
+    "riak\_search" as your module, "mapred\_search" as your function, and
+    your index and query as the arguments.
+ 
+    For example, if you wanted to search the "article" bucket for
+    objects that had the word "seven" in their "text" field, you would
+    normally issue a Solr query like:
+ 
+    : $ curl http://localhost:8098/solr/article/select?q=text:seven
+ 
+    Kicking off a map/reduce query with the same result set over HTTP
+    would use a POST body like this:
+ 
+    : {
+    :  "inputs": {
+    :             "module":"riak_search",
+    :             "function":"mapred_search",
+    :             "arg":["article","text:seven"]
+    :            },
+    :  "query":...
+    : }
+ 
+    The phases in the "query" field should be exactly the same as
+    usual.  An initial map phase will be given each object matching the
+    search for processing, but an initial link phase or reduce phase
+    will also work.
+ 
+    The "arg" field of the inputs specification is always a two-element
+    list.  The first element is the name of the bucket you wish to
+    search, and the second element is the query to search for.  All
+    syntax available in other Search interfaces is available in this
+    query parameter.
+
 ** Faceted Queries via the Solr Interfae
 
    *NOTE:* Facet querying through the Solr interface is not yet supported.
@@ -1000,77 +1061,6 @@
     You may define your own schema for your KV indexes, in the same
     manner as you would define a schema for non-KV indexes.  Just make
     sure the field names match those produced by the extractor in use.
-
-** Querying Integrated with Map/Reduce
-
-   Riak KV data that has been indexed by Search can be queried using
-   any of the interfaces already discussed (such as the Solr HTTP
-   interface, and the search-cmd script), but is also available for
-   use in map/reduce queries.
-
-   The syntax is fairly simple.  In the "inputs" section of your
-   map/reduce query, use the new "modfun" specification, naming
-   "riak\_search" as your module, "mapred\_search" as your function, and
-   your index and query as the arguments.
-
-   For example, if you wanted to search the "article" bucket for
-   objects that had the word "seven" in their "text" field, you would
-   normally issue a Solr query like:
-
-   : $ curl http://localhost:8098/solr/article/select?q=text:seven
-
-   Kicking off a map/reduce query with the same result set over HTTP
-   would use a POST body like this:
-
-   : {
-   :  "inputs": {
-   :             "module":"riak_search",
-   :             "function":"mapred_search",
-   :             "arg":["article","text:seven"]
-   :            },
-   :  "query":...
-   : }
-
-   The phases in the "query" field should be exactly the same as
-   usual.  An initial map phase will be given each object matching the
-   search for processing, but an initial link phase or reduce phase
-   will also work.
-
-   The "arg" field of the inputs specification is always a two-element
-   list.  The first element is the name of the bucket you wish to
-   search, and the second element is the query to search for.  All
-   syntax available in other Search interfaces is available in this
-   query parameter.
-
-   Here are a few examples of how to kick off a map/reduce query with
-   a Search process using other clients:
-
-*** Python Client
-    
-    See client documentation for more information.
-
-*** PHP Client
-
-    See client documentation for more information.
-
-*** Ruby Client
-   
-    See client documentation for more information.
-
-*** Erlang Client 
-
-   Erlang Protocol Buffers Client (the Erlang HTTP client looks the
-   same, except for a different module name):
-
-   : riak_pb_socket:mapred(
-   :    Client,
-   :    {modfun, riak_search, mapred_search,
-   :     [<<"article">>, <<"text:seven">>]},
-   :    [...normal mapreduce query phases...]).
-
-*** Javascript and Java Clients
-
-    Not yet supported.
 
 * Operations and Troubleshooting
 
