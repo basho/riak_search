@@ -996,10 +996,6 @@
 
     + {qfun, Fun}, where Fun is a function to call for extraction.
 
-    + {jsanon, {Bucket, Key}}, where Bucket and Key name a Riak object
-      that contains the source of a Javascript function to call for
-      extraction.
-
     + {jsanon, Source}, where Source is the source of a Javascript
       function to call for extraction.
 
