@@ -999,6 +999,10 @@
     + {jsanon, Source}, where Source is the source of a Javascript
       function to call for extraction.
 
+    + {jsanon, {Bucket, Key}}, where Bucket and Key are binaries
+      naming an object stored in Riak, whose value is the source of a
+      Javascript function to call for extraction
+
     + {jsfun, Name}, where Name is the name of a pre-defined
       Javascript function, stored in a file in your js\_path, to call
       for extraction.
@@ -1026,6 +1030,10 @@
 
         + "name", the name of a predefined function to run (as with
           the 'jsfun' construction above)
+
+        + "bucket" and "key", a reference to a Riak object storing the
+          source of the function to run (as with the alternate
+          'jsanon' construction above)
 
       + "arg", optional, a static argument to pass the function
 

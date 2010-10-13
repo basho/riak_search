@@ -148,12 +148,20 @@ erlify_json_funterm(<<"erlang">>, Props) ->
 erlify_json_funterm(<<"javascript">>, Props) ->
     Source = proplists:get_value(<<"source">>, Props, undefined),
     Name = proplists:get_value(<<"name">>, Props, undefined),
+    Bucket = proplists:get_value(<<"bucket">>, Props, undefined),
+    Key = proplists:get_value(<<"key">>, Props, undefined),
     Arg = proplists:get_value(<<"arg">>, Props, undefined),
     case Source of
         undefined ->
             case Name of
                 undefined ->
-                    throw("javascript kv/search extractor must have name or source");
+                    case (Bucket == undefined) orelse (Key == undefined) of
+                        true ->
+                            throw("javascript kv/search extractor must have"
+                                  "name, source, or bucket and key");
+                        _ ->
+                            {{jsanon, {Bucket, Key}}, Arg}
+                    end;
                 _ ->
                     {{jsfun, Name}, Arg}
             end;
@@ -250,8 +258,20 @@ run_extract(RiakObject, {{modfun, Mod, Fun}, Arg}) ->
     Mod:Fun(RiakObject, Arg);
 run_extract(RiakObject, {{qfun, Fun}, Arg}) ->
     Fun(RiakObject, Arg);
-run_extract(RiakObject, {JsFunTerm, Arg}) when element(1, JsFunTerm) == jsanon; 
-                                               element(1, JsFunTerm) == jsfun ->
+run_extract(RiakObject, {{Js, FunTerm}, Arg})
+  when Js == jsanon; Js == jsfun ->
+    Fun = if is_binary(FunTerm) -> FunTerm;
+             is_tuple(FunTerm) ->
+                  {Bucket, Key} = FunTerm,
+                  {ok, Client} = riak:local_client(),
+                  try 
+                      {ok, JSObj} = Client:get(Bucket, Key, 1),
+                      hd(riak_object:get_values(JSObj))
+                  catch
+                      error:{badmatch,{error,notfound}} ->
+                          throw({fail, {"Extractor not found", {Bucket, Key}}})
+                  end
+          end,
     JsRObj = riak_object:to_json(RiakObject),
     case Arg of
         undefined ->
@@ -259,7 +279,7 @@ run_extract(RiakObject, {JsFunTerm, Arg}) when element(1, JsFunTerm) == jsanon;
         _ ->
             JsArg = Arg
     end,
-    case riak_kv_js_manager:blocking_dispatch({JsFunTerm, [JsRObj, JsArg]}, 5) of
+    case riak_kv_js_manager:blocking_dispatch({{Js, Fun}, [JsRObj, JsArg]}, 5) of
         {ok, <<"fail">>} ->
             throw(fail);
         {ok, [{<<"fail">>, Message}]} ->
