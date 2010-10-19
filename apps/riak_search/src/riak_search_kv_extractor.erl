@@ -57,7 +57,9 @@ encodings() ->
                                       "text/x-javascript",
                                       "text/x-json",
                                       "text/json"]},
-     {riak_search_kv_erlang_extractor, ["application/x-erlang"]}].
+     {riak_search_kv_erlang_extractor, ["application/x-erlang"]},
+     {riak_search_kv_erlang_binary_extractor,
+      ["application/x-erlang-binary"]}].
 
 %% Substitute : and . for _
 clean_name(Name) ->
@@ -85,6 +87,7 @@ extractor_test() ->
                    {baz, [{<<"quux">>, <<"zoom">>}]}],
     ErlangFields = [{<<"foo">>, <<"bar">>},
                     {<<"baz_quux">>, <<"zoom">>}],
+    ErlangBinary = term_to_binary(ErlangData),
 
     Tests = [{JsonData, "application/json", JsonFields},
              {JsonData, "application/x-javascript", JsonFields},
@@ -95,7 +98,8 @@ extractor_test() ->
              {XmlData,  "text/xml", XmlFields},
              {PlainData,"text/plain", PlainFields},
              {PlainData, undefined, PlainFields},
-             {ErlangData, "application/x-erlang", ErlangFields}],
+             {ErlangData, "application/x-erlang", ErlangFields},
+             {ErlangBinary, "application/x-erlang-binary", ErlangFields}],
     check_expected(Tests).
 
 check_expected([]) ->

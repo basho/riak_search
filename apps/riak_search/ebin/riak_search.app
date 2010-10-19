@@ -22,6 +22,7 @@
              riak_search_kv_raw_extractor,
              riak_search_kv_xml_extractor,
              riak_search_kv_erlang_extractor,
+             riak_search_kv_erlang_binary_extractor,
              riak_search_op,
              riak_search_op_land,
              riak_search_op_lor,
