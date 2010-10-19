@@ -56,7 +56,8 @@ encodings() ->
                                       "text/javascript",
                                       "text/x-javascript",
                                       "text/x-json",
-                                      "text/json"]}].
+                                      "text/json"]},
+     {riak_search_kv_erlang_extractor, ["application/x-erlang"]}].
 
 %% Substitute : and . for _
 clean_name(Name) ->
@@ -80,6 +81,10 @@ extractor_test() ->
                  {<<"t1">>, <<"def">>}],
     PlainData = <<"the quick brown fox">>,
     PlainFields = [{<<"value">>, <<"the quick brown fox">>}],
+    ErlangData = [{<<"foo">>,<<"bar">>},
+                   {baz, [{<<"quux">>, <<"zoom">>}]}],
+    ErlangFields = [{<<"foo">>, <<"bar">>},
+                    {<<"baz_quux">>, <<"zoom">>}],
 
     Tests = [{JsonData, "application/json", JsonFields},
              {JsonData, "application/x-javascript", JsonFields},
@@ -89,7 +94,8 @@ extractor_test() ->
              {XmlData,  "application/xml", XmlFields},
              {XmlData,  "text/xml", XmlFields},
              {PlainData,"text/plain", PlainFields},
-             {PlainData, undefined, PlainFields}],
+             {PlainData, undefined, PlainFields},
+             {ErlangData, "application/x-erlang", ErlangFields}],
     check_expected(Tests).
 
 check_expected([]) ->

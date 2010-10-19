@@ -155,6 +155,7 @@ to_binary(L) when is_list(L) -> list_to_binary(L).
 to_utf8(A) when is_atom(A) -> atom_to_binary(A, utf8);
 to_utf8(B) when is_binary(B) -> B;
 to_utf8(I) when is_integer(I) -> to_utf8(integer_to_list(I));
+to_utf8(F) when is_float(F) -> to_utf8(mochinum:digits(F));
 to_utf8(L) when is_list(L) -> unicode:characters_to_binary(L).
 
 
