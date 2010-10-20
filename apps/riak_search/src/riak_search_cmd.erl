@@ -22,6 +22,7 @@ usage() ->
 
     search-cmd set_schema [INDEX] SCHEMAFILE : Set schema for an index.
     search-cmd show_schema [INDEX]           : Display the schema for an index.
+    search-cmd clear_schema_cache            : Empty the schema cache on all nodes.
     search-cmd shell [INDEX]                 : Start the interactive Search shell.
     search-cmd search [INDEX] QUERY          : Perform a search.
     search-cmd search_doc [INDEX] QUERY      : Perform a document search.
@@ -48,6 +49,10 @@ command([_CurDir, "show_schema"]) ->
     show_schema(?DEFAULT_INDEX);
 command([_CurDir, "show_schema", Index]) ->
     show_schema(Index);
+
+%% Clear Schema Cache
+command([_CurDir, "clear_schema_cache"]) ->
+    clear_schema_cache();
 
 %% Shell
 command([_CurDir, "shell"]) -> 
@@ -132,6 +137,25 @@ show_schema(Index) ->
             io:format("~n~s~n", [RawSchemaBinary]);
         Error ->
             io:format(" :: ERROR: ~p~n", [Error])
+    end.
+
+clear_schema_cache() ->
+    io:format("~n :: Clearing schema caches...~n"),
+    {Results, BadNodes} = riak_core_util:rpc_every_member(
+                            riak_search_config, clear, [], 30000),
+    io:format(" :: Cleared caches on ~b nodes~n",
+              [length([ok || ok <- Results])]),
+    case [ R || R <- Results, R =/= ok ] of
+        [] -> ok;
+        Errors ->
+            io:format(" :: Received ~b errors:~n", [length(Errors)]),
+            [ io:format("    ~p~n", [E]) || E <- Errors ]
+    end,
+    case BadNodes of
+        [] -> ok;
+        _ ->
+            io:format(" :: ~p nodes did not respond:~n", [length(BadNodes)]),
+            [ io:format("    ~p~n", [N]) || N <- BadNodes ]
     end.
 
 shell(Index) -> 
