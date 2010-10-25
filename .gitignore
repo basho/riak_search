@@ -8,3 +8,4 @@ apps/qilr/include/analysis_pb.hrl
 apps/qilr/src/qilr_parse.erl
 apps/qilr/src/qilr_scan.erl
 build
+rel/riaksearch
