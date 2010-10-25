@@ -16,7 +16,7 @@ public class DefaultAnalyzerFactory implements AnalyzerFactory {
       TokenStream stream = new StandardTokenizer(version, input);
       stream = new LengthFilter(stream, 3, Integer.MAX_VALUE);
       stream = new LowerCaseFilter(stream);
-      stream = new StopFilter(false, stream, StopAnalyzer.ENGLISH_STOP_WORDS_SET);
+      stream = new StopFilter(true, stream, StopAnalyzer.ENGLISH_STOP_WORDS_SET);
       return stream;
    }
 

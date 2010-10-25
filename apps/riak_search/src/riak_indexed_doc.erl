@@ -251,7 +251,9 @@ analyze_field(FieldName, FieldValue, Schema, AnalyzerPid) ->
 get_term_positions(Terms) ->
     %% Use a table to accumulate a list of term positions.
     Table = ets:new(positions, [duplicate_bag]),
-    F1 = fun(Term, Pos) ->
+    F1 = fun(skip, Pos) ->
+                Pos + 1;
+            (Term, Pos) ->
                 ets:insert(Table, [{Term, Pos}]),
                 Pos + 1
         end,

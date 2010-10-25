@@ -26,17 +26,21 @@ default(<<$.,H,T/binary>>, MinLength, Acc) when ?UPPERCHAR(H) ->
     default(T, MinLength, [H1,$.|Acc]);
 default(<<$.,H,T/binary>>, MinLength, Acc) when ?LOWERCHAR(H) orelse ?NUMBER(H) ->
     default(T, MinLength, [H,$.|Acc]);
-default(<<_,T/binary>>, MinLength, Acc) when length(Acc) >= MinLength->
+default(<<_,T/binary>>, MinLength, Acc) ->
     default_termify(T, MinLength, Acc);
-default(<<_,T/binary>>, MinLength, _) ->
-    default(T, MinLength, []);
-default(<<>>, MinLength, Acc) when length(Acc) >= MinLength ->
-    default_termify(<<>>, MinLength, Acc);
-default(<<>>, _MinLength, _Acc) ->
-    [].
+default(<<>>, MinLength, Acc) ->
+    default_termify(<<>>, MinLength, Acc).
 
 %% Determine if this term is valid, if so, add it to the list we are
 %% generating.
+default_termify(<<>>, _MinLength, []) ->
+    [];
+default_termify(T, MinLength, []) ->
+    default(T, MinLength, []);
+default_termify(T, MinLength, Acc) when length(Acc) < MinLength ->
+    %% mimic org.apache.lucene.analysis.LengthFilter,
+    %% which does not incement position index
+    default(T, MinLength, []);
 default_termify(T, MinLength, Acc) ->
     Term = lists:reverse(Acc),
     case is_stopword(Term) of
@@ -44,7 +48,7 @@ default_termify(T, MinLength, Acc) ->
             TermBinary = list_to_binary(Term),
             [TermBinary|default(T, MinLength, [])];
         true -> 
-            default(T, MinLength, [])
+            [skip|default(T, MinLength, [])]
     end.
 
 is_stopword(Term) when length(Term) == 2 -> 
