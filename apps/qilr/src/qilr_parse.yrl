@@ -432,10 +432,11 @@ analyze_word(Text0) ->
         false ->
 	    DefaultField = Schema:find_field(Schema:default_field()),
             AnalyzerFactory = Schema:analyzer_factory(DefaultField),
-	    case qilr_analyzer:analyze(Pid, Text, AnalyzerFactory) of
-                {ok, []} ->
+	    {ok, T0} = qilr_analyzer:analyze(Pid, Text, AnalyzerFactory),
+            case [ W || W <- T0, W /= skip ] of
+                [] ->
                     '$empty';
-		{ok, T} ->
+                T ->
                     T
             end
     end.

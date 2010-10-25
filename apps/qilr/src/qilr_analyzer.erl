@@ -160,7 +160,7 @@ parse_results(Results) ->
                     C == 0 ->
                         case Curr of
                             [] ->
-                                {Curr, Acc};
+                                {Curr, [skip|Acc]};
                             _ ->
                                 {[], [list_to_binary(Curr)|Acc]}
                         end;
