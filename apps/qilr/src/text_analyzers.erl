@@ -52,7 +52,7 @@ is_stopword(Term) when length(Term) == 2 ->
 is_stopword(Term) when length(Term) == 3 -> 
     ordsets:is_element(Term, ["and", "are", "but", "for", "not", "the", "was"]);
 is_stopword(Term) when length(Term) == 4 -> 
-    ordsets:is_element(Term, ["into", "such", "that" "then", "they", "this", "will"]);
+    ordsets:is_element(Term, ["into", "such", "that", "then", "they", "this", "will"]);
 is_stopword(Term) when length(Term) == 5 -> 
     ordsets:is_element(Term, ["their", "there", "these"]);
 is_stopword(_Term) -> 
