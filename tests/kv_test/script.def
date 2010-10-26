@@ -5,28 +5,28 @@
  
  {echo, "Putting some data"},
  {putobj, <<"test">>, <<"v1_l1">>, 
-  "text/plain", "Once upon a midnight dreary, while I pondered weak and weary"},
+  "text/plain", <<"Once upon a midnight dreary, while I pondered weak and weary">>},
  {putobj, <<"test">>, <<"v1_l2">>, 
-  "text/plain", "Over many a quaint and curious volume of forgotten lore"},
+  "text/plain", <<"Over many a quaint and curious volume of forgotten lore">>},
  {putobj, <<"test">>, <<"v1_l3">>, 
-  "text/plain", "While I nodded, nearly napping, suddenly there came a tapping"},
+  "text/plain", <<"While I nodded, nearly napping, suddenly there came a tapping">>},
  {putobj, <<"test">>, <<"v1_l4">>, 
-  "text/plain", "As of some one gently rapping, rapping at my chamber door"},
+  "text/plain", <<"As of some one gently rapping, rapping at my chamber door">>},
 
  {putobj, <<"test">>, <<"tt1_l1">>, 
-  "text/plain", "Peter Piper picked a peck of pickled peppers."},
+  "text/plain", <<"Peter Piper picked a peck of pickled peppers.">>},
  {putobj, <<"test">>, <<"tt1_l2">>, 
-  "text/plain", "A peck of pickled peppers Peter Piper picked."},
+  "text/plain", <<"A peck of pickled peppers Peter Piper picked.">>},
  {putobj, <<"test">>, <<"tt1_l3">>, 
-  "text/plain", "If Peter Piper picked a peck of pickled peppers,"},
+  "text/plain", <<"If Peter Piper picked a peck of pickled peppers,">>},
  {putobj, <<"test">>, <<"tt1_l4">>, 
-  "text/plain", "Where's the peck of pickled peppers Peter Piper picked?"},
+  "text/plain", <<"Where's the peck of pickled peppers Peter Piper picked?">>},
 
  {putobj, <<"test">>, <<"x1">>, 
-  "application/xml", "<?xml version=\"1.0\"?><doc><thing id=\"abcd\"/><item>ghij</item></doc>"},
+  "application/xml", <<"<?xml version=\"1.0\"?><doc><thing id=\"abcd\"/><item>ghij</item></doc>">>},
 
  {putobj, <<"test">>, <<"j1">>, 
-  "application/json", "{\"outer\":{\"inner1\":\"snooty\",\"inner2\":\"fox\"}}"},
+  "application/json", <<"{\"outer\":{\"inner1\":\"snooty\",\"inner2\":\"fox\"}}">>},
 
  {echo, "Checking data present..."},
 
