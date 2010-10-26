@@ -9,7 +9,9 @@
   </path>
 
   <target name="clean">
-    <delete dir="../../priv/analysis_server" />
+    <delete>
+      <fileset dir="../../priv/analysis_server/" includes="*.jar" />
+    </delete>
     <delete dir="rel" />
     <delete dir="${build.dir}" />
   </target>
@@ -28,9 +30,6 @@
 	 includes="**/*.class" />
   </target>
   <target name="rel" depends="package">
-    <mkdir dir="../../priv/analysis_server"/>
-    <copy file="scripts/analysis_server.sh" todir="../../priv/analysis_server" />
-    <chmod file="../../priv/analysis_server/analysis_server.sh" perm="755" />
     <copy todir="../../priv/analysis_server">
       <fileset dir="lib" includes="*.jar" />
     </copy>
