@@ -1,4 +1,4 @@
-.eunit/*
+.eunit/
 deps/*
 priv/*
 *.o
