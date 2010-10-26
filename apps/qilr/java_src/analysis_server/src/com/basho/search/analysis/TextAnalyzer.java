@@ -16,12 +16,12 @@ public class TextAnalyzer {
    private static final Logger logger = Logger.getLogger(TextAnalyzer.class.getName());
    
    public static List<String> analyze(String text, String analyzerFactory,
-		                              String[] args) throws IOException {
+                                      String[] args) throws IOException {
       // Setup token stream and filters
 
       AnalyzerFactory factory = instantiateFactory(analyzerFactory);
       TokenStream stream = factory.makeStream(Version.LUCENE_30, new StringReader(text),
-    		  	                              args);
+                                              args);
       
       // Prepare to iterate and collect tokens
       List<String> retval = new LinkedList<String>();

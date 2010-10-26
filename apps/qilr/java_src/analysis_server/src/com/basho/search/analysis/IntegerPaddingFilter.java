@@ -13,33 +13,31 @@ import org.apache.lucene.analysis.TokenFilter;
 import org.apache.lucene.analysis.TokenStream;
 
 public class IntegerPaddingFilter extends TokenFilter {
-	  private TermAttribute termAtt;
-	  private String fmt;
+    private TermAttribute termAtt;
+    private String fmt;
 
-	  // Filter that zero-pads integers to the provided padding length 
-	  public IntegerPaddingFilter(TokenStream in, int padLength) {
-	    super(in);
-	    termAtt = addAttribute(TermAttribute.class);
-	    fmt = "%0"+padLength+"d";
-	  }
+    // Filter that zero-pads integers to the provided padding length 
+    public IntegerPaddingFilter(TokenStream in, int padLength) {
+        super(in);
+        termAtt = addAttribute(TermAttribute.class);
+        fmt = "%0"+padLength+"d";
+    }
 
-	  @Override
-	  public final boolean incrementToken() throws IOException {
-	    if (!input.incrementToken())
-	      return false;
-	    try
-	    {
-	    	String token = new String(termAtt.termBuffer(), 0, termAtt.termLength());
-	    	String padded = String.format(fmt, Integer.parseInt(token));
-	    	termAtt.setTermBuffer(padded);
-	    	return true;
-	    }
-	    // Skip over any badly formatted numbers.  The tokenizer allows
-	    // things like 123-456- through
-	    catch (java.lang.NumberFormatException e)
-	    {
-	    	return incrementToken();
-	    }
-	  }
+    @Override
+    public final boolean incrementToken() throws IOException {
+        if (!input.incrementToken())
+            return false;
+        try {
+            String token = new String(termAtt.termBuffer(), 0, termAtt.termLength());
+            String padded = String.format(fmt, Integer.parseInt(token));
+            termAtt.setTermBuffer(padded);
+            return true;
+        }
+        // Skip over any badly formatted numbers.  The tokenizer allows
+        // things like 123-456- through
+        catch (java.lang.NumberFormatException e) {
+            return incrementToken();
+        }
+    }
 
 }
