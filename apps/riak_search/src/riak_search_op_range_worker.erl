@@ -6,70 +6,44 @@
 
 -module(riak_search_op_range_worker).
 -export([
-         preplan_op/2,
          chain_op/4
         ]).
 
 -include("riak_search.hrl").
--define(STREAM_TIMEOUT, 15000).
+-include_lib("lucene_parser/include/lucene_parser.hrl").
 
--record(scoring_vars, {term_boost, doc_frequency, num_docs}).
-preplan_op(Op, _F) -> Op.
-
-chain_op(Op, OutputPid, OutputRef, QueryProps) ->
-    spawn_link(fun() -> start_loop(Op, OutputPid, OutputRef, QueryProps) end),
+chain_op(Op, OutputPid, OutputRef, State) ->
+    spawn_link(fun() -> start_loop(Op, OutputPid, OutputRef, State) end),
     {ok, 1}.
 
-start_loop(Op, OutputPid, OutputRef, _QueryProps) ->
-    %% Get the scoring vars...
-    %% ScoringVars = #scoring_vars {
-    %%     term_boost = proplists:get_value(boost, Op#term.options, 1),
-    %%     doc_frequency = hd([X || {node_weight, _, X} <- Op#term.options] ++ [0]),
-    %%     num_docs = proplists:get_value(num_docs, QueryProps)
-    %% },
-    ScoringVars = #scoring_vars {
-        term_boost = 1,
-        doc_frequency = 1,
-        num_docs = 1
-    },
+start_loop(Op, OutputPid, OutputRef, State) ->
+    %% Start streaming the results...
+    IndexName = State#search_state.index,
+    FieldName = State#search_state.field,
 
-    %% Create filter function...
-    Inlines = proplists:get_all_values(inlines, Op#range_worker.options),
-    Fun = fun(_DocID, Props) ->
-        riak_search_inlines:passes_inlines(Props, Inlines)
+    %% Create the start term and end term...
+    case Op#range_worker.from of
+        {inclusive, OldStartTerm} ->
+            StartTerm = OldStartTerm;
+        {exclusive, OldStartTerm} ->
+            StartTerm = riak_search_utils:binary_inc(OldStartTerm, +1)
     end,
 
-    %% Start streaming the results...
-    {Index, Field, StartTerm, EndTerm} = Op#range_worker.q,
+    case Op#range_worker.to of
+        {inclusive, OldEndTerm} ->
+            EndTerm = OldEndTerm;
+        {exclusive, OldEndTerm} ->
+            EndTerm = riak_search_utils:binary_inc(OldEndTerm, -1)
+    end,
+    
     Size = Op#range_worker.size,
     VNode = Op#range_worker.vnode,
-    {ok, Ref} = range(VNode, Index, Field, StartTerm, EndTerm, Size, Fun),
-    loop(Index, ScoringVars, Ref, OutputPid, OutputRef).
+    FilterFun = fun riak_search_op_term:default_filter/2,
+    TransformFun = fun({DocID, Props}) ->
+                           {IndexName, DocID, Props}
+                   end,
+    {ok, Ref} = range(VNode, IndexName, FieldName, StartTerm, EndTerm, Size, FilterFun),
+    riak_search_op_utils:gather_stream_results(Ref, OutputPid, OutputRef, TransformFun).
 
 range(VNode, Index, Field, StartTerm, EndTerm, Size, FilterFun) ->
-    riak_search_vnode:range(VNode, Index, Field, StartTerm, EndTerm, Size, FilterFun, self()).
-
-loop(Index, ScoringVars, Ref, OutputPid, OutputRef) ->
-    receive 
-        {Ref, done} ->
-            OutputPid!{disconnect, OutputRef};
-            
-        {Ref, {result_vec, ResultVec}} ->
-            % todo: scoring
-            F = fun({DocID, Props}) ->
-                        NewProps = riak_search_op_term:calculate_score(ScoringVars, Props),
-                        {Index, DocID, NewProps} 
-                end,
-            ResultVec2 = lists:map(F, ResultVec),
-            OutputPid!{results, ResultVec2, OutputRef},
-            loop(Index, ScoringVars, Ref, OutputPid, OutputRef);
-
-        %% TODO: Check if this is dead code
-        {Ref, {result, {DocID, Props}}} ->
-            NewProps = riak_search_op_term:calculate_score(ScoringVars, Props),
-            OutputPid!{results, [{Index, DocID, NewProps}], OutputRef},
-            loop(Index, ScoringVars, Ref, OutputPid, OutputRef)
-    after
-        ?STREAM_TIMEOUT ->
-            throw(stream_timeout)
-    end.
+    riak_search_vnode:range(VNode, Index, Field, riak_search_utils:to_binary(StartTerm), riak_search_utils:to_binary(EndTerm), Size, FilterFun, self()).

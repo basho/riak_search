@@ -1,0 +1,23 @@
+%% -------------------------------------------------------------------
+%%
+%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%%
+%% -------------------------------------------------------------------
+
+-module(riak_search_op_negation).
+-export([
+         preplan/2,
+         chain_op/4
+        ]).
+
+-include("riak_search.hrl").
+-include_lib("lucene_parser/include/lucene_parser.hrl").
+
+preplan(Op, State) ->
+    riak_search_op:preplan(Op#negation.op, State).
+
+chain_op(Op, OutputPid, OutputRef, State) ->
+    %% Higher order operations (specifically #intersection and #union)
+    %% look for the presence of the #negation operator during merge
+    %% joins.  No actual work is done here.
+    riak_search_op:chain_op(Op#negation.op, OutputPid, OutputRef, State).
