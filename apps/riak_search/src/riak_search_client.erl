@@ -21,9 +21,6 @@
     search_fold/5,
     search_doc/5,
 
-    %% Explain...
-    explain/2,
-
     %% Indexing...
     index_doc/2,
     index_docs/1, index_docs/2,
@@ -51,18 +48,15 @@ mapred_stream(DefaultIndex, SearchQuery, MRQuery, ClientPid, ResultTransformer, 
 
 %% Parse the provided query. Returns either {ok, QueryOps} or {error,
 %% Error}.
-parse_query(IndexOrSchema, Query) when is_binary(Query) ->
-    parse_query(IndexOrSchema, riak_search_utils:to_list(Query));
-parse_query(IndexOrSchema, Query) when is_list(Query) ->
+parse_query(IndexOrSchema, Query) ->
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
-    {ok, AnalyzerPid} = qilr:new_analyzer(),
-    try
-        qilr_parse:string(AnalyzerPid, Query, Schema)
-    after
-        qilr:close_analyzer(AnalyzerPid)
-    end.
-
-
+    DefaultIndex = Schema:name(),
+    DefaultField = Schema:default_field(),
+    lucene_parser:parse(
+      riak_search_utils:to_list(DefaultIndex),
+      riak_search_utils:to_list(DefaultField),
+      riak_search_utils:to_list(Query)).
+    
 %% Run the Query, return the list of keys.
 %% Timeout is in milliseconds.
 %% Return the {Length, Results}.
@@ -103,12 +97,6 @@ search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
     end,
     Documents = plists:map(F, Results, {processes, 4}),
     {Length, MaxScore, [X || X <- Documents, X /= {error, notfound}]}.
-
-%% Run the query through preplanning, return the result.
-explain(IndexOrSchema, QueryOps) ->
-    %% Run the query through preplanning.
-    {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
-    riak_search_preplan:preplan(QueryOps, Schema).
 
 %% Index a specified #riak_idx_doc
 index_doc(IdxDoc, AnalyzerPid) ->
@@ -206,7 +194,7 @@ process_terms_1(IndexFun, BatchSize, PreflistCache, Terms) ->
         %% the place on the ring. Index is the actual search index,
         %% such as <<"products">>. We do this because later we'll need
         %% to look up the n_val for the Index.
-        Batch1 = riak_search_utils:zip_with_partition_and_index(Batch),
+        Batch1 = riak_search_ring_utils:zip_with_partition_and_index(Batch),
         true = ets:insert(SubBatchTable, Batch1),
 
         %% Ensure the PreflistCache contains all needed entries...
@@ -319,25 +307,49 @@ truncate_list(QueryStart, QueryRows, List) ->
 
 stream_search(IndexOrSchema, OpList) ->
     %% Run the query through preplanning.
+    State = #search_state {},
+    Props = riak_search_op:preplan(OpList, State),
+
+    %% Get the schema...
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
-    OpList1 = riak_search_preplan:preplan(OpList, Schema),
 
     %% Get the total number of terms and weight in query...
-    {NumTerms, NumDocs, QueryNorm} = get_scoring_info(OpList1),
-    
-    %% Set up the operators. They automatically start when created...
+    {NumTerms, NumDocs, QueryNorm} = get_scoring_info(Props),
+    SearchState = #search_state {
+      index = Schema:name(),
+      field = Schema:default_field(),
+      num_terms=NumTerms,
+      num_docs=NumDocs,
+      query_norm=QueryNorm,
+      props=Props
+     },
+
+    %% Start the query process...
     Ref = make_ref(),
-    QueryProps = [
-        {num_docs, NumDocs},
-        {index_name, Schema:name()},
-        {default_field, Schema:default_field()}
-    ],
-    
-    %% Start the query process ...
-    {ok, NumInputs} = riak_search_op:chain_op(OpList1, self(), Ref, QueryProps),
+    {ok, NumInputs} = riak_search_op:chain_op(OpList, self(), Ref, SearchState),
     #riak_search_ref {
         id=Ref, termcount=NumTerms,
         inputcount=NumInputs, querynorm=QueryNorm }.
+    
+    
+    %% %% Get the total number of terms and weight in query...
+    %% {NumTerms, NumDocs, QueryNorm} = get_scoring_info(OpList1),
+    
+    %% %% Set up the operators. They automatically start when created...
+    %% Ref = make_ref(),
+    %% QueryProps = [
+    %%     {num_docs, NumDocs},
+    %%     {index_name, Schema:name()},
+    %%     {default_field, Schema:default_field()}
+    %% ],
+    
+    %% %% Start the query process ...
+    %% {ok, NumInputs} = riak_search_op:chain_op(OpList1, self(), Ref, QueryProps),
+    %% #riak_search_ref {
+    %%     id=Ref, termcount=NumTerms,
+    %%     inputcount=NumInputs, querynorm=QueryNorm }.
+
+    
 
 %% Receive results from the provided SearchRef, run through the
 %% provided Fun starting with Acc.
@@ -370,51 +382,36 @@ collect_result(#riak_search_ref{id=Id, inputcount=InputCount}=SearchRef, Timeout
 
 %% Return {NumTerms, NumDocs, QueryNorm}...
 %% http://lucene.apache.org/java/2_4_0/api/org/apache/lucene/search/Similarity.html
-get_scoring_info(Op) ->
-    %% Get a list of scoring info...
-    List = lists:flatten(get_scoring_info_1(Op)),
-    case List /= [] of
-        true ->
-            %% Calculate NumTerms and NumDocs...
-            NumTerms = length(List),
-            NumDocs = lists:sum([NodeWeight || {NodeWeight, _} <- List]),
+get_scoring_info(Props) ->
+    %% Get the string props...
+    StringProps = [X || X = {{string, _}, _} <- Props],
+    ?PRINT(StringProps),
 
-            %% Calculate the QueryNorm...
-            F = fun({DocFrequency, Boost}, Acc) ->
+    %% Calculate num terms...
+    NumTerms = lists:sum([0] ++ [length(Terms) || {_, {Terms, _, _}} <- StringProps]),
+    ?PRINT(NumTerms),
+    NumDocs = lists:sum([0] ++ [DocFrequency || {_, {_, DocFrequency, _}} <- StringProps]),
+    ?PRINT(NumDocs),
+    QueryNormList = [{DocFrequency, Boost} || {_, {_, DocFrequency, Boost}} <- StringProps],
+    ?PRINT(QueryNormList),
+
+    %% Calculate the QueryNorm...
+    F = fun({DocFrequency, Boost}, Acc) ->
                 IDF = 1 + math:log((NumDocs + 1) / (DocFrequency + 1)),
                 Acc + math:pow(IDF * Boost, 2)
-            end,
-            SumOfSquaredWeights = lists:foldl(F, 0, List),
-            QueryNorm = 1 / math:pow(SumOfSquaredWeights, 0.5),
-
-            %% Return.
-            {NumTerms, NumDocs, QueryNorm};
-        false ->
-            {0, 0, 0}
-    end.
-get_scoring_info_1(Op) when is_record(Op, term) ->
-    Weights = [X || {node_weight, _, X} <- Op#term.options],
-    DocFrequency = hd(Weights ++ [0]),
-    Boost = proplists:get_value(boost, Op#term.options, 1),
-    [{DocFrequency, Boost}];
-get_scoring_info_1(Op) when is_record(Op, mockterm) ->
-    [];
-get_scoring_info_1(#phrase{props=Props}) ->
-    BaseQuery = proplists:get_value(base_query, Props),
-    get_scoring_info_1(BaseQuery);
-get_scoring_info_1(Op) when is_record(Op, range) ->
-    [];
-get_scoring_info_1(Op) when is_tuple(Op) ->
-    get_scoring_info_1(element(2, Op));
-get_scoring_info_1(Ops) when is_list(Ops) ->
-    [get_scoring_info_1(X) || X <- Ops].
+        end,
+    SumOfSquaredWeights = lists:foldl(F, 0, QueryNormList),
+    ?PRINT(SumOfSquaredWeights),
+    QueryNorm = 1 / math:pow(SumOfSquaredWeights, 0.5),
+    ?PRINT({NumTerms, NumDocs, QueryNorm}),
+    {NumTerms, NumDocs, QueryNorm}.
 
 sort_by_score(#riak_search_ref{querynorm=QNorm, termcount=TermCount}, Results) ->
     SortedResults = lists:sort(calculate_scores(QNorm, TermCount, Results)),
     [{Index, DocID, Props} || {_, Index, DocID, Props} <- SortedResults].
 
 calculate_scores(QueryNorm, NumTerms, [{Index, DocID, Props}|Results]) ->
-    ScoreList = proplists:get_value(score, Props),
+    ScoreList = proplists:get_value(score, Props, []),
     Coord = length(ScoreList) / (NumTerms + 1),
     Score = Coord * QueryNorm * lists:sum(ScoreList),
     NewProps = lists:keystore(score, 1, Props, {score, Score}),

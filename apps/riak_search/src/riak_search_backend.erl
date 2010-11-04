@@ -5,9 +5,14 @@
 %% -------------------------------------------------------------------
 
 -module(riak_search_backend).
--export([behaviour_info/1]).
--export([response_results/2, response_done/1,
-         info_response/2, collect_info_response/3]).
+-export([
+         behaviour_info/1
+        ]).
+-export([
+         response_results/2, 
+         response_done/1,
+         info_response/2, 
+         collect_info_response/3]).
 
 
 -spec behaviour_info(atom()) -> 'undefined' | [{atom(), arity()}].

@@ -7,7 +7,6 @@
 -module(riak_search_utils).
 
 -export([
-    iterator_tree/3,
     combine_terms/2,
     to_atom/1,
     to_binary/1,
@@ -19,95 +18,17 @@
     from_binary/1,
     current_key_clock/0,
     choose/1,
+    coalesce/1, coalesce/2,
+    binary_inc/2,
     ets_keys/1,
-    consult/1,
-    zip_with_partition_and_index/1,
-    calc_partition/3
+    consult/1
 ]).
 
 -include("riak_search.hrl").
 
-
-%% Chain a list of iterators into what looks like one single iterator.
-%% The SelectFun/2 takes two iterators (which each provide {Value,
-%% Props, IteratorFun}). The SelectFun is responsible for choosing
-%% which value is next in the series, and returning {Index, Value, Props,
-%% NewIteratorFun}.
-iterator_tree(SelectFun, OpList, QueryProps) ->
-    %% Turn all operations into iterators and then combine into a tree.
-    Iterators = [iterator_tree_op(X, QueryProps) || X <- OpList],
-    iterator_tree_combine(SelectFun, Iterators).
-
-%% @private Given a list of iterators, combine into a tree. Works by
-%% walking through the list pairing two iterators together (which
-%% combines a level of iterators) and then calling itself recursively
-%% until there is only one iterator left.
-iterator_tree_combine(SelectFun, Iterators) ->
-    case iterator_tree_combine_inner(SelectFun, Iterators) of
-        [OneIterator] -> 
-            OneIterator;
-        ManyIterators -> 
-            iterator_tree_combine(SelectFun, ManyIterators)
-    end.
-iterator_tree_combine_inner(_SelectFun, []) ->
-    [];
-iterator_tree_combine_inner(_SelectFun, [Iterator]) ->
-    [Iterator];
-iterator_tree_combine_inner(SelectFun, [IteratorA,IteratorB|Rest]) ->
-    Iterator = fun() -> SelectFun(IteratorA(), IteratorB()) end,
-    [Iterator|iterator_tree_combine_inner(SelectFun, Rest)].
-    
-%% Chain an operator, and build an iterator function around it. The
-%% iterator will return {Result, NotFlag, NewIteratorFun} each time it is called, or block
-%% until one is available. When there are no more results, it will
-%% return {eof, NotFlag}.
-iterator_tree_op(Op, QueryProps) ->
-    %% Spawn a collection process...
-    Ref = make_ref(),
-    Pid = spawn_link(fun() -> collector_loop(Ref, []) end),
-
-    %% Chain the op...
-    riak_search_op:chain_op(Op, Pid, Ref, QueryProps),
-
-    %% Return an iterator function. Returns
-    %% a new result.
-    fun() -> iterator_tree_inner(Pid, make_ref(), Op) end.
-
-%% Iterator function body.
-iterator_tree_inner(Pid, Ref, Op) ->
-    Pid!{get_result, self(), Ref},
-    receive
-        {result, eof, Ref} ->
-            {eof, Op};
-        {result, Result, Ref} ->
-            {Result, Op, fun() -> iterator_tree_inner(Pid, Ref, Op) end};
-        X ->
-            io:format("iterator_tree_inner(~p, ~p, ~p)~n>> unknown message: ~p~n", [Pid, Ref, Op, X])
-    end.
-
-%% Collect messages in the process's mailbox, and wait until someone
-%% requests it.
-collector_loop(Ref, []) ->
-    receive
-        {results, Results, Ref} ->
-            collector_loop(Ref, Results);
-        {disconnect, Ref} ->
-            collector_loop(Ref, eof)
-    end;
-collector_loop(Ref, [Result|Results]) ->
-    receive
-        {get_result, OutputPid, OutputRef} ->
-            OutputPid!{result, Result, OutputRef},
-            collector_loop(Ref, Results)
-    end;
-collector_loop(_Ref, eof) ->
-    receive
-        {get_result, OutputPid, OutputRef} ->
-            OutputPid!{result, eof, OutputRef}
-    end.
-
-
-%% Gine
+%% Given to terms, combine the properties in some sort of reasonable
+%% way. This basically means concatenating the score and the word list
+%% values, and then unioning the rest of the props.
 combine_terms({Index, DocID, Props1}, {Index, DocID, Props2}) ->
     %% score list is concatenation of each term's scores
     ScoreList1 = proplists:get_value(score, Props1, []),
@@ -193,6 +114,31 @@ choose(Array) when element(1, Array) == array ->
     N = random:uniform(Array:size()),
     Array:get(N - 1).
 
+%% Take the first defined element.
+coalesce(undefined, B) -> B;
+coalesce(A, _) -> A.
+
+coalesce([undefined|T]) -> 
+    coalesce(T);
+coalesce([H|_]) ->
+    H;
+coalesce([]) ->
+    undefined.
+
+%% Given an integer or binary Term, increment it by Amt. Used for
+%% making inclusive or exclusive ranges.
+binary_inc(Term, Amt) when is_list(Term) ->
+    NewTerm = binary_inc(list_to_binary(Term), Amt),
+    binary_to_list(NewTerm);
+binary_inc(Term, Amt) when is_binary(Term) ->
+    Bits = size(Term) * 8,
+    <<Int:Bits/integer>> = Term,
+    NewInt = binary_inc(Int, Amt),
+    <<NewInt:Bits/integer>>;
+binary_inc(Term, Amt) when is_integer(Term) ->
+    Term + Amt;
+binary_inc(Term, _) ->
+    throw({unhandled_type, binary_inc, Term}).
 
 %% Given an ETS table, return a list of keys.
 ets_keys(Table) ->
@@ -225,43 +171,5 @@ consult_2(AST) ->
         Error ->
             Error
     end.
-
-
-% @doc Returns a function F(Index, Field, Term) -> integer() that can
-% be used to calculate the partition on the ring. It is used in places
-% where we need to make repeated calls to get the actual partition
-% (not the DocIdx) of an Index/Field/Term combination. NOTE: This, or something like it,
-% should probably get moved to Riak Core in the future. 
--define(RINGTOP, trunc(math:pow(2,160)-1)).  % SHA-1 space
-
-zip_with_partition_and_index(Postings) ->
-    %% Get the number of partitions.
-    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
-    {chstate, _, _, CHash, _} = Ring,
-    {NumPartitions, _} = CHash,
-    RingTop = ?RINGTOP,
-    Inc = ?RINGTOP div NumPartitions,
-
-    F = fun(Posting = {I,F,T,_,_,_}) ->
-                <<IndexAsInt:160/integer>> = calc_partition(I, F, T),
-                case (IndexAsInt - (IndexAsInt rem Inc) + Inc) of
-                    RingTop   -> {{0, I}, Posting};
-                    Partition -> {{Partition, I}, Posting}
-                end;
-           (Posting = {I,F,T,_,_}) ->
-                <<IndexAsInt:160/integer>> = calc_partition(I, F, T),
-                case (IndexAsInt - (IndexAsInt rem Inc) + Inc) of
-                    RingTop   -> {{0, I}, Posting};
-                    Partition -> {{Partition, I}, Posting}
-                end
-        end,
-    [F(X) || X <- Postings].
-
-%% The call to crypto:sha/N below *should* be a call to
-%% riak_core_util:chash_key/N, but we don't allow Riak Search to
-%% specify custom hashes. It just takes too long to look up for every
-%% term and kills performance.
-calc_partition(Index, Field, Term) ->
-    crypto:sha(term_to_binary({Index, Field, Term})).
 
 
