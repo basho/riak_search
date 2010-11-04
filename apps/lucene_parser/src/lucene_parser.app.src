@@ -1,0 +1,12 @@
+{application, lucene_parser,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { lucene_parser_app, []}},
+  {env, []}
+ ]}.
