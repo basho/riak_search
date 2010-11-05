@@ -16,7 +16,11 @@
 
 
 preplan(Op, State) ->
-    riak_search_op:preplan(Op#union.ops, State).
+    %% Get properties, extract all {Node, Count} entries.
+    Props = riak_search_op:preplan(Op#union.ops, State),
+    TargetNode = riak_search_op_intersection:get_target_node(Props),
+    IntersectionProp = {?OPKEY(Op), TargetNode},
+    [IntersectionProp|Props].
 
 chain_op(Op, OutputPid, OutputRef, State) ->
     %% Create an iterator chain...
@@ -24,11 +28,14 @@ chain_op(Op, OutputPid, OutputRef, State) ->
     Iterator1 = riak_search_op_utils:iterator_tree(fun select_fun/2, OpList, State),
     Iterator2 = riak_search_op_intersection:make_filter_iterator(Iterator1),
 
+    %% Figure out which node to run on...
+    TargetNode = proplists:get_value(?OPKEY(Op), State#search_state.props),
+
     %% Spawn up pid to gather and send results...
     F = fun() -> 
                 riak_search_op_utils:gather_iterator_results(OutputPid, OutputRef, Iterator2()) 
         end,
-    spawn_link(F),
+    erlang:spawn_link(TargetNode, F),
 
     %% Return.
     {ok, 1}.

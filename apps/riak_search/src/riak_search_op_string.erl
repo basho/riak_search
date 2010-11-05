@@ -37,11 +37,11 @@ preplan(Op, State) ->
             {ok, Terms} = analyze_term(IndexName, FieldName, TermString),
             Ops = [#term { s=X } || X <- Terms],
             SubProps = riak_search_op:preplan(Ops, State),
-            Counts = [Count || {info, _, {_, Count}} <- SubProps],
+            Counts = [Count || {{term, _}, {_, Count}} <- SubProps],
             DocFrequency = trunc(lists:sum(Counts) / length(Counts)),
-            [{{string, Op#string.id}, {Terms, DocFrequency, Boost}}] ++
-                riak_search_op:preplan(Ops, State);
-             _ ->
+            StringProp = {?OPKEY(Op), {Terms, DocFrequency, Boost}},
+            [StringProp|SubProps];
+        _ ->
             []
     end.
 
@@ -50,30 +50,29 @@ chain_op(Op, OutputPid, OutputRef, State) ->
     {ok, 1}.
 
 start_loop(Op, OutputPid, OutputRef, State) ->
-    %% Get the scoring vars...
-    StateProps = State#search_state.props,
-    {_, DocFrequency, _} = proplists:get_value({string, Op#string.id}, StateProps, 1),
-    ScoringVars = #scoring_vars {
-        term_boost = proplists:get_value(boost, Op#string.flags, 1),
-        doc_frequency = DocFrequency,
-        num_docs = State#search_state.num_docs
-    },
-
     %% Get the current index/field...
     IndexName = State#search_state.index,
     FieldName = State#search_state.field,
     TermString = to_binary(Op#string.s),
+    StateProps = State#search_state.props,
 
-    %% Analyze the term, and possible switch to proximity or phrase
-    %% search.
-    case lists:keyfind({string, Op#string.id}, 1, State#search_state.props) of
-        {_, {FoundTerms, _DocFrequency, _Boost}} ->
-            Terms = FoundTerms;
+    %% Get the list of terms...
+    case lists:keyfind(?OPKEY(Op), 1, StateProps) of
+        {_, Val} ->
+            {Terms, DocFrequency, Boost} = Val;
         false ->
-            {ok, Terms} = analyze_term(IndexName, FieldName, TermString)
+            {ok, Terms} = analyze_term(IndexName, FieldName, TermString),
+            DocFrequency = 0,
+            Boost = 0
     end,
 
-    %% TODO - Add scoring to transform function.
+    %% Create the scoring vars record...
+    ScoringVars = #scoring_vars {
+        term_boost = Boost,
+        doc_frequency = DocFrequency,
+        num_docs = State#search_state.num_docs
+    },
+
     %% TODO - Add inline field support to filter function.
     %% TODO - Filter out empty searches.
     TransformFun = fun({DocID, Props}) ->
@@ -159,7 +158,6 @@ analyze_term(IndexName, FieldName, TermString) ->
 
 calculate_score(ScoringVars, Props) ->
     %% Pull from ScoringVars...
-    ?PRINT(ScoringVars),
     TermBoost = ScoringVars#scoring_vars.term_boost,
     DocFrequency = ScoringVars#scoring_vars.doc_frequency + 1,
     NumDocs = ScoringVars#scoring_vars.num_docs + 1,

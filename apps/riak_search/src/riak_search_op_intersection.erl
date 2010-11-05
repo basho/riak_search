@@ -8,14 +8,19 @@
 -export([
          preplan/2,
          chain_op/4,
-         make_filter_iterator/1
+         make_filter_iterator/1,
+         get_target_node/1
         ]).
 -include("riak_search.hrl").
 -include_lib("lucene_parser/include/lucene_parser.hrl").
 -define(INDEX_DOCID(Term), ({element(1, Term), element(2, Term)})).
 
 preplan(Op, State) ->
-    riak_search_op:preplan(Op#intersection.ops, State).
+    %% Get properties, extract all {Node, Count} entries.
+    Props = riak_search_op:preplan(Op#intersection.ops, State),
+    TargetNode = get_target_node(Props),
+    IntersectionProp = {?OPKEY(Op), TargetNode},
+    [IntersectionProp|Props].
 
 chain_op(Op, OutputPid, OutputRef, State) ->
     %% Create an iterator chain...
@@ -23,11 +28,14 @@ chain_op(Op, OutputPid, OutputRef, State) ->
     Iterator1 = riak_search_op_utils:iterator_tree(fun select_fun/2, OpList, State),
     Iterator2 = make_filter_iterator(Iterator1),
 
+    %% Figure out which node to run on...
+    TargetNode = proplists:get_value(?OPKEY(Op), State#search_state.props),
+
     %% Spawn up pid to gather and send results...
     F = fun() -> 
                 riak_search_op_utils:gather_iterator_results(OutputPid, OutputRef, Iterator2()) 
         end,
-    spawn_link(F),
+    erlang:spawn_link(TargetNode, F),
 
     %% Return.
     {ok, 1}.
@@ -139,3 +147,42 @@ select_fun({eof, _}, {eof, _}) ->
 select_fun(Iterator1, Iterator2) ->
     ?PRINT({select_fun, unhandled_case, 'intersection', Iterator1, Iterator2}),
     throw({select_fun, unhandled_case, 'intersection', Iterator1, Iterator2}).
+
+%% Given a list of Props, extract the properties created by #term and
+%% use it to figure out the best place to run the intersection in
+%% order to minimize data sent across the wire.
+get_target_node(Props) ->
+    %% Group the counts by node...
+    NodeWeights = [{Node, Count} || {{term, _}, {Node, Count}} <- Props],
+    F = fun({Node, Weight}, Acc) ->
+                case gb_trees:lookup(Node, Acc) of
+                    {value, OldWeight} ->
+                        gb_trees:update(Node, Weight + OldWeight, Acc);
+                    none ->
+                        gb_trees:insert(Node, Weight, Acc)
+                end
+        end,
+    NodeWeights1 = lists:foldl(F, gb_trees:empty(), NodeWeights),
+    NodeWeights2 = [{node(), 0}|gb_trees:to_list(NodeWeights1)],
+
+    %% Sort in descending order by count...
+    F1 = fun({_, Weight1}, {_, Weight2}) ->
+                Weight1 >= Weight2 
+        end,
+    NodeWeights3 = lists:sort(F1, NodeWeights2),
+
+    %% Take nodes while they are at least 80% of heaviest weight and
+    %% then choose one randomly.
+    {_, Heavy} = hd(NodeWeights3),
+    F2 = fun({_, Weight}) ->
+                 (Weight / Heavy) > 0.8
+         end,
+    NodeWeights4 = lists:takewhile(F2, NodeWeights3),
+    {Node, _} = riak_search_utils:choose(NodeWeights4),
+    Node.
+
+
+
+    
+    
+

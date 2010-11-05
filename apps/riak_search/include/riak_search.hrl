@@ -13,6 +13,7 @@
 %% -define(IS_TERM_WILDCARD_ALL(Op), lists:member({wildcard, all}, Op#term.options)).
 %% -define(IS_TERM_WILDCARD_ONE(Op), lists:member({wildcard, one}, Op#term.options)).
 -define(RESULTVEC_SIZE, 1000).
+-define(OPKEY(Op), {element(1, Op), element(2, Op)}).
 
 -record(search_state, {
           index=undefined,
