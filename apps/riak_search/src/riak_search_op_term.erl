@@ -37,7 +37,7 @@ preplan(Op, State) ->
     FieldName = State#search_state.field,
     Term = to_binary(Op#term.s),
     Weights = info(IndexName, FieldName, Term),
-    [{info, Op#term.id, {Node, Count}} || {_, Node, Count} <- Weights].
+    [{?OPKEY(Op), {Node, Count}} || {_, Node, Count} <- Weights].
 
 chain_op(Op, OutputPid, OutputRef, State) ->
     spawn_link(fun() -> start_loop(Op, OutputPid, OutputRef, State) end),

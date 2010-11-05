@@ -316,8 +316,8 @@ stream_search(IndexOrSchema, OpList) ->
     %% Get the total number of terms and weight in query...
     {NumTerms, NumDocs, QueryNorm} = get_scoring_info(Props),
     SearchState = #search_state {
-      index = Schema:name(),
-      field = Schema:default_field(),
+      index=Schema:name(),
+      field=Schema:default_field(),
       num_terms=NumTerms,
       num_docs=NumDocs,
       query_norm=QueryNorm,
@@ -385,15 +385,11 @@ collect_result(#riak_search_ref{id=Id, inputcount=InputCount}=SearchRef, Timeout
 get_scoring_info(Props) ->
     %% Get the string props...
     StringProps = [X || X = {{string, _}, _} <- Props],
-    ?PRINT(StringProps),
 
     %% Calculate num terms...
     NumTerms = lists:sum([0] ++ [length(Terms) || {_, {Terms, _, _}} <- StringProps]),
-    ?PRINT(NumTerms),
     NumDocs = lists:sum([0] ++ [DocFrequency || {_, {_, DocFrequency, _}} <- StringProps]),
-    ?PRINT(NumDocs),
     QueryNormList = [{DocFrequency, Boost} || {_, {_, DocFrequency, Boost}} <- StringProps],
-    ?PRINT(QueryNormList),
 
     %% Calculate the QueryNorm...
     F = fun({DocFrequency, Boost}, Acc) ->
@@ -401,9 +397,7 @@ get_scoring_info(Props) ->
                 Acc + math:pow(IDF * Boost, 2)
         end,
     SumOfSquaredWeights = lists:foldl(F, 0, QueryNormList),
-    ?PRINT(SumOfSquaredWeights),
-    QueryNorm = 1 / math:pow(SumOfSquaredWeights, 0.5),
-    ?PRINT({NumTerms, NumDocs, QueryNorm}),
+    QueryNorm = 1 / math:pow(SumOfSquaredWeights + 1, 0.5),
     {NumTerms, NumDocs, QueryNorm}.
 
 sort_by_score(#riak_search_ref{querynorm=QNorm, termcount=TermCount}, Results) ->
