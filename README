@@ -290,7 +290,4 @@ Table of Contents
     $ bin/riak-admin status
     
     If you change the IP or node name you will need to use the reip command:
-    $ bin/riak-admin reip <old_nodename> <new_nodename>
-    
-    
-     
+    $ bin/riak-admin reip <old_nodename> <new_nodename> 
