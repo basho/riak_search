@@ -97,8 +97,8 @@ start_loop(Op, OutputPid, OutputRef, State) ->
             TermOps = [#term { s=X, transform=TransformFun } || X <- Terms],
             NewOp = #proximity { ops=TermOps, proximity=ProximityVal };
         _ when ProximityVal == undefined ->
-            throw({error, phrase, not_yet_implemented}),
-            NewOp = undefined
+            TermOps = [#term { s=X, transform=TransformFun } || X <- Terms],
+            NewOp = #proximity { ops=TermOps, proximity=exact }
     end,    
     riak_search_op:chain_op(NewOp, OutputPid, OutputRef, State).
 

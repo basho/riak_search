@@ -19,8 +19,8 @@ preplan(Op, State) ->
     %% Get properties, extract all {Node, Count} entries.
     Props = riak_search_op:preplan(Op#union.ops, State),
     TargetNode = riak_search_op_intersection:get_target_node(Props),
-    IntersectionProp = {?OPKEY(Op), TargetNode},
-    [IntersectionProp|Props].
+    UnionProp = {?OPKEY(Op), TargetNode},
+    [UnionProp|Props].
 
 chain_op(Op, OutputPid, OutputRef, State) ->
     %% Create an iterator chain...
