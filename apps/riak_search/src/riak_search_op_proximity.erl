@@ -5,131 +5,203 @@
 %% -------------------------------------------------------------------
 
 -module(riak_search_op_proximity).
-%% -export([
-%%          preplan_op/2,
-%%          chain_op/4
-%%         ]).
-%% -include("riak_search.hrl").
-%% -define(INDEX_DOCID(Term), ({element(1, Term), element(2, Term)})).
+-export([
+         preplan/2,
+         chain_op/4
+        ]).
+-include("riak_search.hrl").
+-define(INDEX_DOCID(Term), ({element(1, Term), element(2, Term)})).
 
-%% preplan_op(Op, F) ->
-%%     Op#proximity { ops=F(Op#proximity.ops) }.
+%%% Conduct a proximity match over the terms. The #proximity operator
+%%% expects to be handed a list of #term operators. The #term operator
+%%% reads a sorted list of results from the index along with
+%%% positional data, plus a "maximum distance" between the terms.
+%%% 
+%%% The select_fun, when combining results, creates a list of the
+%%% positions in order, in other words, if we search for ("see spot
+%%% run"~10), then we'd have a list containing three sublists, the
+%%% first is the positions for "see", the second is the positions for
+%%% "spot", and the third is the positions for "run".
+%%%
+%%% A final iterator compares the positions to ensure that we find the
+%%% terms all within the right distance from eachother. This acts
+%%% differently depending on whether we are doing an exact phrase search vs. a proximity search. 
+%%%
+%%% - For exact phrase search, the terms should be within N words from
+%%% eachother, where N is the number of words in the phrase
+%%% (accounting for stopwords). The sublists should line up so that
+%%% some combination of word positions is M, M+1, M+2, etc.
+%%%
+%%% - For proximity search, the terms should be within N words from
+%%% eachother, where N is specified by the user, ie: ("spot see
+%%% run"~5). This works by continually peeling off the smallest value
+%%% that we find in a sublist, and then check the min and maximum
+%%% value across *all* sublists. If max-min < N then we have a match.
+
+preplan(Op, State) ->
+    %% Get properties, extract all {Node, Count} entries.
+    Props = riak_search_op:preplan(Op#proximity.ops, State),
+    TargetNode = riak_search_op_intersection:get_target_node(Props),
+    ProximityProp = {?OPKEY(Op), TargetNode},
+    [ProximityProp|Props].
+
+chain_op(Op, OutputPid, OutputRef, State) ->
+    %% Create an iterator chain...
+    OpList = Op#proximity.ops,
+    Iterator1 = riak_search_op_utils:iterator_tree(fun select_fun/2, OpList, State),
+    
+    %% Wrap the iterator depending on whether this is an exact match
+    %% or proximity search.
+    case Op#proximity.proximity of
+        exact ->
+            Iterator2 = make_exact_match_iterator(Iterator1);
+        Proximity ->
+            Iterator2 = make_proximity_iterator(Iterator1, Proximity)
+    end,
+            
+    %% TODO - Figure out which node to run on...
+    %% TargetNode = proplists:get_value(?OPKEY(Op), State#search_state.props),
+    TargetNode = node(),
+
+    %% Spawn up pid to gather and send results...
+    F = fun() -> 
+                riak_search_op_utils:gather_iterator_results(OutputPid, OutputRef, Iterator2()) 
+        end,
+    erlang:spawn_link(TargetNode, F),
+
+    %% Return.
+    {ok, 1}.
 
 
-%% chain_op(Op, OutputPid, OutputRef, QueryProps) ->
-%%     %% Create an iterator chain...
-%%     OpList = Op#proximity.ops,
-%%     Iterator = riak_search_op_utils:iterator_tree(fun select_fun/2, OpList, QueryProps),
+%% Given a result iterator, only return results that are an exact
+%% match to the provided phrase.
+make_exact_match_iterator(Iterator) ->
+    fun() -> exact_match_iterator(Iterator()) end.
+exact_match_iterator({Term, PositionLists, Iterator}) ->
+    case is_exact_match(PositionLists) of
+        true ->
+            %% It's a match! Return the result...
+            NewIterator = fun() -> exact_match_iterator(Iterator()) end,
+            {Term, PositionLists, NewIterator};
+        false ->
+            %% No match, so skip.
+            exact_match_iterator(Iterator())
+    end;
+exact_match_iterator({eof, _}) ->
+    {eof, ignore}.
 
-%%     %% Spawn up pid to gather and send results...
-%%     Proximity = Op#proximity.proximity,
-%%     F = fun() -> gather_results(Proximity, OutputPid, OutputRef, Iterator(), []) end,
-%%     spawn_link(F),
+%% Return true if all of the terms exist within Proximity words from
+%% eachother.
+is_exact_match(Positions) ->
+    is_exact_match_1(undefined, Positions).
+is_exact_match_1(LastMin, Positions) ->
+    case remove_smallest_position(LastMin, Positions) of
+        undefined -> 
+            false;
+        {Min, Max, NextPass} ->
+            case is_exact_match_2(lists:seq(Min, Max), [hd(X) || X <- NextPass]) of
+                true -> 
+                    true;
+                false ->
+                    is_exact_match_1(Min, NextPass)
+            end
+    end.
+%% Return true if the two lists match. Broken out because we'll
+%% eventually need to handle skipped terms in here.
+%% TODO - Handle skipped terms.
+is_exact_match_2(L1, L2) ->
+    L1 == L2.
 
-%%     %% Return.
-%%     {ok, 1}.
 
+%% Given a result iterator, only return results that are within a
+%% certain proximity of eachother.
+make_proximity_iterator(Iterator, Proximity) ->
+    fun() -> proximity_iterator(Iterator(), Proximity) end.
+proximity_iterator({Term, PositionLists, Iterator}, Proximity) ->
+    case within_proximity(PositionLists, Proximity) of
+        true ->
+            %% It's a match! Return the result...
+            NewIterator = fun() -> proximity_iterator(Iterator(), Proximity) end,
+            {Term, PositionLists, NewIterator};
+        false ->
+            %% No match, so skip.
+            proximity_iterator(Iterator(), Proximity)
+    end;
+proximity_iterator({eof, _}, _) ->
+    {eof, ignore}.
+        
+%% Return true if all of the terms exist within Proximity words from
+%% eachother.
+within_proximity(Proximity, Positions) ->
+    within_proximity_1(Proximity, undefined, Positions).
+within_proximity_1(Proximity, LastMin, Positions) ->
+    case remove_smallest_position(LastMin, Positions) of
+        undefined -> 
+            false;
+        {Min, Max, _NextPass} when abs(Min - Max) < Proximity ->
+            true;
+        {Min, _, NextPass} ->
+            within_proximity_1(Proximity, Min, NextPass)
+    end.
 
-%% %% Possibly send off a batch of results.
-%% gather_results(Proximity, OutputPid, OutputRef, {Term, Positions, Iterator}, Acc)
-%%   when length(Acc) > ?RESULTVEC_SIZE ->
-%%     OutputPid ! {results, lists:reverse(Acc), OutputRef},
-%%     gather_results(Proximity, OutputPid, OutputRef, {Term, Positions, Iterator}, []);
-
-%% %% If we are here, there was only one proximity term, so just send it
-%% %% through.
-%% gather_results(Proximity, OutputPid, OutputRef, {Term, Op, Iterator}, Acc) 
-%%   when is_record(Op, term) ->
-%%     gather_results(Proximity, OutputPid, OutputRef, Iterator(), [Term|Acc]);
-
-%% %% Positions holds a list of term positions for this value. Check to
-%% %% see if there is any combination where all the terms are within
-%% %% Proximity words from eachother.
-%% gather_results(Proximity, OutputPid, OutputRef, {Term, Positions, Iterator}, Acc) 
-%%   when is_list(Positions) ->
-%%     case within_proximity(Proximity, Positions) of
-%%         true ->
-%%             gather_results(Proximity, OutputPid, OutputRef, {Term, Positions, Iterator}, [Term|Acc]);
-%%         false ->
-%%             gather_results(Proximity, OutputPid, OutputRef, {Term, Positions, Iterator}, Acc)
-%%     end;
-
-%% %% Nothing more to send...
-%% gather_results(_, OutputPid, OutputRef, {eof, _}, Acc) ->
-%%     OutputPid ! {results, lists:reverse(Acc), OutputRef},
-%%     OutputPid ! {disconnect, OutputRef}.
-
-%% %% Return true if all of the terms exist within Proximity words from
-%% %% eachother.
-%% within_proximity(Proximity, Positions) ->
-%%     within_proximity_1(Proximity, undefined, Positions).
-%% within_proximity_1(Proximity, LastMin, Positions) ->
-%%     case get_min_max(LastMin, undefined, undefined, Positions, []) of
-%%         undefined -> 
-%%             false;
-%%         {Min, Max, _NextPass} when abs(Min - Max) < Proximity ->
-%%             true;
-%%         {Min, _, NextPass} ->
-%%             within_proximity_1(Proximity, Min, NextPass)
-%%     end.
-
-%% %% If this is the same Min we saw last time, then toss it.
-%% get_min_max(LastMin, Min, Max, [[LastMin|Ps]|Rest], NextPass) ->
-%%     get_min_max(LastMin, Min, Max, [Ps|Rest], NextPass);
-
-%% %% First time through the loop. Set Min and Max.
-%% get_min_max(LastMin, undefined, undefined, [[P|Ps]|Rest], NextPass) ->
-%%     get_min_max(LastMin, P, P, Rest, [[P|Ps]|NextPass]);
-
-%% %% Update Min...
-%% get_min_max(LastMin, Min, Max, [[P|Ps]|Rest], NextPass) when Min > P ->
-%%     get_min_max(LastMin, P, Max, Rest, [[P|Ps]|NextPass]);
-
-%% %% Update Max...
-%% get_min_max(LastMin, Min, Max, [[P|Ps]|Rest], NextPass) when Max < P ->
-%%     get_min_max(LastMin, Min, P, Rest, [[P|Ps]|NextPass]);
-
-%% %% Just loop...
-%% get_min_max(LastMin, Min, Max, [[P|Ps]|Rest], NextPass) ->
-%%     get_min_max(LastMin, Min, Max, Rest, [[P|Ps]|NextPass]);
-
-%% %% Reached the end of a position list, no way to continue.
-%% get_min_max(_, _, _, [[]|_], _) ->
-%%     undefined;
-
-%% %% End of list, return.
-%% get_min_max(_LastMin, Min, Max, [], NextPass) ->
-%%     {Min, Max, NextPass}.
+%% Given a list of Positions, remove the smallest position in the
+%% list, and return the new minimum and maximum plus the new list of
+%% Positions.
+remove_smallest_position(LastMin, Positions) ->
+    remove_smallest_position(LastMin, undefined, undefined, Positions, []).
+remove_smallest_position(LastMin, Min, Max, [[LastMin|Ps]|Rest], NextPass) ->
+    %% This is the same Min we saw last time, so toss it.
+    remove_smallest_position(LastMin, Min, Max, [Ps|Rest], NextPass);
+remove_smallest_position(LastMin, undefined, undefined, [[P|Ps]|Rest], NextPass) ->
+    %% First time through the loop. Set Min and Max.
+    remove_smallest_position(LastMin, P, P, Rest, [[P|Ps]|NextPass]);
+remove_smallest_position(LastMin, Min, Max, [[P|Ps]|Rest], NextPass) when Min > P ->
+    %% Found a new minimum...
+    remove_smallest_position(LastMin, P, Max, Rest, [[P|Ps]|NextPass]);
+remove_smallest_position(LastMin, Min, Max, [[P|Ps]|Rest], NextPass) when Max < P ->
+    %% Found a new maximum...
+    remove_smallest_position(LastMin, Min, P, Rest, [[P|Ps]|NextPass]);
+remove_smallest_position(LastMin, Min, Max, [[P|Ps]|Rest], NextPass) ->
+    %% Just loop...
+    remove_smallest_position(LastMin, Min, Max, Rest, [[P|Ps]|NextPass]);
+remove_smallest_position(_, _, _, [[]|_], _) ->
+    %% Reached the end of a position list, no way to continue.
+    undefined;
+remove_smallest_position(_LastMin, Min, Max, [], NextPass) ->
+    %% We've processed all the position lists for this pass, so continue.
+    {Min, Max, NextPass}.
 
     
-%% %% Normalize, throw away the operators, replace with a list of lists of positions.
-%% select_fun({{Index, DocID, Props}, Op, Iterator}, I2) when is_record(Op, term) ->
-%%     Positions = proplists:get_value(p, Props, []),
-%%     Positions1 = lists:sort(Positions),
-%%     select_fun({{Index, DocID, Props}, [Positions1], Iterator}, I2);
-
-%% select_fun(I1, {{Index, DocID, Props}, Op, Iterator}) when is_record(Op, term) ->
-%%     Positions = proplists:get_value(p, Props, []),
-%%     Positions1 = lists:sort(Positions),
-%%     select_fun(I1, {{Index, DocID, Props}, [Positions1], Iterator});
-
-
-%% %% If terms are equal, then bubble up the result...
-%% select_fun({Term1, Positions1, Iterator1}, {Term2, Positions2, Iterator2}) when ?INDEX_DOCID(Term1) == ?INDEX_DOCID(Term2) ->
-%%     NewTerm = riak_search_utils:combine_terms(Term1, Term2),
-%%     {NewTerm, Positions1 ++ Positions2, fun() -> select_fun(Iterator1(), Iterator2()) end};
-
-%% %% Terms not equal, so iterate one of them...
-%% select_fun({Term1, _, Iterator1}, {Term2, Positions2, Iterator2}) when ?INDEX_DOCID(Term1) < ?INDEX_DOCID(Term2) ->
-%%     select_fun(Iterator1(), {Term2, Positions2, Iterator2});
-
-%% select_fun({Term1, Positions1, Iterator1}, {Term2, _, Iterator2}) when ?INDEX_DOCID(Term1) > ?INDEX_DOCID(Term2) ->
-%%     select_fun({Term1, Positions1, Iterator1}, Iterator2());
-
-%% %% Hit an eof, no more results...
-%% select_fun({eof, _}, _) -> 
-%%     {eof, []};
-
-%% select_fun(_, {eof, _}) -> 
-%%     {eof, []}.
+%% Given a pair of iterators, combine into a single iterator returning
+%% results of the form {Term, PositionLists, NewIterator}. Apart from
+%% the PositionLists, this is very similar to the #intersection
+%% operator logic, except it doesn't need to worry about any #negation
+%% operators.
+select_fun({{Index, DocID, Props}, Op, Iterator}, I2) when is_record(Op, term) ->
+    %% Normalize the first iterator result, replacing Op with a list of positions.
+    Positions = proplists:get_value(p, Props, []),
+    Positions1 = lists:sort(Positions),
+    select_fun({{Index, DocID, Props}, [Positions1], Iterator}, I2);
+select_fun(I1, {{Index, DocID, Props}, Op, Iterator}) when is_record(Op, term) ->
+    %% Normalize the second iterator result, replacing Op with a list of positions.
+    Positions = proplists:get_value(p, Props, []),
+    Positions1 = lists:sort(Positions),
+    select_fun(I1, {{Index, DocID, Props}, [Positions1], Iterator});
+select_fun({Term1, Positions1, Iterator1}, {Term2, Positions2, Iterator2}) when ?INDEX_DOCID(Term1) == ?INDEX_DOCID(Term2) ->
+    %% If terms are equal, then combine the terms, concatenate the
+    %% position list, and return the result.
+    NewTerm = riak_search_utils:combine_terms(Term1, Term2),
+    {NewTerm, Positions1 ++ Positions2, fun() -> select_fun(Iterator1(), Iterator2()) end};
+select_fun({Term1, _, Iterator1}, {Term2, Positions2, Iterator2}) when ?INDEX_DOCID(Term1) < ?INDEX_DOCID(Term2) ->
+    %% Terms not equal, so iterate one of them...
+    select_fun(Iterator1(), {Term2, Positions2, Iterator2});
+select_fun({Term1, Positions1, Iterator1}, {Term2, _, Iterator2}) when ?INDEX_DOCID(Term1) > ?INDEX_DOCID(Term2) ->
+    %% Terms not equal, so iterate one of them...
+    select_fun({Term1, Positions1, Iterator1}, Iterator2());
+select_fun({eof, _}, _) -> 
+    %% Hit an eof, no more results...
+    {eof, []};
+select_fun(_, {eof, _}) -> 
+    %% Hit an eof, no more results...
+    {eof, []}.
 
