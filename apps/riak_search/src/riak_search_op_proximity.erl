@@ -38,12 +38,8 @@
 %%% that we find in a sublist, and then check the min and maximum
 %%% value across *all* sublists. If max-min < N then we have a match.
 
-preplan(Op, State) ->
-    %% Get properties, extract all {Node, Count} entries.
-    Props = riak_search_op:preplan(Op#proximity.ops, State),
-    TargetNode = riak_search_op_intersection:get_target_node(Props),
-    ProximityProp = {?OPKEY(Op), TargetNode},
-    [ProximityProp|Props].
+preplan(_Op, _State) ->
+    [].
 
 chain_op(Op, OutputPid, OutputRef, State) ->
     %% Create an iterator chain...
@@ -59,9 +55,11 @@ chain_op(Op, OutputPid, OutputRef, State) ->
             Iterator2 = make_proximity_iterator(Iterator1, Proximity)
     end,
             
-    %% TODO - Figure out which node to run on...
-    %% TargetNode = proplists:get_value(?OPKEY(Op), State#search_state.props),
-    TargetNode = node(),
+    %% Calculate the target node. We'd like to have done this in the
+    %% preplan stage, but because we end up rewriting the query in
+    %% #string{}, this is the most expedient way to do it.
+    Props = riak_search_op:preplan(Op#proximity.ops, State),
+    TargetNode = riak_search_op:get_target_node(Props),
 
     %% Spawn up pid to gather and send results...
     F = fun() -> 
@@ -118,7 +116,7 @@ is_exact_match_2(L1, L2) ->
 make_proximity_iterator(Iterator, Proximity) ->
     fun() -> proximity_iterator(Iterator(), Proximity) end.
 proximity_iterator({Term, PositionLists, Iterator}, Proximity) ->
-    case within_proximity(PositionLists, Proximity) of
+    case within_proximity(Proximity, PositionLists) of
         true ->
             %% It's a match! Return the result...
             NewIterator = fun() -> proximity_iterator(Iterator(), Proximity) end,
@@ -169,7 +167,7 @@ remove_smallest_position(_, _, _, [[]|_], _) ->
     undefined;
 remove_smallest_position(_LastMin, Min, Max, [], NextPass) ->
     %% We've processed all the position lists for this pass, so continue.
-    {Min, Max, NextPass}.
+    {Min, Max, lists:reverse(NextPass)}.
 
     
 %% Given a pair of iterators, combine into a single iterator returning

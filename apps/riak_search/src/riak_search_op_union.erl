@@ -18,8 +18,8 @@
 preplan(Op, State) ->
     %% Get properties, extract all {Node, Count} entries.
     Props = riak_search_op:preplan(Op#union.ops, State),
-    TargetNode = riak_search_op_intersection:get_target_node(Props),
-    UnionProp = {?OPKEY(Op), TargetNode},
+    TargetNode = riak_search_op:get_target_node(Props),
+    UnionProp = {?OPKEY(target_node, Op), TargetNode},
     [UnionProp|Props].
 
 chain_op(Op, OutputPid, OutputRef, State) ->
@@ -29,7 +29,7 @@ chain_op(Op, OutputPid, OutputRef, State) ->
     Iterator2 = riak_search_op_intersection:make_filter_iterator(Iterator1),
 
     %% Figure out which node to run on...
-    TargetNode = proplists:get_value(?OPKEY(Op), State#search_state.props),
+    TargetNode = proplists:get_value(?OPKEY(target_node, Op), State#search_state.props),
 
     %% Spawn up pid to gather and send results...
     F = fun() -> 

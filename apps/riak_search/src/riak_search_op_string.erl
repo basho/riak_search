@@ -20,30 +20,40 @@
 -record(scoring_vars, {term_boost, doc_frequency, num_docs}).
 
 preplan(Op, State) -> 
-    %% Parse the term into subterms. Need to know the index and field,
-    %% which means we need to have calculated scope, which means we need to pass in query state.
-    %% Get info about the term, return in props.
-
     %% If this is a single term or phrase search, then collect some
     %% info for scoring purposes.
     IndexName = State#search_state.index,
     FieldName = State#search_state.field,
     TermString = to_binary(Op#string.s),
-    case detect_wildcard_type(TermString) of
-        none ->
-            %% Create properties used by other areas of code:
-            %% {{string, Ref}, {Terms, DocFrequency, Boost}}
-            Boost = proplists:get_value(boost, Op#string.flags, 1.0),
-            {ok, Terms} = analyze_term(IndexName, FieldName, TermString),
-            Ops = [#term { s=X } || X <- Terms],
-            SubProps = riak_search_op:preplan(Ops, State),
-            Counts = [Count || {{term, _}, {_, Count}} <- SubProps],
-            DocFrequency = trunc(lists:sum(Counts) / length(Counts)),
-            StringProp = {?OPKEY(Op), {Terms, DocFrequency, Boost}},
-            [StringProp|SubProps];
-        _ ->
-            []
-    end.
+    
+    %% Analyze the string and call preplan to get the #term properties.
+    {ok, Terms} = analyze_term(IndexName, FieldName, TermString),
+    
+    %% Get the counts for each term. We use the properties to answer
+    %% two questions: 1) what node should we run on and 2) what is the
+    %% result's score. For that reason, we store the samem information
+    %% in multiple ways to make it easier to pull out.
+    F = fun(Term) ->
+        TermOp = #term { id=Op#string.id, s=Term },
+        TermProps = riak_search_op:preplan(TermOp, State),
+        Counts = riak_search_op:props_by_tag(node_weight, TermProps),
+        DocFrequency = lists:sum([Count || {_, Count} <- Counts]) / length(Counts),
+        Boost = proplists:get_value(boost, Op#string.flags, 1.0),
+
+        %% These are used to get the target node.
+        TermProps ++ 
+        %% This is used below for scoring.
+        [{?OPKEY({term, Term}, Op), {DocFrequency, Boost}}] ++
+        %% This is used in riak_search_client for scoring.
+        [{?OPKEY(scoring, Op), {DocFrequency, Boost}}]
+    end,
+    Props = lists:flatten([F(X) || X <- Terms]),
+
+    %% Pull out information to get the target node. This is ignored
+    %% unless we are running a proximity or phrase search.
+    TargetNode = riak_search_op:get_target_node(Props),
+    StringProp = {?OPKEY(target_node, Op), TargetNode},
+    [StringProp|Props].
 
 chain_op(Op, OutputPid, OutputRef, State) ->
     spawn_link(fun() -> start_loop(Op, OutputPid, OutputRef, State) end),
@@ -54,36 +64,15 @@ start_loop(Op, OutputPid, OutputRef, State) ->
     IndexName = State#search_state.index,
     FieldName = State#search_state.field,
     TermString = to_binary(Op#string.s),
-    StateProps = State#search_state.props,
 
     %% Get the list of terms...
-    case lists:keyfind(?OPKEY(Op), 1, StateProps) of
-        {_, Val} ->
-            {Terms, DocFrequency, Boost} = Val;
-        false ->
-            {ok, Terms} = analyze_term(IndexName, FieldName, TermString),
-            DocFrequency = 0,
-            Boost = 0
-    end,
-
-    %% Create the scoring vars record...
-    ScoringVars = #scoring_vars {
-        term_boost = Boost,
-        doc_frequency = DocFrequency,
-        num_docs = State#search_state.num_docs
-    },
-
-    %% TODO - Add inline field support to filter function.
-    %% TODO - Filter out empty searches.
-    TransformFun = fun({DocID, Props}) ->
-                           NewProps = calculate_score(ScoringVars, Props),
-                           {IndexName, DocID, NewProps}
-                   end,
+    {ok, Terms} = analyze_term(IndexName, FieldName, TermString),
     ProximityVal = detect_proximity_val(Op#string.flags),
     WildcardType = detect_wildcard_type(TermString),
     case Terms of
         [Term] when WildcardType == none -> 
             %% Stream the results for a single term...
+            TransformFun = generate_transform_function(Term, State),
             NewOp = #term { s=Term, transform=TransformFun };
         [Term] when WildcardType == end_wildcard_all -> 
             %% Stream the results for a '*' wildcard...
@@ -94,13 +83,35 @@ start_loop(Op, OutputPid, OutputRef, State) ->
             {FromTerm, ToTerm} = calculate_range(Term, single),
             NewOp = #range_sized { from=FromTerm, to=ToTerm, size=erlang:size(Term) };
         _ when is_integer(ProximityVal) ->
-            TermOps = [#term { s=X, transform=TransformFun } || X <- Terms],
-            NewOp = #proximity { ops=TermOps, proximity=ProximityVal };
+            TermOps = [#term { s=X, transform=generate_transform_function(X, State)} || X <- Terms],
+            NewOp = #proximity { id=Op#string.id, ops=TermOps, proximity=ProximityVal };
         _ when ProximityVal == undefined ->
-            TermOps = [#term { s=X, transform=TransformFun } || X <- Terms],
-            NewOp = #proximity { ops=TermOps, proximity=exact }
+            TermOps = [#term { s=X, transform=generate_transform_function(X, State)} || X <- Terms],
+            NewOp = #proximity { id=Op#string.id, ops=TermOps, proximity=exact }
     end,    
     riak_search_op:chain_op(NewOp, OutputPid, OutputRef, State).
+
+%% Create transform function, taking scoring values into account.
+generate_transform_function(Term, State) ->
+    %% Calculate the DocFrequency...
+    StateProps = State#search_state.props,
+    [{DocFrequency, Boost}] = riak_search_op:props_by_tag({term, Term}, StateProps),
+
+    %% Create the scoring vars record...
+    ScoringVars = #scoring_vars {
+        term_boost = Boost,
+        doc_frequency = DocFrequency,
+        num_docs = State#search_state.num_docs
+    },
+
+    %% TODO - Add inline field support to filter function.
+    %% TODO - Filter out empty searches.
+    IndexName = State#search_state.index,
+    fun({DocID, Props}) ->
+        NewProps = calculate_score(ScoringVars, Props),
+        {IndexName, DocID, NewProps}
+    end.
+    
 
 
 %% Return the proximity setting from flags
