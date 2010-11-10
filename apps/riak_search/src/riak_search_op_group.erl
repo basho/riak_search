@@ -14,7 +14,11 @@
 -include_lib("lucene_parser/include/lucene_parser.hrl").
 
 preplan(Op, State) -> 
-    riak_search_op:preplan(Op#group.ops, State).
+    %% Get properties, extract all {Node, Count} entries.
+    Props = riak_search_op:preplan(Op#group.ops, State),
+    TargetNode = riak_search_op:get_target_node(Props),
+    GroupProp = {?OPKEY(target_node, Op), TargetNode},
+    [GroupProp|Props].
 
 chain_op(Op, OutputPid, OutputRef, State) ->
     case Op#group.ops of
@@ -29,7 +33,7 @@ chain_op(Op, OutputPid, OutputRef, State) ->
             {ok, Schema} = riak_search_config:get_schema(Index),
             case Schema:default_op() of
                 'and' ->
-                    NewOp = #intersection { ops=OpList };
+                    NewOp = #intersection { id=Op#group.id, ops=OpList };
                 'or' ->
                     %% In this case, check if there are any
                     %% negated/prohibited terms. If so, then rewrite
@@ -39,12 +43,12 @@ chain_op(Op, OutputPid, OutputRef, State) ->
                     {NegatedOps, NormalOps} = lists:partition(F, Op#group.ops),
                     NegatedOps1 = [X#negation.op || X <- NegatedOps],
 
-                    NewOp = #intersection { ops=[
-                        #union { ops=NormalOps },
-                        #negation { op=#union { ops=NegatedOps1 } }
+                    NewOp = #intersection { id=Op#group.id, ops=[
+                        #union { id=Op#group.id, ops=NormalOps },
+                        #negation { id=Op#group.id, op=#union { id=Op#group.id, ops=NegatedOps1 } }
                     ]}
             end
     end,
-    
+
     %% Call the new operation...
     riak_search_op:chain_op(NewOp, OutputPid, OutputRef, State).

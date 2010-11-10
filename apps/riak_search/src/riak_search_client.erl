@@ -383,20 +383,18 @@ collect_result(#riak_search_ref{id=Id, inputcount=InputCount}=SearchRef, Timeout
 %% Return {NumTerms, NumDocs, QueryNorm}...
 %% http://lucene.apache.org/java/2_4_0/api/org/apache/lucene/search/Similarity.html
 get_scoring_info(Props) ->
-    %% Get the string props...
-    StringProps = [X || X = {{string, _}, _} <- Props],
+    ScoringProps = riak_search_op:props_by_tag(scoring, Props),
 
     %% Calculate num terms...
-    NumTerms = lists:sum([0] ++ [length(Terms) || {_, {Terms, _, _}} <- StringProps]),
-    NumDocs = lists:sum([0] ++ [DocFrequency || {_, {_, DocFrequency, _}} <- StringProps]),
-    QueryNormList = [{DocFrequency, Boost} || {_, {_, DocFrequency, Boost}} <- StringProps],
+    NumTerms = length(ScoringProps),
+    NumDocs = lists:sum([0] ++ [DocFrequency || {DocFrequency, _} <- ScoringProps]),
 
     %% Calculate the QueryNorm...
     F = fun({DocFrequency, Boost}, Acc) ->
                 IDF = 1 + math:log((NumDocs + 1) / (DocFrequency + 1)),
                 Acc + math:pow(IDF * Boost, 2)
         end,
-    SumOfSquaredWeights = lists:foldl(F, 0, QueryNormList),
+    SumOfSquaredWeights = lists:foldl(F, 0, ScoringProps),
     QueryNorm = 1 / math:pow(SumOfSquaredWeights + 1, 0.5),
     {NumTerms, NumDocs, QueryNorm}.
 
