@@ -95,7 +95,7 @@ start_loop(Op, OutputPid, OutputRef, State) ->
 generate_transform_function(Term, State) ->
     %% Calculate the DocFrequency...
     StateProps = State#search_state.props,
-    [{DocFrequency, Boost}] = riak_search_op:props_by_tag({term, Term}, StateProps),
+    {DocFrequency, Boost} = hd(riak_search_op:props_by_tag({term, Term}, StateProps)),
 
     %% Create the scoring vars record...
     ScoringVars = #scoring_vars {
