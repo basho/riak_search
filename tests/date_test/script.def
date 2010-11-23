@@ -8,17 +8,17 @@
 
     {echo,   "Verify some date searches."},
 
-    %% {search, "2008-01-01T12:11:00Z", [{length, 1}]},
+    {search, "'2008-01-01T12:11:00Z'", [{length, 1}]},
+    {search, "\"2008-01-01T12:11:00Z\"", [{length, 1}]},
+    {search, "2008\\-01\\-01T12\\:11\\:00Z", [{length, 1}]},
 
-    %% {search, "date:2008-01-01T12:11:00Z", [{length, 1}]},
+    {search, "date:'2008-01-01T12:11:00Z'", [{length, 1}]},
+    {search, "date:\"2008-01-01T12:11:00Z\"", [{length, 1}]},
+    {search, "date:2008\\-01\\-01T12\\:11\\:00Z", [{length, 1}]},
 
-    %% {search, "date:[2007-03-01T05:38:00Z TO 2010-07-31T10:10:00Z]", [{length, 4}]},
-    %% {search, "date:[* TO 2010-07-31T10:10:00Z]", [{length, 4}]},
-    %% {search, "date:[2007-03-01T05:38:00Z TO *]", [{length, 4}]},
-
-    %% {search, "date:{2007-03-01T05:38:00Z TO 2010-07-31T10:10:00Z}", [{length, 1}]},
-    %% {search, "date:{* TO 2010-07-31T10:10:00Z}", [{length, 4}]},
-    %% {search, "date:{2007-03-01T05:38:00Z TO *}", [{length, 4}]},
+    {search, "date:['2007-03-01T05:38:00Z' TO '2010-07-31T10:10:00Z']", [{length, 4}]},
+    {search, "date:[\"2007-03-01T05:38:00Z\" TO \"2010-07-31T10:10:00Z\"]", [{length, 4}]},
+    {search, "date:[2007\\-03\\-01T05\\:38\\:00Z TO 2010\\-07\\-31T10\\:10\\:00Z]", [{length, 4}]},
 
     %%  %% Cleanup.
     {echo,   "De-indexing documents..."},

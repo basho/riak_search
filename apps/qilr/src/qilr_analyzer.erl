@@ -71,8 +71,8 @@ analyze(Pid, Text, AnalyzerFactory, AnalyzerArgs) ->
         case gen_server:call(Pid, {analyze, Req}, infinity) of
             ignore ->
                 analyze(Pid, Text, AnalyzerFactory);
-        R ->
-            R
+            R ->
+                R
         end
     catch
         exit:{timeout, {gen_server,call, _Call}} -> % gen_server timeout

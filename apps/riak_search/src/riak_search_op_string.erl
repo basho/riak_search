@@ -28,7 +28,7 @@ preplan(Op, State) ->
     
     %% Analyze the string and call preplan to get the #term properties.
     {ok, Terms} = analyze_term(IndexName, FieldName, TermString),
-    
+     
     %% Get the counts for each term. We use the properties to answer
     %% two questions: 1) what node should we run on and 2) what is the
     %% result's score. For that reason, we store the samem information
