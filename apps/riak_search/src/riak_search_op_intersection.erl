@@ -28,7 +28,7 @@ chain_op(Op, OutputPid, OutputRef, State) ->
     Iterator2 = make_filter_iterator(Iterator1),
 
     %% Figure out which node to run on...
-    TargetNode = proplists:get_value(?OPKEY(target_node, Op), State#search_state.props),
+    TargetNode = proplists:get_value(?OPKEY(target_node, Op), State#search_state.props, node()),
 
     %% Spawn up pid to gather and send results...
     F = fun() -> 

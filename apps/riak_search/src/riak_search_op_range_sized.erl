@@ -26,11 +26,12 @@ start_loop(Op, OutputPid, OutputRef, State) ->
     %% Figure out how many extra nodes to add to make the groups even.
     IndexName = State#search_state.index,
     {ok, Schema} = riak_search_config:get_schema(IndexName),
-    NVal = Schema:n_val(),
+    NVal = Schema:n_val(), 
     {ok, Preflist} = riak_search_ring_utils:get_covering_preflist(NVal),
 
-    %% Create a #range_sized_worker for each entry in the preflist...
-    RangeWorkerOp = #range_worker { from=Op#range_sized.from, to=Op#range_sized.to, size=all },
+    %% Create a #range_worker for each entry in the preflist...
+    {From, To} = correct_term_order(Op#range_sized.from, Op#range_sized.to),
+    RangeWorkerOp = #range_worker { from=From, to=To, size=all },
     OpList = [RangeWorkerOp#range_worker { vnode=VNode } || VNode <- Preflist],
 
     %% Create the iterator...
@@ -48,6 +49,13 @@ start_loop(Op, OutputPid, OutputRef, State) ->
     {ok, 1}.
 
 
+%% Given two range boundaries, make sure to return the smaller one
+%% first.
+correct_term_order(From = {_, FromTerm}, To = {_, ToTerm}) -> 
+    case FromTerm =< ToTerm of
+        true  -> {From, To};
+        false -> {To, From}
+    end.
 
 %% Given an iterator, return a new iterator that removes any
 %% duplicates.

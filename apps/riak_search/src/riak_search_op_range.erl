@@ -35,6 +35,43 @@ chain_op(Op, OutputPid, OutputRef, State) ->
     length(ToTerms) == 1 orelse throw({error, too_many_terms, ToTerms}),
     ToTerm = hd(ToTerms),
 
-    %% Convert to a #range_sized...
-    NewOp = #range_sized { from={FromBorder, FromTerm}, to={ToBorder, ToTerm}, size=all },
-    riak_search_op_range_sized:chain_op(NewOp, OutputPid, OutputRef, State).
+    %% Check if the current field is an integer. If so, then we'll
+    %% need to OR together two range ops.
+    {ok, Schema} = riak_search_config:get_schema(IndexName),
+    Field = Schema:find_field(FieldName),
+    DifferentSigns = is_negative(FromTerm) xor is_negative(ToTerm),
+    case Schema:field_type(Field) of
+        integer when DifferentSigns ->
+            %% Create two range operations, one on the negative side,
+            %% one on the positive side. Don't need to worry about
+            %% putting the terms in order here, this is taken care of
+            %% by the 'riak_search_op_range_sized' module.
+            RangeOp1 = #range_sized { from={FromBorder, FromTerm}, to={inclusive, to_zero(FromTerm)}, size=all },
+            RangeOp2 = #range_sized { from={inclusive, to_zero(ToTerm)}, to={ToBorder, ToTerm}, size=all },
+            
+            %% Run the new operation...
+            NewOp = #union { id=Op#range.id, ops=[RangeOp1, RangeOp2] },
+            riak_search_op_union:chain_op(NewOp, OutputPid, OutputRef, State);
+        _ ->
+            %% Convert to a #range_sized...
+            NewOp = #range_sized { from={FromBorder, FromTerm}, to={ToBorder, ToTerm}, size=all },
+            riak_search_op_range_sized:chain_op(NewOp, OutputPid, OutputRef, State)
+    end.
+
+
+%% Return true if a binary term begins with '-' (ie: it's a negative.)
+is_negative(<<C, _/binary>>) ->
+    C == $-.
+
+
+%% Given a binary term, return a binary of the same length with all
+%% characters converted to 0.
+to_zero(Term) ->
+    to_zero(Term, []).
+to_zero(<<$-, Rest/binary>>, Acc) ->
+    to_zero(Rest, [$-|Acc]);
+to_zero(<<_, Rest/binary>>, Acc) ->
+    to_zero(Rest, [$0|Acc]);
+to_zero(<<>>, Acc) ->
+    list_to_binary(lists:reverse(Acc)).
+
