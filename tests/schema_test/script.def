@@ -3,8 +3,8 @@
     {schema, "schema.def"},
 
     %% Index the solr in "0"...
-    %% {echo,   "Indexing documents..."}, 
-    %% {solr,   "./solr_add.xml"},
+    {echo,   "Indexing documents..."}, 
+    {solr,   "./solr_add.xml"},
 
     %% {echo,   "Verify that we find all five documents containing 'one'."},
     %% {search, "one", [{length, 5}]},
@@ -66,6 +66,20 @@
     %% {search, "int4:\"-002\"", [{length, 1}]},
     %% {search, "int4:\"-0002\"", [{length, 1}]},
 
+    %% {echo,   "Verify negative integer search."},
+    %% {search, "int2:'-1'", [{length, 1}]},
+    %% {search, "int2:'-01'", [{length, 1}]},
+    %% {search, "int2:'-2'", [{length, 1}]},
+    %% {search, "int2:'-02'", [{length, 1}]},
+    %% {search, "int4:'-1'", [{length, 1}]},
+    %% {search, "int4:'-01'", [{length, 1}]},
+    %% {search, "int4:'-001'", [{length, 1}]},
+    %% {search, "int4:'-0001'", [{length, 1}]},
+    %% {search, "int4:'-2'", [{length, 1}]},
+    %% {search, "int4:'-02'", [{length, 1}]},
+    %% {search, "int4:'-002'", [{length, 1}]},
+    %% {search, "int4:'-0002'", [{length, 1}]},
+
     %% {echo,   "Verify integer search with ranges."},
     %% {search, "int2:[1 TO 2]", [{length, 2}]},
     %% {search, "int2:[01 TO 02]", [{length, 2}]},
@@ -75,8 +89,10 @@
     %% {search, "int4:[0001 TO 0020]", [{length, 3}]},
     %% {search, "int4:[1 TO 100]", [{length, 4}]},
     %% {search, "int4:[0001 TO 0100]", [{length, 4}]},
-    %% {search, "int2:[\"-1\" TO 2]", [{length, 3}]},
+    {search, "int2:[\"-1\" TO 2]", [{length, 3}]},
     %% {search, "int2:[\"-2\" TO 2]", [{length, 4}]},
+    %% {search, "int2:['-1' TO 2]", [{length, 3}]},
+    %% {search, "int2:['-2' TO 2]", [{length, 4}]},
 
     %% {echo,   "Verify dynamic integer fields."},
     %% {search, "dyn_i:1", [{length, 1}]},
@@ -103,6 +119,18 @@
     %% {search, "i_dyn:\"-2\"", [{length, 1}]},
     %% {search, "i_dyn:\"-002\"", [{length, 1}]},
     %% {search, "i_dyn:\"-0002\"", [{length, 1}]},
+    %% {search, "dyn_i:'-1'", [{length, 1}]},
+    %% {search, "dyn_i:'-001'", [{length, 1}]},
+    %% {search, "dyn_i:'-0001'", [{length, 1}]},
+    %% {search, "dyn_i:'-2'", [{length, 1}]},
+    %% {search, "dyn_i:'-002'", [{length, 1}]},
+    %% {search, "dyn_i:'-0002'", [{length, 1}]},
+    %% {search, "i_dyn:'-1'", [{length, 1}]},
+    %% {search, "i_dyn:'-001'", [{length, 1}]},
+    %% {search, "i_dyn:'-0001'", [{length, 1}]},
+    %% {search, "i_dyn:'-2'", [{length, 1}]},
+    %% {search, "i_dyn:'-002'", [{length, 1}]},
+    %% {search, "i_dyn:'-0002'", [{length, 1}]},
 
     %% {echo,   "Verify integer search with ranges."},
     %% {search, "dyn_i:[1 TO 20]", [{length, 3}]},
@@ -119,6 +147,12 @@
     %% {search, "i_dyn:[\"-1\" TO 20]", [{length, 4}]},
     %% {search, "i_dyn:[\"-01\" TO 20]", [{length, 4}]},
     %% {search, "i_dyn:[\"-001\" TO 0020]", [{length, 4}]},
+    %% {search, "dyn_i:['-1' TO 20]", [{length, 4}]},
+    %% {search, "dyn_i:['-01' TO 20]", [{length, 4}]},
+    %% {search, "dyn_i:['-001' TO 0020]", [{length, 4}]},
+    %% {search, "i_dyn:['-1' TO 20]", [{length, 4}]},
+    %% {search, "i_dyn:['-01' TO 20]", [{length, 4}]},
+    %% {search, "i_dyn:['-001' TO 0020]", [{length, 4}]},
 
     %% {echo,   "Verify dynamic inline fields."},
     %% {search, "key:one", [{property, "dyn_inline", "one"}]}, 
@@ -147,8 +181,8 @@
     %% {search, "i_dyn:abc", [{length, 0}]},
     %% {search, "i_dyn:\"-\"", [{length, 0}]},
 
-    %% %% Cleanup.
-    %% {echo,   "De-indexing documents..."},
-    %% {solr,   "./solr_delete.xml"},
+    %% Cleanup.
+    {echo,   "De-indexing documents..."},
+    {solr,   "./solr_delete.xml"},
     {echo,   "Done."}
 ].
