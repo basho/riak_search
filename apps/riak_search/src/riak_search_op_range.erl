@@ -16,10 +16,6 @@
 -define(INDEX_DOCID(Term), ({element(1, Term), element(2, Term)})).
 
 preplan(Op, State) -> 
-    NewOp = #range_sized { from=Op#range.from, to=Op#range.to, size=all },
-    riak_search_op_range_sized:preplan(NewOp, State).
-
-chain_op(Op, OutputPid, OutputRef, State) ->
     IndexName = State#search_state.index,
     FieldName = State#search_state.field,
 
@@ -28,12 +24,14 @@ chain_op(Op, OutputPid, OutputRef, State) ->
     {ok, FromTerms} = riak_search_op_string:analyze_term(IndexName, FieldName, to_binary(FromString)),
     length(FromTerms) == 1 orelse throw({error, too_many_terms, FromTerms}),
     FromTerm = hd(FromTerms),
+    FromTerm /= skip orelse throw({error, stopword_not_allowed_in_range, FromString}),
 
     %% Parse the ToTerms, ensure that there is only 1, otherwise throw an error.
     {ToBorder, ToString} = Op#range.to,
     {ok, ToTerms} = riak_search_op_string:analyze_term(IndexName, FieldName, to_binary(ToString)),
     length(ToTerms) == 1 orelse throw({error, too_many_terms, ToTerms}),
     ToTerm = hd(ToTerms),
+    ToTerm /= skip orelse throw({error, stopword_not_allowed_in_range, ToString}),
 
     %% Check if the current field is an integer. If so, then we'll
     %% need to OR together two range ops.
@@ -50,13 +48,18 @@ chain_op(Op, OutputPid, OutputRef, State) ->
             RangeOp2 = #range_sized { from={inclusive, to_zero(ToTerm)}, to={ToBorder, ToTerm}, size=all },
             
             %% Run the new operation...
-            NewOp = #union { id=Op#range.id, ops=[RangeOp1, RangeOp2] },
-            riak_search_op_union:chain_op(NewOp, OutputPid, OutputRef, State);
+            NewOp = #union { id=Op#range.id, ops=[RangeOp1, RangeOp2] };
         _ ->
             %% Convert to a #range_sized...
-            NewOp = #range_sized { from={FromBorder, FromTerm}, to={ToBorder, ToTerm}, size=all },
-            riak_search_op_range_sized:chain_op(NewOp, OutputPid, OutputRef, State)
-    end.
+            NewOp = #range_sized { from={FromBorder, FromTerm}, to={ToBorder, ToTerm}, size=all }
+    end,
+    riak_search_op:preplan(NewOp, State).
+
+chain_op(Op, _OutputPid, _OutputRef, _State) ->
+    %% Any #range{} operators should get rewritten to #range_sized{}
+    %% operators above.
+    throw({invalid_query_tree, Op}).
+
 
 
 %% Return true if a binary term begins with '-' (ie: it's a negative.)

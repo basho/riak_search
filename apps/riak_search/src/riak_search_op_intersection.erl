@@ -15,11 +15,10 @@
 -define(INDEX_DOCID(Term), ({element(1, Term), element(2, Term)})).
 
 preplan(Op, State) ->
-    %% Get properties, extract all {Node, Count} entries.
-    Props = riak_search_op:preplan(Op#intersection.ops, State),
-    TargetNode = riak_search_op:get_target_node(Props),
-    IntersectionProp = {?OPKEY(target_node, Op), TargetNode},
-    [IntersectionProp|Props].
+    ChildOps = riak_search_op:preplan(Op#intersection.ops, State),
+    NewOp = Op#intersection { ops=ChildOps },
+    NodeOp = #node { ops=NewOp },
+    riak_search_op:preplan(NodeOp, State).
 
 chain_op(Op, OutputPid, OutputRef, State) ->
     %% Create an iterator chain...
@@ -27,14 +26,11 @@ chain_op(Op, OutputPid, OutputRef, State) ->
     Iterator1 = riak_search_op_utils:iterator_tree(fun select_fun/2, OpList, State),
     Iterator2 = make_filter_iterator(Iterator1),
 
-    %% Figure out which node to run on...
-    TargetNode = proplists:get_value(?OPKEY(target_node, Op), State#search_state.props, node()),
-
     %% Spawn up pid to gather and send results...
     F = fun() -> 
                 riak_search_op_utils:gather_iterator_results(OutputPid, OutputRef, Iterator2()) 
         end,
-    erlang:spawn_link(TargetNode, F),
+    erlang:spawn_link(F),
 
     %% Return.
     {ok, 1}.

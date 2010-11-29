@@ -18,11 +18,8 @@
 
 preplan(Op, State) -> 
     NewState = update_state(Op, State),
-    Props = riak_search_op:preplan(Op#scope.ops, NewState),
-    TargetNode = riak_search_op:get_target_node(Props),
-    ScopeProp = {?OPKEY(target_node, Op), TargetNode},
-    [ScopeProp|Props].
-
+    ChildOps = riak_search_op:preplan(Op#scope.ops, NewState),
+    Op#scope { ops=ChildOps }.
 
 chain_op(Op, OutputPid, OutputRef, State) ->
     %% Update state and switch control to the group operator...

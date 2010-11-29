@@ -52,10 +52,13 @@ parse_query(IndexOrSchema, Query) ->
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
     DefaultIndex = Schema:name(),
     DefaultField = Schema:default_field(),
-    lucene_parser:parse(
-      riak_search_utils:to_list(DefaultIndex),
-      riak_search_utils:to_list(DefaultField),
-      riak_search_utils:to_list(Query)).
+    {ok, Ops} = lucene_parser:parse(
+                  riak_search_utils:to_list(DefaultIndex),
+                  riak_search_utils:to_list(DefaultField),
+                  riak_search_utils:to_list(Query)),
+    {ok, riak_search_op:preplan(Ops)}.
+
+    
     
 %% Run the Query, return the list of keys.
 %% Timeout is in milliseconds.
@@ -314,7 +317,7 @@ stream_search(IndexOrSchema, OpList) ->
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
 
     %% Get the total number of terms and weight in query...
-    {NumTerms, NumDocs, QueryNorm} = get_scoring_info(Props),
+    {NumTerms, NumDocs, QueryNorm} = get_scoring_info(OpList),
     SearchState = #search_state {
       index=Schema:name(),
       field=Schema:default_field(),
@@ -330,25 +333,6 @@ stream_search(IndexOrSchema, OpList) ->
     #riak_search_ref {
         id=Ref, termcount=NumTerms,
         inputcount=NumInputs, querynorm=QueryNorm }.
-    
-    
-    %% %% Get the total number of terms and weight in query...
-    %% {NumTerms, NumDocs, QueryNorm} = get_scoring_info(OpList1),
-    
-    %% %% Set up the operators. They automatically start when created...
-    %% Ref = make_ref(),
-    %% QueryProps = [
-    %%     {num_docs, NumDocs},
-    %%     {index_name, Schema:name()},
-    %%     {default_field, Schema:default_field()}
-    %% ],
-    
-    %% %% Start the query process ...
-    %% {ok, NumInputs} = riak_search_op:chain_op(OpList1, self(), Ref, QueryProps),
-    %% #riak_search_ref {
-    %%     id=Ref, termcount=NumTerms,
-    %%     inputcount=NumInputs, querynorm=QueryNorm }.
-
     
 
 %% Receive results from the provided SearchRef, run through the
@@ -382,10 +366,9 @@ collect_result(#riak_search_ref{id=Id, inputcount=InputCount}=SearchRef, Timeout
 
 %% Return {NumTerms, NumDocs, QueryNorm}...
 %% http://lucene.apache.org/java/2_4_0/api/org/apache/lucene/search/Similarity.html
-get_scoring_info(Props) ->
-    ScoringProps = riak_search_op:props_by_tag(scoring, Props),
-
+get_scoring_info(OpList) ->
     %% Calculate num terms...
+    ScoringProps = get_scoring_props(OpList),
     NumTerms = length(ScoringProps),
     NumDocs = lists:sum([0] ++ [DocFrequency || {DocFrequency, _} <- ScoringProps]),
 
@@ -397,6 +380,17 @@ get_scoring_info(Props) ->
     SumOfSquaredWeights = lists:foldl(F, 0, ScoringProps),
     QueryNorm = 1 / math:pow(SumOfSquaredWeights + 1, 0.5),
     {NumTerms, NumDocs, QueryNorm}.
+
+get_scoring_props(Ops) ->
+    lists:flatten(get_scoring_props_1(Ops)).
+get_scoring_props_1(Ops) when is_list(Ops) ->
+    [get_scoring_props_1(X) || X <- Ops];
+get_scoring_props_1(#term { doc_freq=DocFrequency, boost=Boost }) ->
+    {DocFrequency, Boost};
+get_scoring_props_1(Op) when is_tuple(Op) ->
+    get_scoring_props_1(tuple_to_list(Op));
+get_scoring_props_1(_) ->
+    [].
 
 sort_by_score(#riak_search_ref{querynorm=QNorm, termcount=TermCount}, Results) ->
     SortedResults = lists:sort(calculate_scores(QNorm, TermCount, Results)),

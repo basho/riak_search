@@ -15,8 +15,8 @@
 -include_lib("lucene_parser/include/lucene_parser.hrl").
 -define(INDEX_DOCID(Term), ({element(1, Term), element(2, Term)})).
 
-preplan(_Op, _State) -> 
-    [].
+preplan(Op, _State) -> 
+    Op.
 
 chain_op(Op, OutputPid, OutputRef, State) ->
     spawn_link(fun() -> start_loop(Op, OutputPid, OutputRef, State) end),

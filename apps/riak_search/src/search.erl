@@ -76,8 +76,7 @@ explain(Index, Q) ->
     {ok, Client} = riak_search:local_client(),
     case Client:parse_query(Index, Q) of
         {ok, Ops} ->
-            State = #search_state {},
-            {Ops, riak_search_op:preplan(Ops, State)};
+            Ops;
         {error, Error} ->
             M = "Error running query '~s': ~p~n",
             error_logger:error_msg(M, [Q, Error]),
