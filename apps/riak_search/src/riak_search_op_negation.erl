@@ -14,7 +14,8 @@
 -include_lib("lucene_parser/include/lucene_parser.hrl").
 
 preplan(Op, State) ->
-    riak_search_op:preplan(Op#negation.op, State).
+    ChildOp = riak_search_op:preplan(Op#negation.op, State),
+    Op#negation { op=ChildOp }.
 
 chain_op(Op, OutputPid, OutputRef, State) ->
     %% Higher order operations (specifically #intersection and #union)

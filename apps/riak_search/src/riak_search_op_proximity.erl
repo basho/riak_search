@@ -38,8 +38,9 @@
 %%% that we find in a sublist, and then check the min and maximum
 %%% value across *all* sublists. If max-min < N then we have a match.
 
-preplan(_Op, _State) ->
-    [].
+preplan(Op, State) ->
+    ChildOps = riak_search_op:preplan(Op#proximity.ops, State),
+    Op#proximity { ops=ChildOps }.
 
 chain_op(Op, OutputPid, OutputRef, State) ->
     %% Create an iterator chain...
@@ -55,17 +56,11 @@ chain_op(Op, OutputPid, OutputRef, State) ->
             Iterator2 = make_proximity_iterator(Iterator1, Proximity)
     end,
             
-    %% Calculate the target node. We'd like to have done this in the
-    %% preplan stage, but because we end up rewriting the query in
-    %% #string{}, this is the most expedient way to do it.
-    Props = riak_search_op:preplan(Op#proximity.ops, State),
-    TargetNode = riak_search_op:get_target_node(Props),
-
     %% Spawn up pid to gather and send results...
     F = fun() -> 
                 riak_search_op_utils:gather_iterator_results(OutputPid, OutputRef, Iterator2()) 
         end,
-    erlang:spawn_link(TargetNode, F),
+    erlang:spawn_link(F),
 
     %% Return.
     {ok, 1}.

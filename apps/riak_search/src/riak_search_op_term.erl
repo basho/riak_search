@@ -13,6 +13,7 @@
         ]).
 
 -import(riak_search_utils, [to_binary/1]).
+-record(scoring_vars, {term_boost, doc_frequency, num_docs}).
 
 %% Look up results from the index without any kind of text analyzis on
 %% term. Filter and transform the results, and send them to the
@@ -31,13 +32,21 @@
 %% {info, Index, Field, String} -> [{Node, Count}]
 %% Generate term count in term, managed by string.
 
-preplan(Op, State) -> 
+preplan(Op, State) ->
     %% Get info about the term, return in props...
     IndexName = State#search_state.index,
     FieldName = State#search_state.field,
     Term = to_binary(Op#term.s),
-    Weights = info(IndexName, FieldName, Term),
-    [{?OPKEY(node_weight, Op), {Node, Count}} || {_, Node, Count} <- Weights].
+    Weights1 = info(IndexName, FieldName, Term),
+    Weights2 = [{Node, Count} || {_, Node, Count} <- Weights1],
+    TotalCount = lists:sum([Count || {_, _, Count} <- Weights1]),
+    case length(Weights1) == 0 of
+        true  -> 
+            DocFrequency=1;
+        false -> 
+            DocFrequency = TotalCount / length(Weights1)
+    end,
+    Op#term { weights=Weights2, doc_freq=DocFrequency }.
 
 chain_op(Op, OutputPid, OutputRef, State) ->
     spawn_link(fun() -> start_loop(Op, OutputPid, OutputRef, State) end),
@@ -54,7 +63,7 @@ start_loop(Op, OutputPid, OutputRef, State) ->
     {ok, Ref} = stream(IndexName, FieldName, Term, FilterFun),
 
     %% Collect the results...
-    TransformFun = Op#term.transform,
+    TransformFun = generate_transform_function(Op, State),
     riak_search_op_utils:gather_stream_results(Ref, OutputPid, OutputRef, TransformFun).
 
 stream(Index, Field, Term, FilterFun) ->
@@ -91,3 +100,45 @@ info(Index, Field, Term) ->
     {ok, Ref} = riak_search_vnode:info(Preflist, Index, Field, Term, self()),
     {ok, Results} = riak_search_backend:collect_info_response(length(Preflist), Ref, []),
     Results.
+
+%% Create transform function, taking scoring values into account.
+generate_transform_function(Op, State) ->
+    %% Create the scoring vars record...
+    ScoringVars = #scoring_vars {
+        term_boost = Op#term.boost,
+        doc_frequency = Op#term.doc_freq,
+        num_docs = State#search_state.num_docs
+    },
+
+    %% Transform the result by adding the Index and calculating the
+    %% Score.
+    IndexName = State#search_state.index,
+    fun({DocID, Props}) ->
+        NewProps = calculate_score(ScoringVars, Props),
+        {IndexName, DocID, NewProps}
+    end.
+
+calculate_score(ScoringVars, Props) ->
+    %% Pull from ScoringVars...
+    TermBoost = ScoringVars#scoring_vars.term_boost,
+    DocFrequency = ScoringVars#scoring_vars.doc_frequency + 1,
+    NumDocs = ScoringVars#scoring_vars.num_docs + 1,
+
+    %% Pull freq from Props. (If no exist, use 1).
+    Frequency = length(proplists:get_value(p, Props, [])),
+    DocFieldBoost = proplists:get_value(boost, Props, 1),
+
+    %% Calculate the score for this term, based roughly on Lucene
+    %% scoring. http://lucene.apache.org/java/2_4_0/api/org/apache/lucene/search/Similarity.html
+    TF = math:pow(Frequency, 0.5),
+    IDF = (1 + math:log(NumDocs/DocFrequency)),
+    Norm = DocFieldBoost,
+    
+    Score = TF * math:pow(IDF, 2) * TermBoost * Norm,
+    ScoreList = case lists:keyfind(score, 1, Props) of
+                    {score, OldScores} ->
+                        [Score|OldScores];
+                    false ->
+                        [Score]
+                end,
+    lists:keystore(score, 1, Props, {score, ScoreList}).

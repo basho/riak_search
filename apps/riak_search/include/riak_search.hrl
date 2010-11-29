@@ -29,11 +29,29 @@
           id=make_ref(),
           %% The term to query.
           s, 
+          %% The node weights
+          weights,
+          %% DocFrequency,
+          doc_freq,
+          %% Boost
+          boost,
           %% Filter any results that return false.
-          filter=fun riak_search_op_term:default_filter/2, 
-          %% Transform results.
-          transform=fun riak_search_op_term:default_transform/1
+          filter=fun riak_search_op_term:default_filter/2
          }).
+
+-record(node, {
+          %% A unique id used during planning.
+          id=make_ref(),
+          %% The node to run on.
+          node=node(),
+          %% The child ops.
+          ops=[]
+         }).
+
+-record(score, {
+          boost=1,
+          ops=[]
+          }).
 
 -record(proximity, {
           id=make_ref(),
