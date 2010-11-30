@@ -5,7 +5,7 @@
 %% -------------------------------------------------------------------
 
 -module(riak_search_kv_extractor).
--export([extract/2, clean_name/1]).
+-export([extract/3, clean_name/1]).
 -include("riak_search.hrl").
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -13,13 +13,13 @@
 
 %% Extract search data from the riak_object.  Switch between the
 %% built-in extractors based on Content-Type.
-extract(RiakObject, Args) ->
+extract(RiakObject, DefaultField, Args) ->
     try
         Contents = riak_object:get_contents(RiakObject),
         F = fun({MD,V}, Fields) ->
                     ContentType =  get_content_type(MD),
                     Extractor = get_extractor(ContentType, encodings()),
-                    [Extractor:extract_value(V, Args) | Fields]
+                    [Extractor:extract_value(V, DefaultField, Args) | Fields]
             end,
         lists:flatten(lists:foldl(F, [], Contents))
     catch
@@ -111,7 +111,7 @@ check_expected([{Data, CT, Fields}|Rest]) ->
         _ ->
             Object = riak_object:new(<<"b">>, <<"k">>, Data, CT)
     end,
-    ?assertEqual(Fields, extract(Object, undefined)),
+    ?assertEqual(Fields, extract(Object, <<"value">>,undefined)),
     check_expected(Rest).
 
 -endif. % TEST

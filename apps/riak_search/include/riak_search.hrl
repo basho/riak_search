@@ -5,7 +5,6 @@
 -endif.
 
 -define(DEFAULT_INDEX, <<"search">>).
--define(DEFAULT_FIELD, <<"value">>).
 -define(IS_TERM_PROHIBITED(Op), lists:member(prohibited, Op#term.options)).
 -define(IS_TERM_REQUIRED(Op), lists:member(required, Op#term.options)).
 -define(IS_TERM_INLINE(Op), lists:member(inline, Op#term.options)).

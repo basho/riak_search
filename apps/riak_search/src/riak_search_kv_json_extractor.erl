@@ -4,8 +4,8 @@
 %%
 %% -------------------------------------------------------------------
 -module(riak_search_kv_json_extractor).
--export([extract/2,
-         extract_value/2]).
+-export([extract/3,
+         extract_value/3]).
 
 -include("riak_search.hrl").
 -import(riak_search_utils, [to_utf8/1]).
@@ -14,36 +14,36 @@
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
-extract(RiakObject, _Args) ->
+extract(RiakObject, DefaultField, _Args) ->
     try
         Values = riak_object:get_values(RiakObject),
-        lists:flatten([extract_value(V, _Args) || V <- Values])
+        lists:flatten([extract_value(V, DefaultField, _Args) || V <- Values])
     catch
         _:Err ->
             {fail, {cannot_parse_json,Err}}
     end.
 
-extract_value(Data, _Args) ->
+extract_value(Data, DefaultField, _Args) ->
     Json = mochijson2:decode(Data),    
-    Fields = lists:reverse(lists:flatten(make_search_fields(undefined, Json, []))),
+    Fields = lists:reverse(lists:flatten(make_search_fields(undefined, Json, DefaultField, []))),
     [{to_utf8(FieldName), to_utf8(FieldValue)} || {FieldName, FieldValue} <- Fields].
 
 
-make_search_fields(NamePrefix, {struct, Fields}, Output) ->
+make_search_fields(NamePrefix, {struct, Fields}, DefaultField, Output) ->
     F = fun({Name, Val}, Acc) ->
                 Name2 = append_fieldname(NamePrefix, Name),
-                [make_search_fields(Name2, Val, []) | Acc]
+                [make_search_fields(Name2, Val, DefaultField, []) | Acc]
         end,
     lists:foldl(F, Output, Fields);
-make_search_fields(Name, List, Output) when is_list(List) ->
+make_search_fields(Name, List, DefaultField, Output) when is_list(List) ->
     F = fun(El, Acc) ->
-                [make_search_fields(Name, El, []) | Acc]
+                [make_search_fields(Name, El, DefaultField, []) | Acc]
         end,
     lists:foldl(F, Output, List);
-make_search_fields(_Name, null, Output) ->
+make_search_fields(_Name, null, _DefaultField, Output) ->
     Output;
-make_search_fields(Name, Term, Output) ->
-    [{search_fieldname(Name), to_data(Term)} | Output].
+make_search_fields(Name, Term, DefaultField, Output) ->
+    [{search_fieldname(Name, DefaultField), to_data(Term)} | Output].
 
 to_data(String) when is_binary(String) ->
     String;
@@ -61,9 +61,9 @@ append_fieldname(FieldPrefix, Name) ->
 %% Make a search field name - if no names encountered yet use the
 %% default field, otherwise make sure the field name does not
 %% contain . or : by substituting with _
-search_fieldname(undefined) ->
-    ?DEFAULT_FIELD;
-search_fieldname(Name) ->
+search_fieldname(undefined, DefaultField) ->
+    DefaultField;
+search_fieldname(Name, _) ->
     riak_search_kv_extractor:clean_name(Name).
 
 
@@ -73,7 +73,7 @@ search_fieldname(Name) ->
 bad_json_test() ->
     Data = <<"<?xml><suprise>this is not json</suprise>">>, 
     Object = riak_object:new(<<"b">>, <<"k">>, Data, "application/json"),
-    ?assertMatch({fail, {cannot_parse_json,_}}, extract(Object, undefined)).
+    ?assertMatch({fail, {cannot_parse_json,_}}, extract(Object, <<"value">>, undefined)).
              
 json_test() ->
     Tests = [{<<"{\"myfield\":\"myvalue\"}">>,
@@ -192,7 +192,7 @@ check_expected([]) ->
     ok;
 check_expected([{Json, Fields}|Rest]) ->
     Object = riak_object:new(<<"b">>, <<"k">>, Json, "application/json"),
-    ?assertEqual(Fields, extract(Object, undefined)),
+    ?assertEqual(Fields, extract(Object, <<"value">>, undefined)),
     check_expected(Rest).
 
 -endif. % TEST

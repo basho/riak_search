@@ -4,48 +4,64 @@
 %%
 %% -------------------------------------------------------------------
 -module(riak_search_kv_erlang_extractor).
--export([extract/2,
-         extract_value/2]).
+-export([extract/3,
+         extract_value/3]).
 
 -include("riak_search.hrl").
 -import(riak_search_utils, [to_utf8/1]).
+
+%%% Index erlang terms and proplists (bz://788)
+%%%     
+%%% Riak objects should have the content type "application/x-erlang"
+%%%  
+%%% Much like the JSON extractor:
+%%%  
+%%% * bare terms ('foo', <<"foo">>, 123) are indexed in the default field
+%%%
+%%% * proplists are indexed under the prop names
+%%%   ( [{<<"foo">>,<<"hello">>}] indexes "hello" in the "foo" field )
+%%%
+%%% * nested proplists separate name components with underscores
+%%%   ( [{<<"foo">>,[{<<"bar">>,<<"hello">>}]}] indexes "hello"
+%%%     in the "foo_bar" field )
+
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 
-extract(RiakObject, _Args) ->
+extract(RiakObject, DefaultField, _Args) ->
     try
         Values = riak_object:get_values(RiakObject),
-        lists:flatten([extract_value(V, _Args) || V <- Values])
+        lists:flatten([extract_value(V, DefaultField, _Args) || V <- Values])
     catch
         _:Err ->
             {fail, {bad_erlang,Err}}
     end.
 
-extract_value(Data, _Args) ->
-    Fields = lists:reverse(lists:flatten(make_search_fields(undefined, Data, []))),
+extract_value(Data, DefaultField, _Args) ->
+    Fields = lists:reverse(lists:flatten(make_search_fields(undefined, Data, DefaultField, []))),
     [{to_utf8(FieldName), to_utf8(FieldValue)} || {FieldName, FieldValue} <- Fields].
 
 
-make_search_fields(NamePrefix, {Prop, Value}, Output)
+make_search_fields(NamePrefix, {Prop, Value}, DefaultField, Output)
   when is_atom(Prop); is_binary(Prop) ->
     make_search_fields(append_fieldname(NamePrefix, Prop),
-                       Value, Output);
-make_search_fields(Name, List, Output) when is_list(List) ->
+                       Value, DefaultField, Output);
+make_search_fields(Name, List, DefaultField, Output) when is_list(List) ->
     %% all list elements are indexed individually
     %%  -> encode strings as binaries, not lists!
     F = fun(El, Acc) ->
-                [make_search_fields(Name, El, []) | Acc]
+                [make_search_fields(Name, El, DefaultField, []) | Acc]
         end,
     lists:foldl(F, Output, List);
-make_search_fields(_Name, undefined, Output) ->
+make_search_fields(_Name, undefined, _DefaultField, Output) ->
     Output;
-make_search_fields(Name, Term, Output) when is_atom(Term);
+make_search_fields(Name, Term, DefaultField, Output) when is_atom(Term);
                                             is_binary(Term);
                                             is_number(Term) ->
-    [{search_fieldname(Name), Term} | Output];
-make_search_fields(_Name, _Term, Output) ->
+    [{search_fieldname(Name, DefaultField), Term} | Output];
+make_search_fields(_Name, _Term, _DefaultField, Output) ->
     %% can't index PIDs, Ports, >2-arity Tuples, ...
     Output.
 
@@ -59,9 +75,9 @@ append_fieldname(FieldPrefix, Name) when is_atom(Name) ->
 %% Make a search field name - if no names encountered yet use the
 %% default field, otherwise make sure the field name does not
 %% contain . or : by substituting with _
-search_fieldname(undefined) ->
-    ?DEFAULT_FIELD;
-search_fieldname(Name) ->
+search_fieldname(undefined, DefaultField) ->
+    DefaultField;
+search_fieldname(Name, _) ->
     riak_search_kv_extractor:clean_name(Name).
 
 
@@ -72,7 +88,7 @@ bad_binary_test() ->
     Data = {<<"this">>,<<"is not">>,<<"a proplist">>},
     Object = riak_object:new(<<"b">>, <<"k">>, Data,
                              "application/x-erlang"),
-    ?assertMatch([], extract(Object, undefined)).
+    ?assertMatch([], extract(Object, <<"value">>, undefined)).
              
 term_test() ->
     Tests = [{[{<<"myfield">>,<<"myvalue">>}],
@@ -183,7 +199,7 @@ check_expected([]) ->
     ok;
 check_expected([{Terms, Fields}|Rest]) ->
     Object = riak_object:new(<<"b">>, <<"k">>, Terms, "application/x-erlang"),
-    ?assertEqual(Fields, extract(Object, undefined)),
+    ?assertEqual(Fields, extract(Object, <<"value">>, undefined)),
     check_expected(Rest).
 
 -endif. % TEST

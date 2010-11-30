@@ -4,8 +4,8 @@
 %%
 %% -------------------------------------------------------------------
 -module(riak_search_kv_xml_extractor).
--export([extract/2,
-        extract_value/2]).
+-export([extract/3,
+        extract_value/3]).
 -include("riak_search.hrl").
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -14,16 +14,16 @@
 -record(state, {name_stack=[], fields=[]}).
 -import(riak_search_utils, [to_utf8/1]).
 
-extract(RiakObject, _Args) ->
+extract(RiakObject, DefaultField, _Args) ->
     try
         Values = riak_object:get_values(RiakObject),
-        lists:flatten([extract_value(V, _Args) || V <- Values])
+        lists:flatten([extract_value(V, DefaultField, _Args) || V <- Values])
     catch
         _:Err ->
             {fail, {cannot_parse_xml, Err}}
     end.
 
-extract_value(Data, _Args) ->
+extract_value(Data, _DefaultField, _Args) ->
     Options = [{event_fun, fun sax_cb/3}, {event_state, #state{}}],
     {ok, State, _Rest} = xmerl_sax_parser:stream(Data, Options),
     Fields = lists:reverse(lists:flatten(State#state.fields)),
@@ -79,7 +79,7 @@ make_name([Tag|Rest],Name) ->
 not_xml_test() ->
     Data = <<"{\"surprise\":\"this is not XML\"}">>, 
     Object = riak_object:new(<<"b">>, <<"k">>, Data, "application/xml"),
-    ?assertMatch({fail, {cannot_parse_xml,_}}, extract(Object, undefined)).
+    ?assertMatch({fail, {cannot_parse_xml,_}}, extract(Object, <<"value">>, undefined)).
     
 
 xml_test() ->
@@ -129,7 +129,7 @@ check_expected([{Xml, Fields}|Rest]) ->
     Object = riak_object:new(<<"b">>, <<"k">>, 
                              <<"<?xml version=\"1.0\"?>", Xml/binary>>,
                              "application/xml"),
-    ?assertEqual(Fields, extract(Object, undefined)),
+    ?assertEqual(Fields, extract(Object, <<"value">>, undefined)),
     check_expected(Rest).
 
 -endif. % TEST
