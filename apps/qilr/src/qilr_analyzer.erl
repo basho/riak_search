@@ -90,8 +90,8 @@ start_link() ->
     gen_server:start_link(?MODULE, [], []).
 
 init([]) ->
-    case application:get_env(qilr, analysis_port) of
-        {ok, Port} when is_integer(Port) ->
+    case app_helper:get_env(qilr, analysis_port) of
+        Port when is_integer(Port) ->
             case service_connect(Port) of
                 {ok, Sock} ->
                     {ok, #state{socket=Sock}};
@@ -99,15 +99,21 @@ init([]) ->
                     error_logger:error_msg("Error connecting to analysis server: ~p", [Error]),
                     {stop, Error}
             end;
+        undefined ->
+            {ok, #state {socket=undefined}};
         _ ->
             {stop, {error, bad_analysis_port}}
     end.
 
+handle_call(close, _, #state{socket=undefined}=State) ->
+    {stop, normal, ok, State};
 handle_call(close, _From, #state{socket=Sock}=State) ->
     %% for close/1
     gen_tcp:close(Sock),
     {stop, normal, ok, State};
 
+handle_call(_, _, #state{socket=undefined}) ->
+    throw({error, java_analyzer_disabled});
 handle_call({analyze, Req}, From, #state{socket=Sock, caller=undefined}=State) ->
     gen_tcp:send(Sock, [<<(?MSG_ANALYSIS_REQUEST):16>>, analysis_pb:encode_analysisrequest(Req)]),
     inet:setopts(Sock, [{active, once}]),
@@ -116,6 +122,8 @@ handle_call({analyze, Req}, From, #state{socket=Sock, caller=undefined}=State) -
 handle_call(_Request, _From, State) ->
     {reply, ignore, State}.
 
+handle_cast(close, #state{socket=disabled}=State) ->
+    {stop, normal, State};
 handle_cast(close, #state{socket=Sock}=State) ->
     %% for close_nonblocking/1
     gen_tcp:close(Sock),

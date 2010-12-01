@@ -5,51 +5,62 @@
 %% -------------------------------------------------------------------
 
 -module(text_analyzers).
--export([default_analyzer_factory/2]).
--define(UPPERCHAR(C), (C >= $A andalso C =< $Z)).
--define(LOWERCHAR(C), (C >= $a andalso C =< $z)).
--define(NUMBER(C), (C >= $0 andalso C =< $9)).
+-export([
+         default_analyzer_factory/2,
+         whitespace_analyzer_factory/2,
+         noop_analyzer_factory/2,
+         integer_analyzer_factory/2
+        ]).
 
-%% Mimics the DefaultAnalyzerFactory.
-default_analyzer_factory(Text, [MinLength]) ->
-    {ok, default(Text, MinLength, [])};
+-define(UPPERCHAR(C),  (C >= $A andalso C =< $Z)).
+-define(LOWERCHAR(C),  (C >= $a andalso C =< $z)).
+-define(NUMBER(C),     (C >= $0 andalso C =< $9)).
+-define(WHITESPACE(C), ((C == $\s) orelse (C == $\n) orelse (C == $\t) orelse (C == $\f) orelse (C == $\r) orelse (C == $\v))).
+
+%% @doc Tokenize incoming text using roughly the same rules as the
+%% DefaultAnalyzerFactory in Lucene/Java.
+default_analyzer_factory(Text, [MinLengthArg]) ->
+    MinLength = list_to_integer(MinLengthArg),
+    {ok, default(Text, MinLength, [], [])};
 default_analyzer_factory(Text, _Other) ->
-    default_analyzer_factory(Text, [3]).
+    {ok, default(Text, 3, [], [])}.
 
-default(<<H, T/binary>>, MinLength, Acc) when ?UPPERCHAR(H) ->
+default(<<H, T/binary>>, MinLength, Acc, ResultAcc) when ?UPPERCHAR(H) ->
     H1 = H + ($a - $A),
-    default(T, MinLength, [H1|Acc]);
-default(<<H, T/binary>>, MinLength, Acc) when ?LOWERCHAR(H) orelse ?NUMBER(H) ->
-    default(T, MinLength, [H|Acc]);
-default(<<$.,H,T/binary>>, MinLength, Acc) when ?UPPERCHAR(H) ->
+    default(T, MinLength, [H1|Acc], ResultAcc);
+default(<<H, T/binary>>, MinLength, Acc, ResultAcc) when ?LOWERCHAR(H) orelse ?NUMBER(H) ->
+    default(T, MinLength, [H|Acc], ResultAcc);
+default(<<$.,H,T/binary>>, MinLength, Acc, ResultAcc) when ?UPPERCHAR(H) ->
     H1 = H + ($a - $A),
-    default(T, MinLength, [H1,$.|Acc]);
-default(<<$.,H,T/binary>>, MinLength, Acc) when ?LOWERCHAR(H) orelse ?NUMBER(H) ->
-    default(T, MinLength, [H,$.|Acc]);
-default(<<_,T/binary>>, MinLength, Acc) ->
-    default_termify(T, MinLength, Acc);
-default(<<>>, MinLength, Acc) ->
-    default_termify(<<>>, MinLength, Acc).
+    default(T, MinLength, [H1,$.|Acc], ResultAcc);
+default(<<$.,H,T/binary>>, MinLength, Acc, ResultAcc) when ?LOWERCHAR(H) orelse ?NUMBER(H) ->
+    default(T, MinLength, [H,$.|Acc], ResultAcc);
+default(<<_,T/binary>>, MinLength, Acc, ResultAcc) ->
+    default_termify(T, MinLength, Acc, ResultAcc);
+default(<<>>, MinLength, Acc, ResultAcc) ->
+    default_termify(<<>>, MinLength, Acc, ResultAcc).
 
 %% Determine if this term is valid, if so, add it to the list we are
 %% generating.
-default_termify(<<>>, _MinLength, []) ->
-    [];
-default_termify(T, MinLength, []) ->
-    default(T, MinLength, []);
-default_termify(T, MinLength, Acc) when length(Acc) < MinLength ->
+default_termify(<<>>, _MinLength, [], ResultAcc) ->
+    lists:reverse(ResultAcc);
+default_termify(T, MinLength, [], ResultAcc) ->
+    default(T, MinLength, [], ResultAcc);
+default_termify(T, MinLength, Acc, ResultAcc) when length(Acc) < MinLength ->
     %% mimic org.apache.lucene.analysis.LengthFilter,
     %% which does not incement position index
-    default(T, MinLength, []);
-default_termify(T, MinLength, Acc) ->
+    default(T, MinLength, [], ResultAcc);
+default_termify(T, MinLength, Acc, ResultAcc) ->
     Term = lists:reverse(Acc),
     case is_stopword(Term) of
         false ->
             TermBinary = list_to_binary(Term),
-            [TermBinary|default(T, MinLength, [])];
+            NewResultAcc = [TermBinary|ResultAcc];
         true -> 
-            [skip|default(T, MinLength, [])]
-    end.
+            NewResultAcc = [skip|ResultAcc]
+    end,
+    default(T, MinLength, [], NewResultAcc).
+
 
 is_stopword(Term) when length(Term) == 2 -> 
     ordsets:is_element(Term, ["an", "as", "at", "be", "by", "if", "in", "is", "it", "no", "of", "on", "or", "to"]);
@@ -61,3 +72,63 @@ is_stopword(Term) when length(Term) == 5 ->
     ordsets:is_element(Term, ["their", "there", "these"]);
 is_stopword(_Term) -> 
     false.
+
+%% @doc Tokenize incoming text using whitespace, return the list of
+%% tokens.
+whitespace_analyzer_factory(Text, _) ->
+    {ok, whitespace(Text, [], [])}.
+whitespace(<<H, T/binary>>, Acc, ResultAcc) when ?WHITESPACE(H) ->
+    whitespace_termify(T, Acc, ResultAcc);
+whitespace(<<H, T/binary>>, Acc, ResultAcc) ->
+    whitespace(T, [H|Acc], ResultAcc);
+whitespace(<<>>, Acc, ResultAcc) when length(Acc) > 0 ->
+    whitespace_termify(<<>>, Acc, ResultAcc);
+whitespace(<<>>, [], ResultAcc) ->
+    lists:reverse(ResultAcc).
+
+whitespace_termify(T, [], ResultAcc) ->
+    whitespace(T, [], ResultAcc);
+whitespace_termify(T, Acc, ResultAcc) ->
+    Term = list_to_binary(lists:reverse(Acc)),
+    whitespace(T, [], [Term|ResultAcc]).
+
+%% @doc Treat the incoming text as a single token.
+noop_analyzer_factory(Text, _) ->
+    {ok, [Text]}.
+
+%% @doc Tokenize incoming text as integers.
+integer_analyzer_factory(Text, [PadSizeArg]) ->
+    PadSize = list_to_integer(PadSizeArg),
+    {ok, integer(Text, PadSize, [], [])}.
+integer(<<H, T/binary>>, PadSize, Acc, ResultAcc) when ?NUMBER(H) orelse (H == $-) ->
+    integer(T, PadSize, [H|Acc], ResultAcc);
+integer(<<_, T/binary>>, PadSize, Acc, ResultAcc) ->
+    integer_termify(T, PadSize, Acc, ResultAcc);
+integer(<<>>, PadSize, Acc, ResultAcc) when length(Acc) > 0 ->
+    integer_termify(<<>>, PadSize, Acc, ResultAcc);
+integer(<<>>, _PadSize, [], ResultAcc) ->
+    lists:reverse(ResultAcc).
+
+integer_termify(T, PadSize, [], ResultAcc) ->
+    integer(T, PadSize, [], ResultAcc);
+integer_termify(T, PadSize, Acc, ResultAcc) ->
+    try 
+        %% Ensure that we have a valid integer.
+        Term = lists:reverse(Acc),
+        _ValidInteger = list_to_integer(Term),
+        BTerm = list_to_binary(Term),
+        PaddedTerm = integer_pad(BTerm, PadSize),
+        integer(T, PadSize, [], [PaddedTerm|ResultAcc])
+    catch _ : _ ->
+        integer(T, PadSize, [], ResultAcc)
+    end.
+
+%% @private Given an integer in binary form, pad it with zeros until
+%% it is at least PadSize characters.
+integer_pad(<<$-, T/binary>>, PadSize) ->
+    T1 = integer_pad(T, PadSize - 1),
+    <<$-, T1/binary>>;
+integer_pad(T, PadSize) when size(T) < PadSize ->
+    integer_pad(<<$0, T/binary>>, PadSize);
+integer_pad(T, _) ->
+    T.

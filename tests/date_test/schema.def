@@ -7,23 +7,23 @@
     [
         {field, [
             {name, "id"},
-            {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+            {type, date}
         ]},
 
         {field, [
             {name, "key"},
-            {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+            {type, date}
         ]},
 
         {field, [
             {name, "date"},
-            {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+            {type, date}
         ]},
 
         {field, [
             {name, "date_inline"},
             {inline, true},
-            {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+            {type, date}
         ]}
     ]
 }.
