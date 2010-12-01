@@ -10,6 +10,7 @@
              riak_search_cmd,
              riak_search_app,
              riak_search_backend,
+             riak_search_cinfo,
              riak_search_config,
              riak_search_client,
              riak_search_dir_indexer,
