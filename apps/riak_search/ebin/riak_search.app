@@ -14,7 +14,6 @@
              riak_search_client,
              riak_search_dir_indexer,
              riak_search_sup,
-             riak_search_preplan,
              riak_search_inlines,
              riak_search_kv_extractor,
              riak_search_kv_hook,
