@@ -3,8 +3,8 @@
     {schema, "schema.def"},
 
     %% Index the solr in "0"...
-    %% {echo,   "Indexing documents..."}, 
-    %% {solr,   "./solr_add.xml"},
+    {echo,   "Indexing documents..."}, 
+    {solr,   "./solr_add.xml"},
 
     %% {echo,   "Verify that we find all five documents containing 'one'."},
     %% {search, "one", [{length, 5}]},
@@ -147,8 +147,15 @@
     %% {search, "i_dyn:abc", [{length, 0}]},
     %% {search, "i_dyn:\"-\"", [{length, 0}]},
 
+    {echo, "Test output formatting."},
+    {solr_select, [{q, "key:date1"}, {wt, xml}], [{length, 1}]},
+    {solr_select, [{q, "key:date1 OR key:date2"}, {wt, xml}], [{length, 2}]},
+    {solr_select, [{q, "key:date1"}, {wt, json}], [{length, 1}]},
+    {solr_select, [{q, "key:date1 OR key:date2"}, {wt, json}], [{length, 2}]},
+
     %% %% Cleanup.
     %% {echo,   "De-indexing documents..."},
     %% {solr,   "./solr_delete.xml"},
+
     {echo,   "Done."}
 ].

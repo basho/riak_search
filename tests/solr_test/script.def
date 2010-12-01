@@ -108,7 +108,6 @@
         [{q, "acc:ABC"}, {wt, json}, {start, 70}, {rows, 20}, {rows, 999}], 
         [{length, 18}]},
 
-    
     {echo, "Test <commit />, which is a noop in Riak Search."},
     {solr_update, "./commit.xml"},
 

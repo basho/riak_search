@@ -98,4 +98,20 @@
     <field name="dyn_i">-20</field>
     <field name="i_dyn">-20</field>
   </doc>
+  <doc>
+    <field name="id">date1</field>
+    <field name="key">date1</field>
+    <field name="date">Thu, 04 Nov 2010 16:02:59 -0000</field>
+    <field name="test_dt">Thu, 04 Nov 2010 16:02:59 -0000</field>
+    <field name="dt_test">Thu, 04 Nov 2010 16:02:59 -0000</field>
+    <field name="int4">20</field>
+  </doc>
+  <doc>
+    <field name="id">date2</field>
+    <field name="key">date2</field>
+    <field name="date">Fri, 05 Nov 2010 17:03:00 -0000</field>
+    <field name="test_dt">Fri, 05 Nov 2010 17:03:00 -0000</field>
+    <field name="dt_test">Fri, 05 Nov 2010 17:03:00 -0000</field>
+    <field name="int4">-5</field>
+  </doc>
 </add>
