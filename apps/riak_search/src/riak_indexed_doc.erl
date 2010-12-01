@@ -239,11 +239,8 @@ merge_fields_folder(New, Fields) ->
 analyze_field(FieldName, FieldValue, Schema, AnalyzerPid) ->
     %% Get the field...
     Field = Schema:find_field(FieldName),
-    ?PRINT(Field),
     AnalyzerFactory = Schema:analyzer_factory(Field),
     AnalyzerArgs = Schema:analyzer_args(Field),
-    ?PRINT(AnalyzerFactory),
-    ?PRINT(AnalyzerArgs),
 
     %% Analyze the field...
     qilr_analyzer:analyze(AnalyzerPid, FieldValue, AnalyzerFactory, AnalyzerArgs).
