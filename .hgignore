@@ -49,4 +49,4 @@ apps/riak_search_core/ebin/riak_search_core.app
 .eclipse/.*
 apps/raptor/java_src/raptor/lib/je-.*\.jar
 apps/merge_index/ebin/.*.app$
-
+^deps/.*
