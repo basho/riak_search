@@ -17,7 +17,7 @@ DISTRO		= $(shell awk '{ if (NR==1) print $$1; };' /etc/release)
 endif
 
 APP		 = $(shell echo "$(REPO)" | sed -e 's/_/-/g')
-# Assumes CURDIR is .../$(APP)/package/
+# Assumes CURDIR is $(REPO)/package/
 SEARCH_PATH	?= ..
 RELEASE		?= 
 
