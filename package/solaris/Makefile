@@ -1,4 +1,6 @@
 # requires GNU make
+# riak_search's installation path is currently "riaksearch"
+APP_PATH	?= $(shell echo "$(APP)" | sed 's/-//g')
 PKG		 = BASHO$(APP)
 # possible ARCH values are i386, sparc, all
 ARCH		 = $(shell uname -p)
