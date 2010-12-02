@@ -23,6 +23,10 @@ start(_StartType, _StartArgs) ->
             riak_core:register_vnode_module(riak_search_vnode),
             riak_core_node_watcher:service_up(riak_search, self()),
 
+            %% Register our cluster_info app callback modules, with catch if
+            %% the app is missing or packaging is broken.
+            catch cluster_info:register_app(riak_search_cinfo),
+
            {ok, Pid};
         Error ->
             Error
