@@ -55,7 +55,12 @@ get_schema(Schema) when is_tuple(Schema) ->
     end;
 get_schema(Index) ->
     IndexB = riak_search_utils:to_binary(Index),
-    gen_server:call(?SERVER, {get_schema, IndexB}, infinity).
+    case ets:lookup(schema_table, IndexB) of
+        [{IndexB, Schema}] -> 
+            {ok, Schema};
+        _ ->
+            gen_server:call(?SERVER, {get_schema, IndexB}, infinity)
+    end.
 
 %% @doc Return the raw schema (as an Erlang term) for a given index.
 get_raw_schema(Index) ->
@@ -70,7 +75,7 @@ put_raw_schema(Index, RawSchemaBinary) when is_binary(RawSchemaBinary) ->
 
 init([]) ->
     {ok, Client} = riak:local_client(),
-    Table = ets:new(table, [private, set]),
+    Table = ets:new(schema_table, [named_table, public, set]),
     {ok, #state{client=Client, schema_table=Table}}.
 
 handle_call(clear, _From, State) ->
