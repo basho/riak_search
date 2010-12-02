@@ -1,0 +1,93 @@
+#!/bin/bash
+#
+# Riak Search Distributed Data Store with Full Text Indexing
+#
+# chkconfig: 2345 80 30
+# description: Riak Search is a distrubuted data store with full text indexing.
+# processname: beam 
+# config: /etc/riaksearch/app.config
+# config: /etc/riaksearch/vm.args
+#
+
+# Source function library.
+. /etc/rc.d/init.d/functions
+
+#check for script,config, and data dirs
+[ -x /usr/sbin/riaksearch ] || exit 0
+[ -d /etc/riaksearch ] || exit 0
+[ -d /var/lib/riaksearch ] || exit 0
+[ -d /var/run/riaksearch ] || exit 0
+
+RETVAL=0
+
+PATH=/sbin:/usr/sbin:/bin:/usr/bin
+DESC="a distributed key value store"
+NAME=riaksearch
+DAEMON=/usr/sbin/$NAME
+
+
+start() {
+        #Check if Riak Search is running
+        RETVAL=`$DAEMON ping`
+        [ "$RETVAL" == "pong" ] && echo "Riak Search is already running" && return 1
+
+	# Start daemons.
+	echo -n $"Starting Riak Search: "
+	su - riaksearch -c "$DAEMON start" && success || failure $"$NAME start"
+	RETVAL=$?
+	[ $RETVAL -eq 0 ]
+        echo
+	return $RETVAL
+}
+
+stop() {
+        # Stop daemon.
+	echo -n $"Stopping Riak Search: "
+  	RETVAL=`su - riaksearch -c "$DAEMON ping"`
+  	[ "$RETVAL" == "pong" ] && su - riaksearch -c "$DAEMON stop 2>/dev/null 1>&2" 
+        sleep 2
+        RETVAL=`pidof beam.smp`
+        [ "$RETVAL" == "" ] && success && echo && return 0 || failure $"$NAME stop"
+        sleep 10
+        RETVAL=`pidof beam.smp`
+        [ "$RETVAL" == "" ] && success && echo && return 0 || failure $"$NAME failed to stop"
+        echo
+        return 1
+
+}
+
+reload() {
+        # Restart the VM without exiting the process
+	echo -n $"Reloading Riak Search: "
+  	RETVAL=`su - riaksearch -c "$DAEMON ping"`
+  	[ "$RETVAL" == "pong" ] && su - riaksearch -c "$DAEMON restart 2>/dev/null 1>&2" \
+        && success && echo && return 0 || failure $"$NAME restart" 
+        echo
+	return $RETVAL
+}
+
+
+# See how we were called.
+case "$1" in
+  start)
+	start
+	;;
+  stop)
+	stop
+	;;
+  restart)
+ 	stop
+	start
+	;;
+  reload)
+	reload
+	;;
+  ping)
+	su - riaksearch -c "$DAEMON ping" || exit $?
+        ;;
+  *)
+	echo $"Usage: $0 {start|stop|reload|restart|ping}"
+	exit 1
+esac
+
+exit $?
