@@ -3,7 +3,7 @@ SEARCH_TAG	 = $(shell git describe --tags)
 REVISION	?= $(shell echo $(SEARCH_TAG) | sed -e 's/^$(REPO)-//')
 PKG_VERSION	?= $(shell echo $(REVISION) | tr - .)
 
-.PHONY: rel stagedevrel deps
+.PHONY: rel stagedevrel deps package pkgclean
 
 all: deps compile
 
@@ -141,5 +141,4 @@ package: dist
 pkgclean:
 	$(MAKE) -C package pkgclean
 
-.PHONY: package
 export PKG_VERSION REPO REVISION SEARCH_TAG

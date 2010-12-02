@@ -12,12 +12,12 @@ Version: %{_version}
 Release: %{_release}%{?dist}
 License: Proprietary
 Group: Development/Libraries
-Source: %{name}-%{version}.tar.gz
+Source: %{name}-%{_revision}.tar.gz
 Source1: riaksearch_init
 URL: http://basho.com
 Vendor: Basho Technologies
 Packager: Basho Technologies <riak-user@lists.basho.com>
-BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root
+BuildRoot: %{_tmppath}/%{name}-%{_revision}-%{release}-root
 Summary: Riak Distributed Scaling Search
 
 %description
