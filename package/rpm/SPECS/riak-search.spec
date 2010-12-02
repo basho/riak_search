@@ -123,6 +123,7 @@ fi
 %{_libdir}/*
 %dir %{_sysconfdir}/%{appname}
 %config(noreplace) %{_sysconfdir}/%{appname}/*
+%attr(0755,root,root) %{init_script}
 %attr(0755,root,root) %{_sbindir}/%{appname}
 %attr(0755,root,root) %{_sbindir}/%{appname}-admin
 %attr(0755,root,root) %{_sbindir}/search-cmd
