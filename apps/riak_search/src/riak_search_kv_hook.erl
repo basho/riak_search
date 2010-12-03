@@ -14,7 +14,7 @@
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
--export([run_mod_fun_extract_test_fun/2]).
+-export([run_mod_fun_extract_test_fun/3]).
 -endif.
 
 -define(DEFAULT_EXTRACTOR, {modfun, riak_search_kv_extractor, extract}).
@@ -239,7 +239,9 @@ make_indexed_doc(Index, DocId, RiakObject, Extractor) ->
         true ->
             deleted;
         false ->
-            Fields = run_extract(RiakObject, Extractor),
+            {ok, Schema} = riak_search_config:get_schema(Index),
+            DefaultField = Schema:default_field(),
+            Fields = run_extract(RiakObject, DefaultField, Extractor),
             IdxDoc0 = riak_indexed_doc:new(Index, DocId, Fields, []),
             IdxDoc = riak_indexed_doc:analyze(IdxDoc0),
             IdxDoc
@@ -255,12 +257,12 @@ make_docid(RiakObject) ->
     
 %% Run the extraction function against the RiakObject to get a list of
 %% search fields and data
--spec run_extract(riak_object(), extractdef()) -> search_fields().
-run_extract(RiakObject, {{modfun, Mod, Fun}, Arg}) ->
-    Mod:Fun(RiakObject, Arg);
-run_extract(RiakObject, {{qfun, Fun}, Arg}) ->
-    Fun(RiakObject, Arg);
-run_extract(RiakObject, {{Js, FunTerm}, Arg})
+-spec run_extract(riak_object(), string(), extractdef()) -> search_fields().
+run_extract(RiakObject, DefaultField, {{modfun, Mod, Fun}, Arg}) ->
+    Mod:Fun(RiakObject, DefaultField, Arg);
+run_extract(RiakObject, DefaultField, {{qfun, Fun}, Arg}) ->
+    Fun(RiakObject, DefaultField, Arg);
+run_extract(RiakObject, DefaultField, {{Js, FunTerm}, Arg})
   when Js == jsanon; Js == jsfun ->
     Fun = if is_binary(FunTerm) -> FunTerm;
              is_tuple(FunTerm) ->
@@ -281,7 +283,7 @@ run_extract(RiakObject, {{Js, FunTerm}, Arg})
         _ ->
             JsArg = Arg
     end,
-    case riak_kv_js_manager:blocking_dispatch(?JSPOOL_SEARCH_EXTRACT, {{Js, Fun}, [JsRObj, JsArg]}, 5) of
+    case riak_kv_js_manager:blocking_dispatch(?JSPOOL_SEARCH_EXTRACT, {{Js, Fun}, [JsRObj, DefaultField, JsArg]}, 5) of
         {ok, <<"fail">>} ->
             throw(fail);
         {ok, [{<<"fail">>, Message}]} ->
@@ -293,7 +295,7 @@ run_extract(RiakObject, {{Js, FunTerm}, Arg})
                                    [Error]),
             throw({fail, Error})
     end;
-run_extract(_, ExtractDef) ->
+run_extract(_, _, ExtractDef) ->
     throw({error, {not_implemented, ExtractDef}}).
 
 erlify_json_extract(R) ->
@@ -383,24 +385,24 @@ run_mod_fun_extract_test() ->
     TestObj = conflict_test_object(),
     Extractor = validate_extractor({{modfun, ?MODULE, run_mod_fun_extract_test_fun}, undefined}),
     ?assertEqual([{<<"data">>,<<"some data">>}],
-                 run_extract(TestObj, Extractor)).
+                 run_extract(TestObj, <<"data">>, Extractor)).
  
-run_mod_fun_extract_test_fun(O, _Args) ->
+run_mod_fun_extract_test_fun(O, DefaultValue, _Args) ->
     StrVals = [binary_to_list(B) || B <- riak_object:get_values(O)],
     Data = string:join(StrVals, " "),
-    [{<<"data">>, list_to_binary(Data)}].
+    [{DefaultValue, list_to_binary(Data)}].
 
 run_qfun_extract_test() ->
     %% Try the anonymous function
     TestObj = conflict_test_object(),
-    Fun1 = fun(O, _Args) ->
+    Fun1 = fun(O, D, _Args) ->
                    StrVals = [binary_to_list(B) || B <- riak_object:get_values(O)],
                    Data = string:join(StrVals, " "),
-                   [{<<"data">>, list_to_binary(Data)}]
+                   [{D, list_to_binary(Data)}]
            end,
     Extractor = validate_extractor({{qfun, Fun1}, undefined}),
     ?assertEqual([{<<"data">>,<<"some data">>}],
-                 run_extract(TestObj, Extractor)).
+                 run_extract(TestObj, <<"data">>, Extractor)).
  
     
 
@@ -413,7 +415,7 @@ anon_js_extract_test() ->
     %% Anonymous JSON function with default argument
     %% Join together all the values in a search field
     %% called "data" and the argument as "arg"
-    JustObjectSource = "function(o) {
+    JustObjectSource = "function(o, d) {
                 var vals = [];
                 for (var i = 0; i < o.values.length; i++) {
                   vals.push(o.values[i].data);
@@ -421,7 +423,7 @@ anon_js_extract_test() ->
                 data = vals.join(\" \");
                 return {\"data\":data};
               }",
-    ObjectArgSource = "function(o,a) {
+    ObjectArgSource = "function(o,d,a) {
                 var vals = [];
                 for (var i = 0; i < o.values.length; i++) {
                   vals.push(o.values[i].data);
@@ -434,7 +436,7 @@ anon_js_extract_test() ->
     O = conflict_test_object(),
     Extractor1 = validate_extractor({{jsanon, JustObjectSource}, undefined}),
     ?assertEqual([{<<"data">>,<<"some data">>}],
-                 run_extract(O, Extractor1)),
+                 run_extract(O, <<"data">>, Extractor1)),
                  
     %% Anonymous JSON function with provided argument
     %% Arg = {struct [{<<"f">>,<<"v">>}]},
@@ -442,7 +444,7 @@ anon_js_extract_test() ->
     Extractor2 = validate_extractor({{jsanon, ObjectArgSource}, Arg}),
     ?assertEqual([{<<"data">>,<<"some data">>}, 
                   {<<"arg">>, <<"v">>}],
-                 run_extract(O, Extractor2)),
+                 run_extract(O, <<"value">>, Extractor2)),
 
     stop_pid(JsMgr),
     stop_pid(JsSup),
