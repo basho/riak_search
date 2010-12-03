@@ -54,8 +54,13 @@ get_schema(Schema) when is_tuple(Schema) ->
             {error, badarg}
     end;
 get_schema(Index) ->
-    IndexB = riak_search_utils:to_binary(Index),
-    gen_server:call(?SERVER, {get_schema, IndexB}, infinity).
+    SchemaName = riak_search_utils:to_binary(Index),
+    case ets:lookup(schema_table, SchemaName) of
+        [{SchemaName, Schema}] -> 
+            {ok, Schema};
+        _ ->
+            gen_server:call(?SERVER, {get_schema, SchemaName}, infinity)
+    end.
 
 %% @doc Return the raw schema (as an Erlang term) for a given index.
 get_raw_schema(Index) ->
@@ -70,7 +75,7 @@ put_raw_schema(Index, RawSchemaBinary) when is_binary(RawSchemaBinary) ->
 
 init([]) ->
     {ok, Client} = riak:local_client(),
-    Table = ets:new(table, [private, set]),
+    Table = ets:new(schema_table, [named_table, public, set]),
     {ok, #state{client=Client, schema_table=Table}}.
 
 handle_call(clear, _From, State) ->
@@ -79,27 +84,22 @@ handle_call(clear, _From, State) ->
 
 handle_call({get_schema, SchemaName}, _From, State) ->
     Table = State#state.schema_table,
-    case ets:lookup(Table, SchemaName) of
-        [{SchemaName, Schema}] -> 
+    Client = State#state.client,
+    case get_raw_schema_from_kv(Client, SchemaName) of
+        {ok, RawSchemaBinary} -> 
+            %% Parse and cache the schema...
+            {ok, RawSchema} = riak_search_utils:consult(RawSchemaBinary),
+            {ok, Schema} = riak_search_schema_parser:from_eterm(SchemaName, RawSchema),
+            true = ets:insert(Table, {SchemaName, Schema}),
+            
+            %% Update buckets n_val...
+            ensure_n_val_setting(Schema),
+            
             {reply, {ok, Schema}, State};
-        _ ->
-            Client = State#state.client,
-            case get_raw_schema_from_kv(Client, SchemaName) of
-                {ok, RawSchemaBinary} -> 
-                    %% Parse and cache the schema...
-                    {ok, RawSchema} = riak_search_utils:consult(RawSchemaBinary),
-                    {ok, Schema} = riak_search_schema_parser:from_eterm(SchemaName, RawSchema),
-                    true = ets:insert(Table, {SchemaName, Schema}),
-
-                    %% Update buckets n_val...
-                    ensure_n_val_setting(Schema),
-
-                    {reply, {ok, Schema}, State};
-                Error ->
-                    error_logger:error_msg("Error getting schema '~s': ~n~p~n", [SchemaName, Error]),
-                    throw(Error)
-            end
-    end;
+        Error ->
+            error_logger:error_msg("Error getting schema '~s': ~n~p~n", [SchemaName, Error]),
+            throw(Error)
+end;
         
 handle_call({get_raw_schema, SchemaName}, _From, State) ->
     Client = State#state.client,
