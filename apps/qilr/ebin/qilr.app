@@ -14,5 +14,5 @@
                   text_analyzers]},
   {registered,   [qilr_analyzer_sup, qilr_analyzer_monitor]},
   {applications, [kernel, stdlib, sasl]},
-  {env, [{analysis_port, 6095}]},
+  {env, []},
   {mod, {qilr_app, []}}]}.
