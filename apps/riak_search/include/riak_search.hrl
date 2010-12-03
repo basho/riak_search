@@ -14,6 +14,7 @@
 %% -define(IS_TERM_WILDCARD_ONE(Op), lists:member({wildcard, one}, Op#term.options)).
 -define(RESULTVEC_SIZE, 1000).
 -define(OPKEY(Tag, Op), {Tag, element(2, Op)}).
+-define(JSPOOL_SEARCH_EXTRACT, riak_search_js_extract).
 
 -record(search_state, {
           index=undefined,

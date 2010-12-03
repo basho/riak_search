@@ -279,7 +279,7 @@ run_extract(RiakObject, {{Js, FunTerm}, Arg})
         _ ->
             JsArg = Arg
     end,
-    case riak_kv_js_manager:blocking_dispatch({{Js, Fun}, [JsRObj, JsArg]}, 5) of
+    case riak_kv_js_manager:blocking_dispatch(?JSPOOL_SEARCH_EXTRACT, {{Js, Fun}, [JsRObj, JsArg]}, 5) of
         {ok, <<"fail">>} ->
             throw(fail);
         {ok, [{<<"fail">>, Message}]} ->
@@ -406,7 +406,7 @@ anon_js_extract_test() ->
     maybe_start_app(sasl),
     maybe_start_app(erlang_js),
     JsSup = maybe_start_link(riak_kv_js_sup:start_link()),
-    JsMgr = maybe_start_link(riak_kv_js_manager:start_link(2)),
+    JsMgr = maybe_start_link(riak_kv_js_manager:start_link(?JSPOOL_SEARCH_EXTRACT, 2)),
 
     %% Anonymous JSON function with default argument
     %% Join together all the values in a search field
