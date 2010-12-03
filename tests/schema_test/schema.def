@@ -16,13 +16,15 @@
         {field, [
             {name, "value"},
             {type, string},
-            {analyzer_factory, "com.basho.search.analysis.DefaultAnalyzerFactory"}
+            %% {analyzer_factory, "com.basho.search.analysis.DefaultAnalyzerFactory"}
+            {analyzer_factory, {erlang, text_analyzers, default_analyzer_factory}}
         ]},
 
         {field, [
             {name, "whitespace"},
             {type, string},
-            {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+            %% {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+            {analyzer_factory, {erlang, text_analyzers, whitespace_analyzer_factory}}
         ]},
 
         {field, [
@@ -36,7 +38,8 @@
             {type, integer},
             {padding_size, 4},
             {padding_char, "0"},
-            {analyzer_factory, "com.basho.search.analysis.IntegerAnalyzerFactory"},
+            %% {analyzer_factory, "com.basho.search.analysis.IntegerAnalyzerFactory"},
+            {analyzer_factory, {erlang, text_analyzers, integer_analyzer_factory}},
             {analyzer_args, ["4"]} % test passing analyzer argument
         ]},
 
@@ -54,13 +57,15 @@
         {dynamic_field, [       
             {name, "*_sd"},
             {type, string},
-            {analyzer_factory, "com.basho.search.analysis.DefaultAnalyzerFactory"}
+            %% {analyzer_factory, "com.basho.search.analysis.DefaultAnalyzerFactory"}
+            {analyzer_factory, {erlang, text_analyzers, default_analyzer_factory}}
         ]},
 
         {dynamic_field, [       
             {name, "*_sw"},
             {type, string},
-            {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+            %% {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+            {analyzer_factory, {erlang, text_analyzers, whitespace_analyzer_factory}}
         ]},
 
         {dynamic_field, [
@@ -77,13 +82,15 @@
         {dynamic_field, [       
             {name, "sd_*"},
             {type, string},
-            {analyzer_factory, "com.basho.search.analysis.DefaultAnalyzerFactory"}
+            %% {analyzer_factory, "com.basho.search.analysis.DefaultAnalyzerFactory"}
+            {analyzer_factory, {erlang, text_analyzers, default_analyzer_factory}}
         ]},
 
         {dynamic_field, [       
             {name, "sw_*"},
             {type, string},
-            {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+            %% {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
+            {analyzer_factory, {erlang, text_analyzers, whitespace_analyzer_factory}}
         ]},
 
         {dynamic_field, [

@@ -68,7 +68,7 @@ when FieldClass == field orelse FieldClass == dynamic_field ->
     PaddingChar = proplists:get_value(padding_char, FieldProps, DefaultPaddingChar),
     DefaultFieldAnalyzer = get_default_field_analyzer(Type, SchemaAnalyzer),
     FieldAnalyzer = proplists:get_value(analyzer_factory, FieldProps, DefaultFieldAnalyzer),
-    FieldAnalyzerArgs = proplists:get_value(analyzer_args, FieldProps, []),
+    FieldAnalyzerArgs = proplists:get_value(analyzer_args, FieldProps, undefined),
     Inline = proplists:get_value(inline, FieldProps, false),
 
     %% Verify that name exists...
@@ -105,7 +105,8 @@ when FieldClass == field orelse FieldClass == dynamic_field ->
       analyzer_args=FieldAnalyzerArgs,
       inline=Inline
      },
-    Field = Field0#riak_search_field{analyzer_args = calculate_analyzer_args(Field0)},
+    NewAnalyzerArgs = calculate_analyzer_args(Field0),
+    Field = Field0#riak_search_field{analyzer_args = NewAnalyzerArgs },
  
     %% Add the field...
     parse_fields(T, SchemaAnalyzer, [Field|Fields]).
@@ -123,10 +124,12 @@ get_default_padding_char(Type) ->
     end.
 
 get_default_field_analyzer(Type, SchemaAnalyzer) ->
-    case Type == integer orelse Type == date of
-        true ->
+    if 
+        Type == integer -> 
             ?INTEGER_ANALYZER;
-        _ ->
+        Type == date    -> 
+            ?NOOP_ANALYZER;
+        true ->
             SchemaAnalyzer
     end.
 
