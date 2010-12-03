@@ -90,6 +90,8 @@ json_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, Docs0) ->
 %% Internal functions
 convert_type(FieldValue, unknown) ->
     convert_type(FieldValue, string);
+convert_type(FieldValue, date) ->
+    convert_type(FieldValue, string);
 convert_type(FieldValue, string) ->
     to_binary(FieldValue);
 convert_type(FieldValue, integer) ->

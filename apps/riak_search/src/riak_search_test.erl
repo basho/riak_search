@@ -116,10 +116,10 @@ test_inner({search, Query, Validators}, _Root) ->
 test_inner({solr_select, Params, Validators}, _Root) ->
     %% Run the query...
     inets:start(),
-    Port = app_helper:get_env(riak_core, web_port),
+    {Hostname, Port} = hd(app_helper:get_env(riak_core, http)),
     Query = proplists:get_value(q, Params),
     QS = to_querystring(Params),
-    Url = io_lib:format("http://127.0.0.1:~p/solr/~s/select?~s", [Port, ?TEST_INDEX, QS]),
+    Url = io_lib:format("http://~s:~p/solr/~s/select?~s", [Hostname, Port, ?TEST_INDEX, QS]),
     try http:request(lists:flatten(Url)) of
         {ok, {{_, 200, _}, _, Body}} ->
             Format = proplists:get_value(wt, Params, xml),

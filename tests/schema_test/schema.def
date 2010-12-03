@@ -28,6 +28,11 @@
         ]},
 
         {field, [
+            {name, "date"},
+            {type, date}
+        ]},
+
+        {field, [
             {name, "int2"},
             {type, integer},
             {padding_size, 2}
@@ -69,6 +74,11 @@
         ]},
 
         {dynamic_field, [
+            {name, "*_dt"},
+            {type, date}
+        ]},
+
+        {dynamic_field, [
             {name, "*_inline"},
             {inline, true}
         ]},
@@ -91,6 +101,11 @@
             {type, string},
             %% {analyzer_factory, "com.basho.search.analysis.WhitespaceAnalyzerFactory"}
             {analyzer_factory, {erlang, text_analyzers, whitespace_analyzer_factory}}
+        ]},
+
+        {dynamic_field, [
+            {name, "dt_*"},
+            {type, date}
         ]},
 
         {dynamic_field, [

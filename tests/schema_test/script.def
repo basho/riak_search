@@ -187,6 +187,12 @@
     {search, "i_dyn:abc", [{length, 0}]},
     {search, "i_dyn:\"-\"", [{length, 0}]},
 
+    {echo, "Test output formatting."},
+    {solr_select, [{q, "key:date1"}, {wt, xml}], [{length, 1}]},
+    {solr_select, [{q, "key:date1 OR key:date2"}, {wt, xml}], [{length, 2}]},
+    {solr_select, [{q, "key:date1"}, {wt, json}], [{length, 1}]},
+    {solr_select, [{q, "key:date1 OR key:date2"}, {wt, json}], [{length, 2}]},
+
     %% Cleanup.
     {echo,   "De-indexing documents..."},
     {solr,   "./solr_delete.xml"},
