@@ -9,9 +9,11 @@
          uninstall/1,
          precommit_def/0,
          precommit/1]).
+
+-include("riak_search.hrl").
+
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
--include("riak_search.hrl").
 -export([run_mod_fun_extract_test_fun/2]).
 -endif.
 
