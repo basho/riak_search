@@ -154,9 +154,9 @@ test_inner({solr_update, Path, Params}, Root) ->
     inets:start(),
     case file:read_file(filename:join(Root, Path)) of
         {ok, Bytes} ->
-            Port = app_helper:get_env(riak_core, web_port),
+            {Hostname, Port} = hd(app_helper:get_env(riak_core, http)),
             QueryString = to_querystring(Params),
-            Url = io_lib:format("http://127.0.0.1:~p/solr/~s/update?~s", [Port, ?TEST_INDEX, QueryString]),
+            Url = io_lib:format("http://~s:~p/solr/~s/update?~s", [Hostname, Port, ?TEST_INDEX, QueryString]),
             Req = {lists:flatten(Url), [], "text/xml", Bytes},
             try http:request(post, Req, [], []) of
                 {ok, {{_, 200, _}, _, _}} ->
