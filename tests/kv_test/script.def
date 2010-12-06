@@ -1,4 +1,4 @@
-[{schema, "../_files/sort/schema.def" },
+[{schema, "./schema.def" },
  
  {echo,   "Setting up k/v hooks..."}, 
  {index_bucket, <<"test">>},
