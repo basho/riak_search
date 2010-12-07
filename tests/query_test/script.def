@@ -32,14 +32,14 @@
     {search,  "(color:red AND parity:even) OR (color:blue AND parity:odd)", [{length, 14}]},
     {search,  "(color:red AND (parity:even OR key:keyABE)) OR ((color:blue OR key:keyABC) AND parity:odd)", [{length, 16}]},
 
-    {echo,    "Test complicated forms of different NOT queries - Not Fully Supported"},
+    {echo,    "Test complicated forms of different NOT queries"},
     {search,  "acc:(aab AND NOT aac)", [{length, 1}]},
     {search,  "acc:(aab AND NOT aba)", [{length, 9}]},
-    %% {search,  "acc:(aab AND (NOT aac))", [{length, 0}]}, % Solr returns 0
-    %% {search,  "acc:(aab AND (NOT aba))", [{length, 0}]}, % Solr returns 0
+    {search,  "acc:(aab AND (NOT aac))", [{length, 1}]}, % Solr returns 0, this seems wrong.
+    {search,  "acc:(aab AND (NOT aba))", [{length, 9}]}, % Solr returns 0, this seems wrong.
     {search,  "acc:AEB NOT parity:even NOT color:red", [{length, 24}]},
     {search,  "acc:AEB AND NOT parity:even AND NOT color:red", [{length, 24}]},
-    %% {search,  "acc:AEB AND (NOT parity:even) AND (NOT color:red)", [{length, 0}]}, %% Solr returns 0
+    {search,  "acc:AEB AND (NOT parity:even) AND (NOT color:red)", [{length, 24}]}, %% Solr returns 0, this seems wrong.
     {search,  "+acc:AEB -parity:even -color:red", [{length, 24}]},
     {search,  "+acc:AEB AND -parity:even -color:red", [{length, 24}]},
 
