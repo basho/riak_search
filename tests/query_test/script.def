@@ -52,6 +52,8 @@
     {search,  "key:{keyaaa TO keyaaj}", [{length, 8}]},
     {search,  "color:{aaa TO ccc}", [{length, 14}]},
     {search,  "color:{blue TO yellow}", [{length, 72}]},
+    {search,  "key:[keyAAA TO keyAAJ}", [{length, 9}]},
+    {search,  "key:{keyAAA TO keyAAJ]", [{length, 9}]},
 
     {echo,    "Prefixes and Wildcards"},
     {search,  "key:keyAA*", [{length, 10}]},
