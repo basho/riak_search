@@ -36,13 +36,19 @@ preplan(Op, State) ->
                     %% the query so that the negated terms subtract
                     %% from the overall results.
                     F = fun(X) -> is_record(X, negation) end,
-                    {NegatedOps, NormalOps} = lists:partition(F, Op#group.ops),
-                    NegatedOps1 = [X#negation.op || X <- NegatedOps],
-
-                    NewOp = #intersection { id=Op#group.id, ops=[
-                        #union { id=Op#group.id, ops=NormalOps },
-                        #negation { id=Op#group.id, op=#union { id=Op#group.id, ops=NegatedOps1 } }
-                    ]}
+                    case lists:partition(F, Op#group.ops) of
+                        {[], NormalOps} ->
+                            NewOp = #union { id=Op#group.id, ops=NormalOps };
+                        {NegatedOps, []} ->
+                            NegatedOps1 = [X#negation.op || X <- NegatedOps],
+                            NewOp = #negation { id=Op#group.id, op=#union { id=Op#group.id, ops=NegatedOps1 } };
+                        {NegatedOps, NormalOps} ->
+                            NegatedOps1 = [X#negation.op || X <- NegatedOps],
+                            NewOp = #intersection { id=Op#group.id, ops=[
+                                #union { id=Op#group.id, ops=NormalOps },
+                                #negation { id=Op#group.id, op=#union { id=Op#group.id, ops=NegatedOps1 } }
+                            ]}
+                    end
             end
     end,
     riak_search_op:preplan(NewOp, State).
