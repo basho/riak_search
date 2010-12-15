@@ -98,10 +98,19 @@ is_empty(State) ->
 
 fold(FoldFun, Acc, State) ->
     %% Copied almost verbatim from riak_search_ets_backend.
+    FoldBatchSize = application:get_env(merge_index, fold_batch_size),
     Fun = fun
-        (I,F,T,V,P,K, {OuterAcc, {{I,{F,T}},InnerAcc}}) ->
-            %% same IFT, just accumulate doc/props/clock
-            {OuterAcc, {{I,{F,T}},[{V,P,K}|InnerAcc]}};
+        (I,F,T,V,P,K, {OuterAcc, {FoldKey = {I,{F,T}}, VPKList}}) ->
+            %% same IFT. If we have reached the fold_batch_size, then
+            %% call FoldFun/3 on the batch and start the next
+            %% batch. Otherwise, accumulate.
+            case length(VPKList) >= FoldBatchSize of
+                true ->
+                    NewOuterAcc = FoldFun(FoldKey, VPKList, OuterAcc),
+                    {NewOuterAcc, {FoldKey, [{V,P,K}]}};
+                false ->
+                    {OuterAcc, {FoldKey, [{V,P,K}|VPKList]}}
+            end;
         (I,F,T,V,P,K, {OuterAcc, {FoldKey, VPKList}}) ->
             %% finished a string of IFT, send it off
             %% (sorted order is assumed)
