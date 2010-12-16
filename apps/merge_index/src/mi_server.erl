@@ -359,16 +359,22 @@ handle_call({fold, FoldFun, Acc}, _From, State) ->
         FoldFun(Index, Field, Term, Value, Props, -1 * TS, AccIn)
     end,
 
-    %% Assemble the group iterator...
-    BufferIterators = [mi_buffer:iterator(X) || X <- Buffers],
-    SegmentIterators = [mi_segment:iterator(X) || X <- Segments],
-    GroupIterator = build_iterator_tree(BufferIterators ++ SegmentIterators),
+    %% Fold through all the buffers...
+    F1 = fun(Buffer, AccIn) -> 
+                 Iterator = mi_buffer:iterator(Buffer),
+                 fold(WrappedFun, AccIn, Iterator())
+         end,
+    Acc1 = lists:foldl(F1, Acc, Buffers),
 
-    %% Fold over everything...
-    NewAcc = fold(WrappedFun, Acc, GroupIterator()),
+    %% Fold through all the segments...
+    F2 = fun(Segment, AccIn) -> 
+                 Iterator = mi_segment:iterator(Segment),
+                 fold(WrappedFun, AccIn, Iterator())
+         end,
+    Acc2 = lists:foldl(F2, Acc1, Segments),
 
     %% Reply...
-    {reply, {ok, NewAcc}, State};
+    {reply, {ok, Acc2}, State};
     
 handle_call(is_empty, _From, State) ->
     %% Check if we have buffer data...
