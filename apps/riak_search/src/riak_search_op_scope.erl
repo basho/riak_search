@@ -18,14 +18,13 @@
 
 preplan(Op, State) -> 
     NewState = update_state(Op, State),
-    ChildOps = riak_search_op:preplan(Op#scope.ops, NewState),
+    ChildOps = riak_search_op:preplan(#group { ops=Op#scope.ops }, NewState),
     Op#scope { ops=ChildOps }.
 
 chain_op(Op, OutputPid, OutputRef, State) ->
     %% Update state and switch control to the group operator...
     NewState = update_state(Op, State),
-    NewOp = #group { id=Op#scope.id, ops = Op#scope.ops },
-    riak_search_op_group:chain_op(NewOp, OutputPid, OutputRef, NewState).
+    riak_search_op:chain_op(Op#scope.ops, OutputPid, OutputRef, NewState).
 
 update_state(Op, State) ->
     %% Get the new index...
