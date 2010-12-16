@@ -24,7 +24,7 @@
     %% Indexing...
     index_doc/2,
     index_docs/1, index_docs/2,
-    index_term/5,
+    index_term/5, index_term/6,
     index_terms/1, 
 
     %% Delete
@@ -162,7 +162,11 @@ index_docs(IdxDocs, AnalyzerPid) ->
 
 %% Index the specified term - better to use the plural 'terms' interfaces
 index_term(Index, Field, Term, DocID, Props) ->
-    index_terms([{Index, Field, Term, DocID, Props}]).
+    K = riak_search_utils:current_key_clock(),
+    index_term(Index, Field, Term, DocID, Props, K).
+
+index_term(Index, Field, Term, DocID, Props, K) ->
+    index_terms([{Index, Field, Term, DocID, Props, K}]).
 
 index_terms(Terms) ->
     IndexFun = fun(VNode, Postings) -> 
