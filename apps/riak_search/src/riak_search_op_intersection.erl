@@ -15,10 +15,14 @@
 -define(INDEX_DOCID(Term), ({element(1, Term), element(2, Term)})).
 
 preplan(Op, State) ->
-    ChildOps = riak_search_op:preplan(Op#intersection.ops, State),
-    NewOp = Op#intersection { ops=ChildOps },
-    NodeOp = #node { ops=NewOp },
-    riak_search_op:preplan(NodeOp, State).
+    case riak_search_op:preplan(Op#intersection.ops, State) of
+        [ChildOp] -> 
+            ChildOp;
+        ChildOps ->
+            NewOp = Op#intersection { ops=ChildOps },
+            NodeOp = #node { ops=NewOp },
+            riak_search_op:preplan(NodeOp, State)
+    end.
 
 chain_op(Op, OutputPid, OutputRef, State) ->
     %% Create an iterator chain...
