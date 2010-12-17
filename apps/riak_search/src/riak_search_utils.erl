@@ -21,10 +21,12 @@
     coalesce/1, coalesce/2,
     binary_inc/2,
     ets_keys/1,
-    consult/1
+    consult/1,
+    ptransform/2
 ]).
 
 -include("riak_search.hrl").
+-include_lib("eunit/include/eunit.hrl").
 
 %% Given to terms, combine the properties in some sort of reasonable
 %% way. This basically means concatenating the score and the word list
@@ -172,4 +174,73 @@ consult_2(AST) ->
             Error
     end.
 
+
+%% Run a transform operation in parallel. Results are returned as a
+%% list, ordering is not guaranteed in any way. This was implemented
+%% as a simple substitute to the plists.erl module. The plists module
+%% has some subtle bugs because messages are not tagged with
+%% Refs. This causes heisenbugs.
+ptransform(F, List) ->
+    Schedulers = erlang:system_info(schedulers),
+    ptransform(F, List, Schedulers).
+
+%% Run a map operation in parallel.
+ptransform(F, List, NumProcesses) ->
+    %% Calculate our batch size by dividing the size of the list by
+    %% the number of processes. Batch size should be at least 1.
+    ListLength = length(List),
+    BatchSize = lists:max([1, ListLength div NumProcesses]),
+    
+    %% Create a ref, used to prevent later interference.
+    Ref = make_ref(),
+    Pids = ptransform_spawn(F, List, ListLength, Ref, BatchSize, []),
+    ptransform_collect(Ref, Pids, []).
+
+ptransform_spawn(F, List, ListLength, Ref, BatchSize, Pids) when List /= [] ->
+    %% Get the next BatchSize items from list, spawn a map that sends
+    %% results back to the collector.
+    case ListLength < BatchSize of
+        true ->
+            {Pre, Post} = {List, []},
+            NewListLength = 0;
+        false -> 
+            {Pre, Post} = lists:split(BatchSize, List),
+            NewListLength = ListLength - BatchSize
+    end,
+
+    %% Spawn up a worker for this chunk.
+    Parent = self(),
+    SpawnF = fun() ->
+                     Results = lists:map(F, Pre),
+                     Parent ! {results, Results, self(), Ref}
+             end,
+    Pid = erlang:spawn_link(SpawnF),
+    ptransform_spawn(F, Post, NewListLength, Ref, BatchSize, [Pid|Pids]);
+ptransform_spawn(_, [], 0, _, _, Pids) ->
+    %% No more items left in list, return Pids.
+    Pids.
+
+ptransform_collect(Ref, Pids, Acc) when Pids /= [] ->
+    %% Collect a chunk, and concat results.
+    receive 
+        {results, Results, Pid, Ref} ->
+            NewPids = Pids -- [Pid],
+            NewAcc = Results ++ Acc,
+            ptransform_collect(Ref, NewPids, NewAcc)
+    end;
+ptransform_collect(_, [], Acc) ->
+    %% We've read from all the pids, so return.
+    Acc.
+
+ptransform_test() ->
+    Test = fun(List) ->
+                   F = fun(X) -> X * 2 end,
+                   ?assertEqual(lists:sort(ptransform(F, List)), lists:map(F, List))
+           end,
+    Test(lists:seq(0, 0)),
+    Test(lists:seq(1, 1)),
+    Test(lists:seq(1, 2)),
+    Test(lists:seq(1, 3)),
+    Test(lists:seq(1, 20)),
+    Test(lists:seq(1, 57)).
 
