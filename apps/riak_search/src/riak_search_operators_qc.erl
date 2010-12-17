@@ -125,7 +125,6 @@ calculate_mocked_results(Ops) when is_list(Ops) ->
 %% AND
 calculate_mocked_results(#intersection { ops=Ops }) -> 
     F = fun(Op, Acc) -> 
-        ?PRINT({Op, Acc}),
         %% If this is a Negation, then Acc -- ResultSet.
         %% Otherwise, do an intersection.
         {ResultSet, Negate} = calculate_mocked_results(Op),
