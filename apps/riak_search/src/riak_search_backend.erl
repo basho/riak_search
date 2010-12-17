@@ -14,7 +14,6 @@
          info_response/2, 
          collect_info_response/3]).
 
-
 -spec behaviour_info(atom()) -> 'undefined' | [{atom(), arity()}].
 behaviour_info(callbacks) ->
     [{start,2},
@@ -41,6 +40,8 @@ response_results(Sender, Results) ->
 response_done(Sender) ->
     riak_core_vnode:reply(Sender, done).
 
+collect_info_response(0, _Ref, Acc) ->
+    {ok, Acc};
 collect_info_response(RepliesRemaining, Ref, Acc) ->
     receive
         {Ref, List} when RepliesRemaining > 1 ->

@@ -41,7 +41,8 @@ preplan(Op, State) ->
     TotalCount = lists:sum([Count || {_, _, Count} <- Weights1]),
     case length(Weights1) == 0 of
         true  -> 
-            DocFrequency=1;
+            throw({error, data_not_available, {IndexName, FieldName, Term}}),
+            DocFrequency = undefined; %% Make compiler happy.
         false -> 
             DocFrequency = TotalCount / length(Weights1)
     end,
