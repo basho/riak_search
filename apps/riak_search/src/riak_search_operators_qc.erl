@@ -24,6 +24,7 @@
 
 -include_lib("eqc/include/eqc.hrl").
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("lucene_parser/include/lucene_parser.hrl").
 -include("riak_search.hrl").
 
 -define(TEST_EUNIT_NODE, 'eunit@127.0.0.1').
@@ -50,17 +51,19 @@ test(N) ->
 
 qilr_ops() ->
     frequency([
-        {10, #land { ops=[?LAZY(qilr_ops1())] }},
-        {10, #lor { ops=[?LAZY(qilr_ops1())] }},
+        {10, #intersection { ops=[?LAZY(qilr_ops1())] }},
+        {10, #union { ops=[?LAZY(qilr_ops1())] }},
         {70, #mockterm { results=?LET(Size, nat(), resultbatch(Size)) }},
         {10, [?LAZY(qilr_ops())|[?LAZY(qilr_ops1())]]}
     ]).
 
 qilr_ops1() ->
     frequency([
-        {10, #land { ops=[?LAZY(qilr_ops1())] }},
-        {10, #lor { ops=[?LAZY(qilr_ops1())] }},
-        {10, #lnot { ops=[?LAZY(qilr_ops1())] }},
+        {10, #intersection { ops=[?LAZY(qilr_ops1())] }},
+        {10, #union { ops=[?LAZY(qilr_ops1())] }},
+        {10, #negation { op=#intersection { ops=[?LAZY(qilr_ops1())] }}},
+        {10, #negation { op=#union { ops=[?LAZY(qilr_ops1())] }}},
+        {10, #negation { op=#mockterm { results=?LET(Size, nat(), resultbatch(Size)) }}},
         {70, #mockterm { results=?LET(Size, nat(), resultbatch(Size)) }},
         {10, [?LAZY(qilr_ops1())|[?LAZY(qilr_ops1())]]}
     ]).
@@ -73,8 +76,8 @@ resultbatch(Size) ->
 resultlist(N) ->
     M = N + random:uniform(3),
     oneof([
-        [{M, [{score, scorelist()}]}],
-        [{M, [{score, scorelist()}]}|?LAZY(resultlist(M))]
+        [{index, M, [{score, scorelist()}]}],
+        [{index, M, [{score, scorelist()}]}|?LAZY(resultlist(M))]
     ]).
 
 scorelist() ->
@@ -117,10 +120,10 @@ prop_operator_test() ->
 calculate_mocked_results([Op]) ->
     calculate_mocked_results(Op);
 calculate_mocked_results(Ops) when is_list(Ops) ->
-    calculate_mocked_results(#lor { ops=Ops });
+    calculate_mocked_results(#union { ops=Ops });
 
 %% AND
-calculate_mocked_results(#land { ops=Ops }) -> 
+calculate_mocked_results(#intersection { ops=Ops }) -> 
     F = fun(Op, Acc) -> 
         ?PRINT({Op, Acc}),
         %% If this is a Negation, then Acc -- ResultSet.
@@ -140,7 +143,7 @@ calculate_mocked_results(#land { ops=Ops }) ->
     end;
 
 %% OR
-calculate_mocked_results(#lor { ops=Ops }) -> 
+calculate_mocked_results(#union { ops=Ops }) -> 
     F = fun(Op, Acc) -> 
         %% Negations are ignored in OR clauses.
         %% Otherwise, do a union.
@@ -154,7 +157,7 @@ calculate_mocked_results(#lor { ops=Ops }) ->
     {NewResultSet, false};
 
 %% NOT
-calculate_mocked_results(#lnot { ops=Ops }) -> 
+calculate_mocked_results(#negation { op=Ops }) -> 
     {ResultSet, Negate} = calculate_mocked_results(Ops),
     %% If we're notting a not, then use an empty result set.
     case Negate of 

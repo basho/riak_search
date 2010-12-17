@@ -8,8 +8,7 @@
 -export([
          preplan/2,
          chain_op/4,
-         default_filter/2,
-         default_transform/1
+         default_filter/2
         ]).
 
 -import(riak_search_utils, [to_binary/1]).
@@ -86,7 +85,6 @@ stream(Index, Field, Term, FilterFun) ->
     riak_search_vnode:stream([PreflistEntry], Index, Field, Term, FilterFun, self()).
 
 default_filter(_, _) -> true.
-default_transform(Result) -> Result.
 
 info(Index, Field, Term) ->
     %% Get the primary preflist, minus any down nodes. (We don't use
