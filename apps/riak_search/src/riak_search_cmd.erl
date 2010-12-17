@@ -20,12 +20,12 @@
 usage() ->
     Usage = "~nUsage:
 
-    search-cmd set_schema [INDEX] SCHEMAFILE : Set schema for an index.
-    search-cmd show_schema [INDEX]           : Display the schema for an index.
-    search-cmd clear_schema_cache            : Empty the schema cache on all nodes.
+    search-cmd set-schema [INDEX] SCHEMAFILE : Set schema for an index.
+    search-cmd show-schema [INDEX]           : Display the schema for an index.
+    search-cmd clear-schema-cache            : Empty the schema cache on all nodes.
     search-cmd shell [INDEX]                 : Start the interactive Search shell.
     search-cmd search [INDEX] QUERY          : Perform a search.
-    search-cmd search_doc [INDEX] QUERY      : Perform a document search.
+    search-cmd search-doc [INDEX] QUERY      : Perform a document search.
     search-cmd explain [INDEX] QUERY         : Display an execution plan.
     search-cmd index [INDEX] PATH            : Index files in a path.
     search-cmd delete [INDEX] PATH           : De-index files in a path.
@@ -38,20 +38,30 @@ usage() ->
 
 %% Set Schema
 command([CurDir, "set_schema", SchemaFile]) ->
+    command([CurDir, "set-schema", SchemaFile]);
+command([CurDir, "set-schema", SchemaFile]) ->
     SchemaFile1 = filename:join(CurDir, SchemaFile),
     set_schema(?DEFAULT_INDEX, SchemaFile1);
 command([CurDir, "set_schema", Index, SchemaFile]) ->
+    command([CurDir, "set-schema", Index, SchemaFile]);
+command([CurDir, "set-schema", Index, SchemaFile]) ->
     SchemaFile1 = filename:join(CurDir, SchemaFile),
     set_schema(Index, SchemaFile1);
 
 %% Show Schema
 command([_CurDir, "show_schema"]) ->
+    command([_CurDir, "show-schema"]);
+command([_CurDir, "show-schema"]) ->
     show_schema(?DEFAULT_INDEX);
 command([_CurDir, "show_schema", Index]) ->
+    command([_CurDir, "show-schema", Index]);
+command([_CurDir, "show-schema", Index]) ->
     show_schema(Index);
 
 %% Clear Schema Cache
 command([_CurDir, "clear_schema_cache"]) ->
+    command([_CurDir, "clear-schema-cache"]);
+command([_CurDir, "clear-schema-cache"]) ->
     clear_schema_cache();
 
 %% Shell
@@ -68,8 +78,12 @@ command([_CurDir, "search", Index, Query]) ->
 
 %% Serach Doc
 command([_CurDir, "search_doc", Query]) ->
+    command([_CurDir, "search-doc", Query]);
+command([_CurDir, "search-doc", Query]) ->
     search_doc(?DEFAULT_INDEX, Query);
 command([_CurDir, "search_doc", Index, Query]) ->
+    command([_CurDir, "search-doc", Index, Query]);
+command([_CurDir, "search-doc", Index, Query]) ->
     search_doc(Index, Query);
 
 %% Explain
