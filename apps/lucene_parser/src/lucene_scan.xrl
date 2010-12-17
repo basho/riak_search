@@ -15,8 +15,11 @@ SNGSTRING = '(\\'|[^'])*'
 % A double quoted string. Special characters are allowed in string.
 DBLSTRING = \"(\\\"|[^\"])*\"
 
-% An unquoted string. Special characters must be escaped.
-STRING = (\\.|[^\"\'\s\t\n\r\+\-\!():^\[\]{}~&|\\])*
+% An unquoted string. 
+% Must not start with a special character.  
+% Must not contain special characters (the second clause is the same
+% as the first, but allows for +/-/! inside the word without escaping.
+STRING = (\\.|[^\"\'\s\t\n\r\+\-\!():^\[\]{}~&|\\])(\\.|[^\"\'\s\t\n\r():^\[\]{}~&|\\])*
 
 % Fuzzy search.
 FUZZY0 = ~
