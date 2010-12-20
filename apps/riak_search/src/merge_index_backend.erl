@@ -98,21 +98,30 @@ is_empty(State) ->
 
 fold(FoldFun, Acc, State) ->
     %% Copied almost verbatim from riak_search_ets_backend.
+    {ok, FoldBatchSize} = application:get_env(merge_index, fold_batch_size),
     Fun = fun
-        (I,F,T,V,P,K, {OuterAcc, {{I,{F,T}},InnerAcc}}) ->
-            %% same IFT, just accumulate doc/props/clock
-            {OuterAcc, {{I,{F,T}},[{V,P,K}|InnerAcc]}};
-        (I,F,T,V,P,K, {OuterAcc, {FoldKey, VPKList}}) ->
+        (I,F,T,V,P,K, {OuterAcc, {FoldKey = {I,{F,T}}, VPKList}, Count}) ->
+            %% same IFT. If we have reached the fold_batch_size, then
+            %% call FoldFun/3 on the batch and start the next
+            %% batch. Otherwise, accumulate.
+            case Count >= FoldBatchSize of
+                true ->
+                    NewOuterAcc = FoldFun(FoldKey, VPKList, OuterAcc),
+                    {NewOuterAcc, {FoldKey, [{V,P,K}]}, 1};
+                false ->
+                    {OuterAcc, {FoldKey, [{V,P,K}|VPKList]}, Count + 1}
+            end;
+        (I,F,T,V,P,K, {OuterAcc, {FoldKey, VPKList}, _Count}) ->
             %% finished a string of IFT, send it off
             %% (sorted order is assumed)
             NewOuterAcc = FoldFun(FoldKey, VPKList, OuterAcc),
-            {NewOuterAcc, {{I,{F,T}},[{V,P,K}]}};
-        (I,F,T,V,P,K, {OuterAcc, undefined}) ->
+            {NewOuterAcc, {{I,{F,T}},[{V,P,K}]}, 1};
+        (I,F,T,V,P,K, {OuterAcc, undefined, _Count}) ->
             %% first round through the fold - just start building
-            {OuterAcc, {{I,{F,T}},[{V,P,K}]}}
+            {OuterAcc, {{I,{F,T}},[{V,P,K}]}, 1}
         end,
     Pid = State#state.pid,
-    {ok, {OuterAcc0, Final}} = merge_index:fold(Pid, Fun, {Acc, undefined}),
+    {ok, {OuterAcc0, Final, _Count}} = merge_index:fold(Pid, Fun, {Acc, undefined, 0}),
     OuterAcc = case Final of
         {FoldKey, VPKList} ->
             %% one last IFT to send off
