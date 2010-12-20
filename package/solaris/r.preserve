@@ -2,8 +2,8 @@
 
 # Copyright (C) 2010 by Basho Technologies, Inc.
 
-PKGBASE=/var/sadm/pkg/BASHOriak-ee
-RELOC=$PKGBASE/save/pspool/BASHOriak-ee/reloc
+PKGBASE=/var/sadm/pkg/BASHOriak-search
+RELOC=$PKGBASE/save/pspool/BASHOriak-search/reloc
 
 while read dest
 do

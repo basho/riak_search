@@ -101,6 +101,10 @@ from_iterator({Entry, Iterator}, undefined, undefined, W) ->
     W3 = from_iterator_process_value(?VALUE_TSTAMP_PROPS(Entry), W2),
     from_iterator(Iterator(), ?INDEX_FIELD_TERM(Entry), ?VALUE(Entry), W3);
 
+from_iterator(eof, undefined, _, W) ->
+    %% End of segment, but we never got any values.
+    W;
+
 from_iterator(eof, StartIFT, _LastValue, W) ->
     %% End of segment.
     W1 = from_iterator_process_end_term(StartIFT, W),

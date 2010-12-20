@@ -26,9 +26,9 @@
           %% The node weights
           weights,
           %% DocFrequency,
-          doc_freq,
+          doc_freq=0,
           %% Boost
-          boost,
+          boost=1,
           %% Filter any results that return false.
           filter=fun riak_search_op_term:default_filter/2
          }).
@@ -69,29 +69,9 @@
           vnode
          }).
 
-%% %% Pre-plan Operators...
-
-%% %% Q will be normalized to {"index", "field", "term"} in
-%% %% riak_search_preplan:normalize_term/2
-%% -record(term,             {q, options=[]}).
-%% -record(range,            {q, size, options=[]}).
-%% %% Mockterm is used for QC unit tests to test middle logic. Doesn't
-%% %% hit a backing store.
-%% -record(mockterm,         {results=[]}).
-
-%% %% #lnot's are collapsed down to the #term level in
-%% %% riak_search_preplan:pass5/2.
-%% -record(lnot,             {ops}).
-
-%% -record(land,             {ops}).
-%% -record(phrase,           {phrase, props=[]}).
-%% -record(lor,              {ops}).
-%% -record(group,            {ops}).
-%% -record(field,            {field, ops}).
-%% -record(inclusive_range,  {start_op, end_op}).
-%% -record(exclusive_range,  {start_op, end_op}).
-%% -record(node,             {ops, node}).
-%% -record(proximity,        {ops, proximity}).
+%% Mockterm is used for QC unit tests to test middle logic. Doesn't
+%% hit a backing store.
+-record(mockterm,         {results=[]}).
 
 -record(riak_idx_doc, {index,
                        id,

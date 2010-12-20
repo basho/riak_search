@@ -9,7 +9,7 @@ fi
 # create riak user only if it doesn't already exist
 getent passwd riak >/dev/null 2>&1
 if [ $? -ne 0 ]; then
-        useradd -g riak -d /opt/riak riak
+        useradd -g riak -d /opt/riaksearch riak
         usermod -c "Riak Server" riak
 fi
 
