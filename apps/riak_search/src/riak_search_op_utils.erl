@@ -60,7 +60,11 @@ it_combine_inner(SelectFun, [IteratorA,IteratorB|Rest]) ->
 it_op(Op, SearchState) ->
     %% Spawn a collection process...
     Ref = make_ref(),
-    Pid = spawn_link(fun() -> it_op_collector_loop(Ref, []) end),
+    F = fun() -> 
+                erlang:link(SearchState#search_state.parent),
+                it_op_collector_loop(Ref, []) 
+        end,
+    Pid = erlang:spawn_link(F),
 
     %% Chain the op...
     riak_search_op:chain_op(Op, Pid, Ref, SearchState),

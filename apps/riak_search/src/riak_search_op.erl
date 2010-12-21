@@ -26,15 +26,17 @@ preplan(Op, State) when is_tuple(Op) ->
 
 %% Kick off execution of the query graph.
 chain_op(OpList, OutputPid, Ref, SearchState) when is_list(OpList)->
+    erlang:link(SearchState#search_state.parent),
     [chain_op(Op, OutputPid, Ref, SearchState) || Op <- OpList],
     {ok, length(OpList)};
 
 chain_op(Op, OutputPid, Ref, SearchState) ->
     F = fun() ->
+                erlang:link(SearchState#search_state.parent),
                 Module = op_to_module(Op),
                 Module:chain_op(Op, OutputPid, Ref, SearchState)
         end,
-    spawn_link(F),
+    erlang:spawn_link(F),
     {ok, 1}.
 
 op_to_module(Op) ->
