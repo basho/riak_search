@@ -72,7 +72,7 @@ search(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
     F = fun(Results, {Acc, AccCount}) ->
                 NewAcc = Results ++ Acc,
                 NewAccCount = AccCount + length(Acc),
-                case NewAccCount >= MaxSearchResults of
+                case NewAccCount > MaxSearchResults of
                     true ->
                         throw({too_many_results, QueryOps});
                     false ->
