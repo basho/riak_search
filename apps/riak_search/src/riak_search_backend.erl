@@ -44,10 +44,8 @@ collect_info_response(0, _Ref, Acc) ->
     {ok, Acc};
 collect_info_response(RepliesRemaining, Ref, Acc) ->
     receive
-        {Ref, List} when RepliesRemaining > 1 ->
-            collect_info_response(RepliesRemaining - 1, Ref, List ++ Acc);
-        {Ref, List} when RepliesRemaining == 1 ->
-            {ok, List ++ Acc}
+        {Ref, List} ->
+            collect_info_response(RepliesRemaining - 1, Ref, List ++ Acc)
     after 5000 ->
         error_logger:error_msg("range_loop timed out!"),
         throw({timeout, range_loop})

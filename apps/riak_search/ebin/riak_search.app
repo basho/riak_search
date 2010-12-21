@@ -4,7 +4,6 @@
   {vsn, "0.13.0"},
   {modules, [
              search,
-             plists,
              riak_indexed_doc,
              riak_search,
              riak_search_cmd,
