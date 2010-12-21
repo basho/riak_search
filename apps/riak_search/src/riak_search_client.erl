@@ -64,10 +64,22 @@ parse_query(IndexOrSchema, Query) ->
 %% Timeout is in milliseconds.
 %% Return the {Length, Results}.
 search(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
-    %% Execute the search, collect the results,.
+    %% Execute the search.
     SearchRef1 = stream_search(IndexOrSchema, QueryOps),
-    F = fun(Results, Acc) -> Acc ++ Results end,
-    {ok, SearchRef2, Results} = fold_results(SearchRef1, Timeout, F, []),
+
+    %% Collect the results...
+    MaxSearchResults = app_helper:get_env(riak_search, max_search_results),
+    F = fun(Results, {Acc, AccCount}) ->
+                NewAcc = Results ++ Acc,
+                NewAccCount = AccCount + length(Acc),
+                case NewAccCount >= MaxSearchResults of
+                    true ->
+                        throw({too_many_results, QueryOps});
+                    false ->
+                        {NewAcc, NewAccCount}
+                end
+        end,
+    {ok, SearchRef2, {Results, _}} = fold_results(SearchRef1, Timeout, F, {[], 0}),
     SortedResults = sort_by_score(SearchRef2, Results),
 
     %% Dedup, and handle start and max results. Return matching
