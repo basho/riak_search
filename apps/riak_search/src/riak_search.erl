@@ -6,17 +6,12 @@
 
 -module(riak_search).
 -export([
-    client_connect/1,
     local_client/0,
     mapred_search/3
 ]).
 -include("riak_search.hrl").
 
 -define(TIMEOUT, 30000).
-
-client_connect(Node) when is_atom(Node) ->
-    {ok, Client} = riak:client_connect(Node),
-    {ok, riak_search_client:new(Client)}.
 
 local_client() ->
     {ok, Client} = riak:local_client(),
