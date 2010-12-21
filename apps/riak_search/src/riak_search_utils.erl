@@ -26,7 +26,12 @@
 ]).
 
 -include("riak_search.hrl").
+-ifdef(TEST).
+-ifdef(EQC).
+-include_lib("eqc/include/eqc.hrl").
+-endif.
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 
 %% Given to terms, combine the properties in some sort of reasonable
 %% way. This basically means concatenating the score and the word list
@@ -232,6 +237,8 @@ ptransform_collect(_, [], Acc) ->
     %% We've read from all the pids, so return.
     Acc.
 
+-ifdef(TEST).
+
 ptransform_test() ->
     Test = fun(List) ->
                    F = fun(X) -> X * 2 end,
@@ -244,3 +251,17 @@ ptransform_test() ->
     Test(lists:seq(1, 20)),
     Test(lists:seq(1, 57)).
 
+-ifdef(EQC).
+
+-define(QC_OUT(P),
+        eqc:on_output(fun(Str, Args) -> io:format(user, Str, Args) end, P)).
+
+ptransform_test_qc_test() ->
+    F = fun(X) -> X * 2 end,
+    Prop = ?FORALL({List, NumProcesses}, {list(int()), choose(1, 8)},
+                   lists:sort(ptransform(F, List, NumProcesses)) ==
+                   lists:sort(lists:map(F, List))),
+    ?assert(eqc:quickcheck(eqc:numtests(500, ?QC_OUT(Prop)))).
+
+-endif. % EQC
+-endif. % TEST
