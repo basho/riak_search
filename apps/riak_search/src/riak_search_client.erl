@@ -98,7 +98,7 @@ search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
     F = fun({Index, DocID, _}) ->
         riak_indexed_doc:get(RiakClient, Index, DocID)
     end,
-    Documents = plists:map(F, Results, {processes, 4}),
+    Documents = riak_search_utils:ptransform(F, Results),
     {Length, MaxScore, [X || X <- Documents, X /= {error, notfound}]}.
 
 %% Index a specified #riak_idx_doc
@@ -245,7 +245,7 @@ process_terms_1(IndexFun, BatchSize, PreflistCache, Terms) ->
                      IndexFun(VNode, Postings)
              end,
         VNodes = riak_search_utils:ets_keys(ReplicaTable),
-        plists:map(F3, VNodes, {processes, 4}),
+        riak_search_utils:ptransform(F3, VNodes),
 
         %% Repeat until there are no more terms...
         process_terms_1(IndexFun, BatchSize, NewPreflistCache, Rest)
