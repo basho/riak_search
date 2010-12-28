@@ -1,7 +1,7 @@
 {application, riak_search,
  [
   {description, "Riak Search"},
-  {vsn, "0.13.0"},
+  {vsn, "0.14.0"},
   {modules, [
              search,
              riak_indexed_doc,
