@@ -1,4 +1,7 @@
 [
+    {echo,   "Set the schema."},
+    {schema, "../_files/sample100/schema.def"},
+
     {echo,   "Parse some simple queries."},
     {search, "acc:ABC", []},
     {search, "color:red", []},
