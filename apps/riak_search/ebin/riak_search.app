@@ -66,10 +66,15 @@
   {env, [{search_backend, merge_index_backend},
          %% N value to use for indices
          {n_val, 2},
+
          %% How many index terms get sent in a batch to the vnodes
          {index_batch_size, 10000},
-         %% Threshold for the index FSM delaying return of index_terms call 
-         {index_overload_thresh, 200},
+
+         %% Maximum number of results to accumulate before
+         %% erroring. (Prevent, reduce memory exhaustion that could
+         %%  bring down the entire VM.)
+         {max_search_results, 100000},
+
          %% Number of workers to use when indexing a directory
          {dir_index_workers, 8},
          {dir_index_stats_interval, 10},
