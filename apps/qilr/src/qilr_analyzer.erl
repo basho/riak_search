@@ -46,9 +46,10 @@ analyze(Pid, Text, AnalyzerFactory) ->
 
 
 
-%% No analyzer is defined. Use text_analyzers:default_analyzer_factory.
-analyze(_Pid, Text, undefined, AnalyzerArgs) ->
-    text_analyzers:default_analyzer_factory(Text, AnalyzerArgs);
+%% No analyzer is defined. Throw an exception.
+analyze(_Pid, _Text, undefined, _AnalyzerArgs) ->
+    error_logger:error_msg("The analyzer_factory setting is not set. Check your schema.~n"),
+    throw({schema_setting_required, analyzer_factory});
 
 %% Handle Erlang-based AnalyzerFactory. Can either be of the form
 %% {erlang, Mod, Fun} or {erlang, Mod, Fun, Args}. Function should

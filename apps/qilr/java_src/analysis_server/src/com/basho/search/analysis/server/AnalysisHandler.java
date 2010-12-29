@@ -15,7 +15,6 @@ import org.jboss.netty.channel.ChannelStateEvent;
 import org.jboss.netty.channel.MessageEvent;
 import org.jboss.netty.channel.SimpleChannelUpstreamHandler;
 
-import com.basho.search.analysis.DefaultAnalyzerFactory;
 import com.basho.search.analysis.TextAnalyzer;
 import com.basho.search.proto.Analysis.AnalysisError;
 import com.basho.search.proto.Analysis.AnalysisRequest;
@@ -26,7 +25,6 @@ import com.google.protobuf.MessageLite;
 @ChannelPipelineCoverage("all")
 public class AnalysisHandler extends SimpleChannelUpstreamHandler {
 
-	private static final String DEFAULT_ANALYZER_FACTORY = DefaultAnalyzerFactory.class.getName();
 	/* see qilr_analyzer.erl for sender values */
 	final private static short MSG_ANALYZE                   = 1;
 	final private static short MSG_ANALYSIS_RESULT           = 2;
@@ -66,10 +64,7 @@ public class AnalysisHandler extends SimpleChannelUpstreamHandler {
 
 	private void doAnalyze(MessageEvent e, AnalysisRequest request) {
 		String text = request.getText();
-		String analyzerFactory = DEFAULT_ANALYZER_FACTORY;
-		if (request.hasAnalyzerFactory()) {
-			analyzerFactory = request.getAnalyzerFactory();
-		}
+                String analyzerFactory = request.getAnalyzerFactory();
 		Channel chan = e.getChannel();
 		try {
 			List<String> tokens = TextAnalyzer.analyze(text, analyzerFactory,
