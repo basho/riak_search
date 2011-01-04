@@ -94,7 +94,6 @@ precommit_def() ->
 -spec precommit(riak_object()) -> {fail, any()} | riak_object().
 precommit(RiakObject) ->
     Extractor = get_extractor(RiakObject),
-    ?PRINT(Extractor),
     try
         case index_object(RiakObject, Extractor) of
             ok ->
@@ -182,7 +181,7 @@ to_modfun(List) when is_list(List) ->
     %% does not need to be pre-loaded.  
     list_to_atom(List);
 to_modfun(Binary) when is_binary(Binary) ->
-    to_modfun(binary_to_list(Binary));
+    binary_to_atom(Binary, utf8);
 to_modfun(Atom) when is_atom(Atom) ->
     Atom;
 to_modfun(Val) ->
