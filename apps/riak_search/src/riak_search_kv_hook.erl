@@ -180,6 +180,8 @@ to_modfun(List) when is_list(List) ->
     %% Using list_to_atom here so that the extractor module
     %% does not need to be pre-loaded.  
     list_to_atom(List);
+to_modfun(Binary) when is_binary(Binary) ->
+    binary_to_atom(Binary, utf8);
 to_modfun(Atom) when is_atom(Atom) ->
     Atom;
 to_modfun(Val) ->

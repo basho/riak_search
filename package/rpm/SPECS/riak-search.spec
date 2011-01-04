@@ -44,6 +44,10 @@ cat > rel/vars.config <<EOF
 {analyzer_port,     6095}.
 {sasl_error_log, "%{_localstatedir}/log/%{appname}/sasl-error.log"}.
 {sasl_log_dir, "%{_localstatedir}/log/%{appname}/sasl"}.
+{mapred_queue_dir, "%{_localstatedir}/lib/%{name}/mr_queue"}.
+{map_js_vms,   8}.
+{reduce_js_vms, 6}.
+{hook_js_vms, 2}.
 % vm.args
 {node,         "riak@127.0.0.1"}.
 % bin/riak*
@@ -71,6 +75,7 @@ mkdir -p %{buildroot}%{_localstatedir}/lib/%{appname}/merge_index
 mkdir -p %{buildroot}%{_localstatedir}/lib/%{appname}/ring
 mkdir -p %{buildroot}%{_localstatedir}/log/%{appname}/sasl
 mkdir -p %{buildroot}%{_localstatedir}/run/%{appname}
+mkdir -p %{buildroot}%{_localstatedir}/lib/%{name}/mr_queue
 
 #Copy all necessary lib files etc.
 cp -r %{releasepath}/lib %{buildroot}%{riak_lib}
