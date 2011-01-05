@@ -49,7 +49,11 @@ preplan(Op, State) ->
     Op#term { weights=Weights2, doc_freq=DocFrequency }.
 
 chain_op(Op, OutputPid, OutputRef, State) ->
-    spawn_link(fun() -> start_loop(Op, OutputPid, OutputRef, State) end),
+    F = fun() -> 
+                erlang:link(State#search_state.parent),
+                start_loop(Op, OutputPid, OutputRef, State) 
+        end,
+    erlang:spawn_link(F),
     {ok, 1}.
 
 start_loop(Op, OutputPid, OutputRef, State) ->

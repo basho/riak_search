@@ -335,6 +335,7 @@ stream_search(IndexOrSchema, OpList) ->
     %% Get the total number of terms and weight in query...
     {NumTerms, NumDocs, QueryNorm} = get_scoring_info(OpList),
     SearchState = #search_state {
+      parent=self(),
       index=Schema:name(),
       field=Schema:default_field(),
       num_terms=NumTerms,

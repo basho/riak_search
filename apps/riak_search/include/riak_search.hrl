@@ -10,6 +10,7 @@
 -define(JSPOOL_SEARCH_EXTRACT, riak_search_js_extract).
 
 -record(search_state, {
+          parent=undefined,
           index=undefined,
           field=undefined,
           num_terms=0,
