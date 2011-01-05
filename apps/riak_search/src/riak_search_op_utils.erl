@@ -60,7 +60,13 @@ it_combine_inner(SelectFun, [IteratorA,IteratorB|Rest]) ->
 it_op(Op, SearchState) ->
     %% Spawn a collection process...
     Ref = make_ref(),
-    Pid = spawn_link(fun() -> it_op_collector_loop(Ref, []) end),
+    F = fun() -> 
+                Parent = SearchState#search_state.parent,
+                erlang:link(Parent),
+                erlang:process_flag(trap_exit, true),
+                it_op_collector_loop(Parent, Ref, []) 
+        end,
+    Pid = erlang:spawn_link(F),
 
     %% Chain the op...
     riak_search_op:chain_op(Op, Pid, Ref, SearchState),
@@ -89,24 +95,38 @@ it_op_inner(Pid, Ref, Op) ->
 
 %% @private This runs in a separate process, collecting the incoming
 %% messages from an operation, and holding the message until it is
-%% requested by it_op_inner/3.
-it_op_collector_loop(Ref, []) ->
+%% requested by it_op_inner/3. We trap_exits and look for the 'EXIT'
+%% message because there is a chance that the calling process doesn't
+%% iterate through the entire result set (for instance, during a set
+%% intersection when one side runs out of results, there's no need to
+%% iterate through the remaining results on the other side). In that
+%% case, we want to end. The other option would be to change the
+%% calling process to make sure we iterate through the entire result
+%% set, but that just creates more work for the system (and more
+%% code).
+it_op_collector_loop(Parent, Ref, []) ->
     receive
         {results, Results, Ref} ->
-            it_op_collector_loop(Ref, Results);
+            it_op_collector_loop(Parent, Ref, Results);
         {disconnect, Ref} ->
-            it_op_collector_loop(Ref, eof)
+            it_op_collector_loop(Parent, Ref, eof);
+        {'EXIT', Parent, _} ->
+            stop
     end;
-it_op_collector_loop(Ref, [Result|Results]) ->
+it_op_collector_loop(Parent, Ref, [Result|Results]) ->
     receive
         {get_result, OutputPid, OutputRef} ->
             OutputPid!{result, Result, OutputRef},
-            it_op_collector_loop(Ref, Results)
+            it_op_collector_loop(Parent, Ref, Results);
+        {'EXIT', Parent, _} ->
+            stop
     end;
-it_op_collector_loop(_Ref, eof) ->
+it_op_collector_loop(Parent, _Ref, eof) ->
     receive
         {get_result, OutputPid, OutputRef} ->
-            OutputPid!{result, eof, OutputRef}
+            OutputPid!{result, eof, OutputRef};
+        {'EXIT', Parent, _} ->
+            stop
     end.
 
 %% Given an iterator, gather results into an accumulator, and send to

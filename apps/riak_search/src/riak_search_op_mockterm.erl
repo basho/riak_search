@@ -16,7 +16,11 @@ preplan(Op, _State) ->
     Op.
 
 chain_op(Op, OutputPid, OutputRef, State) ->
-    spawn_link(fun() -> send_results(Op, OutputPid, OutputRef, State) end),
+    F = fun() ->
+                erlang:link(State#search_state.parent),
+                send_results(Op, OutputPid, OutputRef, State) 
+        end,
+    erlang:spawn_link(F),
     {ok, 1}.
 
 send_results(Op, OutputPid, OutputRef, _State) ->

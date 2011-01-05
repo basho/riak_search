@@ -19,7 +19,11 @@ preplan(Op, _State) ->
     Op.
 
 chain_op(Op, OutputPid, OutputRef, State) ->
-    spawn_link(fun() -> start_loop(Op, OutputPid, OutputRef, State) end),
+    F = fun() -> 
+                erlang:link(State#search_state.parent),
+                start_loop(Op, OutputPid, OutputRef, State) 
+        end,
+    erlang:spawn_link(F),
     {ok, 1}.
 
 start_loop(Op, OutputPid, OutputRef, State) ->
@@ -41,9 +45,10 @@ start_loop(Op, OutputPid, OutputRef, State) ->
 
     %% Spawn up pid to gather and send results...
     F = fun() -> 
+                erlang:link(State#search_state.parent),
                 riak_search_op_utils:gather_iterator_results(OutputPid, OutputRef, Iterator2()) 
         end,
-    spawn_link(F),
+    erlang:spawn_link(F),
 
     %% Return.
     {ok, 1}.

@@ -58,6 +58,7 @@ chain_op(Op, OutputPid, OutputRef, State) ->
             
     %% Spawn up pid to gather and send results...
     F = fun() -> 
+                erlang:link(State#search_state.parent),
                 riak_search_op_utils:gather_iterator_results(OutputPid, OutputRef, Iterator2()) 
         end,
     erlang:spawn_link(F),
