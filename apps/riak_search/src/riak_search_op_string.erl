@@ -23,12 +23,11 @@ preplan(Op, State) ->
     IndexName = State#search_state.index,
     FieldName = State#search_state.field,
     TermString = to_binary(Op#string.s),
-    
+
     %% Analyze the string and call preplan to get the #term properties.
     {ok, Terms} = analyze_term(IndexName, FieldName, TermString),
-
+    WildcardType = detect_wildcard(Op#string.flags),
     ProximityVal = detect_proximity_val(Op#string.flags),
-    WildcardType = detect_wildcard_type(TermString),
     Boost = proplists:get_value(boost, Op#string.flags, 1.0),
     case Terms of
         [skip] ->
@@ -37,11 +36,11 @@ preplan(Op, State) ->
         [Term] when WildcardType == none -> 
             %% Stream the results for a single term...
             NewOp = #term { s=Term, boost=Boost };
-        [Term] when WildcardType == end_wildcard_all -> 
+        [Term] when WildcardType == glob -> 
             %% Stream the results for a '*' wildcard...
             {FromTerm, ToTerm} = calculate_range(Term, all),
             NewOp = #range_sized { from=FromTerm, to=ToTerm, size=all };
-        [Term] when WildcardType == end_wildcard_single -> 
+        [Term] when WildcardType == char -> 
             %% Stream the results for a '?' wildcard...
             {FromTerm, ToTerm} = calculate_range(Term, single),
             NewOp = #range_sized { from=FromTerm, to=ToTerm, size=erlang:size(Term) };
@@ -64,28 +63,12 @@ chain_op(Op, _OutputPid, _OutputRef, _State) ->
     throw({invalid_query_tree, Op}).
 
 %% Return the proximity setting from flags
+detect_wildcard(Flags) ->
+    proplists:get_value(wildcard, Flags, none).
+
+%% Return the proximity setting from flags
 detect_proximity_val(Flags) ->
     proplists:get_value(proximity, Flags, undefined).
-
-%% If the string ends with an unescaped * or ? then it's a wildcard,
-%% but only if there are no other unescaped *'s or ?'s.
-detect_wildcard_type(<<$\\, _,T/binary>>) ->
-    %% Discard any escaped chars.
-    detect_wildcard_type(T);
-detect_wildcard_type(<<$*>>) ->
-    %% Last char is an unescaped *.
-    end_wildcard_all;
-detect_wildcard_type(<<$?>>) ->
-    %% Last char is an unescaped ?.
-    end_wildcard_single;
-detect_wildcard_type(<<$*,_/binary>>) ->
-    inner_wildcard;
-detect_wildcard_type(<<$?,_/binary>>) ->
-    inner_wildcard;
-detect_wildcard_type(<<_,T/binary>>) ->
-    detect_wildcard_type(T);
-detect_wildcard_type(<<>>) ->
-    none.
 
 calculate_range(B, all) ->
     {{inclusive, B}, {inclusive, calculate_range_last(B)}};

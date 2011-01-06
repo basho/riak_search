@@ -20,6 +20,8 @@ DBLSTRING = \"(\\\"|[^\"])*\"
 % Must not contain special characters (the second clause is the same
 % as the first, but allows for +/-/! inside the word without escaping.
 STRING = (\\.|[^\+\-\!\s\t\n\r\"\'\[\]\\:^~&|(){}])(\\.|[^\s\t\n\r\"\'\[\]\\:^~&|(){}])*
+WC_CHAR_STRING = (\\.|[^\+\-\!\s\t\n\r\"\'\[\]\\:^~&|(){}])(\\.|[^\s\t\n\r\"\'\[\]\\:^~&|(){}])*[^\\]\?
+WC_GLOB_STRING = (\\.|[^\+\-\!\s\t\n\r\"\'\[\]\\:^~&|(){}])(\\.|[^\s\t\n\r\"\'\[\]\\:^~&|(){}])*[^\\]\*
 
 % Fuzzy search.
 FUZZY0 = ~
@@ -38,33 +40,35 @@ BOOST2 = \^[0-9]+\.[0-9]+
 %                            "[", "]", "\"", "{", "}", "~", "*", "?", "\\" ]
 
 Rules.
-AND         : {token, {intersection, TokenLine, TokenChars}}.
-&*          : {token, {intersection, TokenLine, TokenChars}}.
-OR          : {token, {union, TokenLine, TokenChars}}.
-\|*         : {token, {union, TokenLine, TokenChars}}.
-NOT         : {token, {negation, TokenLine, TokenChars}}.
-\!*         : {token, {negation, TokenLine, TokenChars}}.
-\:*         : {token, {scope, TokenLine, TokenChars}}.
-\+*         : {token, {required, TokenLine, TokenChars}}.
-\-*         : {token, {prohibited, TokenLine, TokenChars}}.
-\(          : {token, {group_start, TokenLine, TokenChars}}.
-\)          : {token, {group_end, TokenLine, TokenChars}}.
-\[          : {token, {inclusive_start, TokenLine, TokenChars}}.
-\]          : {token, {inclusive_end, TokenLine, TokenChars}}.
-\{          : {token, {exclusive_start, TokenLine, TokenChars}}.
-\}          : {token, {exclusive_end, TokenLine, TokenChars}}.
-TO          : {token, {range_to, TokenLine, TokenChars}}.
-{FUZZY0}    : {token, {fuzzy, TokenLine, 0.5}}.
-{FUZZY1}    : {token, {fuzzy, TokenLine, fuzzy_to_float(TokenChars)}}.
-{PROXIMITY} : {token, {proximity, TokenLine, proximity_to_integer(TokenChars)}}.
-{BOOST0}    : {token, {boost, TokenLine, 1.0}}.
-{BOOST1}    : {token, {boost, TokenLine, boost1_to_float(TokenChars)}}.
-{BOOST2}    : {token, {boost, TokenLine, boost2_to_float(TokenChars)}}.
-{SNGSTRING} : {token, {string, TokenLine, unescape(strip(TokenChars))}}.
-{DBLSTRING} : {token, {string, TokenLine, unescape(strip(TokenChars))}}.
-{STRING}    : {token, {string, TokenLine, unescape(TokenChars)}}.
-{WS}        : skip_token.
-.           : {error, lists:flatten(io_lib:format("invalid character \"~s\" at line ~p", [TokenChars, TokenLine]))}.
+AND              : {token, {intersection, TokenLine, TokenChars}}.
+&*               : {token, {intersection, TokenLine, TokenChars}}.
+OR               : {token, {union, TokenLine, TokenChars}}.
+\|*              : {token, {union, TokenLine, TokenChars}}.
+NOT              : {token, {negation, TokenLine, TokenChars}}.
+\!*              : {token, {negation, TokenLine, TokenChars}}.
+\:*              : {token, {scope, TokenLine, TokenChars}}.
+\+*              : {token, {required, TokenLine, TokenChars}}.
+\-*              : {token, {prohibited, TokenLine, TokenChars}}.
+\(               : {token, {group_start, TokenLine, TokenChars}}.
+\)               : {token, {group_end, TokenLine, TokenChars}}.
+\[               : {token, {inclusive_start, TokenLine, TokenChars}}.
+\]               : {token, {inclusive_end, TokenLine, TokenChars}}.
+\{               : {token, {exclusive_start, TokenLine, TokenChars}}.
+\}               : {token, {exclusive_end, TokenLine, TokenChars}}.
+TO               : {token, {range_to, TokenLine, TokenChars}}.
+{FUZZY0}         : {token, {fuzzy, TokenLine, 0.5}}.
+{FUZZY1}         : {token, {fuzzy, TokenLine, fuzzy_to_float(TokenChars)}}.
+{PROXIMITY}      : {token, {proximity, TokenLine, proximity_to_integer(TokenChars)}}.
+{BOOST0}         : {token, {boost, TokenLine, 1.0}}.
+{BOOST1}         : {token, {boost, TokenLine, boost1_to_float(TokenChars)}}.
+{BOOST2}         : {token, {boost, TokenLine, boost2_to_float(TokenChars)}}.
+{SNGSTRING}      : {token, {string, TokenLine, unescape(strip(TokenChars))}}.
+{DBLSTRING}      : {token, {string, TokenLine, unescape(strip(TokenChars))}}.
+{WC_CHAR_STRING} : {token, {wildcard_char, TokenLine, unescape(TokenChars)}}.
+{WC_GLOB_STRING} : {token, {wildcard_glob, TokenLine, unescape(TokenChars)}}.
+{STRING}         : {token, {string, TokenLine, unescape(TokenChars)}}.
+{WS}             : skip_token.
+.                : {error, lists:flatten(io_lib:format("invalid character \"~s\" at line ~p", [TokenChars, TokenLine]))}.
 
 Erlang code.
 
