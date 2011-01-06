@@ -10,7 +10,7 @@ import org.apache.lucene.analysis.TokenStream;
 import org.apache.lucene.analysis.standard.StandardTokenizer;
 import org.apache.lucene.util.Version;
 
-public class DefaultAnalyzerFactory implements AnalyzerFactory {
+public class StandardAnalyzerFactory implements AnalyzerFactory {
 
    public TokenStream makeStream(Version version, StringReader input, String[] args) {
       TokenStream stream = new StandardTokenizer(version, input);

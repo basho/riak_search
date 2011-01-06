@@ -56,8 +56,8 @@ public class TextAnalyzer {
 		catch (Exception e) {
 			logger.log(Level.WARNING, "Failure creating instance of " + factoryClassName, e);
 			logger.log(Level.WARNING, "Failure to create AnalyzerFactory: " + factoryClassName + "." +
-			" Falling back to default analyzer factory");
-			return new DefaultAnalyzerFactory();
+			" Falling back to whitespace analyzer factory");
+			return new WhitespaceAnalyzerFactory();
 		}
 
 		return retval;

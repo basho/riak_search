@@ -9,7 +9,7 @@ parse(Query, Bool) ->
     Schema = riak_search_schema:new("search", undefined, 2, "value", "id",
                                     [{riak_search_field, ".*", string, 0,
                                       undefined, false, true, undefined, undefined, false}],
-                                    Bool, {erlang, text_analyzers, default_analyzer_factory}),
+                                    Bool, {erlang, text_analyzers, standard_analyzer_factory}),
     qilr_parse:string(undefined, Query, Schema).
 
 multiple_terms_test_() ->
