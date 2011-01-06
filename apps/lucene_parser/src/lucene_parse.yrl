@@ -23,7 +23,7 @@ group_start group_end
 inclusive_start inclusive_end exclusive_start exclusive_end range_to
 
 %% Other
-scope fuzzy proximity boost string
+scope fuzzy proximity boost string wildcard_char wildcard_glob
 .
 
 Left 100 intersection.
@@ -102,6 +102,18 @@ query -> string boost :
 query -> string scope query :
     {Index, Field} = split_scope(val('$1')),
     #scope { index=Index, field=Field, ops=['$3']}.
+
+query -> wildcard_char :
+    S1 = val('$1'),
+    Length = length(S1),
+    S2 = string:substr(S1, 1, Length - 1),
+    #string { s=S2, flags=[{wildcard, char}]}.
+
+query -> wildcard_glob :
+    S1 = val('$1'),
+    Length = length(S1),
+    S2 = string:substr(S1, 1, Length - 1),
+    #string { s=S2, flags=[{wildcard, glob}]}.
 
 query -> string :
     #string { s=val('$1') }.
