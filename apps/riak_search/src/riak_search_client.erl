@@ -399,7 +399,7 @@ get_scoring_info(OpList) ->
     {NumTerms, NumDocs, QueryNorm}.
 
 get_scoring_props(Ops) ->
-    lists:flatten(get_scoring_props_1(Ops)).
+    lists:flatten([get_scoring_props_1(Ops)]).
 get_scoring_props_1(Ops) when is_list(Ops) ->
     [get_scoring_props_1(X) || X <- Ops];
 get_scoring_props_1(#term { doc_freq=DocFrequency, boost=Boost }) ->
