@@ -325,13 +325,13 @@ boost2_test() ->
 
 wildcard1_test() ->
     Expect = [
-              {string, 1, "test?"}
+              {wildcard_char, 1, "test?"}
              ],
     test_helper("test?", Expect).
 
 wildcard2_test() ->
     Expect = [
-              {string, 1, "test*"}
+              {wildcard_glob, 1, "test*"}
              ],
     test_helper("test*", Expect).
 
