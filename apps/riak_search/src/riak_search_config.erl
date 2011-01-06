@@ -135,7 +135,7 @@ handle_call({put_raw_schema, SchemaName, RawSchemaBinary}, _From, State) ->
                     throw(Error)
             end;
         Error ->
-            error_logger:log_error("Could not parse schema: ~p~n", [Error]),
+            error_logger:error_msg("Could not parse schema: ~p~n", [Error]),
             Error
     end;
 
