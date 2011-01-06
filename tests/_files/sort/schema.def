@@ -2,7 +2,8 @@
     schema, 
     [
         {version, "1.1"},
-        {default_field, "acc"}
+        {default_field, "acc"},
+        {analyzer_factory, {erlang, text_analyzers, whitespace_analyzer_factory}}
     ],
     [
         {field, [

@@ -6,7 +6,7 @@
 
 -module(text_analyzers).
 -export([
-         default_analyzer_factory/2,
+         standard_analyzer_factory/2,
          whitespace_analyzer_factory/2,
          noop_analyzer_factory/2,
          integer_analyzer_factory/2
@@ -18,39 +18,39 @@
 -define(WHITESPACE(C), ((C == $\s) orelse (C == $\n) orelse (C == $\t) orelse (C == $\f) orelse (C == $\r) orelse (C == $\v))).
 
 %% @doc Tokenize incoming text using roughly the same rules as the
-%% DefaultAnalyzerFactory in Lucene/Java.
-default_analyzer_factory(Text, [MinLengthArg]) ->
+%% StandardAnalyzerFactory in Lucene/Java.
+standard_analyzer_factory(Text, [MinLengthArg]) ->
     MinLength = list_to_integer(MinLengthArg),
-    {ok, default(Text, MinLength, [], [])};
-default_analyzer_factory(Text, _Other) ->
-    {ok, default(Text, 3, [], [])}.
+    {ok, standard(Text, MinLength, [], [])};
+standard_analyzer_factory(Text, _Other) ->
+    {ok, standard(Text, 3, [], [])}.
 
-default(<<H, T/binary>>, MinLength, Acc, ResultAcc) when ?UPPERCHAR(H) ->
+standard(<<H, T/binary>>, MinLength, Acc, ResultAcc) when ?UPPERCHAR(H) ->
     H1 = H + ($a - $A),
-    default(T, MinLength, [H1|Acc], ResultAcc);
-default(<<H, T/binary>>, MinLength, Acc, ResultAcc) when ?LOWERCHAR(H) orelse ?NUMBER(H) ->
-    default(T, MinLength, [H|Acc], ResultAcc);
-default(<<$.,H,T/binary>>, MinLength, Acc, ResultAcc) when ?UPPERCHAR(H) ->
+    standard(T, MinLength, [H1|Acc], ResultAcc);
+standard(<<H, T/binary>>, MinLength, Acc, ResultAcc) when ?LOWERCHAR(H) orelse ?NUMBER(H) ->
+    standard(T, MinLength, [H|Acc], ResultAcc);
+standard(<<$.,H,T/binary>>, MinLength, Acc, ResultAcc) when ?UPPERCHAR(H) ->
     H1 = H + ($a - $A),
-    default(T, MinLength, [H1,$.|Acc], ResultAcc);
-default(<<$.,H,T/binary>>, MinLength, Acc, ResultAcc) when ?LOWERCHAR(H) orelse ?NUMBER(H) ->
-    default(T, MinLength, [H,$.|Acc], ResultAcc);
-default(<<_,T/binary>>, MinLength, Acc, ResultAcc) ->
-    default_termify(T, MinLength, Acc, ResultAcc);
-default(<<>>, MinLength, Acc, ResultAcc) ->
-    default_termify(<<>>, MinLength, Acc, ResultAcc).
+    standard(T, MinLength, [H1,$.|Acc], ResultAcc);
+standard(<<$.,H,T/binary>>, MinLength, Acc, ResultAcc) when ?LOWERCHAR(H) orelse ?NUMBER(H) ->
+    standard(T, MinLength, [H,$.|Acc], ResultAcc);
+standard(<<_,T/binary>>, MinLength, Acc, ResultAcc) ->
+    standard_termify(T, MinLength, Acc, ResultAcc);
+standard(<<>>, MinLength, Acc, ResultAcc) ->
+    standard_termify(<<>>, MinLength, Acc, ResultAcc).
 
 %% Determine if this term is valid, if so, add it to the list we are
 %% generating.
-default_termify(<<>>, _MinLength, [], ResultAcc) ->
+standard_termify(<<>>, _MinLength, [], ResultAcc) ->
     lists:reverse(ResultAcc);
-default_termify(T, MinLength, [], ResultAcc) ->
-    default(T, MinLength, [], ResultAcc);
-default_termify(T, MinLength, Acc, ResultAcc) when length(Acc) < MinLength ->
+standard_termify(T, MinLength, [], ResultAcc) ->
+    standard(T, MinLength, [], ResultAcc);
+standard_termify(T, MinLength, Acc, ResultAcc) when length(Acc) < MinLength ->
     %% mimic org.apache.lucene.analysis.LengthFilter,
     %% which does not incement position index
-    default(T, MinLength, [], ResultAcc);
-default_termify(T, MinLength, Acc, ResultAcc) ->
+    standard(T, MinLength, [], ResultAcc);
+standard_termify(T, MinLength, Acc, ResultAcc) ->
     Term = lists:reverse(Acc),
     case is_stopword(Term) of
         false ->
@@ -59,7 +59,7 @@ default_termify(T, MinLength, Acc, ResultAcc) ->
         true -> 
             NewResultAcc = [skip|ResultAcc]
     end,
-    default(T, MinLength, [], NewResultAcc).
+    standard(T, MinLength, [], NewResultAcc).
 
 
 is_stopword(Term) when length(Term) == 2 -> 

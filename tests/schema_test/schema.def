@@ -2,7 +2,8 @@
     schema, 
     [
         {version, "1.1"},
-        {default_field, "value"}
+        {default_field, "value"},
+        {analyzer_factory, {erlang, text_analyzers, whitespace_analyzer_factory}}
     ],
     [
         {field, [
@@ -16,8 +17,8 @@
         {field, [
             {name, "value"},
             {type, string},
-            %% {analyzer_factory, "com.basho.search.analysis.DefaultAnalyzerFactory"}
-            {analyzer_factory, {erlang, text_analyzers, default_analyzer_factory}}
+            %% {analyzer_factory, "com.basho.search.analysis.StandardAnalyzerFactory"}
+            {analyzer_factory, {erlang, text_analyzers, standard_analyzer_factory}}
         ]},
 
         {field, [
@@ -62,8 +63,8 @@
         {dynamic_field, [       
             {name, "*_sd"},
             {type, string},
-            %% {analyzer_factory, "com.basho.search.analysis.DefaultAnalyzerFactory"}
-            {analyzer_factory, {erlang, text_analyzers, default_analyzer_factory}}
+            %% {analyzer_factory, "com.basho.search.analysis.StandardAnalyzerFactory"}
+            {analyzer_factory, {erlang, text_analyzers, standard_analyzer_factory}}
         ]},
 
         {dynamic_field, [       
@@ -92,8 +93,8 @@
         {dynamic_field, [       
             {name, "sd_*"},
             {type, string},
-            %% {analyzer_factory, "com.basho.search.analysis.DefaultAnalyzerFactory"}
-            {analyzer_factory, {erlang, text_analyzers, default_analyzer_factory}}
+            %% {analyzer_factory, "com.basho.search.analysis.StandardAnalyzerFactory"}
+            {analyzer_factory, {erlang, text_analyzers, standard_analyzer_factory}}
         ]},
 
         {dynamic_field, [       
