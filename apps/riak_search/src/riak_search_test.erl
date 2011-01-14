@@ -120,7 +120,7 @@ test_inner({solr_select, Params, Validators}, _Root) ->
     Query = proplists:get_value(q, Params),
     QS = to_querystring(Params),
     Url = io_lib:format("http://~s:~p/solr/~s/select?~s", [Hostname, Port, ?TEST_INDEX, QS]),
-    try http:request(lists:flatten(Url)) of
+    try httpc:request(lists:flatten(Url)) of
         {ok, {{_, 200, _}, _, Body}} ->
             Format = proplists:get_value(wt, Params, xml),
             {Length, Results} = parse_solr_select_result(Format, Body),
@@ -158,7 +158,7 @@ test_inner({solr_update, Path, Params}, Root) ->
             QueryString = to_querystring(Params),
             Url = io_lib:format("http://~s:~p/solr/~s/update?~s", [Hostname, Port, ?TEST_INDEX, QueryString]),
             Req = {lists:flatten(Url), [], "text/xml", Bytes},
-            try http:request(post, Req, [], []) of
+            try httpc:request(post, Req, [], []) of
                 {ok, {{_, 200, _}, _, _}} ->
                     io:format("~n :: Success!"),
                     true;
