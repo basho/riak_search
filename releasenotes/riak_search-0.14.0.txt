@@ -1,0 +1,116 @@
+-------------------------------
+Riak Search 0.14.0 Release Notes
+--------------------------------
+
+The majority of effort during development of Riak Search 0.14 went
+toward rewriting the query parsing and planning system. This fixes all
+known query planning bugs. We also managed to add quite a few new
+features and performance improvements. See the highlights below for
+details.
+
+Important Configuration and Interface Changes:
+
+- The system now uses the 'whitespace_analyzer_factory' by
+  default. (It previously used the 'default_analyzer_factory', which
+  has been renamed to 'standard_analyzer_factory'.)
+
+- Indexing and searching will fail with an error message if the
+  analyzer_factory configuration setting is not set at either a schema
+  or field level.
+
+- The method signature for custom Erlang and Javascript extractors has
+  changed.
+
+Highlights:
+
+- Fixed the query parser to properly respect field-level analyzer
+  settings.
+
+- Fixed the query parser to correctly handle escaped special
+  characters and terms within single-quotes and double-quotes.
+
+- Fixed the query parser's interpretation of inclusive and exclusive
+  ranges, allowing an inclusive range on one side, and an exclusive
+  range on the other (mimicking Lucene).
+
+- Fixed the execution engine to significantly speed up proximity
+  searches and phrase searches. (678)
+
+- By default new installations use all Erlang-based extractors, and
+  the JVM is not started. Setting the analysis_port in etc/app.config
+  will cause the JVM to start and allow the use of Java Lucene-based
+  analyzers.
+
+- System now aborts queries that would queue up too many documents in
+  a result set. This is controlled by a 'max_search_results' setting
+  in riak_search. Note that this only affects the Solr
+  interface. Searches through the Riak Client API that feed into a
+  Map/Reduce job are still allowed to execute because the system
+  streams those results.
+
+- Change handoff of Search data stored in merge_index to be more
+  memory efficient.
+
+- Added "*_date", "*_int", "*_text", and "*_txt" dynamic fields to the
+  default schema.
+
+------------
+Improvements
+------------
+
+414 - ETS backend now fully functional (415, 795)
+592 - Make parser multi-schema aware
+783 - Pass Search Props as KeyData to Map/Reduce Query
+788 - Add support for indexing Erlang terms / proplists
+839 - Create a way to globally clear schema cache
+925 - Change search-cmd commands (set_schema, etc.) to use dashes.
+
+----------
+Fixed Bugs
+----------
+
+186 - Qilr fails when parsing ISO8601 dates
+311 - Qilr does not correctly parse negative numbers
+363 - Range queries broken for negative numbers
+369 - Range queries broken for ALL integer fields
+405 - Update search:index_dir/N to de-index old documents first
+411 - Our handling of NOT is different from Solr - "NOT X", "AND NOT X", "AND (NOT X)"
+609 - Calling search:search or search:explain with a binary hangs shell
+611 - Error in inclusive/exclusive range building
+612 - Single term queries shouldn't include proximity clauses
+622 - schema and schemachange test fail after new parser
+711 - Update new #range operator to support negative integers
+729 - Make Qilr use analyzer specified in schema
+732 - Word Position is thrown off by Stopwords
+764 - The function search:delete_doc/2 blocks if run after search:index_dir/2
+797 - Ranges with quoted terms do not return correct results
+801 - Anonymous javascript extractors stored in Bucket/Keys validate but are not implemented
+802 - Schema allows default field that is not defined, but breaks when analyzing
+803 - Cannot use search m/r with riak_client:mapred
+832 - Query parser fails on escaped special characters
+833 - Proximity searching is currently broken for Whitespace Analyzer
+836 - Integer padding is ignored for dynamic fields
+837 - The parser interprets hyphens as negations (NOT)
+840 - JSON and raw extractors assumes a default field of "value"
+849 - Default Erlang Analyzer misses 'that' and 'then' as stop words
+850 - text_analyzers module is not tail-recursive
+864 - Solr output chokes on dates
+885 - Coordinating node exits if result set exceeds available memory
+886 - Query parser error when searching on terms that contain the @ symbol
+935 - Change merge_index fold to be unordered
+956 - Error when setting rs_extractfun through Curl/JSON
+
+------------
+Known Issues
+------------
+
+362 - Sorting broken on negative numbers
+399 - Handoff can potentially lead to extraneous postings pointing to a missing or changed document
+790 - Indexing data too quickly can exhaust the ETS table limit
+814 - text_analyzer:default_analyzer_factory skips unicode code points beyond 0x7f
+861 - merge_index throws errors when data path contains a period
+866 - Sorting positions may change between Solr Searches
+867 - Solr "rows" and "start" parameters are applied too early
+908 - Solr q.op parameter is ignored (Regression)
+955 - Range searching and wildcards across UTF-8 data is broken
+957 - Error when viewing bucket properties with a set rs_extractfun
