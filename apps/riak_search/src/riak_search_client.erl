@@ -25,7 +25,7 @@
     index_doc/2,
     index_docs/1, index_docs/2,
     index_term/5, index_term/6,
-    index_terms/1, 
+    index_terms/1,
 
     %% Delete
     delete_docs/1,
@@ -37,7 +37,7 @@
 mapred(DefaultIndex, SearchQuery, MRQuery, ResultTransformer, Timeout) ->
     {ok, ReqID} = mapred_stream(DefaultIndex, SearchQuery, MRQuery, self(), ResultTransformer, Timeout),
     luke_flow:collect_output(ReqID, Timeout).
-        
+
 mapred_stream(DefaultIndex, SearchQuery, MRQuery, ClientPid, ResultTransformer, Timeout) ->
     InputDef = {modfun, riak_search, mapred_search, [DefaultIndex, SearchQuery]},
     {ok, {RId, FSM}} = RiakClient:mapred_stream(MRQuery, ClientPid, ResultTransformer, Timeout),
@@ -58,8 +58,8 @@ parse_query(IndexOrSchema, Query) ->
                   riak_search_utils:to_list(Query)),
     {ok, riak_search_op:preplan(Ops)}.
 
-    
-    
+
+
 %% Run the Query, return the list of keys.
 %% Timeout is in milliseconds.
 %% Return the {Length, Results}.
@@ -71,7 +71,7 @@ search(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
     MaxSearchResults = app_helper:get_env(riak_search, max_search_results),
     F = fun(Results, {Acc, AccCount}) ->
                 NewAcc = Results ++ Acc,
-                NewAccCount = AccCount + length(Acc),
+                NewAccCount = AccCount + length(Results),
                 case NewAccCount > MaxSearchResults of
                     true ->
                         throw({too_many_results, QueryOps});
@@ -134,7 +134,7 @@ index_docs(IdxDocs, AnalyzerPid) ->
                 IdxDoc = riak_indexed_doc:analyze(IdxDoc0, AnalyzerPid),
 
                 %% Get the terms to delete...
-                Index = riak_indexed_doc:index(IdxDoc), 
+                Index = riak_indexed_doc:index(IdxDoc),
                 DocId = riak_indexed_doc:id(IdxDoc),
                 case riak_indexed_doc:get_obj(RiakClient, Index, DocId) of
                     {ok, OldRiakObj} ->
@@ -149,11 +149,11 @@ index_docs(IdxDocs, AnalyzerPid) ->
                 %% Get the terms to index...
                 IndexTerms = riak_indexed_doc:postings(IdxDoc),
                 NewIndexAcc = [IndexTerms|IndexAccIn],
-                
+
                 %% Store the document...
                 RiakObj = riak_object:update_value(OldRiakObj, IdxDoc),
                 NewRiakObjsAcc = [RiakObj|RiakObjsAccIn],
-                
+
                 %% Return.
                 {NewRiakObjsAcc, NewDeleteAcc, NewIndexAcc}
         end,
@@ -170,7 +170,7 @@ index_docs(IdxDocs, AnalyzerPid) ->
     FlatIndexAcc = lists:flatten(IndexAcc),
     index_terms(FlatIndexAcc),
     ok.
-    
+
 
 %% Index the specified term - better to use the plural 'terms' interfaces
 index_term(Index, Field, Term, DocID, Props) ->
@@ -181,7 +181,7 @@ index_term(Index, Field, Term, DocID, Props, K) ->
     index_terms([{Index, Field, Term, DocID, Props, K}]).
 
 index_terms(Terms) ->
-    IndexFun = fun(VNode, Postings) -> 
+    IndexFun = fun(VNode, Postings) ->
                        riak_search_vnode:index(VNode, Postings)
                end,
     process_terms(IndexFun, Terms).
@@ -197,9 +197,9 @@ process_terms_1(_, _, _, []) ->
 process_terms_1(IndexFun, BatchSize, PreflistCache, Terms) ->
     %% Split off the next chunk of terms.
     case length(Terms) > BatchSize of
-        true -> 
+        true ->
             {Batch, Rest} = lists:split(BatchSize, Terms);
-        false -> 
+        false ->
             {Batch, Rest} = {Terms, []}
     end,
 
@@ -219,9 +219,9 @@ process_terms_1(IndexFun, BatchSize, PreflistCache, Terms) ->
         %% Ensure the PreflistCache contains all needed entries...
         F1 = fun(PIKey, Cache) ->
                      case gb_trees:lookup(PIKey, Cache) of
-                         {value, _} -> 
+                         {value, _} ->
                              PreflistCache;
-                         none -> 
+                         none ->
                              %% Create a sample DocIdx in the section
                              %% of the ring where we want a partition.
                              {Partition, Index} = PIKey,
@@ -281,11 +281,11 @@ delete_docs(Docs) ->
                 end
         end,
     {ExistingObjs, DeleteAcc} = lists:foldl(F, {[],[]}, Docs),
-    
+
     %% Delete the postings...
     FlatDeleteAcc = lists:flatten(DeleteAcc),
     delete_terms(FlatDeleteAcc),
-    
+
     %% Delete the Riak objects...
     [RiakClient:delete(DocIndex, DocID) || {DocIndex, DocID} <- ExistingObjs],
     ok.
@@ -350,7 +350,7 @@ stream_search(IndexOrSchema, OpList) ->
     #riak_search_ref {
         id=Ref, termcount=NumTerms,
         inputcount=NumInputs, querynorm=QueryNorm }.
-    
+
 
 %% Receive results from the provided SearchRef, run through the
 %% provided Fun starting with Acc.
