@@ -33,7 +33,7 @@ start() {
 
 	# Start daemons.
 	echo -n $"Starting Riak Search: "
-	su - riaksearch -c "$DAEMON start" && success || failure $"$NAME start"
+	su - riak -c "$DAEMON start" && success || failure $"$NAME start"
 	RETVAL=$?
 	[ $RETVAL -eq 0 ]
         echo
@@ -43,8 +43,8 @@ start() {
 stop() {
         # Stop daemon.
 	echo -n $"Stopping Riak Search: "
-  	RETVAL=`su - riaksearch -c "$DAEMON ping"`
-  	[ "$RETVAL" = "pong" ] && su - riaksearch -c "$DAEMON stop 2>/dev/null 1>&2" 
+  	RETVAL=`su - riak -c "$DAEMON ping"`
+  	[ "$RETVAL" = "pong" ] && su - riak -c "$DAEMON stop 2>/dev/null 1>&2" 
         sleep 2
         RETVAL=`pidof beam.smp`
         [ "$RETVAL" = "" ] && success && echo && return 0 || failure $"$NAME stop"
@@ -59,8 +59,8 @@ stop() {
 reload() {
         # Restart the VM without exiting the process
 	echo -n $"Reloading Riak Search: "
-  	RETVAL=`su - riaksearch -c "$DAEMON ping"`
-  	[ "$RETVAL" = "pong" ] && su - riaksearch -c "$DAEMON restart 2>/dev/null 1>&2" \
+  	RETVAL=`su - riak -c "$DAEMON ping"`
+  	[ "$RETVAL" = "pong" ] && su - riak -c "$DAEMON restart 2>/dev/null 1>&2" \
         && success && echo && return 0 || failure $"$NAME restart" 
         echo
 	return $RETVAL
@@ -83,7 +83,7 @@ case "$1" in
 	reload
 	;;
   ping)
-	su - riaksearch -c "$DAEMON ping" || exit $?
+	su - riak -c "$DAEMON ping" || exit $?
         ;;
   *)
 	echo $"Usage: $0 {start|stop|reload|restart|ping}"
