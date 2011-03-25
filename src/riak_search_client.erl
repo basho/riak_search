@@ -17,11 +17,12 @@
 
     %% Searching...
     parse_query/2,
-    search/5,
+    parse_filter/2,
     search/6,
-    search_fold/5,
-    search_doc/5,
+    search/7,
+    search_fold/6,
     search_doc/6,
+    search_doc/7,
 
     %% Indexing...
     index_doc/1,
@@ -61,18 +62,33 @@ parse_query(IndexOrSchema, Query) ->
                   riak_search_utils:to_list(Query)),
     {ok, riak_search_op:preplan(Ops, #search_state{default_op=DefaultOp})}.
 
+%% Parse the provided filter. Returns either {ok, FilterOps} or {error,
+%% Error}.
+parse_filter(_, Filter) when Filter == <<>> orelse Filter == "" ->
+    {ok, []};
+parse_filter(IndexOrSchema, Filter) ->
+    {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
+    DefaultIndex = Schema:name(),
+    DefaultField = Schema:default_field(),
+    {ok, Ops} = lucene_parser:parse(
+                  riak_search_utils:to_list(DefaultIndex),
+                  riak_search_utils:to_list(DefaultField),
+                  riak_search_utils:to_list(Filter)),
+    {ok, Ops}.
 
-
+    
+    
 %% Run the Query, return the list of keys.
 %% Timeout is in milliseconds.
 %% Return the {Length, Results}.
-search(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
-    search(IndexOrSchema, QueryOps, QueryStart, QueryRows, score, Timeout).
+search(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows, Timeout) ->
+    search(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows, score,
+           Timeout).
 
-search(IndexOrSchema, QueryOps, QueryStart, QueryRows, PresortBy, Timeout)
+search(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows, PresortBy, Timeout)
   when PresortBy == key; PresortBy == score ->
     %% Execute the search.
-    SearchRef1 = stream_search(IndexOrSchema, QueryOps),
+    SearchRef1 = stream_search(IndexOrSchema, QueryOps, FilterOps),
 
     %% Collect the results...
     MaxSearchResults = app_helper:get_env(riak_search, max_search_results),
@@ -107,9 +123,9 @@ search(IndexOrSchema, QueryOps, QueryStart, QueryRows, PresortBy, Timeout)
 
 %% Run the search query, fold results through function, return final
 %% accumulator.
-search_fold(IndexOrSchema, QueryOps, Fun, AccIn, Timeout) ->
+search_fold(IndexOrSchema, QueryOps, FilterOps, Fun, AccIn, Timeout) ->
     %% Execute the search, collect the results,.
-    SearchRef = stream_search(IndexOrSchema, QueryOps),
+    SearchRef = stream_search(IndexOrSchema, QueryOps, FilterOps),
     case fold_results(SearchRef, Timeout, Fun, AccIn) of
         {ok, _NewSearchRef, AccOut} ->
             AccOut;
@@ -117,13 +133,15 @@ search_fold(IndexOrSchema, QueryOps, Fun, AccIn, Timeout) ->
             Err
     end.
 
-search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
-    search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, score, Timeout).
+search_doc(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows, Timeout) ->
+    search_doc(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows,
+               score, Timeout).
 
-search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, PresortBy, Timeout)
+search_doc(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows,
+           PresortBy, Timeout)
   when PresortBy == key; PresortBy == score ->
     %% Get results...
-    {Length, Results} = search(IndexOrSchema, QueryOps, QueryStart, QueryRows, PresortBy, Timeout),
+    {Length, Results} = search(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows, PresortBy, Timeout),
     MaxScore = case Results of
                    [] ->
                        "0.0";
@@ -339,16 +357,19 @@ truncate_list(QueryStart, QueryRows, List) ->
     %% Return.
     List2.
 
-stream_search(IndexOrSchema, OpList) ->
-    %% Run the query through preplanning.
-    State = #search_state {},
-    Props = riak_search_op:preplan(OpList, State),
-
+stream_search(IndexOrSchema, QueryOps, FilterOps) ->
     %% Get the schema...
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
 
     %% Get the total number of terms and weight in query...
-    {NumTerms, NumDocs, QueryNorm} = get_scoring_info(OpList),
+    {NumTerms, NumDocs, QueryNorm} = get_scoring_info(QueryOps),
+    
+    %% Create the inline field filter fun...
+    FilterFun = fun(_Value, Props) ->
+                        riak_search_inlines:passes_inlines(Schema, Props, FilterOps)
+                end,
+
+    %% Run the query...
     SearchState = #search_state {
       parent=self(),
       index=Schema:name(),
@@ -356,12 +377,12 @@ stream_search(IndexOrSchema, OpList) ->
       num_terms=NumTerms,
       num_docs=NumDocs,
       query_norm=QueryNorm,
-      props=Props
+      filter=FilterFun
      },
 
     %% Start the query process...
     Ref = make_ref(),
-    {ok, NumInputs} = riak_search_op:chain_op(OpList, self(), Ref, SearchState),
+    {ok, NumInputs} = riak_search_op:chain_op(QueryOps, self(), Ref, SearchState),
     #riak_search_ref {
         id=Ref, termcount=NumTerms,
         inputcount=NumInputs, querynorm=QueryNorm }.
@@ -400,9 +421,9 @@ collect_result(#riak_search_ref{id=Id, inputcount=InputCount}=SearchRef, Timeout
 
 %% Return {NumTerms, NumDocs, QueryNorm}...
 %% http://lucene.apache.org/java/2_4_0/api/org/apache/lucene/search/Similarity.html
-get_scoring_info(OpList) ->
+get_scoring_info(QueryOps) ->
     %% Calculate num terms...
-    ScoringProps = get_scoring_props(OpList),
+    ScoringProps = get_scoring_props(QueryOps),
     NumTerms = length(ScoringProps),
     NumDocs = lists:sum([0] ++ [DocFrequency || {DocFrequency, _} <- ScoringProps]),
 

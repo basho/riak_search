@@ -21,8 +21,8 @@
                 squery,
                 query_ops,
                 sort,
-                presort
-}).
+                presort,
+                filter_ops}).
 
 -define(DEFAULT_RESULT_SIZE, 10).
 -define(DEFAULT_TIMEOUT, 60000).
@@ -58,7 +58,9 @@ malformed_request(Req, State) ->
                     Client = State#state.client,
                     try
                         {ok, QueryOps} = Client:parse_query(Schema, SQuery#squery.q),
-                        {false, Req, State#state{schema=Schema, squery=SQuery, query_ops=QueryOps,
+                        {ok, FilterOps} = Client:parse_filter(Schema, SQuery#squery.filter),
+                        {false, Req, State#state{schema=Schema, 
+                                                 squery=SQuery, query_ops=QueryOps, filter_ops=FilterOps,
                                                  sort=wrq:get_qs_value("sort", "none", Req),
                                                  wt=wrq:get_qs_value("wt", "standard", Req),
                                                  presort=to_atom(string:to_lower(wrq:get_qs_value("presort", "score", Req)))}}
@@ -103,12 +105,14 @@ to_xml(Req, #state{sort=SortBy}=State) ->
     {riak_solr_output:xml_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, Docs), Req, State}.
 
 run_query(#state{client=Client, schema=Schema, squery=SQuery,
-                 query_ops=QueryOps, presort=Presort}) ->
+                 query_ops=QueryOps, filter_ops=FilterOps, presort=Presort}) ->
     #squery{query_start=QStart, query_rows=QRows}=SQuery,
 
     %% Run the query...
     StartTime = erlang:now(),
-    {NumFound, MaxScore, Docs} = Client:search_doc(Schema, QueryOps, QStart, QRows, Presort, ?DEFAULT_TIMEOUT),
+    {NumFound, MaxScore, Docs} = Client:search_doc(Schema, QueryOps, FilterOps,
+                                                   QStart, QRows, Presort,
+                                                   ?DEFAULT_TIMEOUT),
     ElapsedTime = erlang:round(timer:now_diff(erlang:now(), StartTime) / 1000),
     {ElapsedTime, NumFound, MaxScore, Docs}.
 
@@ -135,6 +139,7 @@ parse_squery(Req) ->
         true ->
             {error, missing_query};
         false ->
+            Filter = wrq:get_qs_value("filter", "", Req),
             DefaultField = wrq:get_qs_value("df", undefined, Req),
             DefaultOp = case wrq:get_qs_value("q.op", undefined, Req) of
                             undefined ->
@@ -145,6 +150,7 @@ parse_squery(Req) ->
             QueryStart = to_integer(wrq:get_qs_value("start", 0, Req)),
             QueryRows = to_integer(wrq:get_qs_value("rows", ?DEFAULT_RESULT_SIZE, Req)),
             SQuery = #squery{q=Query,
+                             filter=Filter,
                              default_op=DefaultOp,
                              default_field=DefaultField,
                              query_start=QueryStart,

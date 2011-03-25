@@ -42,7 +42,7 @@ start_loop(Op, OutputPid, OutputRef, State) ->
     
     Size = Op#range_worker.size,
     VNode = Op#range_worker.vnode,
-    FilterFun = fun riak_search_op_term:default_filter/2,
+    FilterFun = State#search_state.filter,
     TransformFun = fun({DocID, Props}) ->
                            {IndexName, DocID, Props}
                    end,
