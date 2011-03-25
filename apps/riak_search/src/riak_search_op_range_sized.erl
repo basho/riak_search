@@ -7,7 +7,8 @@
 -module(riak_search_op_range_sized).
 -export([
          preplan/2,
-         chain_op/4
+         chain_op/4,
+         correct_term_order/2
         ]).
 
 -import(riak_search_utils, [to_binary/1]).

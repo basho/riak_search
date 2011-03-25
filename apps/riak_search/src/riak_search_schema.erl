@@ -30,7 +30,7 @@
     is_field_required/1,
     analyzer_factory/1,
     analyzer_args/1,
-    is_field_inline/1,
+    field_inline/1,
     is_skip/1,
     aliases/1,
 
@@ -108,8 +108,8 @@ analyzer_factory(Field) ->
 analyzer_args(Field) ->
     Field#riak_search_field.analyzer_args.
 
-is_field_inline(Field) ->
-    Field#riak_search_field.inline == true.
+field_inline(Field) ->
+    Field#riak_search_field.inline.
 
 is_skip(Field) ->
     Field#riak_search_field.skip == true.

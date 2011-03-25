@@ -67,7 +67,7 @@ postings(IdxDoc) ->
     %% Get some values.
     DocIndex = ?MODULE:index(IdxDoc),
     DocId = ?MODULE:id(IdxDoc),
-    InlineFields = ?MODULE:inline_fields(IdxDoc),
+    InlineFields = [{FieldName, Terms} || {FieldName, _, Terms} <- IdxDoc#riak_idx_doc.inline_fields],
     K = riak_search_utils:current_key_clock(),
     
     %% Fold over each regular field, and then fold over each term in
@@ -157,12 +157,19 @@ analyze(IdxDoc, AnalyzerPid) when is_record(IdxDoc, riak_idx_doc) ->
     
     %% For each Field = {FieldName, FieldValue, _}, split the FieldValue
     %% into terms and build a list of positions for those terms.
-    F = fun({FieldName, FieldValue}, Acc2) ->
+    F1 = fun({FieldName, FieldValue}, Acc2) ->
                 {ok, Terms} = analyze_field(FieldName, FieldValue, Schema, AnalyzerPid),
                 [{FieldName, FieldValue, get_term_positions(Terms)} | Acc2]
         end,
-    NewFields = lists:foldl(F, [], RegularFields),
-    NewInlineFields = lists:foldl(F, [], Inlines),
+    NewFields = lists:foldl(F1, [], RegularFields),
+
+
+    F2 = fun({FieldName, FieldValue}, Acc2) ->
+                {ok, Terms} = analyze_field(FieldName, FieldValue, Schema, AnalyzerPid),
+                Terms1 = lists:usort(Terms),
+                [{FieldName, FieldValue, Terms1} | Acc2]
+        end,
+    NewInlineFields = lists:foldl(F2, [], Inlines),
 
     %% For each Inline = {FieldName, FieldValue, _}, split the FieldValue
     %% into terms and build a list of positions for those terms.
@@ -185,11 +192,19 @@ normalize_fields(DocFields, Schema) ->
                           NormFieldName = normalize_field_name(InFieldName, FieldDef, Schema),
                           NormFieldValue = FieldValue,
                           Field = {NormFieldName, NormFieldValue, []},
-                          case Schema:is_field_inline(FieldDef) of
-                              true ->
-                                  {Regular, [Field | Inlines]};
+                          %% If 'inline' is set to false, then store
+                          %% as a regular field. If inline is set to
+                          %% 'true' then store as both a regular AND
+                          %% an inline field. If field is set to
+                          %% 'only' then store as only an inline
+                          %% field.
+                          case Schema:field_inline(FieldDef) of
                               false ->
-                                  {[Field | Regular], Inlines}
+                                  {[Field|Regular], Inlines};
+                              true ->
+                                  {[Field|Regular], [Field|Inlines]};
+                              only ->
+                                  {Regular, [Field|Inlines]}                                  
                           end
                   end;
              ({InFieldName, FieldValue}, _) ->
@@ -241,7 +256,6 @@ analyze_field(FieldName, FieldValue, Schema, AnalyzerPid) ->
     Field = Schema:find_field(FieldName),
     AnalyzerFactory = Schema:analyzer_factory(Field),
     AnalyzerArgs = Schema:analyzer_args(Field),
-
     %% Analyze the field...
     qilr_analyzer:analyze(AnalyzerPid, FieldValue, AnalyzerFactory, AnalyzerArgs).
 

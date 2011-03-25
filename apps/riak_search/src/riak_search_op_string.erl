@@ -8,7 +8,10 @@
 -export([
          preplan/2,
          chain_op/4,
-         analyze_term/3
+         analyze_term/3,
+         detect_wildcard/1,
+         detect_proximity_val/1,
+         calculate_range/2
         ]).
 
 -import(riak_search_utils, [to_binary/1]).

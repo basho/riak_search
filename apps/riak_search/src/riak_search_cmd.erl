@@ -25,7 +25,9 @@ usage() ->
     search-cmd clear-schema-cache            : Empty the schema cache on all nodes.
     search-cmd shell [INDEX]                 : Start the interactive Search shell.
     search-cmd search [INDEX] QUERY          : Perform a search.
+    search-cmd search INDEX QUERY FILTER     : Perform a search w/ query filter.
     search-cmd search-doc [INDEX] QUERY      : Perform a document search.
+    search-cmd search-doc INDEX QUERY FILTER : Perform a document search.
     search-cmd explain [INDEX] QUERY         : Display an execution plan.
     search-cmd index [INDEX] PATH            : Index files in a path.
     search-cmd delete [INDEX] PATH           : De-index files in a path.
@@ -72,25 +74,34 @@ command([_CurDir, "shell", Index]) ->
 
 %% Search
 command([_CurDir, "search", Query]) ->
-    search(?DEFAULT_INDEX, Query);
+    search(?DEFAULT_INDEX, Query, "");
 command([_CurDir, "search", Index, Query]) ->
-    search(Index, Query);
+    search(Index, Query, "");
+command([_CurDir, "search", Index, Query, Filter]) ->
+    search(Index, Query, Filter);
 
 %% Serach Doc
 command([_CurDir, "search_doc", Query]) ->
     command([_CurDir, "search-doc", Query]);
-command([_CurDir, "search-doc", Query]) ->
-    search_doc(?DEFAULT_INDEX, Query);
 command([_CurDir, "search_doc", Index, Query]) ->
     command([_CurDir, "search-doc", Index, Query]);
+command([_CurDir, "search_doc", Index, Query, Filter]) ->
+    command([_CurDir, "search-doc", Index, Query, Filter]);
+
+command([_CurDir, "search-doc", Query]) ->
+    search_doc(?DEFAULT_INDEX, Query, "");
 command([_CurDir, "search-doc", Index, Query]) ->
-    search_doc(Index, Query);
+    search_doc(Index, Query, "");
+command([_CurDir, "search-doc", Index, Query, Filter]) ->
+    search_doc(Index, Query, Filter);
 
 %% Explain
 command([_CurDir, "explain", Query]) ->
-    explain(?DEFAULT_INDEX, Query);
+    explain(?DEFAULT_INDEX, Query, "");
 command([_CurDir, "explain", Index, Query]) ->
-    explain(Index, Query);
+    explain(Index, Query, "");
+command([_CurDir, "explain", Index, Query, Filter]) ->
+    explain(Index, Query, Filter);
 
 %% Index
 command([CurDir, "index", Path]) ->
@@ -175,10 +186,10 @@ clear_schema_cache() ->
 shell(Index) -> 
     riak_search_shell:start(Index).
 
-search(DefaultIndex, Query) -> 
-    io:format("~n :: Searching for '~s' in ~s...~n~n", [Query, DefaultIndex]),
+search(DefaultIndex, Query, Filter) -> 
+    io:format("~n :: Searching for '~s' / '~s' in ~s...~n~n", [Query, Filter, DefaultIndex]),
     io:format("------------------------------~n~n"),
-    case search:search(DefaultIndex, Query) of
+    case search:search(DefaultIndex, Query, Filter) of
         {Length, Results} ->
             F = fun(X) ->
                 {Index, DocID, Props} = X,
@@ -193,10 +204,10 @@ search(DefaultIndex, Query) ->
             io:format(" :: ERROR: ~p", [Other])
     end.
 
-search_doc(DefaultIndex, Query) -> 
-    io:format("~n :: Searching for '~s' in ~s...~n~n", [Query, DefaultIndex]),
+search_doc(DefaultIndex, Query, Filter) -> 
+    io:format("~n :: Searching for '~s' / '~s' in ~s...~n~n", [Query, Filter, DefaultIndex]),
     io:format("------------------------------~n~n"),
-    case search:search_doc(DefaultIndex, Query) of
+    case search:search_doc(DefaultIndex, Query, Filter) of
         {Length, MaxScore, Results} ->
             F = fun(X) ->
                 %% Index.
@@ -221,9 +232,9 @@ search_doc(DefaultIndex, Query) ->
             io:format("ERROR: ~p", [Other])
     end.
 
-explain(DefaultIndex, Query) -> 
-    io:format("~n :: Explaining query '~s' in ~s...~n~n", [Query, DefaultIndex]),
-    Plan = search:explain(DefaultIndex, Query),
+explain(DefaultIndex, Query, Filter) -> 
+    io:format("~n :: Explaining query '~s' / '~s' in ~s...~n~n", [Query, Filter, DefaultIndex]),
+    Plan = search:explain(DefaultIndex, Query, Filter),
     io:format("~p", [Plan]).
 
 index(Index, Path) -> 

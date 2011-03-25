@@ -23,11 +23,11 @@
 -module(search).
 -export([
     %% Querying.
-    search/1, search/2,
-    search_doc/1, search_doc/2,
+    search/1, search/2, search/3,
+    search_doc/1, search_doc/2, search_doc/3,
 
     %% Inspection.
-    explain/1, explain/2,
+    explain/1, explain/2, explain/3,
     graph/1, graph/2,
 
     %% Indexing.
@@ -41,45 +41,76 @@
 
 -include("riak_search.hrl").
 
-search(Q) ->
-    search(?DEFAULT_INDEX, Q).
+search(Query) ->
+    search(?DEFAULT_INDEX, Query, "").
 
-search(Index, Q) ->
+search(Index, Query) ->
+    search(Index, Query, "").
+
+search(Index, Query, Filter) ->
     {ok, Client} = riak_search:local_client(),
-    case Client:parse_query(Index, Q) of
-        {ok, Ops} ->
-            Client:search(Index, Ops, 0, 10000, 60000);
+    case Client:parse_query(Index, Query) of
+        {ok, QueryOps} ->
+            case Client:parse_filter(Index, Filter) of
+                {ok, FilterOps} ->
+                    Client:search(Index, QueryOps, FilterOps, 0, 10000, 60000);
+                {error, Error} ->
+                    M = "Error parsing filter '~s': ~p~n",
+                    error_logger:error_msg(M, [Filter, Error]),
+                    {error, Error}
+            end;
         {error, Error} ->
-            M = "Error running query '~s': ~p~n",
-            error_logger:error_msg(M, [Q, Error]),
+            M = "Error parsing query '~s': ~p~n",
+            error_logger:error_msg(M, [Query, Error]),
             {error, Error}
     end.
 
-search_doc(Q) ->
-    search_doc(?DEFAULT_INDEX, Q).
+search_doc(Query) ->
+    search_doc(?DEFAULT_INDEX, Query, "").
 
-search_doc(Index, Q) ->
+search_doc(Index, Query) ->
+    search_doc(Index, Query, "").
+
+search_doc(Index, Query, Filter) ->
     {ok, Client} = riak_search:local_client(),
-    case Client:parse_query(Index, Q) of
-        {ok, Ops} ->
-            Client:search_doc(Index, Ops, 0, 10000, 60000);
+    case Client:parse_query(Index, Query) of
+        {ok, QueryOps} ->
+            case Client:parse_filter(Index, Filter) of
+                {ok, FilterOps} ->
+                    Client:search_doc(Index, QueryOps, FilterOps, 0, 10000, 60000);
+                {error, Error} ->
+                    M = "Error parsing filter '~s': ~p~n",
+                    error_logger:error_msg(M, [Filter, Error]),
+                    {error, Error}
+            end;
         {error, Error} ->
             M = "Error running query '~s': ~p~n",
-            error_logger:error_msg(M, [Q, Error]),
+            error_logger:error_msg(M, [Query, Error]),
             {error, Error}
     end.
 
-explain(Q) ->
-    explain(?DEFAULT_INDEX, Q).
+explain(Query) ->
+    explain(?DEFAULT_INDEX, Query).
 
-explain(Index, Q) ->
+explain(Index, Query) ->
+    explain(Index, Query, "").
+
+
+explain(Index, Query, Filter) ->
     {ok, Client} = riak_search:local_client(),
-    case Client:parse_query(Index, Q) of
-        {ok, Ops} ->
-            Ops;
+    case Client:parse_query(Index, Query) of
+        {ok, QueryOps} ->
+            case Client:parse_filter(Index, Filter) of
+                {ok, FilterOps} ->
+                    [{'query', QueryOps}, {'filter', FilterOps}];
+                {error, Error} ->
+                    M = "Error parsing filter '~s': ~p~n",
+                    error_logger:error_msg(M, [Filter, Error]),
+                    {error, Error}
+            end;
         {error, Error} ->
-            M = "Error running query '~s': ~p~n",
-            error_logger:error_msg(M, [Q, Error]),
+            M = "Error parsing query '~s': ~p~n",
+            error_logger:error_msg(M, [Query, Error]),
             {error, Error}
     end.
 
