@@ -178,7 +178,7 @@ delete(VState=#vstate{bmod=BMod, bstate=BState}) ->
     ok = BMod:drop(BState),
     {ok, VState}.
 
-handle_exit(_Pid, _Reason, _State) ->
+handle_exit(_Pid, normal, _State) ->
     {noreply, _State}.
 
 terminate(_Reason, #vstate{bmod=BMod, bstate=BState}) ->
