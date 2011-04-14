@@ -14,7 +14,8 @@
 -export([start_vnode/1, init/1, handle_command/3,
          handle_handoff_command/3, handle_handoff_data/2,
          handoff_starting/2, handoff_cancelled/1, handoff_finished/2,
-         is_empty/1, delete/1, terminate/2, encode_handoff_item/2]).
+         is_empty/1, delete/1, terminate/2, encode_handoff_item/2,
+         handle_exit/3]).
 
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 -include_lib("riak_core/include/riak_core_pb.hrl").
@@ -176,6 +177,9 @@ is_empty(VState=#vstate{bmod=BMod, bstate=BState}) ->
 delete(VState=#vstate{bmod=BMod, bstate=BState}) ->
     ok = BMod:drop(BState),
     {ok, VState}.
+
+handle_exit(_Pid, _Reason, _State) ->
+    {noreply, _State}.
 
 terminate(_Reason, #vstate{bmod=BMod, bstate=BState}) ->
     BMod:stop(BState),
