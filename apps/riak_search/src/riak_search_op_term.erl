@@ -77,7 +77,7 @@ stream(Index, Field, Term, FilterFun) ->
     DocIdx = riak_search_ring_utils:calc_partition(Index, Field, Term),
     {ok, Schema} = riak_search_config:get_schema(Index),
     NVal = Schema:n_val(),
-    Preflist = riak_core_apl:get_primary_apl(DocIdx, NVal, riak_search),
+    Preflist = get_preflist(DocIdx, NVal),
 
     %% Try to use the local node if possible. Otherwise choose
     %% randomly.
@@ -98,7 +98,7 @@ info(Index, Field, Term) ->
     DocIdx = riak_search_ring_utils:calc_partition(Index, Field, Term),
     {ok, Schema} = riak_search_config:get_schema(Index),
     NVal = Schema:n_val(),
-    Preflist = riak_core_apl:get_primary_apl(DocIdx, NVal, riak_search),
+    Preflist = get_preflist(DocIdx, NVal),
     
     {ok, Ref} = riak_search_vnode:info(Preflist, Index, Field, Term, self()),
     {ok, Results} = riak_search_backend:collect_info_response(length(Preflist), Ref, []),
@@ -145,3 +145,9 @@ calculate_score(ScoringVars, Props) ->
                         [Score]
                 end,
     lists:keystore(score, 1, Props, {score, ScoreList}).
+
+get_preflist(DocIdx, NVal) ->
+    [{Idx,Node}
+     || {{Idx,Node},primary} <- riak_core_apl:get_primary_apl(DocIdx,
+                                                              NVal,
+                                                              riak_search)].
