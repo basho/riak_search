@@ -316,13 +316,13 @@ boost2_test() ->
 
 wildcard1_test() ->
     Expect = [
-        #string { s="test?"}
+        #string { s="test", flags=[{wildcard,char}] }
     ],
     test_helper("test?", Expect).
 
 wildcard2_test() ->
     Expect = [
-        #string { s="test*"}
+        #string { s="test", flags=[{wildcard,glob}] }
     ],
     test_helper("test*", Expect).
 
@@ -462,7 +462,7 @@ complex11_test() ->
     Expect = [
         #intersection { ops=[
             #union { ops=[
-                #scope { field="color", ops=[#string { s="re*" }] },
+                #scope { field="color", ops=[#string { s="re", flags=[{wildcard,glob}] }] },
                 #scope { field="color", ops=[#string { s="blub", flags=[{fuzzy, 0.5}] }]}
             ]},
             #scope { field="parity", ops=[
@@ -477,7 +477,9 @@ complex12_test() ->
         #intersection { ops=[
             #scope { field="acc", ops=[#string { s="afa" }] },
             #negation { op=#scope { field="acc", ops=[#string { s="aga" }] } },
-            #negation { op=#scope { field="color", ops=[#string { s="oran*" }] }}
+            #negation { op=#scope { field="color",
+                                    ops=[#string { s="oran",
+                                                   flags=[{wildcard,glob}] }] }}
         ]}
     ],
     test_helper( "(acc:afa AND -acc:aga) AND -color:oran*", Expect).
@@ -487,7 +489,9 @@ complex13_test() ->
         #intersection { ops=[
             #scope { field="acc", ops=[#string { s="afa" }] },
             #negation { op=#scope { field="acc", ops=[#string { s="aga" }] } },
-            #negation { op=#scope { field="color", ops=[#string { s="oran*" }] }}
+            #negation { op=#scope { field="color",
+                                    ops=[#string { s="oran",
+                                                   flags=[{wildcard,glob}] }] }}
         ]}
     ],
     test_helper( "(acc:afa AND (NOT acc:aga)) AND (NOT color:oran*)", Expect).
@@ -501,7 +505,9 @@ complex14_test() ->
                     #negation { op=#string { s="aga" } }
                 ]}
             ]},
-            #negation { op=#scope { field="color", ops=[#string { s="oran*" }] }}
+            #negation { op=#scope { field="color",
+                                    ops=[#string { s="oran",
+                                                   flags=[{wildcard,glob}] }] }}
         ]}
     ],
     test_helper( "acc:(afa NOT aga) AND -color:oran*", Expect).
@@ -515,7 +521,9 @@ complex15_test() ->
                     #negation { op=#string { s="aga" } }
                 ]}
             ]},
-            #negation { op=#scope { field="color", ops=[#string { s="oran*" }] }}
+            #negation { op=#scope { field="color",
+                                    ops=[#string { s="oran",
+                                                   flags=[{wildcard,glob}] }] }}
         ]}
     ],
     test_helper( "acc:(afa AND (NOT aga)) AND (NOT color:oran*)", Expect).
