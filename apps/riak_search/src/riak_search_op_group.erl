@@ -27,7 +27,14 @@ preplan(Op, State) ->
             %% appropriately.
             Index = State#search_state.index,
             {ok, Schema} = riak_search_config:get_schema(Index),
-            case Schema:default_op() of
+            DefaultOp =
+                case State#search_state.default_op of
+                    undefined ->
+                        Schema:default_op();
+                    Else ->
+                        Else
+                end,
+            case DefaultOp of
                 'and' ->
                     NewOp = #intersection { id=Op#group.id, ops=OpList };
                 'or' ->

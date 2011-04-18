@@ -13,6 +13,7 @@
           parent=undefined,
           index=undefined,
           field=undefined,
+          default_op,
           num_terms=0,
           num_docs=0,
           query_norm=0,
