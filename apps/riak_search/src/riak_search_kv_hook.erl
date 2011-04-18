@@ -329,6 +329,10 @@ strip_precommit(BucketProps) ->
 
 install_test() ->
     application:load(riak_core),
+    %% Make sure the bucket proplist is not an improper list by
+    %% setting the defaults, normally this would be done by starting
+    %% the riak_core app.
+    riak_core_bucket:append_bucket_defaults([]),
     RingEvtPid = maybe_start_link(riak_core_ring_events:start_link()),
     RingMgrPid = maybe_start_link(riak_core_ring_manager:start_link()),
 
