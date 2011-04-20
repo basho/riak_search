@@ -9,14 +9,12 @@ all: deps compile
 
 compile:
 	./rebar compile
-	make -C apps/qilr/java_src
 
 deps:
 	./rebar get-deps
 
 clean:
 	./rebar clean
-	make -C apps/qilr/java_src clean
 
 distclean: clean devclean relclean ballclean
 	./rebar delete-deps
@@ -27,9 +25,8 @@ test:
 ##
 ## Release targets
 ##
-rel: deps
-	make -C apps/qilr/java_src
-	./rebar compile generate
+rel: deps compile
+	./rebar generate
 
 rellink:
 	$(foreach app,$(wildcard apps/*), rm -rf rel/riaksearch/lib/$(shell basename $(app))* && ln -sf $(abspath $(app)) rel/riaksearch/lib;)
