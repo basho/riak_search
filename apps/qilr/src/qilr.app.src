@@ -1,0 +1,8 @@
+% -*- mode: erlang -*-
+{application, qilr,
+ [{description,  "Full text query parser and planner"},
+  {vsn,          "0.14.2"},
+  {registered,   [qilr_analyzer_sup, qilr_analyzer_monitor]},
+  {applications, [kernel, stdlib, sasl]},
+  {env, []},
+  {mod, {qilr_app, []}}]}.

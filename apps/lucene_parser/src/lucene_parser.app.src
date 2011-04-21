@@ -1,7 +1,7 @@
 {application, lucene_parser,
  [
   {description, ""},
-  {vsn, "1"},
+  {vsn, "1.0.1"},
   {registered, []},
   {applications, [
                   kernel,
