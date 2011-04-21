@@ -94,7 +94,7 @@ run_solr_command(Schema, delete, Docs) ->
     F = fun({'id', Index, ID}, Acc) ->
                 [{Index, ID}|Acc];
            ({'query', QueryOps}, Acc) ->
-                {_, Results} = SearchClient:search(Schema, QueryOps, 0, infinity, ?DEFAULT_TIMEOUT),
+                {_, Results} = SearchClient:search(Schema, QueryOps, [], 0, infinity, ?DEFAULT_TIMEOUT),
                 L = [{DocIndex, DocID} || {DocIndex, DocID, _} <- Results],
                 L ++ Acc
         end,
