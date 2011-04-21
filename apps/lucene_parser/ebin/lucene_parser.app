@@ -1,9 +1,0 @@
-{application,lucene_parser,
-             [{description,[]},
-              {vsn,"1"},
-              {registered,[]},
-              {applications,[kernel,stdlib]},
-              {mod,{lucene_parser_app,[]}},
-              {env,[]},
-              {modules,[lucene_parse,lucene_parse_test,lucene_parser,
-                        lucene_scan,lucene_scan_test]}]}.
