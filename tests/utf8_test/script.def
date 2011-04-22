@@ -29,7 +29,7 @@
     {search, "ægithales", [{length, 1}]},    % French
     {search, "Eĥoŝanĝo", [{length, 1}]},     % Esperanto
     {search, "לשמוע", [{length, 1}]},        % Hebrew
-    {search, "いろはにほへど", [{length, 1}]},  % Japanese
+    {search, "いろはにほへど*", [{length, 1}]},  % Japanese
 
     {search, "value:quick", [{length, 1}]},       % English
     {search, "value:ḟaitíos", [{length, 1}]},     % Irish
@@ -51,10 +51,10 @@
     {search, "value:ægithales", [{length, 1}]},    % French
     {search, "value:Eĥoŝanĝo", [{length, 1}]},     % Esperanto
     {search, "value:לשמוע", [{length, 1}]},        % Hebrew
-    {search, "value:いろはにほへど", [{length, 1}]},  % Japanese
+    {search, "value:いろはにほへど*", [{length, 1}]},  % Japanese
 
     %%  %% Cleanup.
     {echo,   "De-indexing documents via Solr..."},
-    {solr, "./solr_add.xml"},
+    {solr, "./solr_delete.xml"},
     {echo,   "Done."}
 ].
