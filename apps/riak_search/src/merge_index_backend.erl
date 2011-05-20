@@ -61,9 +61,8 @@ delete(IFTVPKList, State) ->
 
 info(Index, Field, Term, Sender, State) ->
     Pid = State#state.pid,
-    {ok, Info} = merge_index:info(Pid, Index, Field, Term),
-    Info1 = [{Term, node(), Count} || {_, Count} <- Info],
-    riak_search_backend:info_response(Sender, Info1),
+    {ok, Count} = merge_index:info(Pid, Index, Field, Term),
+    riak_search_backend:info_response(Sender, [{Term, node(), Count}]),
     noreply.
 
 stream(Index, Field, Term, Filter, Sender, State) ->
