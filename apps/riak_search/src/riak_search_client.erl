@@ -17,8 +17,10 @@
 
     %% Searching...
     parse_query/2,
+    search/5,
     search/6,
     search_fold/5,
+    search_doc/5,
     search_doc/6,
 
     %% Indexing...
@@ -64,7 +66,11 @@ parse_query(IndexOrSchema, Query) ->
 %% Run the Query, return the list of keys.
 %% Timeout is in milliseconds.
 %% Return the {Length, Results}.
-search(IndexOrSchema, QueryOps, QueryStart, QueryRows, PresortBy, Timeout) ->
+search(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
+    search(IndexOrSchema, QueryOps, QueryStart, QueryRows, score, Timeout).
+
+search(IndexOrSchema, QueryOps, QueryStart, QueryRows, PresortBy, Timeout)
+  when PresortBy == key; PresortBy == score ->
     %% Execute the search.
     SearchRef1 = stream_search(IndexOrSchema, QueryOps),
 
@@ -84,9 +90,7 @@ search(IndexOrSchema, QueryOps, QueryStart, QueryRows, PresortBy, Timeout) ->
 
     case PresortBy of
         key ->
-            SortedResults = sort_by_key(Results);
-        score ->
-            SortedResults = sort_by_score(SearchRef2, Results);
+            SortedResults = sort_by_key(SearchRef2, Results);
         _ ->
             SortedResults = sort_by_score(SearchRef2, Results)
     end,
@@ -106,7 +110,11 @@ search_fold(IndexOrSchema, QueryOps, Fun, AccIn, Timeout) ->
     {ok, _NewSearchRef, AccOut} = fold_results(SearchRef, Timeout, Fun, AccIn),
     AccOut.
 
-search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, PresortBy, Timeout) ->
+search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
+    search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, score, Timeout).
+
+search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, PresortBy, Timeout)
+  when PresortBy == key; PresortBy == score ->
     %% Get results...
     {Length, Results} = search(IndexOrSchema, QueryOps, QueryStart, QueryRows, PresortBy, Timeout),
     MaxScore = case Results of
@@ -419,14 +427,16 @@ get_scoring_props_1(Op) when is_tuple(Op) ->
 get_scoring_props_1(_) ->
     [].
 
-sort_by_key(Results) ->
-      %% Don't care about the score, but the caller expects it in this format.
-      %% Could potentially squeeze out some perf by modifying the calling code to expect DocID first.
-      SortedList = lists:sort([{DocID, Index, [{score, 0.0}]} || {Index, DocID, _} <- Results]),
-      [{Index, DocID, Props} || {DocID, Index, Props} <- SortedList].
+sort_by_key(SearchRef, Results) ->
+    sort_results(SearchRef, Results, 3).
 
-sort_by_score(#riak_search_ref{querynorm=QNorm, termcount=TermCount}, Results) ->
-    SortedResults = lists:sort(calculate_scores(QNorm, TermCount, Results)),
+sort_by_score(SearchRef, Results) ->
+    sort_results(SearchRef, Results, 1).
+
+sort_results(#riak_search_ref{querynorm=QNorm, termcount=TermCount},
+             Results, Element) ->
+    SortedResults = lists:keysort(Element,
+                                  calculate_scores(QNorm, TermCount, Results)),
     [{Index, DocID, Props} || {_, Index, DocID, Props} <- SortedResults].
 
 calculate_scores(QueryNorm, NumTerms, [{Index, DocID, Props}|Results]) ->
