@@ -31,6 +31,7 @@
 %% {info, Index, Field, String} -> [{Node, Count}]
 %% Generate term count in term, managed by string.
 
+%% TODO Make this function less weird...
 preplan(Op, State) ->
     %% Get info about the term, return in props...
     IndexName = State#search_state.index,
