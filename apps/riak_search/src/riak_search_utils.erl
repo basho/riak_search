@@ -186,8 +186,17 @@ consult_2(AST) ->
 %% has some subtle bugs because messages are not tagged with
 %% Refs. This causes heisenbugs.
 ptransform(F, List) ->
+    %% Maintain order by adding a position to the list. Then run the
+    %% results, sort, and return the unwrapped list.
+    WrappedF = fun({Pos, X}) -> {Pos, F(X)} end,
+    WrappedList = lists:zip(lists:seq(1, length(List)), List),
+
+    %% Run in parallel for however many schedulers there are.
     Schedulers = erlang:system_info(schedulers),
-    ptransform(F, List, Schedulers).
+    Results = ptransform(WrappedF, WrappedList, Schedulers),
+
+    %% Unwrap and return the results.
+    [X || {_,X} <- lists:sort(Results)].
 
 %% Run a map operation in parallel.
 ptransform(F, List, NumProcesses) ->
