@@ -18,8 +18,10 @@
     %% Searching...
     parse_query/2,
     search/5,
+    search/6,
     search_fold/5,
     search_doc/5,
+    search_doc/6,
 
     %% Indexing...
     index_doc/2,
@@ -65,6 +67,10 @@ parse_query(IndexOrSchema, Query) ->
 %% Timeout is in milliseconds.
 %% Return the {Length, Results}.
 search(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
+    search(IndexOrSchema, QueryOps, QueryStart, QueryRows, score, Timeout).
+
+search(IndexOrSchema, QueryOps, QueryStart, QueryRows, PresortBy, Timeout)
+  when PresortBy == key; PresortBy == score ->
     %% Execute the search.
     SearchRef1 = stream_search(IndexOrSchema, QueryOps),
 
@@ -81,7 +87,14 @@ search(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
                 end
         end,
     {ok, SearchRef2, {Results, _}} = fold_results(SearchRef1, Timeout, F, {[], 0}),
-    SortedResults = sort_by_score(SearchRef2, Results),
+
+    case PresortBy of
+        key ->
+            SortedResults = sort_by_key(SearchRef2, Results);
+        _ ->
+            SortedResults = sort_by_score(SearchRef2, Results)
+    end,
+             
 
     %% Dedup, and handle start and max results. Return matching
     %% documents.
@@ -98,8 +111,12 @@ search_fold(IndexOrSchema, QueryOps, Fun, AccIn, Timeout) ->
     AccOut.
 
 search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
+    search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, score, Timeout).
+
+search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, PresortBy, Timeout)
+  when PresortBy == key; PresortBy == score ->
     %% Get results...
-    {Length, Results} = search(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout),
+    {Length, Results} = search(IndexOrSchema, QueryOps, QueryStart, QueryRows, PresortBy, Timeout),
     MaxScore = case Results of
                    [] ->
                        "0.0";
@@ -410,8 +427,16 @@ get_scoring_props_1(Op) when is_tuple(Op) ->
 get_scoring_props_1(_) ->
     [].
 
-sort_by_score(#riak_search_ref{querynorm=QNorm, termcount=TermCount}, Results) ->
-    SortedResults = lists:sort(calculate_scores(QNorm, TermCount, Results)),
+sort_by_key(SearchRef, Results) ->
+    sort_results(SearchRef, Results, 3).
+
+sort_by_score(SearchRef, Results) ->
+    sort_results(SearchRef, Results, 1).
+
+sort_results(#riak_search_ref{querynorm=QNorm, termcount=TermCount},
+             Results, Element) ->
+    SortedResults = lists:keysort(Element,
+                                  calculate_scores(QNorm, TermCount, Results)),
     [{Index, DocID, Props} || {_, Index, DocID, Props} <- SortedResults].
 
 calculate_scores(QueryNorm, NumTerms, [{Index, DocID, Props}|Results]) ->
@@ -422,3 +447,4 @@ calculate_scores(QueryNorm, NumTerms, [{Index, DocID, Props}|Results]) ->
     [{-1 * Score, Index, DocID, NewProps}|calculate_scores(QueryNorm, NumTerms, Results)];
 calculate_scores(_, _, []) ->
     [].
+
