@@ -20,7 +20,9 @@
                 schema,
                 squery,
                 query_ops,
-                sort}).
+                sort,
+                presort
+}).
 
 -define(DEFAULT_RESULT_SIZE, 10).
 -define(DEFAULT_TIMEOUT, 60000).
@@ -58,7 +60,8 @@ malformed_request(Req, State) ->
                         {ok, QueryOps} = Client:parse_query(Schema, SQuery#squery.q),
                         {false, Req, State#state{schema=Schema, squery=SQuery, query_ops=QueryOps,
                                                  sort=wrq:get_qs_value("sort", "none", Req),
-                                                 wt=wrq:get_qs_value("wt", "standard", Req)}}
+                                                 wt=wrq:get_qs_value("wt", "standard", Req),
+                                                 presort=to_atom(string:to_lower(wrq:get_qs_value("presort", "score", Req)))}}
                     catch _ : Error ->
                         {true, riak_solr_error:log_error(Req, Error), State}
                     end;
@@ -100,12 +103,12 @@ to_xml(Req, #state{sort=SortBy}=State) ->
     {riak_solr_output:xml_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, Docs), Req, State}.
 
 run_query(#state{client=Client, schema=Schema, squery=SQuery,
-                 query_ops=QueryOps}) ->
+                 query_ops=QueryOps, presort=Presort}) ->
     #squery{query_start=QStart, query_rows=QRows}=SQuery,
 
     %% Run the query...
     StartTime = erlang:now(),
-    {NumFound, MaxScore, Docs} = Client:search_doc(Schema, QueryOps, QStart, QRows, ?DEFAULT_TIMEOUT),
+    {NumFound, MaxScore, Docs} = Client:search_doc(Schema, QueryOps, QStart, QRows, Presort, ?DEFAULT_TIMEOUT),
     ElapsedTime = erlang:round(timer:now_diff(erlang:now(), StartTime) / 1000),
     {ElapsedTime, NumFound, MaxScore, Docs}.
 
