@@ -55,8 +55,7 @@ prototype:
 	echo "i r.preserve" >> prototype
 	echo '' >> prototype
 	pkgproto $(SEARCH_PATH)/rel/$(APP_PATH)=$(APP_PATH) >> prototype
-	sed -i -e 's/basho other/riak riak/' \
-	       -e 's/buildbot other/riak riak/' \
+	sed -i -e "s/ $(LOGNAME) .*$$/ riak riak/" \
 	       -e 's/f none riak\/etc/e preserve riak\/etc/' prototype
 
 $(PKGERDIR)/pkgclean:
