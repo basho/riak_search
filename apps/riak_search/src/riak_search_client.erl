@@ -13,7 +13,7 @@
 
 -export([
     %% MapReduce Searching...
-    mapred/5, mapred_stream/6,
+    mapred/6, mapred_stream/7,
 
     %% Searching...
     parse_query/2,
@@ -37,12 +37,12 @@
     delete_terms/1
 ]).
 
-mapred(DefaultIndex, SearchQuery, MRQuery, ResultTransformer, Timeout) ->
-    {ok, ReqID} = mapred_stream(DefaultIndex, SearchQuery, MRQuery, self(), ResultTransformer, Timeout),
+mapred(DefaultIndex, SearchQuery, SearchFilter, MRQuery, ResultTransformer, Timeout) ->
+    {ok, ReqID} = mapred_stream(DefaultIndex, SearchQuery, SearchFilter, MRQuery, self(), ResultTransformer, Timeout),
     luke_flow:collect_output(ReqID, Timeout).
         
-mapred_stream(DefaultIndex, SearchQuery, MRQuery, ClientPid, ResultTransformer, Timeout) ->
-    InputDef = {modfun, riak_search, mapred_search, [DefaultIndex, SearchQuery]},
+mapred_stream(DefaultIndex, SearchQuery, SearchFilter, MRQuery, ClientPid, ResultTransformer, Timeout) ->
+    InputDef = {modfun, riak_search, mapred_search, [DefaultIndex, SearchQuery, SearchFilter]},
     {ok, {RId, FSM}} = RiakClient:mapred_stream(MRQuery, ClientPid, ResultTransformer, Timeout),
     RiakClient:mapred_dynamic_inputs_stream(FSM, InputDef, Timeout),
     luke_flow:finish_inputs(FSM),
