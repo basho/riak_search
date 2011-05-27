@@ -8,6 +8,7 @@ RUNNER_SCRIPT=${0##*/}
 RUNNER_BASE_DIR={{runner_base_dir}}
 RUNNER_ETC_DIR={{runner_etc_dir}}
 RUNNER_LOG_DIR={{runner_log_dir}}
+# Note the trailing slash on $PIPE_DIR/
 PIPE_DIR={{pipe_dir}}
 RUNNER_USER={{runner_user}}
 
@@ -76,7 +77,7 @@ case "$1" in
         HEART_COMMAND="$RUNNER_SCRIPT_DIR/$SCRIPT start"
         export HEART_COMMAND
         mkdir -p $PIPE_DIR
-        $ERTS_PATH/run_erl -daemon $PIPE_DIR/ $RUNNER_LOG_DIR \
+        $ERTS_PATH/run_erl -daemon $PIPE_DIR $RUNNER_LOG_DIR \
             "exec $RUNNER_SCRIPT_DIR/$SCRIPT console" 2>&1
         ;;
 
