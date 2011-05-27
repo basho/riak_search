@@ -80,22 +80,30 @@ search(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
                         {NewAcc, NewAccCount}
                 end
         end,
-    {ok, SearchRef2, {Results, _}} = fold_results(SearchRef1, Timeout, F, {[], 0}),
-    SortedResults = sort_by_score(SearchRef2, Results),
+    case fold_results(SearchRef1, Timeout, F, {[], 0}) of
+        {ok, SearchRef2, {Results, _}} ->
+            SortedResults = sort_by_score(SearchRef2, Results),
 
-    %% Dedup, and handle start and max results. Return matching
-    %% documents.
-    Results1 = truncate_list(QueryStart, QueryRows, SortedResults),
-    Length = length(SortedResults),
-    {Length, Results1}.
+            %% Dedup, and handle start and max results. Return matching
+            %% documents.
+            Results1 = truncate_list(QueryStart, QueryRows, SortedResults),
+            Length = length(SortedResults),
+            {Length, Results1};
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 %% Run the search query, fold results through function, return final
 %% accumulator.
 search_fold(IndexOrSchema, QueryOps, Fun, AccIn, Timeout) ->
     %% Execute the search, collect the results,.
     SearchRef = stream_search(IndexOrSchema, QueryOps),
-    {ok, _NewSearchRef, AccOut} = fold_results(SearchRef, Timeout, Fun, AccIn),
-    AccOut.
+    case fold_results(SearchRef, Timeout, Fun, AccIn) of
+        {ok, _NewSearchRef, AccOut} ->
+            AccOut;
+        {error, Reason} ->
+            {error, Reason}
+    end.
 
 search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
     %% Get results...
@@ -360,8 +368,8 @@ fold_results(SearchRef, Timeout, Fun, Acc) ->
     case collect_result(SearchRef, Timeout) of
         {done, Ref} ->
             {ok, Ref, Acc};
-        {error, timeout} ->
-            {error, timeout};
+        {error, Reason} ->
+            {error, Reason};
         {Results, Ref} ->
             NewAcc = Fun(Results, Acc),
             fold_results(Ref, Timeout, Fun, NewAcc)
@@ -377,7 +385,9 @@ collect_result(#riak_search_ref{id=Id, inputcount=InputCount}=SearchRef, Timeout
         {results, Results, Id} ->
             {Results, SearchRef};
         {disconnect, Id} ->
-            {[], SearchRef#riak_search_ref{inputcount=InputCount - 1}}
+            {[], SearchRef#riak_search_ref{inputcount=InputCount - 1}};
+        {error, Reason} ->
+            {error, Reason}
         after Timeout ->
              {error, timeout}
     end.

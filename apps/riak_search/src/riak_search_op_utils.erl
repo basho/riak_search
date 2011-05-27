@@ -157,6 +157,9 @@ gather_stream_results(Ref, OutputPid, OutputRef, TransformFun) ->
             OutputPid!{results, ResultVec2, OutputRef},
             gather_stream_results(Ref, OutputPid, OutputRef, TransformFun);
 
+        {Ref, {error, Reason}} ->
+            OutputPid ! {error, Reason};
+
         %% TODO: Check if this is dead code
         {Ref, {result, {DocID, Props}}} ->
             NewResult = TransformFun({DocID, Props}),

@@ -179,6 +179,8 @@ search(DefaultIndex, Query) ->
     io:format("~n :: Searching for '~s' in ~s...~n~n", [Query, DefaultIndex]),
     io:format("------------------------------~n~n"),
     case search:search(DefaultIndex, Query) of
+        {error, Reason} ->
+            io:format(" :: ERROR: ~p", [Reason]);
         {Length, Results} ->
             F = fun(X) ->
                 {Index, DocID, Props} = X,
@@ -188,15 +190,15 @@ search(DefaultIndex, Query) ->
                 io:format("~n------------------------------~n~n")
             end,
             [F(X) || X <- Results],
-            io:format(" :: Found ~p results.~n", [Length]);
-        Other ->
-            io:format(" :: ERROR: ~p", [Other])
+            io:format(" :: Found ~p results.~n", [Length])
     end.
 
 search_doc(DefaultIndex, Query) -> 
     io:format("~n :: Searching for '~s' in ~s...~n~n", [Query, DefaultIndex]),
     io:format("------------------------------~n~n"),
     case search:search_doc(DefaultIndex, Query) of
+        {error, Reason} ->
+            io:format("ERROR: ~p", [Reason]);
         {Length, MaxScore, Results} ->
             F = fun(X) ->
                 %% Index.
@@ -216,9 +218,7 @@ search_doc(DefaultIndex, Query) ->
             end,
             [F(X) || X <- Results],
             io:format(" :: Found ~p results.~n", [Length]),
-            io:format(" :: Maximum score ~p.~n", [MaxScore]);
-        Other ->
-            io:format("ERROR: ~p", [Other])
+            io:format(" :: Maximum score ~p.~n", [MaxScore])
     end.
 
 explain(DefaultIndex, Query) -> 

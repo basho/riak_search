@@ -11,6 +11,7 @@
 -export([
          response_results/2, 
          response_done/1,
+         response_error/2,
          info_response/2, 
          collect_info_response/3]).
 
@@ -37,8 +38,12 @@ info_response(Sender, Result) ->
 %% Send a response to a stream() request
 response_results(Sender, Results) ->
     riak_core_vnode:reply(Sender, {result_vec, Results}).
+
 response_done(Sender) ->
     riak_core_vnode:reply(Sender, done).
+
+response_error(Sender, Reason) ->
+    riak_core_vnode:reply(Sender, {error, Reason}).
 
 collect_info_response(0, _Ref, Acc) ->
     {ok, Acc};
