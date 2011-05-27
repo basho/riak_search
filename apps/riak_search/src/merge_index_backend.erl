@@ -20,6 +20,9 @@
     drop/1
 ]).
 
+-export([stream_worker/6,
+         range_worker/8]).
+
 -include_lib("riak_search/include/riak_search.hrl").
 
 % @type state() = term().
@@ -58,39 +61,21 @@ delete(IFTVPKList, State) ->
 
 info(Index, Field, Term, Sender, State) ->
     Pid = State#state.pid,
-    {ok, Info} = merge_index:info(Pid, Index, Field, Term),
-    Info1 = [{Term, node(), Count} || {_, Count} <- Info],
-    riak_search_backend:info_response(Sender, Info1),
+    {ok, Count} = merge_index:info(Pid, Index, Field, Term),
+    riak_search_backend:info_response(Sender, [{Term, node(), Count}]),
     noreply.
 
-stream(Index, Field, Term, FilterFun, Sender, State) ->
+stream(Index, Field, Term, Filter, Sender, State) ->
     Pid = State#state.pid,
-    OutputRef = make_ref(),
-    OutputPid = spawn_link(fun() -> result_loop(OutputRef, Sender) end),
-    merge_index:stream(Pid, Index, Field, Term, OutputPid, OutputRef, FilterFun),
+    spawn_link(?MODULE, stream_worker, [Pid, Index, Field,
+                                        Term, Filter, Sender]),
     noreply.
 
-range(Index, Field, StartTerm, EndTerm, Size, FilterFun, Sender, State) ->
+range(Index, Field, StartTerm, EndTerm, Size, Filter, Sender, State) ->
     Pid = State#state.pid,
-    OutputRef = make_ref(),
-    OutputPid = spawn_link(fun() -> result_loop(OutputRef, Sender) end),
-    merge_index:range(Pid, Index, Field, StartTerm, EndTerm, Size, OutputPid, OutputRef, FilterFun),
+    spawn_link(?MODULE, range_worker, [Pid, Index, Field, StartTerm,
+                                       EndTerm, Size, Filter, Sender]),
     noreply.
-
-result_loop(Ref, Sender) ->
-    receive
-        {result, {DocID, Props}, Ref} ->
-            riak_search_backend:response_results(Sender, [{DocID, Props}]),
-            result_loop(Ref, Sender);
-        {result_vec, ResultVec, Ref} ->
-            riak_search_backend:response_results(Sender, ResultVec),
-            result_loop(Ref, Sender);
-        {result, '$end_of_table', Ref} ->
-            riak_search_backend:response_done(Sender);
-        Other ->
-            ?PRINT({unexpected_result, Other}),
-            result_loop(Ref, Sender)
-    end.
 
 is_empty(State) ->
     Pid = State#state.pid,
@@ -135,3 +120,22 @@ fold(FoldFun, Acc, State) ->
 drop(State) ->
     Pid = State#state.pid,
     merge_index:drop(Pid).
+
+%%%===================================================================
+%%% Internal Functions
+%%%===================================================================
+
+stream_worker(Pid, Index, Field, Term, Filter, Sender) ->
+    Iter = merge_index:lookup(Pid, Index, Field, Term, Filter),
+    iterate(Iter(), Sender).
+
+range_worker(Pid, Index, Field, StartTerm, EndTerm, Size, Filter, Sender) ->
+    Iter = merge_index:range(Pid, Index, Field, StartTerm, EndTerm,
+                             Size, Filter),
+    iterate(Iter(), Sender).
+
+iterate(eof, Sender) ->
+    riak_search_backend:response_done(Sender);
+iterate({Results, Iter}, Sender) ->
+    riak_search_backend:response_results(Sender, Results),
+    iterate(Iter(), Sender).
