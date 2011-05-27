@@ -334,8 +334,11 @@ delete(RiakClient, IdxDoc) ->
 delete(RiakClient, DocIndex, DocID) ->
     DocBucket = idx_doc_bucket(DocIndex),
     DocKey = DocID,
-    RiakClient:delete(DocBucket, DocKey).
-
+    case RiakClient:delete(DocBucket, DocKey) of
+        ok -> ok;
+        {error, notfound} -> ok;
+        Other -> Other
+    end.
 
 idx_doc_bucket(Bucket) when is_binary(Bucket) ->
     <<"_rsid_", Bucket/binary>>.
