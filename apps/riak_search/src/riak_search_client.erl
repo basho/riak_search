@@ -89,8 +89,8 @@ search(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
             Results1 = truncate_list(QueryStart, QueryRows, SortedResults),
             Length = length(SortedResults),
             {Length, Results1};
-        {error, Reason} ->
-            {error, Reason}
+        {error, _} = Err ->
+            Err
     end.
 
 %% Run the search query, fold results through function, return final
@@ -101,8 +101,8 @@ search_fold(IndexOrSchema, QueryOps, Fun, AccIn, Timeout) ->
     case fold_results(SearchRef, Timeout, Fun, AccIn) of
         {ok, _NewSearchRef, AccOut} ->
             AccOut;
-        {error, Reason} ->
-            {error, Reason}
+        {error, _} = Err ->
+            Err
     end.
 
 search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, Timeout) ->
@@ -368,8 +368,8 @@ fold_results(SearchRef, Timeout, Fun, Acc) ->
     case collect_result(SearchRef, Timeout) of
         {done, Ref} ->
             {ok, Ref, Acc};
-        {error, Reason} ->
-            {error, Reason};
+        {error, _} = Err ->
+            Err;
         {Results, Ref} ->
             NewAcc = Fun(Results, Acc),
             fold_results(Ref, Timeout, Fun, NewAcc)
@@ -386,8 +386,8 @@ collect_result(#riak_search_ref{id=Id, inputcount=InputCount}=SearchRef, Timeout
             {Results, SearchRef};
         {disconnect, Id} ->
             {[], SearchRef#riak_search_ref{inputcount=InputCount - 1}};
-        {error, Reason} ->
-            {error, Reason}
+        {error, _} = Err ->
+            Err
         after Timeout ->
              {error, timeout}
     end.
