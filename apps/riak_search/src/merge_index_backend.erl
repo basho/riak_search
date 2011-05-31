@@ -136,6 +136,9 @@ range_worker(Pid, Index, Field, StartTerm, EndTerm, Size, Filter, Sender) ->
 
 iterate(eof, Sender) ->
     riak_search_backend:response_done(Sender);
+iterate({error, Reason}, Sender) ->
+    riak_search_backend:response_error(Sender, Reason);
 iterate({Results, Iter}, Sender) ->
     riak_search_backend:response_results(Sender, Results),
     iterate(Iter(), Sender).
+
