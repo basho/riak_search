@@ -47,7 +47,7 @@ start(_StartType, _StartArgs) ->
                 Error ->
                     Error
             end;
-        false -> noop
+        false -> {ok, self()}
     end.
 
 stop(_State) ->
