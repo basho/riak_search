@@ -29,7 +29,21 @@ start(_StartType, _StartArgs) ->
                     %% the app is missing or packaging is broken.
                     catch cluster_info:register_app(riak_search_cinfo),
 
-                    {ok, Pid};
+                    Root = app_helper:get_env(riak_solr, solr_name, "solr"),
+                    case riak_solr_sup:start_link() of
+                        {ok, _} ->
+                            webmachine_router:add_route({[Root, index, "update"],
+                                                         riak_solr_indexer_wm, []}),
+                            webmachine_router:add_route({[Root, "update"],
+                                                         riak_solr_indexer_wm, []}),
+                            webmachine_router:add_route({[Root, index, "select"],
+                                                         riak_solr_searcher_wm, []}),
+                            webmachine_router:add_route({[Root, "select"],
+                                                         riak_solr_searcher_wm, []}),
+                            {ok, Pid};
+                        Error ->
+                            Error
+                    end;
                 Error ->
                     Error
             end;
