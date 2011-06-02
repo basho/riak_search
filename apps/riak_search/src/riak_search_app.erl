@@ -16,20 +16,24 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    case riak_search_sup:start_link() of
-        {ok, Pid} ->
-            %% Register the search vnode with core and mark the node
-            %% as available for search requests.
-            riak_core:register_vnode_module(riak_search_vnode),
-            riak_core_node_watcher:service_up(riak_search, self()),
+    case app_helper:get_env(riak_search, enabled, false) of
+        true ->
+            case riak_search_sup:start_link() of
+                {ok, Pid} ->
+                    %% Register the search vnode with core and mark the node
+                    %% as available for search requests.
+                    riak_core:register_vnode_module(riak_search_vnode),
+                    riak_core_node_watcher:service_up(riak_search, self()),
 
-            %% Register our cluster_info app callback modules, with catch if
-            %% the app is missing or packaging is broken.
-            catch cluster_info:register_app(riak_search_cinfo),
+                    %% Register our cluster_info app callback modules, with catch if
+                    %% the app is missing or packaging is broken.
+                    catch cluster_info:register_app(riak_search_cinfo),
 
-           {ok, Pid};
-        Error ->
-            Error
+                    {ok, Pid};
+                Error ->
+                    Error
+            end;
+        false -> noop
     end.
 
 stop(_State) ->
