@@ -10,7 +10,7 @@
     index_dir/2
 ]).
 
--include_lib("riak_search/include/riak_search.hrl").
+-include("riak_search.hrl").
 
 %% Full text index the specified file or directory, which is expected
 %% to contain a solr formatted file.

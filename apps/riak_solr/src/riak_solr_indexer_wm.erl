@@ -8,7 +8,7 @@
 -export([init/1, allowed_methods/2, malformed_request/2]).
 -export([process_post/2]).
 
--include_lib("riak_search/include/riak_search.hrl").
+-include("riak_search.hrl").
 -include_lib("webmachine/include/webmachine.hrl").
 
 

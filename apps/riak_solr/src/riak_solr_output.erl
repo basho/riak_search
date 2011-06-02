@@ -7,7 +7,7 @@
 -module(riak_solr_output).
 
 -include_lib("xmerl/include/xmerl.hrl").
--include_lib("riak_search/include/riak_search.hrl").
+-include("riak_search.hrl").
 -include("riak_solr.hrl").
 
 -export([xml_response/7, json_response/7]).

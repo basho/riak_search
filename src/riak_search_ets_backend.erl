@@ -23,7 +23,7 @@
          stream_results/3
         ]).
 
--include_lib("riak_search/include/riak_search.hrl").
+-include("riak_search.hrl").
 
 -record(state, {partition, table}).
 

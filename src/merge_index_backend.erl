@@ -23,7 +23,7 @@
 -export([stream_worker/6,
          range_worker/8]).
 
--include_lib("riak_search/include/riak_search.hrl").
+-include("riak_search.hrl").
 
 % @type state() = term().
 -record(state, {partition, pid}).

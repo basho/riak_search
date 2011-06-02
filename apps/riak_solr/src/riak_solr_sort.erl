@@ -7,7 +7,7 @@
 -module(riak_solr_sort).
 
 -export([sort/3]).
--include_lib("riak_search/include/riak_search.hrl").
+-include("riak_search.hrl").
 -import(riak_search_utils, [to_binary/1, to_atom/1, to_integer/1]).
 
 

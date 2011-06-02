@@ -12,7 +12,7 @@
     to_atom/1, to_integer/1, to_binary/1, to_boolean/1, to_float/1]).
 
 -include("riak_solr.hrl").
--include_lib("riak_search/include/riak_search.hrl").
+-include("riak_search.hrl").
 -include_lib("webmachine/include/webmachine.hrl").
 
 -record(state, {client,

@@ -11,3 +11,4 @@ apps/merge_index/ebin/merge_index.app
 apps/riak_search_core/ebin/riak_search_core.app
 build
 rel/riaksearch
+ebin

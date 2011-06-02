@@ -14,7 +14,7 @@
 -import(riak_search_utils, [to_list/1, to_binary/1]).
 
 
--include_lib("riak_search/include/riak_search.hrl").
+-include("riak_search.hrl").
 
 %% Parse a solr XML formatted file.
 parse_solr_xml(IndexOrSchema, Body) when is_binary(Body) ->
