@@ -14,7 +14,10 @@ start() ->
    application:start(qilr).
 
 start(_StartType, _StartArgs) ->
-    qilr_sup:start_link().
+    case app_helper:get_env(riak_search, enabled, false) of
+        true -> qilr_sup:start_link();
+        false -> {ok, self()}
+    end.
 
 stop(_State) ->
     ok.
