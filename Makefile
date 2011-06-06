@@ -1,9 +1,4 @@
-REPO		?= riak_search
-SEARCH_TAG	 = $(shell git describe --tags)
-REVISION	?= $(shell echo $(SEARCH_TAG) | sed -e 's/^$(REPO)-//')
-PKG_VERSION	?= $(shell echo $(REVISION) | tr - .)
-
-.PHONY: rel stagedevrel deps package pkgclean test
+.PHONY: deps test
 
 all: deps compile
 
@@ -18,48 +13,11 @@ clean:
 	./rebar clean
 	make -C apps/qilr/java_src clean
 
-distclean: clean devclean relclean ballclean
+distclean: clean
 	./rebar delete-deps
 
 test:
 	./rebar skip_deps=true eunit
-
-##
-## Release targets
-##
-rel: deps
-	make -C apps/qilr/java_src
-	./rebar compile generate
-
-rellink:
-	$(foreach app,$(wildcard apps/*), rm -rf rel/riaksearch/lib/$(shell basename $(app))* && ln -sf $(abspath $(app)) rel/riaksearch/lib;)
-	$(foreach dep,$(wildcard deps/*), rm -rf rel/riaksearch/lib/$(shell basename $(dep))* && ln -sf $(abspath $(dep)) rel/riaksearch/lib;)
-
-relclean:
-	rm -rf rel/riaksearch
-
-##
-## Developer targets
-##
-stagedevrel: dev1 dev2 dev3
-	$(foreach dev,$^,\
-	  $(foreach dep,$(wildcard deps/*), rm -rf dev/$(dev)/lib/$(shell basename $(dep))-* && ln -sf $(abspath $(dep)) dev/$(dev)/lib;))
-	$(foreach dev,$^,\
-	  $(foreach dep,$(wildcard apps/*), rm -rf dev/$(dev)/lib/$(shell basename $(dep))-* && ln -sf $(abspath $(dep)) dev/$(dev)/lib;))
-
-devrel: dev1 dev2 dev3
-
-dev1 dev2 dev3:
-	mkdir -p dev
-	(cd rel && ../rebar generate target_dir=../dev/$@ overlay_vars=vars/$@_vars.config)
-
-devclean: clean
-	rm -rf dev
-
-stage : rel
-	$(foreach app,$(wildcard apps/*), rm -rf rel/riaksearch/lib/$(shell basename $(app))-* && ln -sf $(abspath $(app)) rel/riaksearch/lib;)
-	$(foreach dep,$(wildcard deps/*), rm -rf rel/riaksearch/lib/$(shell basename $(dep))-* && ln -sf $(abspath $(dep)) rel/riaksearch/lib;)
-
 
 ##
 ## Doc targets
@@ -107,40 +65,3 @@ cleanplt:
 	@echo 
 	sleep 5
 	rm $(COMBO_PLT)
-
-# Release tarball creation
-# Generates a tarball that includes all the deps sources so no checkouts are necessary
-archivegit = git archive --format=tar --prefix=$(1)/ HEAD | (cd $(2) && tar xf -)
-archivehg = hg archive $(2)/$(1)
-archive = if [ -d ".git" ]; then \
-		$(call archivegit,$(1),$(2)); \
-	    else \
-		$(call archivehg,$(1),$(2)); \
-	    fi
-
-buildtar = mkdir distdir && \
-		 git clone . distdir/$(REPO)-clone && \
-		 cd distdir/$(REPO)-clone && \
-		 git checkout $(SEARCH_TAG) && \
-		 $(call archive,$(SEARCH_TAG),..) && \
-		 mkdir ../$(SEARCH_TAG)/deps && \
-		 make deps; \
-		 for dep in deps/*; do cd $${dep} && $(call archive,$${dep},../../../$(SEARCH_TAG)); cd ../..; done
-					 
-distdir:
-	$(if $(SEARCH_TAG), $(call buildtar), $(error "You can't generate a release tarball from a non-tagged revision. Run 'git checkout <tag>', then 'make dist'"))
-
-dist $(SEARCH_TAG).tar.gz: distdir
-	cd distdir; \
-	tar czf ../$(SEARCH_TAG).tar.gz $(SEARCH_TAG)
-
-ballclean:
-	rm -rf $(SEARCH_TAG).tar.gz distdir
-
-package: dist
-	$(MAKE) -C package package
-
-pkgclean:
-	$(MAKE) -C package pkgclean
-
-export PKG_VERSION REPO REVISION SEARCH_TAG
