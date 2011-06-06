@@ -7,7 +7,7 @@
                   stdlib,
                   riak_core,
                   riak_kv,
-                  qilr,
+                  %% qilr,
                   merge_index
                  ]},
   {mod, {riak_search_app, []}},
