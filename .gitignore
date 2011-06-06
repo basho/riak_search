@@ -9,3 +9,7 @@ apps/qilr/src/qilr_parse.erl
 apps/qilr/src/qilr_scan.erl
 build
 ebin
+doc/*.html
+doc/edoc-info
+doc/*.png
+doc/stylesheet.css
