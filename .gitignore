@@ -7,8 +7,6 @@ priv/*
 apps/qilr/include/analysis_pb.hrl
 apps/qilr/src/qilr_parse.erl
 apps/qilr/src/qilr_scan.erl
-apps/merge_index/ebin/merge_index.app
-apps/riak_search_core/ebin/riak_search_core.app
 build
-rel/riaksearch
 ebin
+doc
