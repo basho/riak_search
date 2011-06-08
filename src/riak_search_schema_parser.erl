@@ -9,7 +9,7 @@
          from_eterm/2
         ]).
 
--include_lib("qilr/include/qilr.hrl").
+-include_lib("qilr.hrl").
 -include("riak_search.hrl").
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
