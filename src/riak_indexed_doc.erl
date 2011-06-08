@@ -14,7 +14,7 @@
     props/1, add_prop/3, set_props/2, clear_props/1, 
     postings/1,
     to_mochijson2/1, to_mochijson2/2,
-    analyze/1, analyze/2,
+    analyze/1,
     new_obj/2, get_obj/3, put_obj/2, get/3, put/2, 
     delete/2, delete/3
 ]).
@@ -131,24 +131,14 @@ to_mochijson2(XForm, #riak_idx_doc{id=Id, index=Index, fields=Fields, inline_fie
 %%             []
 %%     end.
 
-%% Parse a #riak_idx_doc{} record.
-%% Return {ok, [{Index, FieldName, Term, DocID, Props}]}.
-analyze(IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
-    {ok, AnalyzerPid} = qilr:new_analyzer(),
-    try
-        analyze(IdxDoc, AnalyzerPid)
-    after
-        qilr:close_analyzer(AnalyzerPid)
-    end.
 
-
-%% Parse a #riak_idx_doc{} record using the provided analyzer pid.
+%% Parse a #riak_idx_doc{} record
 %% Return {ok, [{Index, FieldName, Term, DocID, Props}]}.
-analyze(IdxDoc, _AnalyzerPid) 
+analyze(IdxDoc) 
   when is_record(IdxDoc, riak_idx_doc) andalso IdxDoc#riak_idx_doc.analyzed_flag == true ->
     %% Don't re-analyze an already analyzed idx doc.
     IdxDoc;
-analyze(IdxDoc, AnalyzerPid) when is_record(IdxDoc, riak_idx_doc) ->
+analyze(IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
     %% Extract fields, get schema...
     DocIndex = ?MODULE:index(IdxDoc),
     RegularFields = ?MODULE:regular_fields(IdxDoc),
@@ -158,7 +148,7 @@ analyze(IdxDoc, AnalyzerPid) when is_record(IdxDoc, riak_idx_doc) ->
     %% For each Field = {FieldName, FieldValue, _}, split the FieldValue
     %% into terms and build a list of positions for those terms.
     F = fun({FieldName, FieldValue}, Acc2) ->
-                {ok, Terms} = analyze_field(FieldName, FieldValue, Schema, AnalyzerPid),
+                {ok, Terms} = analyze_field(FieldName, FieldValue, Schema),
                 [{FieldName, FieldValue, get_term_positions(Terms)} | Acc2]
         end,
     NewFields = lists:foldl(F, [], RegularFields),
@@ -236,14 +226,14 @@ merge_fields_folder(New, Fields) ->
 %% @private
 %% Parse a FieldValue into a list of terms.
 %% Return {ok, [Terms}}.
-analyze_field(FieldName, FieldValue, Schema, AnalyzerPid) ->
+analyze_field(FieldName, FieldValue, Schema) ->
     %% Get the field...
     Field = Schema:find_field(FieldName),
     AnalyzerFactory = Schema:analyzer_factory(Field),
     AnalyzerArgs = Schema:analyzer_args(Field),
 
     %% Analyze the field...
-    qilr_analyzer:analyze(AnalyzerPid, FieldValue, AnalyzerFactory, AnalyzerArgs).
+    qilr_analyzer:analyze(FieldValue, AnalyzerFactory, AnalyzerArgs).
 
 
 %% @private Given a list of tokens, build a gb_tree mapping words to a

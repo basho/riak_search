@@ -180,28 +180,24 @@ split_next_batch_inner(_, _, [], Batch) ->
 split_next_batch_inner(FilesLeft, BytesLeft, [{Bytes, File}|Rest], Batch) ->
     split_next_batch_inner(FilesLeft - 1, BytesLeft - Bytes, Rest, [{Bytes, File}|Batch]).
 
-
 start_worker_loop(Index, OpFunction, Parent, Ref) ->
     {ok, Schema} = riak_search_config:get_schema(Index),
-    {ok, AnalyzerPid} = qilr:new_analyzer(),
-    worker_loop(OpFunction, Schema, AnalyzerPid, Parent, Ref).
+    worker_loop(OpFunction, Schema, Parent, Ref).
 
-worker_loop(OpFunction, Schema, AnalyzerPid, Parent, Ref) ->
+worker_loop(OpFunction, Schema, Parent, Ref) ->
     Parent ! {next_batch, self(), Ref},
     receive
         {next_batch_reply, TotalBytes, Files, Ref} ->
             try 
-                OpFunction(Schema, AnalyzerPid, Files)
+                OpFunction(Schema, Files)
             catch Type : Error ->
-                qilr:close_analyzer(AnalyzerPid),
                 ?PRINT({error, Type, Error, erlang:get_stacktrace()}),
                 erlang:Type(Error)
             end,
             Parent ! {finished_batch, length(Files), TotalBytes, Ref},
-            worker_loop(OpFunction, Schema, AnalyzerPid, Parent, Ref);
+            worker_loop(OpFunction, Schema, Parent, Ref);
 
         {stop, Ref} ->
-            qilr:close_analyzer(AnalyzerPid),
             ok
     end.
 

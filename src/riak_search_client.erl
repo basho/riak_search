@@ -24,8 +24,8 @@
     search_doc/6,
 
     %% Indexing...
-    index_doc/2,
-    index_docs/1, index_docs/2,
+    index_doc/1,
+    index_docs/1,
     index_term/5, index_term/6,
     index_terms/1,
 
@@ -139,24 +139,15 @@ search_doc(IndexOrSchema, QueryOps, QueryStart, QueryRows, PresortBy, Timeout)
     {Length, MaxScore, [X || X <- Documents, X /= {error, notfound}]}.
 
 %% Index a specified #riak_idx_doc
-index_doc(IdxDoc, AnalyzerPid) ->
-    index_docs([IdxDoc], AnalyzerPid).
+index_doc(IdxDoc) ->
+    index_docs([IdxDoc]).
 
 index_docs(IdxDocs) ->
-    {ok, AnalyzerPid} = qilr:new_analyzer(),
-    try
-        index_docs(IdxDocs, AnalyzerPid)
-    after
-        qilr:close_analyzer(AnalyzerPid)
-    end,
-    ok.
-
-index_docs(IdxDocs, AnalyzerPid) ->
     %% For each doc, update the object stored in Riak KV, and generate
     %% a list of postings to add and delete.
     F = fun(IdxDoc0, {RiakObjsAccIn, DeleteAccIn, IndexAccIn}) ->
                 %% Analyze the doc...
-                IdxDoc = riak_indexed_doc:analyze(IdxDoc0, AnalyzerPid),
+                IdxDoc = riak_indexed_doc:analyze(IdxDoc0),
 
                 %% Get the terms to delete...
                 Index = riak_indexed_doc:index(IdxDoc),
@@ -195,7 +186,6 @@ index_docs(IdxDocs, AnalyzerPid) ->
     FlatIndexAcc = lists:flatten(IndexAcc),
     index_terms(FlatIndexAcc),
     ok.
-
 
 %% Index the specified term - better to use the plural 'terms' interfaces
 index_term(Index, Field, Term, DocID, Props) ->

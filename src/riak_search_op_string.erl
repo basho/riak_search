@@ -89,17 +89,9 @@ calculate_range_last(Term)  ->
 %% term binaries. This is split into a separate function because
 %% otherwise the compiler complains about an unsafe usage of 'Terms'.
 analyze_term(IndexName, FieldName, TermString) ->
-    {ok, AnalyzerPid} = qilr:new_analyzer(),
-    try
-        {ok, Schema} = riak_search_config:get_schema(IndexName),
-        Field = Schema:find_field(FieldName),
-        AnalyzerFactory = Schema:analyzer_factory(Field),
-        AnalyzerArgs = Schema:analyzer_args(Field),
-        {ok, Terms} = qilr_analyzer:analyze(AnalyzerPid, TermString, AnalyzerFactory, AnalyzerArgs),
-
-        %% Return...
-        {ok, Terms}
-    after 
-        qilr:close_analyzer(AnalyzerPid)
-    end.
+    {ok, Schema} = riak_search_config:get_schema(IndexName),
+    Field = Schema:find_field(FieldName),
+    AnalyzerFactory = Schema:analyzer_factory(Field),
+    AnalyzerArgs = Schema:analyzer_args(Field),
+    qilr_analyzer:analyze(TermString, AnalyzerFactory, AnalyzerArgs).
 

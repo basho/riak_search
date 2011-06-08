@@ -4,14 +4,12 @@ all: deps compile
 
 compile:
 	./rebar compile
-	make -C apps/qilr/java_src
 
 deps:
 	./rebar get-deps
 
 clean:
 	./rebar clean
-	make -C apps/qilr/java_src clean
 
 distclean: clean
 	./rebar delete-deps

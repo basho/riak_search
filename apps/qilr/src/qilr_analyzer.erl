@@ -11,7 +11,7 @@
 
 %% RPZ Do I need analyze/1 and 2?
 analyze(Text) when is_list(Text) ->
-    case analyze(Pid, list_to_binary(Text)) of
+    case analyze(list_to_binary(Text)) of
         {ok, Tokens} ->
             {ok, [binary_to_list(Token) || Token <- Tokens]};
         Error ->

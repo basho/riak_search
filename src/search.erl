@@ -121,12 +121,7 @@ index_docs(Docs) ->
     
     %% Index the IdxDocs...
     {ok, Client} = riak_search:local_client(),
-    {ok, AnalyzerPid} = qilr:new_analyzer(),
-    try
-        Client:index_docs(IdxDocs, AnalyzerPid)
-    after
-        qilr:close_analyzer(AnalyzerPid)
-    end,
+    Client:index_docs(IdxDocs),
     ok.
 
 %% Full text index the specified directory of plain text files.
@@ -135,7 +130,7 @@ index_dir(Directory) ->
 
 %% Full text index the specified directory of plain text files.
 index_dir(Index, Directory) ->
-    Fun = fun(Schema, AnalyzerPid, Files) ->
+    Fun = fun(Schema, Files) ->
                   F = fun(File) ->
                               {ok, Data} = file:read_file(File),
                               DocID = riak_search_utils:to_binary(filename:basename(File)),
@@ -144,7 +139,7 @@ index_dir(Index, Directory) ->
                       end,
                   IdxDocs = [F(X) || X <- Files],
                   {ok, Client} = riak_search:local_client(),
-                  Client:index_docs(IdxDocs, AnalyzerPid)
+                  Client:index_docs(IdxDocs)
           end,
     riak_search_dir_indexer:index(Index, Directory, Fun).
 
@@ -152,7 +147,7 @@ delete_dir(Directory) ->
     delete_dir(?DEFAULT_INDEX, Directory).
 
 delete_dir(Index, Directory) ->
-    Fun = fun(Schema, _AnalyzerPid, Files) ->
+    Fun = fun(Schema, Files) ->
                   F = fun(File) ->
                               DocID = riak_search_utils:to_binary(filename:basename(File)),
                               {Schema:name(), DocID}
