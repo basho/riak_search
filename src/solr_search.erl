@@ -20,7 +20,7 @@ index_dir(Directory) ->
 %% Full text index the specified file or directory, which is expected
 %% to contain a solr formatted file.
 index_dir(Index, Directory) ->
-    {ok, SolrClient} = riak_solr_app:local_client(),
+    {ok, SolrClient} = riak_search:local_solr_client(),
     Fun = fun(Schema, _AnalyzerPid, Files) ->
                   F = fun(File) ->
                               {ok, Body} = file:read_file(File),

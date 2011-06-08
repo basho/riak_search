@@ -7,6 +7,7 @@
 -module(riak_search).
 -export([
     local_client/0,
+    local_solr_client/0,
     mapred_search/3
 ]).
 -include("riak_search.hrl").
@@ -16,6 +17,11 @@
 local_client() ->
     {ok, Client} = riak:local_client(),
     {ok, riak_search_client:new(Client)}.
+
+local_solr_client() ->
+    {ok, RiakClient} = riak:local_client(),
+    {ok, SearchClient} = riak_search:local_client(),
+    {ok, riak_solr_search_client:new(RiakClient, SearchClient)}.
 
 %% Used in riak_kv Map/Reduce integration.
 mapred_search(FlowPid, Options, Timeout) ->

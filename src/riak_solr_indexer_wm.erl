@@ -15,7 +15,7 @@
 -record(state, {solr_client, method, schema, command, entries}).
 
 init(_) ->
-    {ok, SolrClient} = riak_solr_app:local_client(),
+    {ok, SolrClient} = riak_search:local_solr_client(),
     {ok, #state{ solr_client=SolrClient }}.
 
 allowed_methods(Req, State) ->

@@ -322,23 +322,10 @@ to_xml_delete_doc_by_query(StringQuery) ->
     list_to_binary(L).
 
 get_solr_client() ->
-    riak_solr_app:local_client().
-%%     case get(solr_client) of
-%%         undefined -> 
-%%             put(solr_client, riak_solr_app:local_client()); %
-%%         _ -> ignore
-%%     end,
-%%     get(solr_client).
+    riak_search:local_solr_client().
 
 get_client() ->
     riak_search:local_client().
-%%     case get(client) of
-%%         undefined -> 
-%%             put(client, riak_search:local_client());
-%%         _ -> ignore
-%%     end,
-%%     get(client).
-
 
 %% Try to run the provided function. If it errors, wait a small amount
 %% of time and then try again.
