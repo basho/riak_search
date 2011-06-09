@@ -93,5 +93,5 @@ analyze_term(IndexName, FieldName, TermString) ->
     Field = Schema:find_field(FieldName),
     AnalyzerFactory = Schema:analyzer_factory(Field),
     AnalyzerArgs = Schema:analyzer_args(Field),
-    qilr_analyzer:analyze(TermString, AnalyzerFactory, AnalyzerArgs).
+    riak_search:analyze(TermString, AnalyzerFactory, AnalyzerArgs).
 

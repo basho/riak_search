@@ -233,7 +233,7 @@ analyze_field(FieldName, FieldValue, Schema) ->
     AnalyzerArgs = Schema:analyzer_args(Field),
 
     %% Analyze the field...
-    qilr_analyzer:analyze(FieldValue, AnalyzerFactory, AnalyzerArgs).
+    riak_search:analyze(FieldValue, AnalyzerFactory, AnalyzerArgs).
 
 
 %% @private Given a list of tokens, build a gb_tree mapping words to a
