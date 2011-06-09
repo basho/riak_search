@@ -15,7 +15,7 @@ to modify the =etc/app.config= file.  Search for the text
 =riak_search= and then change ={enabled, false}= to ={enabled, true}=.
 The Search portion of your =app.config= will look something like this.
 
-#+BEING_SRC
+#+BEGIN_SRC
 {riak_search, [
                {enabled, true},
                {search_backend, merge_index_backend},
