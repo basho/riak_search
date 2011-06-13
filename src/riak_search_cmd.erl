@@ -23,7 +23,6 @@ usage() ->
     search-cmd set-schema [INDEX] SCHEMAFILE : Set schema for an index.
     search-cmd show-schema [INDEX]           : Display the schema for an index.
     search-cmd clear-schema-cache            : Empty the schema cache on all nodes.
-    search-cmd shell [INDEX]                 : Start the interactive Search shell.
     search-cmd search [INDEX] QUERY          : Perform a search.
     search-cmd search-doc [INDEX] QUERY      : Perform a document search.
     search-cmd explain [INDEX] QUERY         : Display an execution plan.
@@ -63,12 +62,6 @@ command([_CurDir, "clear_schema_cache"]) ->
     command([_CurDir, "clear-schema-cache"]);
 command([_CurDir, "clear-schema-cache"]) ->
     clear_schema_cache();
-
-%% Shell
-command([_CurDir, "shell"]) -> 
-    shell(?DEFAULT_INDEX);
-command([_CurDir, "shell", Index]) ->
-    shell(Index);
 
 %% Search
 command([_CurDir, "search", Query]) ->
@@ -171,9 +164,6 @@ clear_schema_cache() ->
             io:format(" :: ~p nodes did not respond:~n", [length(BadNodes)]),
             [ io:format("    ~p~n", [N]) || N <- BadNodes ]
     end.
-
-shell(Index) -> 
-    riak_search_shell:start(Index).
 
 search(DefaultIndex, Query) -> 
     io:format("~n :: Searching for '~s' in ~s...~n~n", [Query, DefaultIndex]),
