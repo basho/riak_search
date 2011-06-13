@@ -18,8 +18,5 @@ The Search portion of your =app.config= will look something like this.
 #+BEGIN_SRC
 {riak_search, [
                {enabled, true},
-               {search_backend, merge_index_backend},
-               {java_home, "/usr"},
-               {max_search_results, 100000}
               ]},
 #+END_SRC
