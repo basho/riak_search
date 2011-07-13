@@ -83,7 +83,7 @@ is_empty(State) ->
 
 fold(FoldFun, Acc, State) ->
     %% Copied almost verbatim from riak_search_ets_backend.
-    {ok, FoldBatchSize} = application:get_env(merge_index, fold_batch_size),
+    {ok, FoldBatchSize} = application:get_env(riak_search, fold_batch_size),
     Fun = fun
         (I,F,T,V,P,K, {OuterAcc, {FoldKey = {I,{F,T}}, VPKList}, Count}) ->
             %% same IFT. If we have reached the fold_batch_size, then
