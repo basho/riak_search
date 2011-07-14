@@ -114,7 +114,7 @@ file_to_array(FilePath) ->
             Words = string:tokens(List, "\r\n"),
             array:from_list(Words);
         Error ->
-            error_logger:error_msg("Could not read ~p.~n", [filename:absname(FilePath)]),
+            lager:error("Could not read ~p.", [filename:absname(FilePath)]),
             throw({file_to_array, FilePath, Error})
     end.
 

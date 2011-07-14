@@ -26,7 +26,7 @@ local_solr_client() ->
 
 %% No analyzer is defined. Throw an exception.
 analyze(_Text, undefined, _AnalyzerArgs) ->
-    error_logger:error_msg("The analyzer_factory setting is not set. Check your schema.~n"),
+    lager:error("The analyzer_factory setting is not set. Check your schema."),
     throw({schema_setting_required, analyzer_factory});
 
 %% Handle Erlang-based AnalyzerFactory. Can either be of the form
@@ -49,8 +49,7 @@ mapred_search(FlowPid, [DefaultIndex, Query, Filter], Timeout) ->
         {ok, Ops1} ->
             QueryOps = Ops1;
         {error, ParseError1} ->
-            M1 = "Error running query '~s': ~p~n",
-            error_logger:error_msg(M1, [Query, ParseError1]),
+            lager:error("Error running query '~s': ~p", [Query, ParseError1]),
             throw({mapred_search, Query, ParseError1}),
             QueryOps = undefined % Make compiler happy.
     end,
@@ -60,8 +59,7 @@ mapred_search(FlowPid, [DefaultIndex, Query, Filter], Timeout) ->
         {ok, Ops2} ->
             FilterOps = Ops2;
         {error, ParseError2} ->
-            M2 = "Error running query '~s': ~p~n",
-            error_logger:error_msg(M2, [Filter, ParseError2]),
+            lager:error("Error running query '~s': ~p", [Filter, ParseError2]),
             throw({mapred_search, Filter, ParseError2}),
             FilterOps = undefined % Make compiler happy.
     end,

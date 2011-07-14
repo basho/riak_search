@@ -36,8 +36,8 @@ malformed_request(Req, State) ->
                 {true, riak_solr_error:log_error(Req, Error), State}
             end;
         Error ->
-            error_logger:error_msg("Could not parse schema for index'~s'.~n~p~n~p~n",
-                                   [Index, Error, erlang:get_stacktrace()]),
+            lager:error("Could not parse schema for index'~s'~nCause: ~p",
+                        [Index, Error]),
             {true, Req, State}
     end.
 
@@ -47,8 +47,7 @@ process_post(Req, State = #state{ solr_client=SolrClient, schema=Schema, command
         %% Hard coding 200 to be like Solr
         {{halt, 200}, Req, State}
     catch _ : Error ->
-        Msg = "Error in riak_solr_indexer_wm:process_post/2: ~p~n~p~n",
-        error_logger:error_msg(Msg, [Error, erlang:get_stacktrace()]),
+        lager:error("Error processing post: ~p", [Error]),
         {false, Req, State}
     end.
 

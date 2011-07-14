@@ -54,8 +54,7 @@ parse_solr_entry(Schema, delete, {<<"query">>, Query}) ->
         {ok, QueryOps} ->
             {'query', QueryOps};
         {error, Error} ->
-            M = "Error parsing query '~s': ~p~n",
-            error_logger:error_msg(M, [Query, Error]),
+            lager:error("Error parsing query '~s': ~p", [Query, Error]),
             throw({?MODULE, could_not_parse_query, Query})
     end;
 
@@ -104,5 +103,5 @@ run_solr_command(Schema, delete, Docs) ->
 
 %% Unknown command, so error...
 run_solr_command(_Schema, Command, _Docs) ->
-    error_logger:error_msg("Unknown solr command: ~p~n", [Command]),
+    lager:error("Unknown solr command: ~p", [Command]),
     throw({unknown_solr_command, Command}).

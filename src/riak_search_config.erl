@@ -97,7 +97,7 @@ handle_call({get_schema, SchemaName}, _From, State) ->
             
             {reply, {ok, Schema}, State};
         Error ->
-            error_logger:error_msg("Error getting schema '~s': ~n~p~n", [SchemaName, Error]),
+            lager:error("Error getting schema '~s'.~n~p", [SchemaName, Error]),
             throw(Error)
 end;
         
@@ -107,7 +107,7 @@ handle_call({get_raw_schema, SchemaName}, _From, State) ->
         {ok, RawSchema} -> 
             {reply, {ok, RawSchema}, State};
         Error ->
-            error_logger:error_msg("Error getting schema '~s': ~n~p~n", [SchemaName, Error]),
+            lager:error("Error getting schema '~s'.~n~p", [SchemaName, Error]),
             throw(Error)
     end;
         
@@ -131,11 +131,12 @@ handle_call({put_raw_schema, SchemaName, RawSchemaBinary}, _From, State) ->
                     put_raw_schema_to_kv(Client, SchemaName, RawSchemaBinary),
                     {reply, ok, State};
                 Error ->
-                    error_logger:error_msg("Error setting schema '~s': ~n~p~n", [SchemaName, Error]),
+                    lager:error("Error getting schema '~s'.~n~p",
+                                [SchemaName, Error]),
                     throw(Error)
             end;
         Error ->
-            error_logger:error_msg("Could not parse schema: ~p~n", [Error]),
+            lager:error("Could not parse schema: ~p", [Error]),
             Error
     end;
 

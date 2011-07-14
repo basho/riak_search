@@ -61,7 +61,7 @@ combine_terms({Index, DocID, Props1}, {Index, DocID, Props2}) ->
                            ),
     {Index, DocID, NewProps};
 combine_terms(Other1, Other2) ->
-    error_logger:error_msg("Could not combine terms: [~p, ~p]~n", [Other1, Other2]),
+    lager:error("Could not combine terms: [~p, ~p]", [Other1, Other2]),
     throw({could_not_combine, Other1, Other2}).
 
 to_list(A) when is_atom(A) -> atom_to_list(A);
