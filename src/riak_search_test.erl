@@ -182,6 +182,57 @@ test_inner({solr_update, Path}, Root) ->
 test_inner({index_bucket, Bucket}, _) ->
     ok = riak_search_kv_hook:install(Bucket),
     true;
+
+test_inner({mapred, Bucket, Search, Phases, Validators}, _) ->
+    {ok,C} = riak:local_client(),
+    SearchInput = {modfun, riak_search, mapred_search, [Bucket, Search]},
+    try C:mapred(SearchInput, Phases) of
+        {ok, Results} ->
+            case validate_results(length(Results), Results, Validators) of
+                pass -> 
+                    io:format("~n    [√] PASS MAPRED QUERY » ~s~n", [Search]),
+                    true;
+                {fail, Errors} ->
+                    io:format("~n    [ ] FAIL MAPRED QUERY » ~s~n", [Search]),
+                    [io:format("        - ~s~n", [X]) || X <- Errors],
+                    false
+            end;
+        Error ->
+            io:format("~n    [ ] FAIL MAPRED QUERY » ~s~n", [Search]),
+            io:format("        - ERROR1: ~p~n", [Error]),
+            false
+    catch 
+        _Type : Error ->
+            io:format("~n    [ ] FAIL MAPRED QUERY » ~s~n", [Search]),
+            io:format("        - ERROR2: ~p : ~p~n", [Error, erlang:get_stacktrace()]),
+            false
+    end;
+
+test_inner({mapred, Bucket, Search, Filter, Phases, Validators}, _) ->
+    {ok,C} = riak:local_client(),
+    SearchInput = {modfun, riak_search, mapred_search, [Bucket, Search, Filter]},
+    try C:mapred(SearchInput, Phases) of
+        {ok, Results} ->
+            case validate_results(length(Results), Results, Validators) of
+                pass -> 
+                    io:format("~n    [√] PASS MAPRED QUERY » ~s/~s~n", [Search, Filter]),
+                    true;
+                {fail, Errors} ->
+                    io:format("~n    [ ] FAIL MAPRED QUERY » ~s/~s~n", [Search, Filter]),
+                    [io:format("        - ~s~n", [X]) || X <- Errors],
+                    false
+            end;
+        Error ->
+            io:format("~n    [ ] FAIL MAPRED QUERY » ~s/~s~n", [Search, Filter]),
+            io:format("        - ERROR1: ~p~n", [Error]),
+            false
+    catch 
+        _Type : Error ->
+            io:format("~n    [ ] FAIL MAPRED QUERY » ~s/~s~n", [Search, Filter]),
+            io:format("        - ERROR2: ~p : ~p~n", [Error, erlang:get_stacktrace()]),
+            false
+    end;
+    
 test_inner({putobj, Bucket, Key, Ct, Value}, _) ->
     RObj = riak_object:new(Bucket, Key, Value, Ct),
     {ok,C} = riak:local_client(),
@@ -229,15 +280,17 @@ validate_results_inner(_Length, Results, {property, Key, Value}) ->
         false ->
             {fail, io_lib:format("Missing property: ~p -> ~p", [Key, Value])}
     end;
-validate_results_inner(_Length, Results, {docids, DocIds}) ->
+validate_results_inner(Length, Results, {docids, DocIDs}) ->
+    validate_results_inner(Length, Results, {result, DocIDs});
+validate_results_inner(_Length, Results, {result, ExpectedResult}) ->
     %% Check the returned docids exactly matches the list provided
     case Results of
-        DocIds ->
+        ExpectedResult ->
             pass;
         _ ->
-            {fail, io_lib:format("Results do not match expected doc ids\n" ++
+            {fail, io_lib:format("Results do not match expected result\n" ++
                                  "    Expected: ~p\n" ++
-                                 "    Results:  ~p\n", [DocIds, Results])}
+                                 "    Results:  ~p\n", [ExpectedResult, Results])}
     end;
 validate_results_inner(_Length, _Results, Other) ->
     io:format("Unexpected test validator: ~p~n", [Other]),

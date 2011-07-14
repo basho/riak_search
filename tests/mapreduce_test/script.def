@@ -1,0 +1,109 @@
+[{schema, "./schema.def" },
+ 
+ {echo,   "Setting up k/v hooks..."}, 
+ {index_bucket, <<"test">>},
+ 
+ {echo, "Putting some data"},
+
+ {putobj, <<"test">>, <<"obj1">>, 
+  "application/json", <<"{
+            \"value\":\"How much wood could a woodchuck chuck.\",
+            \"inline1\":\"foo1\",
+            \"inline2\":\"bar1\",
+            \"inline3\":\"baz1\"
+        }">>},
+
+ {putobj, <<"test">>, <<"obj2">>, 
+  "application/json", <<"{
+            \"value\":\"Mary had a little lamb.\",
+            \"inline1\":\"foo2\",
+            \"inline2\":\"bar2\",
+            \"inline3\":\"baz2\"
+        }">>},
+
+ {putobj, <<"test">>, <<"obj3">>, 
+  "application/json", <<"{
+            \"value\":\"How many roads must a man walk down.\",
+            \"inline1\":\"foo3\",
+            \"inline2\":\"bar3\",
+            \"inline3\":\"baz3\"
+        }">>},
+
+ {putobj, <<"test">>, <<"obj4">>, 
+  "application/json", <<"{
+            \"value\":\"How now brown cow..\",
+            \"inline1\":\"foo4\",
+            \"inline2\":\"bar4\",
+            \"inline3\":\"baz4\"
+        }">>},
+
+
+ {echo, "Running mapreduce queries..."},
+
+ {mapred, "test", "wood OR little", [
+     {map, {jsanon, <<"function(a,b) { return [1]; }">>}, none, false},
+     {reduce, {jsfun, <<"Riak.reduceSum">>}, none, true}
+ ], [
+     {result, [2]}
+ ]},
+
+ {mapred, "test", "How", [
+     {map, {jsanon, <<"function(a,b) { return [1]; }">>}, none, false},
+     {reduce, {jsfun, <<"Riak.reduceSum">>}, none, true}
+ ], [
+     {result, [3]}
+ ]},
+
+ {mapred, "test", "wood OR little OR roads", [
+     {map, {jsanon, <<"function(a,b) { return [1]; }">>}, none, false},
+     {reduce, {jsfun, <<"Riak.reduceSum">>}, none, true}
+ ], [
+     {result, [3]}
+ ]},
+
+ {mapred, "test", "wood OR little OR roads", [
+     {reduce, {modfun, riak_kv_mapreduce, reduce_identity}, none, false},
+     {reduce, {modfun, riak_kv_mapreduce, reduce_sort}, none, true}
+ ], [
+     {result, [
+                [<<"test">>, <<"obj1">>],
+                [<<"test">>, <<"obj2">>],
+                [<<"test">>, <<"obj3">>]
+            ]}
+ ]},
+
+ {echo, "Running mapreduce with filters..."},
+
+ {mapred, "test", "wood OR little", "inline1:foo1", [
+     {map, {jsanon, <<"function(a,b) { return [1]; }">>}, none, false},
+     {reduce, {jsfun, <<"Riak.reduceSum">>}, none, true}
+ ], [
+     {result, [1]}
+ ]},
+
+ {mapred, "test", "How", "inline1:foo1 OR inline2:bar3", [
+     {map, {jsanon, <<"function(a,b) { return [1]; }">>}, none, false},
+     {reduce, {jsfun, <<"Riak.reduceSum">>}, none, true}
+ ], [
+     {result, [2]}
+ ]},
+
+ {mapred, "test", "wood OR little OR roads", "inline1:foo1 OR inline2:bar3", [
+     {reduce, {modfun, riak_kv_mapreduce, reduce_identity}, none, false},
+     {reduce, {modfun, riak_kv_mapreduce, reduce_sort}, none, true}
+ ], [
+     {result, [
+                [<<"test">>, <<"obj1">>],
+                [<<"test">>, <<"obj3">>]
+            ]}
+ ]},
+    
+ %% Cleanup.
+ {echo, "De-indexing documents (by deleting k/v objects)..."},
+ {delobj, <<"test">>, <<"obj1">>}, 
+ {delobj, <<"test">>, <<"obj2">>}, 
+ {delobj, <<"test">>, <<"obj3">>}, 
+ {delobj, <<"test">>, <<"obj4">>}, 
+
+ {echo, "Done"}
+].

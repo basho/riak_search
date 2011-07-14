@@ -64,7 +64,7 @@ start_loop(Op, OutputPid, OutputRef, State) ->
     Term = to_binary(Op#term.s),
 
     %% Stream the results for a single term...
-    FilterFun = Op#term.filter,
+    FilterFun = State#search_state.filter,
     {ok, Ref} = stream(IndexName, FieldName, Term, FilterFun),
 
     %% Collect the results...

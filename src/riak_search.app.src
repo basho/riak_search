@@ -27,6 +27,10 @@
          {dir_index_workers, 8},
          {dir_index_stats_interval, 10},
          {dir_index_batch_size, 10},
-         {dir_index_batch_bytes, 1048576}
+         {dir_index_batch_bytes, 1048576},
+
+         %% Number of index entries to transfer at a time during
+         %% handoff
+         {fold_batch_size, 100}
         ]}
  ]}.

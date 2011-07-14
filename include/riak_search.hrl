@@ -17,7 +17,7 @@
           num_terms=0,
           num_docs=0,
           query_norm=0,
-          props=[]
+          filter=undefined
 }).
 
 -record(term, {
@@ -30,9 +30,7 @@
           %% DocFrequency,
           doc_freq=0,
           %% Boost
-          boost=1,
-          %% Filter any results that return false.
-          filter=fun riak_search_op_term:default_filter/2
+          boost=1
          }).
 
 -record(node, {

@@ -85,10 +85,12 @@ select_fun({Term1, false, Iterator1}, {Term2, false, Iterator2}) when ?INDEX_DOC
 select_fun({Term1, false, Iterator1}, {Term2, false, Iterator2}) when ?INDEX_DOCID(Term1) > ?INDEX_DOCID(Term2) ->
     select_fun({Term1, false, Iterator1}, Iterator2());
 
-select_fun({eof, false}, {_Term2, false, _Iterator2}) ->
+select_fun({eof, false}, {_Term2, false, Iterator2}) ->
+    exhaust_it(Iterator2()),
     {eof, false};
 
-select_fun({_Term1, false, _Iterator1}, {eof, false}) ->
+select_fun({_Term1, false, Iterator1}, {eof, false}) ->
+    exhaust_it(Iterator1()),
     {eof, false};
 
 %% Handle 'AND' cases, notflags = [false, true]
@@ -101,7 +103,8 @@ select_fun({Term1, false, Iterator1}, {Term2, true, Iterator2}) when ?INDEX_DOCI
 select_fun({Term1, false, Iterator1}, {Term2, true, Iterator2}) when ?INDEX_DOCID(Term1) > ?INDEX_DOCID(Term2) ->
     select_fun({Term1, false, Iterator1}, Iterator2());
 
-select_fun({eof, false}, {_Term2, true, _Iterator2}) ->
+select_fun({eof, false}, {_Term2, true, Iterator2}) ->
+    exhaust_it(Iterator2()),
     {eof, false};
 
 select_fun({Term1, false, Iterator1}, {eof, true}) ->
@@ -148,8 +151,10 @@ select_fun(Iterator1, Iterator2) ->
     ?PRINT({select_fun, unhandled_case, 'intersection', Iterator1, Iterator2}),
     throw({select_fun, unhandled_case, 'intersection', Iterator1, Iterator2}).
 
-
-
-    
-    
-
+%% @private
+%%
+%% @doc Exhaust the iterator of all results.
+exhaust_it({eof, _}) ->
+    ok;
+exhaust_it({_,_,It}) ->
+    exhaust_it(It()).

@@ -1,0 +1,21 @@
+{
+    schema, 
+    [
+        {version, "1.1"},
+        {default_field, "value"},
+        {analyzer_factory, {erlang, text_analyzers, whitespace_analyzer_factory}}
+    ],
+    [
+        %% Field names starting with "inline" are indexed as
+        %% inline fields so that we can test filtering.
+        {dynamic_field, [
+            {name, "inline*"},
+            {inline, true}
+        ]},
+
+        %% Everything else is a string
+        {dynamic_field, [
+            {name, "*"}
+        ]}
+    ]
+}.
