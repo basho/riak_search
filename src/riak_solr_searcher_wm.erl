@@ -65,7 +65,14 @@ malformed_request(Req, State) ->
                                                  wt=wrq:get_qs_value("wt", "standard", Req),
                                                  presort=to_atom(string:to_lower(wrq:get_qs_value("presort", "score", Req)))}}
                     catch _ : Error ->
-                        {true, riak_solr_error:log_error(Req, Error), State}
+                            Msg = riak_search_utils:err_msg(Error),
+                            lager:error(Msg),
+                            Req1 = wrq:set_resp_header("Content-Type", "text/plain",
+                                                       Req),
+                            Req2 = wrq:append_to_response_body(list_to_binary(Msg),
+                                                               Req1),
+
+                            {true, Req2, State}
                     end;
                 _Error ->
                     {true, Req, State}
