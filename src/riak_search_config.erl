@@ -91,23 +91,25 @@ handle_call({get_schema, SchemaName}, _From, State) ->
             {ok, RawSchema} = riak_search_utils:consult(RawSchemaBinary),
             {ok, Schema} = riak_search_schema_parser:from_eterm(SchemaName, RawSchema),
             true = ets:insert(Table, {SchemaName, Schema}),
-            
+
             %% Update buckets n_val...
             ensure_n_val_setting(Schema),
-            
+
             {reply, {ok, Schema}, State};
-        Error ->
-            lager:error("Error getting schema '~s'.~n~p", [SchemaName, Error]),
+        {error, Reason} = Error ->
+            lager:critical("Error getting schema '~s': ~p", [SchemaName,
+                    file:format_error(Reason)]),
             throw(Error)
 end;
-        
+
 handle_call({get_raw_schema, SchemaName}, _From, State) ->
     Client = State#state.client,
     case get_raw_schema_from_kv(Client, SchemaName) of
         {ok, RawSchema} -> 
             {reply, {ok, RawSchema}, State};
-        Error ->
-            lager:error("Error getting schema '~s'.~n~p", [SchemaName, Error]),
+        {error, Reason} = Error ->
+            lager:critical("Error getting schema '~s': ~p", [SchemaName,
+                    file:format_error(Reason)]),
             throw(Error)
     end;
         
