@@ -117,24 +117,18 @@ handle_call({put_raw_schema, SchemaName, RawSchemaBinary}, _From, State) ->
     %% KV.
     case riak_search_utils:consult(RawSchemaBinary) of
         {ok, RawSchema} ->
-            case riak_search_schema_parser:from_eterm(SchemaName, RawSchema) of
-                {ok, Schema} ->
-                    %% Update buckets n_val...
-                    ensure_n_val_setting(Schema),
-                    
-                    %% Clear the local cache entry...
-                    Table = State#state.schema_table,
-                    true = ets:insert(Table, {SchemaName, Schema}),
-                    
-                    %% Write to Riak KV...
-                    Client = State#state.client,
-                    put_raw_schema_to_kv(Client, SchemaName, RawSchemaBinary),
-                    {reply, ok, State};
-                Error ->
-                    lager:error("Error getting schema '~s'.~n~p",
-                                [SchemaName, Error]),
-                    throw(Error)
-            end;
+            {ok, Schema} = riak_search_schema_parser:from_eterm(SchemaName, RawSchema),
+            %% Update buckets n_val...
+            ensure_n_val_setting(Schema),
+
+            %% Clear the local cache entry...
+            Table = State#state.schema_table,
+            true = ets:insert(Table, {SchemaName, Schema}),
+
+            %% Write to Riak KV...
+            Client = State#state.client,
+            put_raw_schema_to_kv(Client, SchemaName, RawSchemaBinary),
+            {reply, ok, State};
         Error ->
             lager:error("Could not parse schema: ~p", [Error]),
             Error
