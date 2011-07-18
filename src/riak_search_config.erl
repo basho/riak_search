@@ -162,7 +162,7 @@ get_raw_schema_from_kv(Client, SchemaName) when is_binary(SchemaName) ->
         {ok, Entry} ->
             {ok, riak_object:get_value(Entry)};
         {error, notfound} ->
-            {ok, _B} = file:read_file(?DEFAULT_SCHEMA)
+            file:read_file(?DEFAULT_SCHEMA)
     end.
 
 %% Set the schema for an index.
