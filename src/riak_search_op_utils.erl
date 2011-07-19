@@ -89,9 +89,7 @@ it_op_inner(Pid, Ref, Op) ->
             {eof, Op};
         {result, Result, Ref} ->
             {Result, Op, fun() -> it_op_inner(Pid, Ref, Op) end};
-        X ->
-            io:format("it_inner(~p, ~p, ~p)~n>> unknown message: ~p~n", [Pid, Ref, Op, X])
-    end.
+   end.
 
 %% @private This runs in a separate process, collecting the incoming
 %% messages from an operation, and holding the message until it is
@@ -131,6 +129,18 @@ it_op_collector_loop(Parent, _Ref, eof) ->
 
 %% Given an iterator, gather results into an accumulator, and send to
 %% an OutputPid with OutputRef once we've collected enough results.
+gather_iterator_results(OutputPid, OutputRef, Iterator) ->
+    gather_iterator_results(OutputPid, OutputRef, Iterator, []).
+gather_iterator_results(OutputPid, OutputRef, {Term, Op, Iterator}, Acc)
+  when length(Acc) > ?RESULTVEC_SIZE ->
+    OutputPid ! {results, lists:reverse(Acc), OutputRef},
+    gather_iterator_results(OutputPid, OutputRef, {Term, Op, Iterator}, []);
+gather_iterator_results(OutputPid, OutputRef, {Term, _Op, Iterator}, Acc) ->
+    gather_iterator_results(OutputPid, OutputRef, Iterator(), [Term|Acc]);
+gather_iterator_results(OutputPid, OutputRef, {eof, _}, Acc) ->
+    OutputPid ! {results, lists:reverse(Acc), OutputRef},
+    OutputPid ! {disconnect, OutputRef}.
+
 gather_iterator_results(OutputPid, OutputRef, Iterator) ->
     gather_iterator_results(OutputPid, OutputRef, Iterator, []).
 gather_iterator_results(OutputPid, OutputRef, {Term, Op, Iterator}, Acc)

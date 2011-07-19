@@ -24,9 +24,18 @@ preplan(Op, State) ->
             riak_search_op:preplan(NodeOp, State)
     end.
 
+%% RPZ For now assume first term is smallest, do it first in a
+%% sequential manner and then execute rest of terms in concurrent
+%% fashion feeding in doc IDs from first term (feed the IDs all the
+%% way down to merge_index to act as low-level filter)
 chain_op(Op, OutputPid, OutputRef, State) ->
     %% Create an iterator chain...
-    OpList = Op#intersection.ops,
+    [H|OpList] = Op#intersection.ops,
+
+    %% RPZ Right here I want to execute first term to completion
+    First1 = riak_search_op_utils:iterator_tree(fun select_fun/2, [H], State),
+    First2 = make_filter_iterator(First1)
+
     Iterator1 = riak_search_op_utils:iterator_tree(fun select_fun/2, OpList, State),
     Iterator2 = make_filter_iterator(Iterator1),
 
