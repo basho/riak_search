@@ -42,7 +42,7 @@ malformed_request(Req, State) ->
                     {true, Req2, State}
             end;
         Error ->
-            lager:error("Could not parse schema for index'~s' Cause: ~p",
+            lager:error("Could not parse schema for index '~s': ~p",
                         [Index, Error]),
             {true, Req, State}
     end.
