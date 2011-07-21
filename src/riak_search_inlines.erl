@@ -301,7 +301,7 @@ single4_test() ->
 %% if you pass in an index.  Furthermore the put_schema and client
 %% require a running instance.  A much saner way to do this would be
 %% to get the schema at the outskirt of the API and thread the
-%% resulting datastructure through the rest of the calls.  This was
+%% resulting datastructure through the rest of the calls.  This way
 %% the functions are once again pure and easily tested.
 test_helper(Query, ExpectedResult) ->
     %% Set the schema...
