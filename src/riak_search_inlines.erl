@@ -38,11 +38,11 @@ passes_inlines_1(Props, #scope { field=Field, ops=Ops }, State) ->
     passes_inlines_1(Props, Ops, NewState);
       
 passes_inlines_1(Props, #intersection { ops=Ops }, State) ->
-    F = fun(X) -> passes_inlines_1(Props, X, State) end, 
+    F = fun(X) -> passes_inlines_1(Props, X, State) end,
     lists:all(F, Ops);
 
 passes_inlines_1(Props, #union { ops=Ops }, State) -> 
-    F = fun(X) -> passes_inlines_1(Props, X, State) end, 
+    F = fun(X) -> passes_inlines_1(Props, X, State) end,
     lists:any(F, Ops);
 
 passes_inlines_1(Props, #group { ops=Ops }, State) -> 
@@ -144,47 +144,6 @@ passes_range_inner(Props, Field, {FromBorder, FromTerm}, {ToBorder, ToTerm}, Siz
     
     lists:any(F, Terms).
 
-%% passes_inlines_1(Props, Inline) when is_record(Inline, inclusive_range) ->
-%%     Start = hd(Inline#inclusive_range.start_op),
-%%     End = hd(Inline#inclusive_range.end_op),
-%%     {_Index, StartField, StartValue} = Start#term.q,
-%%     {_Index, StartField, EndValue} = End#term.q,
-%%     Value = proplists:get_value(StartField, Props),
-%%     StartValue =< Value andalso Value =< EndValue;
-
-%% passes_inlines(Props, Inline) when is_record(Inline, exclusive_range) ->
-%%     Start = hd(Inline#exclusive_range.start_op),
-%%     End = hd(Inline#exclusive_range.end_op),
-%%     {_Index, StartField, StartValue} = Start#term.q,
-%%     {_Index, StartField, EndValue} = End#term.q,
-%%     Value = proplists:get_value(StartField, Props),
-%%     StartValue < Value andalso Value < EndValue;
-
-%% passes_inlines(Props, Inline) when is_record(Inline, term) ->
-%%     {_Index, Field, SearchTerm} = Inline#term.q,
-%%     InlineTerm = proplists:get_value(Field, Props),
-%%     case proplists:keyfind(1, 'wildcard', Inline#term.options) of
-%%         {wildcard, Wildcard} when Wildcard == 'one'; Wildcard == 'all' ->
-%%             wildcard_match(SearchTerm, InlineTerm, Wildcard);
-%%         _ ->
-%%             %% Exact match.
-%%             SearchTerm == InlineTerm
-%%     end.
-%% wildcard_match(SearchTerm, InlineTerm, Wildcard) when is_binary(SearchTerm), is_binary(InlineTerm) -> 
-%%     Size = size(SearchTerm),
-%%     case InlineTerm of
-%%         <<SearchTerm:Size/binary, _>> when Wildcard=='one' -> 
-%%             true;
-%%         <<SearchTerm:Size/binary, _/binary>> when Wildcard=='all' -> 
-%%             true;
-%%         _ -> 
-%%             false
-%%     end;
-%% wildcard_match(_, _, _) ->
-%%     false.
-
-
-
 -ifdef(TEST).
 
 
@@ -218,7 +177,7 @@ schema() ->
      ]
     }.
 
-doc() ->
+doc(Schema) ->
     Fields = [
               {<<"regular_field">>, <<"value">>},
               {<<"field1">>, <<"value1">>},
@@ -229,7 +188,7 @@ doc() ->
               {<<"int_field2">>, <<"50">>},
               {<<"int_field3">>, <<"-50">>}
              ],
-    riak_indexed_doc:new(?INDEX, <<"doc1">>, Fields, []).
+    riak_indexed_doc:new(Schema, <<"doc1">>, Fields, []).
 
 
 term1_test() ->
@@ -333,21 +292,33 @@ single3_test() ->
 single4_test() ->
     test_helper("field2:valueZZZ?", false).
 
+%% Ugh, theres are few things I don't like about this but for the sake
+%% of just getting the tests to run I'll bypass `riak_search_config'
+%% and `riak_search_client'.  The main problem is that many funs are
+%% impure (i.e. rely on an actual running Riak instance) when they
+%% don't need to be.  This is because they call
+%% `riak_search_config:get_schema' which requires a running instance
+%% if you pass in an index.  Furthermore the put_schema and client
+%% require a running instance.  A much saner way to do this would be
+%% to get the schema at the outskirt of the API and thread the
+%% resulting datastructure through the rest of the calls.  This way
+%% the functions are once again pure and easily tested.
 test_helper(Query, ExpectedResult) ->
     %% Set the schema...
     RawSchema = iolist_to_binary(io_lib:format("~p.", [schema()])),
-    riak_search_config:put_raw_schema(?INDEX, RawSchema),
-    {ok, Schema} = riak_search_config:get_schema(?INDEX),
+    {ok, RawSchema2} = riak_search_utils:consult(RawSchema),
+    {ok, Schema} = riak_search_schema_parser:from_eterm(?INDEX, RawSchema2),
     
     %% Create the doc, analyze, and get the properties from the first
     %% posting...
-    IdxDoc = riak_indexed_doc:analyze(doc()),
+    IdxDoc = riak_indexed_doc:analyze(doc(Schema)),
     Postings = riak_indexed_doc:postings(IdxDoc),
     Props = element(5, hd(Postings)),
 
-    %% Parse the FilterOps...
-    {ok, C} = riak_search:local_client(),
-    {ok, FilterOps} = C:parse_filter(?INDEX, Query),
+    {ok, FilterOps} = lucene_parser:parse(
+                        riak_search_utils:to_list(Schema:name()),
+                        riak_search_utils:to_list(Schema:default_field()),
+                        riak_search_utils:to_list(Query)),
 
     ?assertEqual(passes_inlines(Schema, Props, FilterOps), ExpectedResult).
            
