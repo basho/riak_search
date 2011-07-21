@@ -235,7 +235,8 @@ remove_old_entries(RiakClient, SearchClient, Index, DocId) ->
     end.
 
 %% Make an indexed document under Index/DocId from the RiakObject
--spec make_indexed_doc(index(), docid(), riak_object(), extractdef()) -> idxdoc().
+-spec make_indexed_doc(index(), docid(), riak_object(), extractdef()) ->
+                              idxdoc() | deleted.
 make_indexed_doc(Index, DocId, RiakObject, Extractor) ->
     case riak_kv_util:is_x_deleted(RiakObject) of
         true ->
@@ -244,9 +245,8 @@ make_indexed_doc(Index, DocId, RiakObject, Extractor) ->
             {ok, Schema} = riak_search_config:get_schema(Index),
             DefaultField = Schema:default_field(),
             Fields = run_extract(RiakObject, DefaultField, Extractor),
-            IdxDoc0 = riak_indexed_doc:new(Index, DocId, Fields, []),
-            IdxDoc = riak_indexed_doc:analyze(IdxDoc0),
-            IdxDoc
+            IdxDoc = riak_indexed_doc:new(Index, DocId, Fields, []),
+            riak_indexed_doc:analyze(IdxDoc)
     end.
  
 -spec make_index(riak_object()) -> binary().
