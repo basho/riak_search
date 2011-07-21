@@ -198,7 +198,6 @@ normalize_fields(DocFields, Schema) ->
                           end
                   end;
              ({InFieldName, FieldValue}, _) ->
-                  ?PRINT({expected_binaries, InFieldName, FieldValue}),
                   throw({expected_binaries, InFieldName, FieldValue})
           end,
     {RevRegular, RevInlines} = lists:foldl(Fun, {[], []}, DocFields),
@@ -368,18 +367,20 @@ normalize_fields_test() ->
                                    {<<"afield">>,<<"two">>},
                                    {<<"afieldtoo">>, <<"three">>}], Schema)),
 
-    ?assertEqual({[{<<"anotherfield">>, <<"abc def ghi">>, []},
-                   {<<"afield">>,<<"one two three">>, []}],
-                  [{<<"inline">>, <<"first second">>, []}]},
-                 normalize_fields([{<<"anotherfield">>,<<"abc">>},
-                                   {<<"afieldtoo">>,<<"one">>},
-                                   {<<"skipme">>,<<"skippable terms">>},
-                                   {<<"anotherfieldtoo">>,<<"def">>},
-                                   {<<"afield">>,<<"two">>},
-                                   {<<"skipmetoo">>,<<"not needed">>},
-                                   {<<"anotherfield">>,<<"ghi">>},
-                                   {<<"afieldtoo">>,<<"three">>},
-                                   {<<"inline">>,<<"first">>},
-                                   {<<"inlinetoo">>,<<"second">>}], Schema)).
+    {Fields, InlineFields} =
+        normalize_fields([{<<"anotherfield">>,<<"abc">>},
+                          {<<"afieldtoo">>,<<"one">>},
+                          {<<"skipme">>,<<"skippable terms">>},
+                          {<<"anotherfieldtoo">>,<<"def">>},
+                          {<<"afield">>,<<"two">>},
+                          {<<"skipmetoo">>,<<"not needed">>},
+                          {<<"anotherfield">>,<<"ghi">>},
+                          {<<"afieldtoo">>,<<"three">>},
+                          {<<"inline">>,<<"first">>},
+                          {<<"inlinetoo">>,<<"second">>}], Schema),
+
+    ?assert(lists:member({<<"anotherfield">>, <<"abc def ghi">>, []}, Fields)),
+    ?assert(lists:member({<<"afield">>,<<"one two three">>, []}, Fields)),
+    ?assert(lists:member({<<"inline">>, <<"first second">>, []}, InlineFields)).
 
 -endif. % TEST
