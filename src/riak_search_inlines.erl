@@ -144,47 +144,6 @@ passes_range_inner(Props, Field, {FromBorder, FromTerm}, {ToBorder, ToTerm}, Siz
     
     lists:any(F, Terms).
 
-%% passes_inlines_1(Props, Inline) when is_record(Inline, inclusive_range) ->
-%%     Start = hd(Inline#inclusive_range.start_op),
-%%     End = hd(Inline#inclusive_range.end_op),
-%%     {_Index, StartField, StartValue} = Start#term.q,
-%%     {_Index, StartField, EndValue} = End#term.q,
-%%     Value = proplists:get_value(StartField, Props),
-%%     StartValue =< Value andalso Value =< EndValue;
-
-%% passes_inlines(Props, Inline) when is_record(Inline, exclusive_range) ->
-%%     Start = hd(Inline#exclusive_range.start_op),
-%%     End = hd(Inline#exclusive_range.end_op),
-%%     {_Index, StartField, StartValue} = Start#term.q,
-%%     {_Index, StartField, EndValue} = End#term.q,
-%%     Value = proplists:get_value(StartField, Props),
-%%     StartValue < Value andalso Value < EndValue;
-
-%% passes_inlines(Props, Inline) when is_record(Inline, term) ->
-%%     {_Index, Field, SearchTerm} = Inline#term.q,
-%%     InlineTerm = proplists:get_value(Field, Props),
-%%     case proplists:keyfind(1, 'wildcard', Inline#term.options) of
-%%         {wildcard, Wildcard} when Wildcard == 'one'; Wildcard == 'all' ->
-%%             wildcard_match(SearchTerm, InlineTerm, Wildcard);
-%%         _ ->
-%%             %% Exact match.
-%%             SearchTerm == InlineTerm
-%%     end.
-%% wildcard_match(SearchTerm, InlineTerm, Wildcard) when is_binary(SearchTerm), is_binary(InlineTerm) -> 
-%%     Size = size(SearchTerm),
-%%     case InlineTerm of
-%%         <<SearchTerm:Size/binary, _>> when Wildcard=='one' -> 
-%%             true;
-%%         <<SearchTerm:Size/binary, _/binary>> when Wildcard=='all' -> 
-%%             true;
-%%         _ -> 
-%%             false
-%%     end;
-%% wildcard_match(_, _, _) ->
-%%     false.
-
-
-
 -ifdef(TEST).
 
 
