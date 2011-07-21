@@ -311,7 +311,10 @@ put(RiakClient, IdxDoc) ->
         {error, notfound} ->
             DocObj = riak_object:new(Bucket, Key, IdxDoc)
     end,
-    RiakClient:put(DocObj).
+    case RiakClient:put(DocObj) of
+        ok -> ok;
+        {error, _} -> {error, "Failed to write indexed document"}
+    end.
 
 put_obj(RiakClient, RiakObj) ->
     RiakClient:put(RiakObj).
@@ -325,8 +328,7 @@ delete(RiakClient, DocIndex, DocID) ->
     DocKey = DocID,
     case RiakClient:delete(DocBucket, DocKey) of
         ok -> ok;
-        {error, notfound} -> ok;
-        Other -> Other
+        {error, notfound} -> ok
     end.
 
 idx_doc_bucket(Bucket) when is_binary(Bucket) ->

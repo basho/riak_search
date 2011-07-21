@@ -30,7 +30,7 @@
 -type user_strorbin() :: string() | binary().                       
 
 
--type extractdef() :: {funterm(), args()}.
+-type extractdef() :: {funterm(), field(), args()}.
 -type funterm() :: {modfun, atom(), atom()} |
                    {qfun, extract_qfun()} |
                    {jsanon, binary()} |
@@ -41,10 +41,11 @@
 -type riak_object() :: tuple(). % no good way to define riak_object
 -type search_client() :: tuple().       
 
--type extract_qfun() :: fun((riak_object(),any()) -> search_fields()).
+-type extract_qfun() :: fun((riak_object(),field(),any()) -> search_fields()).
 -type args() :: any().
 
 -type index() :: binary().
+-type field() :: binary().
 -type docid() :: binary().
 -type idxdoc() :: tuple(). % #riak_indexed_doc{}
 
@@ -200,7 +201,7 @@ to_binary(Val) ->
 %%
 %% Index the provided riak object and return ok on success.
 %%
--spec index_object(riak_object(), extractdef()) -> ok.
+-spec index_object(riak_object(), extractdef()) -> ok | {error, any()}.
 index_object(RiakObject, Extractor) ->
     %% Set up
     {ok, RiakClient} = riak:local_client(),
@@ -259,7 +260,7 @@ make_docid(RiakObject) ->
     
 %% Run the extraction function against the RiakObject to get a list of
 %% search fields and data
--spec run_extract(riak_object(), string(), extractdef()) -> search_fields().
+-spec run_extract(riak_object(), field(), extractdef()) -> search_fields().
 run_extract(RiakObject, DefaultField, {{modfun, Mod, Fun}, Arg}) ->
     Mod:Fun(RiakObject, DefaultField, Arg);
 run_extract(RiakObject, DefaultField, {{qfun, Fun}, Arg}) ->
