@@ -297,7 +297,7 @@ single4_test() ->
 %% and `riak_search_client'.  The main problem is that many funs are
 %% impure (i.e. rely on an actual running Riak instance) when they
 %% don't need to be.  This is because they call
-%% `riak_search_config:get_schema' which reqguires a running instance
+%% `riak_search_config:get_schema' which requires a running instance
 %% if you pass in an index.  Furthermore the put_schema and client
 %% require a running instance.  A much saner way to do this would be
 %% to get the schema at the outskirt of the API and thread the
