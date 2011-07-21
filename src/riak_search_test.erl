@@ -83,6 +83,11 @@ test_inner({schema, Schema}, Root) ->
     riak_search_cmd:set_schema(?TEST_INDEX, filename:join(Root, Schema)),
     true;
 
+test_inner({schema, Node, Schema}, Root) ->
+    rpc:call(Node, riak_search_cmd, set_schema,
+             [?TEST_INDEX, filename:join(Root, Schema)]),
+    true;
+
 test_inner({solr, Path}, Root) ->
     io:format("~n :: Running Solr document(s) '~s'...~n", [Path]),
     solr_search:index_dir(?TEST_INDEX, filename:join(Root, Path)),
@@ -127,40 +132,67 @@ test_inner({search, Query, Validators}, _Root) ->
             false
     end;
 
+test_inner({search, Node, Query, Validators}, _Root) ->
+    case rpc:call(Node, search, search, [?TEST_INDEX, Query]) of
+        {Length, Results} ->
+            case validate_results(Length, Results, Validators) of
+                pass ->
+                    io:format("~n    [√] PASS QUERY » ~s~n", [Query]),
+                    true;
+                {fail, Errors} ->
+                    io:format("~n    [ ] FAIL QUERY » ~s~n", [Query]),
+                    [io:format("        - ~s~n", [X]) || X <- Errors],
+                    false
+            end;
+        Error ->
+            io:format("~n    [ ] FAIL QUERY » ~s~n", [Query]),
+            io:format("        - ERROR1: ~p~n", [Error]),
+            false
+    end;
+
 test_inner({solr_select, Params, Validators}, _Root) ->
+    {Host, Port} = hd(app_helper:get_env(riak_core, http)),
+    test_inner({solr_select, Host, Port, Params, Validators}, _Root);
+
+test_inner({solr_select, Host, Port, Params, Validators}, _Root) ->
     %% Run the query...
     inets:start(),
-    {Hostname, Port} = hd(app_helper:get_env(riak_core, http)),
     Query = proplists:get_value(q, Params),
     QS = to_querystring(Params),
-    Url = io_lib:format("http://~s:~p/solr/~s/select?~s", [Hostname, Port, ?TEST_INDEX, QS]),
+    Url = io_lib:format("http://~s:~p/solr/~s/select?~s", [Host, Port, ?TEST_INDEX, QS]),
     try httpc:request(lists:flatten(Url)) of
         {ok, {{_, 200, _}, _, Body}} ->
             Format = proplists:get_value(wt, Params, xml),
             {Length, Results} = parse_solr_select_result(Format, Body),
             case validate_results(Length, Results, Validators) of
                 pass -> 
-                    io:format("~n    [√] PASS SOLR SELECT » ~s (~s)~n", [Query, QS]),
+                    io:format("~n    [√] PASS SOLR SELECT » ~s:~p ~s (~s)~n",
+                              [Host, Port, Query, QS]),
                     true;
                 {fail, Errors} ->
-                    io:format("~n    [ ] FAIL SOLR SELECT » ~s (~s)~n", [Query, QS]),
+                    io:format("~n    [ ] FAIL SOLR SELECT » ~s:~p ~s (~s)~n",
+                              [Host, Port, Query, QS]),
                     [io:format("        - ~s~n", [X]) || X <- Errors],
                     false
             end;
         {ok, {{_, Status, _}, _, _}} ->
-            io:format("~n    [ ] FAIL SOLR SELECT » ~s (~s)~n", [Query, QS]),
+            io:format("~n    [ ] FAIL SOLR SELECT » ~s:~p ~s (~s)~n",
+                      [Host, Port, Query, QS]),
             io:format("        - Status ~p from ~s~n", [Status, Url]),
             false;
         {error, Error} ->
-            io:format("~n    [ ] FAIL SOLR SELECT » ~s (~s)~n", [Query, QS]),
+            io:format("~n    [ ] FAIL SOLR SELECT » ~s:~p ~s (~s)~n",
+                      [Host, Port, Query, QS]),
             io:format("        - ERROR: ~p~n", [Error]),
             false
     catch 
         _Type : Error ->
-            io:format("~n    [ ] FAIL SOLR SELECT » ~s (~s)~n", [Query, QS]),
+            io:format("~n    [ ] FAIL SOLR SELECT » ~s:~p ~s (~s)~n",
+                      [Host, Port, Query, QS]),
             io:format("        - ERROR: ~p : ~p~n", [Error, erlang:get_stacktrace()]),
             false
     end;
+
 test_inner({solr_update, Path, Params}, Root) ->
     io:format("~n :: Running Solr Update '~s' (via HTTP)...~n", [Path]),
 
@@ -191,8 +223,10 @@ test_inner({solr_update, Path, Params}, Root) ->
             io:format("~n :: Solr Update Failed! (Error: ~p)~n", [Error]),
             throw({solr_update_error, Error})
     end;
+
 test_inner({solr_update, Path}, Root) ->
     test_inner({solr_update, Path, []}, Root);
+
 test_inner({index_bucket, Bucket}, _) ->
     ok = riak_search_kv_hook:install(Bucket),
     true;
@@ -284,6 +318,7 @@ test_inner({delobj, Bucket, Key}, _) ->
         _ ->
             false
     end;
+
 test_inner(Other, _Root) ->
     io:format("Unexpected test step: ~p root ~p~n", [Other, _Root]),
     throw({unexpected_test_step, Other}).

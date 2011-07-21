@@ -37,9 +37,7 @@
                    {jsanon, {binary(), binary()}} |
                    {jsfun, binary()}.
 
--type riak_client() :: tuple(). % no good way to define riak_client
 -type riak_object() :: tuple(). % no good way to define riak_object
--type search_client() :: tuple().       
 
 -type extract_qfun() :: fun((riak_object(),any()) -> search_fields()).
 -type args() :: any().
@@ -212,7 +210,7 @@ index_object(RiakObject, Extractor) ->
     NewIdxDoc = make_indexed_doc(Index, DocId, RiakObject, Extractor),
 
     %% If all ok, remove the old entries and index the new
-    remove_old_entries(RiakClient, SearchClient, Index, DocId),
+    riak_indexed_doc:remove_entries(RiakClient, SearchClient, Index, DocId),
 
     case NewIdxDoc of
         deleted ->
@@ -222,16 +220,6 @@ index_object(RiakObject, Extractor) ->
             Postings = riak_indexed_doc:postings(NewIdxDoc),
             SearchClient:index_terms(Postings),
             riak_indexed_doc:put(RiakClient, NewIdxDoc)
-    end.
-
-%% Remove any old index entries if they exist
--spec remove_old_entries(riak_client(), search_client(), index(), docid()) -> ok.
-remove_old_entries(RiakClient, SearchClient, Index, DocId) ->
-    case riak_indexed_doc:get(RiakClient, Index, DocId) of
-        {error, notfound} ->
-            ok;
-        OldIdxDoc ->
-            SearchClient:delete_doc_terms(OldIdxDoc)
     end.
 
 %% Make an indexed document under Index/DocId from the RiakObject

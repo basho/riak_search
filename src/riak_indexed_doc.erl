@@ -15,8 +15,9 @@
     postings/1,
     to_mochijson2/1, to_mochijson2/2,
     analyze/1,
-    new_obj/2, get_obj/3, put_obj/2, get/3, put/2, 
-    delete/2, delete/3
+    new_obj/2, get_obj/3, put_obj/2, get/3, put/2, put/3,
+    delete/2, delete/3,
+    remove_entries/4
 ]).
 
 -include("riak_search.hrl").
@@ -301,6 +302,9 @@ new_obj(DocIndex, DocID) ->
 
 %% Write the object to Riak.
 put(RiakClient, IdxDoc) ->
+    put(RiakClient, IdxDoc, []).
+
+put(RiakClient, IdxDoc, Opts) ->
     DocIndex = index(IdxDoc),
     DocID = id(IdxDoc),
     Bucket = idx_doc_bucket(DocIndex),
@@ -311,11 +315,10 @@ put(RiakClient, IdxDoc) ->
         {error, notfound} ->
             DocObj = riak_object:new(Bucket, Key, IdxDoc)
     end,
-    RiakClient:put(DocObj).
+    RiakClient:put(DocObj, Opts).
 
 put_obj(RiakClient, RiakObj) ->
     RiakClient:put(RiakObj).
-    
 
 delete(RiakClient, IdxDoc) ->
     delete(RiakClient, index(IdxDoc), id(IdxDoc)).
@@ -327,6 +330,16 @@ delete(RiakClient, DocIndex, DocID) ->
         ok -> ok;
         {error, notfound} -> ok;
         Other -> Other
+    end.
+
+%% Remove any old index entries if they exist
+%% -spec remove_old_entries(riak_client(), search_client(), index(), docid()) -> ok.
+remove_entries(RiakClient, SearchClient, Index, DocId) ->
+    case riak_indexed_doc:get(RiakClient, Index, DocId) of
+        {error, notfound} ->
+            ok;
+        OldIdxDoc ->
+            SearchClient:delete_doc_terms(OldIdxDoc)
     end.
 
 idx_doc_bucket(Bucket) when is_binary(Bucket) ->
