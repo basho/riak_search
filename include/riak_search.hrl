@@ -1,3 +1,8 @@
+%%%===================================================================
+%%% Macros
+%%%===================================================================
+
+%% RPZ Remove some of these macros?
 -ifndef(PRINT).
 -define(PRINT(Var), io:format("DEBUG: ~p:~p - ~p~n~n ~p~n~n", [?MODULE, ?LINE, ??Var, Var])).
 -define(TIMEON, erlang:put(debug_timer, [now()|case erlang:get(debug_timer) == undefined of true -> []; false -> erlang:get(debug_timer) end])).
@@ -8,6 +13,10 @@
 -define(RESULTVEC_SIZE, 1000).
 -define(OPKEY(Tag, Op), {Tag, element(2, Op)}).
 -define(JSPOOL_SEARCH_EXTRACT, riak_search_js_extract).
+
+%%%===================================================================
+%%% Records
+%%%===================================================================
 
 -record(search_state, {
           parent=undefined,
@@ -96,3 +105,13 @@
                             analyzer_factory,
                             analyzer_args,
                             inline=false}).
+
+%%%===================================================================
+%%% Types
+%%%===================================================================
+
+-type index()           :: binary().
+-type id()              :: binary().
+-type idx_doc()         :: #riak_idx_doc{}.
+
+

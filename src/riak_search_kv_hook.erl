@@ -44,14 +44,9 @@
 -type extract_qfun() :: fun((riak_object(),any()) -> search_fields()).
 -type args() :: any().
 
--type index() :: binary().
--type docid() :: binary().
--type idxdoc() :: tuple(). % #riak_indexed_doc{}
-
 -type search_fields() :: [{search_field(),search_data()}].
 -type search_field() :: string().
 -type search_data() :: string() | binary().
-    
 
 %% Install the kv/search integration hook on the specified bucket
 %% TODO: The code below can be
@@ -225,17 +220,15 @@ index_object(RiakObject, Extractor) ->
     end.
 
 %% Remove any old index entries if they exist
--spec remove_old_entries(riak_client(), search_client(), index(), docid()) -> ok.
+-spec remove_old_entries(riak_client(), search_client(), index(), id()) -> ok.
 remove_old_entries(RiakClient, SearchClient, Index, DocId) ->
     case riak_indexed_doc:get(RiakClient, Index, DocId) of
-        {error, notfound} ->
-            ok;
-        OldIdxDoc ->
-            SearchClient:delete_doc_terms(OldIdxDoc)
+        notfound -> ok;
+        OldIdxDoc -> SearchClient:delete_doc_terms(OldIdxDoc)
     end.
 
 %% Make an indexed document under Index/DocId from the RiakObject
--spec make_indexed_doc(index(), docid(), riak_object(), extractdef()) -> idxdoc().
+-spec make_indexed_doc(index(), id(), riak_object(), extractdef()) -> idx_doc().
 make_indexed_doc(Index, DocId, RiakObject, Extractor) ->
     case riak_kv_util:is_x_deleted(RiakObject) of
         true ->
@@ -245,8 +238,7 @@ make_indexed_doc(Index, DocId, RiakObject, Extractor) ->
             DefaultField = Schema:default_field(),
             Fields = run_extract(RiakObject, DefaultField, Extractor),
             IdxDoc0 = riak_indexed_doc:new(Index, DocId, Fields, []),
-            IdxDoc = riak_indexed_doc:analyze(IdxDoc0),
-            IdxDoc
+            riak_indexed_doc:analyze(IdxDoc0)
     end.
  
 -spec make_index(riak_object()) -> binary().

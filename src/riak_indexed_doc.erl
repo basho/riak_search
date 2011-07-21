@@ -1,8 +1,6 @@
-%% -------------------------------------------------------------------
 %%
 %% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
 %%
-%% -------------------------------------------------------------------
 
 -module(riak_indexed_doc).
 
@@ -285,13 +283,13 @@ get_obj(RiakClient, DocIndex, DocID) ->
     Key = DocID,
     RiakClient:get(Bucket, Key).
 
-%% Returns a #riak_idx_doc record.
-get(RiakClient, DocIndex, DocID) ->
-    case get_obj(RiakClient, DocIndex, DocID) of
-        {ok, Obj} -> 
-            riak_object:get_value(Obj);
-        Other ->
-            Other
+%% @doc If it exists, return the indexed doc in `Index' with `Id'
+-spec get(riak_client:riak_client(), index(), id()) ->
+                 idx_doc() | notfound.
+get(RiakClient, Index, ID) ->
+    case get_obj(RiakClient, Index, ID) of
+        {ok, Obj} -> riak_object:get_value(Obj);
+        {error, notfound} -> notfound
     end.
 
 new_obj(DocIndex, DocID) ->

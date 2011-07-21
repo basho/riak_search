@@ -156,7 +156,7 @@ search_doc(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows,
         riak_indexed_doc:get(RiakClient, Index, DocID)
     end,
     Documents = riak_search_utils:ptransform(F, Results),
-    {Length, MaxScore, [X || X <- Documents, X /= {error, notfound}]}.
+    {Length, MaxScore, [X || X <- Documents, X /= notfound]}.
 
 %% Index a specified #riak_idx_doc
 index_doc(IdxDoc) ->
@@ -311,7 +311,7 @@ delete_docs(Docs) ->
                         NewObjsAcc = [{DocIndex, DocID}|ObjsAccIn],
                         NewDeleteAcc = [DeleteTerms|DeleteAccIn],
                         {NewObjsAcc, NewDeleteAcc};
-                    {error, notfound} ->
+                    notfound ->
                         {ObjsAccIn, DeleteAccIn}
                 end
         end,
@@ -333,6 +333,7 @@ delete_doc_terms(IdxDoc) ->
     delete_terms(Postings).
 
 %% Delete the specified term - better to use the plural 'terms' interfaces.
+%% RPZ Is this fun used anywhere?
 delete_term(Index, Field, Term, DocID) ->
     K =  riak_search_utils:current_key_clock(),
     delete_terms([{Index, Field, Term, DocID, K}]).
