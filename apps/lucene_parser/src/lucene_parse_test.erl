@@ -535,9 +535,9 @@ test_helper(String, Expect) ->
     {ok, Actual} = lucene_parse:parse(Tokens),
     is_equal(Actual, Expect) orelse begin
         Msg = 
-        "Query   : ~p~n" ++
-        "Expected: ~p~n" ++
-        "Actual  : ~p~n",
+        "Query   : ~p~n"
+        "Expected: ~p~n"
+        "Actual  : ~p",
         error_logger:error_msg(Msg, [String, Expect, Actual]),
         throw({error_parsing_query, String})
     end.
@@ -553,6 +553,6 @@ is_equal(T1, T2) when is_tuple(T1) andalso is_tuple(T2) ->
 is_equal(Other, Other) -> 
     true;
 is_equal(Other1, Other2) ->
-    error_logger:error_msg("Mismatch: ~p /= ~p~n", [Other1, Other2]),
+    error_logger:error_msg("Mismatch: ~p /= ~p", [Other1, Other2]),
     false.
 

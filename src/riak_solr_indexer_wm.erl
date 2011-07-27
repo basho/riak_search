@@ -33,11 +33,17 @@ malformed_request(Req, State) ->
                 {ok, Command, Entries} = SolrClient:parse_solr_xml(Schema, Body),
                 {false, Req, State#state { schema=Schema, command=Command, entries=Entries }}
             catch _ : Error ->
-                {true, riak_solr_error:log_error(Req, Error), State}
+                    Msg = riak_search_utils:err_msg(Error),
+                    lager:error(Msg),
+                    Req1 = wrq:set_resp_header("Content-Type", "text/plain",
+                                               Req),
+                    Req2 = wrq:append_to_response_body(list_to_binary(Msg),
+                                                       Req1),
+                    {true, Req2, State}
             end;
         Error ->
-            error_logger:error_msg("Could not parse schema for index'~s'.~n~p~n~p~n",
-                                   [Index, Error, erlang:get_stacktrace()]),
+            lager:error("Could not parse schema for index '~s': ~p",
+                        [Index, Error]),
             {true, Req, State}
     end.
 
@@ -47,8 +53,7 @@ process_post(Req, State = #state{ solr_client=SolrClient, schema=Schema, command
         %% Hard coding 200 to be like Solr
         {{halt, 200}, Req, State}
     catch _ : Error ->
-        Msg = "Error in riak_solr_indexer_wm:process_post/2: ~p~n~p~n",
-        error_logger:error_msg(Msg, [Error, erlang:get_stacktrace()]),
+        lager:error("Error processing post: ~p", [Error]),
         {false, Req, State}
     end.
 

@@ -52,6 +52,6 @@ collect_info_response(RepliesRemaining, Ref, Acc) ->
         {Ref, List} ->
             collect_info_response(RepliesRemaining - 1, Ref, List ++ Acc)
     after 5000 ->
-        error_logger:error_msg("range_loop timed out!"),
+        lager:error("range_loop timed out!"),
         throw({timeout, range_loop})
     end.

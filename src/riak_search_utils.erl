@@ -22,7 +22,8 @@
     binary_inc/2,
     ets_keys/1,
     consult/1,
-    ptransform/2
+    ptransform/2,
+    err_msg/1
 ]).
 
 -include("riak_search.hrl").
@@ -61,7 +62,7 @@ combine_terms({Index, DocID, Props1}, {Index, DocID, Props2}) ->
                            ),
     {Index, DocID, NewProps};
 combine_terms(Other1, Other2) ->
-    error_logger:error_msg("Could not combine terms: [~p, ~p]~n", [Other1, Other2]),
+    lager:error("Could not combine terms: [~p, ~p]", [Other1, Other2]),
     throw({could_not_combine, Other1, Other2}).
 
 to_list(A) when is_atom(A) -> atom_to_list(A);
@@ -245,6 +246,11 @@ ptransform_collect(Ref, Pids, Acc) when Pids /= [] ->
 ptransform_collect(_, [], Acc) ->
     %% We've read from all the pids, so return.
     Acc.
+
+err_msg({error, missing_field, FieldName}) ->
+    ?FMT("Request references undefined field: ~p~n", [FieldName]);
+err_msg(Error) ->
+    ?FMT("Unable to parse request: ~p", [Error]).
 
 -ifdef(TEST).
 

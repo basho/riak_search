@@ -91,23 +91,25 @@ handle_call({get_schema, SchemaName}, _From, State) ->
             {ok, RawSchema} = riak_search_utils:consult(RawSchemaBinary),
             {ok, Schema} = riak_search_schema_parser:from_eterm(SchemaName, RawSchema),
             true = ets:insert(Table, {SchemaName, Schema}),
-            
+
             %% Update buckets n_val...
             ensure_n_val_setting(Schema),
-            
+
             {reply, {ok, Schema}, State};
-        Error ->
-            error_logger:error_msg("Error getting schema '~s': ~n~p~n", [SchemaName, Error]),
+        {error, Reason} = Error ->
+            lager:critical("Error getting schema '~s': ~p", [SchemaName,
+                    file:format_error(Reason)]),
             throw(Error)
 end;
-        
+
 handle_call({get_raw_schema, SchemaName}, _From, State) ->
     Client = State#state.client,
     case get_raw_schema_from_kv(Client, SchemaName) of
         {ok, RawSchema} -> 
             {reply, {ok, RawSchema}, State};
-        Error ->
-            error_logger:error_msg("Error getting schema '~s': ~n~p~n", [SchemaName, Error]),
+        {error, Reason} = Error ->
+            lager:critical("Error getting schema '~s': ~p", [SchemaName,
+                    file:format_error(Reason)]),
             throw(Error)
     end;
         
@@ -117,25 +119,20 @@ handle_call({put_raw_schema, SchemaName, RawSchemaBinary}, _From, State) ->
     %% KV.
     case riak_search_utils:consult(RawSchemaBinary) of
         {ok, RawSchema} ->
-            case riak_search_schema_parser:from_eterm(SchemaName, RawSchema) of
-                {ok, Schema} ->
-                    %% Update buckets n_val...
-                    ensure_n_val_setting(Schema),
-                    
-                    %% Clear the local cache entry...
-                    Table = State#state.schema_table,
-                    true = ets:insert(Table, {SchemaName, Schema}),
-                    
-                    %% Write to Riak KV...
-                    Client = State#state.client,
-                    put_raw_schema_to_kv(Client, SchemaName, RawSchemaBinary),
-                    {reply, ok, State};
-                Error ->
-                    error_logger:error_msg("Error setting schema '~s': ~n~p~n", [SchemaName, Error]),
-                    throw(Error)
-            end;
+            {ok, Schema} = riak_search_schema_parser:from_eterm(SchemaName, RawSchema),
+            %% Update buckets n_val...
+            ensure_n_val_setting(Schema),
+
+            %% Clear the local cache entry...
+            Table = State#state.schema_table,
+            true = ets:insert(Table, {SchemaName, Schema}),
+
+            %% Write to Riak KV...
+            Client = State#state.client,
+            put_raw_schema_to_kv(Client, SchemaName, RawSchemaBinary),
+            {reply, ok, State};
         Error ->
-            error_logger:error_msg("Could not parse schema: ~p~n", [Error]),
+            lager:error("Could not parse schema: ~p", [Error]),
             Error
     end;
 
@@ -167,7 +164,7 @@ get_raw_schema_from_kv(Client, SchemaName) when is_binary(SchemaName) ->
         {ok, Entry} ->
             {ok, riak_object:get_value(Entry)};
         {error, notfound} ->
-            {ok, _B} = file:read_file(?DEFAULT_SCHEMA)
+            file:read_file(?DEFAULT_SCHEMA)
     end.
 
 %% Set the schema for an index.

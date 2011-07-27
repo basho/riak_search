@@ -293,8 +293,7 @@ run_extract(RiakObject, DefaultField, {{Js, FunTerm}, Arg})
         {ok, JsonFields} ->
             erlify_json_extract(JsonFields);
         {error, Error} ->
-            error_logger:error_msg("Error executing kv/search hook: ~s",
-                                   [Error]),
+            lager:error("Error executing kv/search hook: ~s", [Error]),
             throw({fail, Error})
     end;
 run_extract(_, _, ExtractDef) ->

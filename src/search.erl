@@ -58,13 +58,13 @@ search(Index, Query, Filter) ->
                 {ok, FilterOps} ->
                     Client:search(Index, QueryOps, FilterOps, 0, 10000, 60000);
                 {error, Error} ->
-                    M = "Error parsing filter '~s': ~p~n",
-                    error_logger:error_msg(M, [Filter, Error]),
+                    lager:error("Error parsing filter '~s': ~p",
+                                [Filter, Error]),
                     {error, Error}
             end;
         {error, Error} ->
-            M = "Error parsing query '~s': ~p~n",
-            error_logger:error_msg(M, [Query, Error]),
+            lager:error("Error parsing query '~s': ~p",
+                        [Query, Error]),
             {error, Error}
     end.
 
@@ -82,13 +82,12 @@ search_doc(Index, Query, Filter) ->
                 {ok, FilterOps} ->
                     Client:search_doc(Index, QueryOps, FilterOps, 0, 10000, 60000);
                 {error, Error} ->
-                    M = "Error parsing filter '~s': ~p~n",
-                    error_logger:error_msg(M, [Filter, Error]),
+                    lager:error("Error parsing filter '~s': ~p",
+                                [Filter, Error]),
                     {error, Error}
             end;
         {error, Error} ->
-            M = "Error running query '~s': ~p~n",
-            error_logger:error_msg(M, [Query, Error]),
+            lager:error("Error running query '~s': ~p", [Query, Error]),
             {error, Error}
     end.
 
@@ -118,13 +117,12 @@ explain(Index, Query, Filter) ->
                 {ok, FilterOps} ->
                     [{'query', QueryOps}, {'filter', FilterOps}];
                 {error, Error} ->
-                    M = "Error parsing filter '~s': ~p~n",
-                    error_logger:error_msg(M, [Filter, Error]),
+                    lager:error("Error parsing filter '~s': ~p",
+                                [Filter, Error]),
                     {error, Error}
             end;
         {error, Error} ->
-            M = "Error parsing query '~s': ~p~n",
-            error_logger:error_msg(M, [Query, Error]),
+            lager:error("Error parsing query '~s': ~p", [Query, Error]),
             {error, Error}
     end.
 

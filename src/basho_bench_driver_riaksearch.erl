@@ -136,8 +136,9 @@ file_to_array(FilePath) ->
             List = binary_to_list(Bytes),
             Words = string:tokens(List, "\r\n"),
             array:from_list(Words);
-        Error ->
-            error_logger:error_msg("Could not read ~p.~n", [filename:absname(FilePath)]),
+        {error, Reason} = Error ->
+            lager:error("Could not read ~p: ~p", [filename:absname(FilePath),
+                file:format_error(Reason)]),
             throw({file_to_array, FilePath, Error})
     end.
 
