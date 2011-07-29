@@ -26,8 +26,12 @@
 %% {solr_select, Params, Validators} : Search on the query, run the validators.
 %% {solr_update, Params, Path} : Execute the provided Solr script through the HTTP interface.
 %% {index_bucket, Bucket} : Enable indexing hook for bucket
-%% {putobj, Bucket, Key, [{ContentType, Value}]} : Put a riak object
+%%
+%% {putobj, Bucket, Key, ContentType, Value} : Put a riak object
+%%
 %% {delobj, Bucket, Key} : Delete a riak object
+%%
+%% {exists, Bucket, Key, boolean()} : Check whether key exists.
 %%
 %% Validators:
 %% {length, N} : Make sure there are exactly N results.
@@ -238,6 +242,28 @@ test_inner({putobj, Bucket, Key, Ct, Value}, _) ->
     {ok,C} = riak:local_client(),
     ok = C:put(RObj),
     true;
+
+test_inner({exists, B, K, Bool}, _) ->
+    {ok, C} = riak:local_client(),
+    case C:get(B, K) of
+        {ok, _} ->
+            if Bool == true ->
+                    io:format("~n    [√] PASS EXISTS » ~s/~s~n", [B, K]),
+                    true;
+               true ->
+                    io:format("~n    [ ] FAIL NON-EXISTS » ~s/~s~n", [B, K]),
+                    false
+               end;
+        _ ->
+            if Bool == false ->
+                    io:format("~n    [√] PASS NON-EXISTS » ~s/~s~n", [B, K]),
+                    true;
+               true ->
+                    io:format("~n    [ ] FAIL EXISTS » ~s/~s~n", [B, K]),
+                    false
+            end
+    end;
+
 test_inner({delobj, Bucket, Key}, _) ->
     {ok,C} = riak:local_client(),
     case C:delete(Bucket, Key) of

@@ -322,7 +322,8 @@ delete_docs(Docs) ->
     delete_terms(FlatDeleteAcc),
 
     %% Delete the Riak objects...
-    [RiakClient:delete(DocIndex, DocID) || {DocIndex, DocID} <- ExistingObjs],
+    [riak_indexed_doc:delete(RiakClient, DocIndex, DocID)
+     || {DocIndex, DocID} <- ExistingObjs],
     ok.
 
 
