@@ -145,8 +145,6 @@ passes_range_inner(Props, Field, {FromBorder, FromTerm}, {ToBorder, ToTerm}, Siz
     lists:any(F, Terms).
 
 -ifdef(TEST).
-
-
 -define(INDEX, <<"riak_search_inlines">>).
 
 %% Return the schema...
@@ -190,106 +188,80 @@ doc(Schema) ->
              ],
     riak_indexed_doc:new(Schema, <<"doc1">>, Fields, []).
 
+inline_fields_test_() ->
+    {spawn,
+     [{setup,
+       fun setup/0,
+       fun cleanup/1,
+       [
+        {timeout, 60000,
+         [fun term_t/0,
+          fun or_t/0,
+          fun and_t/0,
+          fun group_t/0,
+          fun range_t/0,
+          fun wildcard_t/0,
+          fun single_t/0]
+        }
+       ]
+      }
+     ]
+    }.
 
-term1_test() ->
-    test_helper("field1:value1", true).
+setup() ->
+    application:start(sasl),
+    application:start(qilr).
 
-term2_test() ->
-    test_helper("int_field1:0", true).
+cleanup(_) ->
+    application:stop(qilr),
+    application:stop(sasl).
 
-term3_test() ->
-    test_helper("int_field2:50", true).
-
-term4_test() ->
-    test_helper("int_field3:'-50'", true).
-
-term5_test() ->
+term_t() ->
+    test_helper("field1:value1", true),
+    test_helper("int_field1:0", true),
+    test_helper("int_field2:50", true),
+    test_helper("int_field3:'-50'", true),
     test_helper("int_field1:999", false).
 
-or1_test() ->
-    test_helper("field1:nomatch OR field1:value1", true).
-
-or2_test() ->
+or_t() ->
+    test_helper("field1:nomatch OR field1:value1", true),
     test_helper("field1:value1 OR field1:nomatch", true).
 
-and1_test() ->
-    test_helper("field1:value1 AND field2:value2", true).
-
-and2_test() ->
+and_t() ->
+    test_helper("field1:value1 AND field2:value2", true),
     test_helper("field1:value1 AND int_field2:50", true).
 
-group1_test() ->
-    test_helper("(field1:value1 OR field1:nomatch) OR (field2:nomatch AND field3:nomatch)", true).
-
-group2_test() ->
-    test_helper("(field1:value1 OR field1:nomatch) AND (field2:value2 AND field3:value3)", true).
-
-group3_test() ->
+group_t() ->
+    test_helper("(field1:value1 OR field1:nomatch) OR (field2:nomatch AND field3:nomatch)", true),
+    test_helper("(field1:value1 OR field1:nomatch) AND (field2:value2 AND field3:value3)", true),
     test_helper("(field1:value1 OR field1:nomatch) AND (field2:value2 AND field3:nomatch)", false).
 
-range1_test() ->
-    test_helper("field1:[value1 TO value2]", true).
-
-range2_test() ->
-    test_helper("field1:{value1 TO value2}", false).
-
-range3_test() ->
-    test_helper("int_field1:[0 TO 50]", true).
-
-range4_test() ->
-    test_helper("int_field1:[50 TO 0]", true).
-
-range5_test() ->
-    test_helper("int_field1:['-50' TO 50]", true).
-
-range6_test() ->
-    test_helper("int_field1:{'-50' TO 50}", true).
-
-range7_test() ->
-    test_helper("int_field1:{0 TO 50}", false).
-
-range8_test() ->
-    test_helper("int_field1:{50 TO 0}", false).
-
-range9_test() ->
-    test_helper("int_field1:{'-50' TO 0}", false).
-
-range10_test() ->
+range_t() ->
+    test_helper("field1:[value1 TO value2]", true),
+    test_helper("field1:{value1 TO value2}", false),
+    test_helper("int_field1:[0 TO 50]", true),
+    test_helper("int_field1:[50 TO 0]", true),
+    test_helper("int_field1:['-50' TO 50]", true),
+    test_helper("int_field1:{'-50' TO 50}", true),
+    test_helper("int_field1:{0 TO 50}", false),
+    test_helper("int_field1:{50 TO 0}", false),
+    test_helper("int_field1:{'-50' TO 0}", false),
     test_helper("int_field1:{0 TO '-50'}", false).
 
-wildcard1_test() ->
-    test_helper("field1:value*", true).
-
-wildcard2_test() ->
-    test_helper("field1:valu*", true).
-
-wildcard3_test() ->
-    test_helper("field1:val*", true).
-
-wildcard4_test() ->
-    test_helper("field1:va*", true).
-
-%% Should work, but doesn't. Problem in lucene_parser.
-%% wildcard5_test() ->
-%%     test_helper("field1:v*", true).
-
-%% Should work, but doesn't. Problem in lucene_parser.
-%% wildcard6_test() ->
-%%     test_helper("field1:*", true).
-
-wildcard7_test() ->
+wildcard_t() ->
+    test_helper("field1:value*", true),
+    test_helper("field1:valu*", true),
+    test_helper("field1:val*", true),
+    test_helper("field1:va*", true),
+    %% Should work, but doesn't. Problem in lucene_parser.
+    %% test_helper("field1:v*", true),
+    %% test_helper("field1:*", true),
     test_helper("field1:valueZZZ*", false).
 
-single1_test() ->
-    test_helper("field1:value?", true).
-
-single2_test() ->
-    test_helper("field2:value?", true).
-
-single3_test() ->
-    test_helper("field2:valu?", false).
-
-single4_test() ->
+single_t() ->
+    test_helper("field1:value?", true),
+    test_helper("field2:value?", true),
+    test_helper("field2:valu?", false),
     test_helper("field2:valueZZZ?", false).
 
 %% Ugh, theres are few things I don't like about this but for the sake
@@ -321,6 +293,5 @@ test_helper(Query, ExpectedResult) ->
                         riak_search_utils:to_list(Query)),
 
     ?assertEqual(passes_inlines(Schema, Props, FilterOps), ExpectedResult).
-           
 
 -endif.

@@ -16,7 +16,6 @@
 start_link() ->
     supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
--ifndef(TEST).
 init([]) ->
     %% Test if the Java-based Analyzer is enabled. If not, then don't
     %% start the Java analysis server.
@@ -45,8 +44,3 @@ init([]) ->
                               ConnPool
                              ]),
     {ok, {{one_for_all, 100, 10}, Children}}.
--endif.
--ifdef(TEST).
-init([]) ->
-    {ok, {{one_for_all, 100, 10}, []}}.
--endif.
