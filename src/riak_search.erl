@@ -38,31 +38,14 @@ analyze(Text, {erlang, Mod, Fun}, AnalyzerArgs) ->
     Mod:Fun(Text, AnalyzerArgs).
 
 %% Used in riak_kv Map/Reduce integration.
-mapred_search(FlowPid, [DefaultIndex, Query], Timeout) ->
-    mapred_search(FlowPid, [DefaultIndex, Query, ""], Timeout);
-    
-mapred_search(FlowPid, [DefaultIndex, Query, Filter], Timeout) ->
-    {ok, Client} = riak_search:local_client(),
+mapred_search(FlowOrPipe, [DefaultIndex, Query], Timeout) ->
+    mapred_search(FlowOrPipe, [DefaultIndex, Query, ""], Timeout);
 
-    %% Parse the query...
-    case Client:parse_query(DefaultIndex, Query) of
-        {ok, Ops1} ->
-            QueryOps = Ops1;
-        {error, ParseError1} ->
-            lager:error("Error running query '~s': ~p", [Query, ParseError1]),
-            throw({mapred_search, Query, ParseError1}),
-            QueryOps = undefined % Make compiler happy.
-    end,
-
-    %% Parse the filter...
-    case Client:parse_filter(DefaultIndex, Filter) of
-        {ok, Ops2} ->
-            FilterOps = Ops2;
-        {error, ParseError2} ->
-            lager:error("Error running query '~s': ~p", [Filter, ParseError2]),
-            throw({mapred_search, Filter, ParseError2}),
-            FilterOps = undefined % Make compiler happy.
-    end,
+mapred_search(FlowPid, [DefaultIndex, Query, Filter], Timeout)
+  when is_pid(FlowPid) ->
+    {ok, C} = riak_search:local_client(),
+    QueryOps = parse_query(C, DefaultIndex, Query),
+    FilterOps = parse_filter(C, DefaultIndex, Filter),
 
     %% Perform a search, funnel results to the mapred job...
     F = fun(Results, Acc) ->
@@ -72,6 +55,40 @@ mapred_search(FlowPid, [DefaultIndex, Query, Filter], Timeout) ->
         luke_flow:add_inputs(FlowPid, BKeys),
         Acc
     end,
-    ok = Client:search_fold(DefaultIndex, QueryOps, FilterOps, F, ok, Timeout),
-    luke_flow:finish_inputs(FlowPid).
+    ok = C:search_fold(DefaultIndex, QueryOps, FilterOps, F, ok, Timeout),
+    luke_flow:finish_inputs(FlowPid);
 
+mapred_search(Pipe, [DefaultIndex, Query, Filter], Timeout) ->
+    {ok, C} = riak_search:local_client(),
+    QueryOps = parse_query(C, DefaultIndex, Query),
+    FilterOps = parse_filter(C, DefaultIndex, Filter),
+
+    %% Perform a search, funnel results to the mapred job...
+    Q = queue_work(Pipe),
+    F = fun(Results, Acc) ->
+                lists:foreach(Q, Results),
+                Acc
+    end,
+    ok = C:search_fold(DefaultIndex, QueryOps, FilterOps, F, ok, Timeout),
+    riak_pipe:eoi(Pipe).
+
+parse_query(C, DefaultIndex, Query) ->
+    case C:parse_query(DefaultIndex, Query) of
+        {ok, Ops1} -> Ops1;
+        {error, ParseError1} ->
+            lager:error("Error parsing query '~s': ~p", [Query, ParseError1]),
+            throw({mapred_search, Query, ParseError1})
+    end.
+
+parse_filter(C, DefaultIndex, Filter) ->
+    case C:parse_filter(DefaultIndex, Filter) of
+        {ok, Ops2} -> Ops2;
+        {error, ParseError2} ->
+            lager:error("Error parsing filter '~s': ~p", [Filter, ParseError2]),
+            throw({mapred_search, Filter, ParseError2})
+    end.
+
+queue_work(Pipe) ->
+    fun({Index, DocId, Props}) ->
+            riak_pipe:queue_work(Pipe, {{Index, DocId}, {struct, Props}})
+    end.
