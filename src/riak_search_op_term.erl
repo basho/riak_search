@@ -8,6 +8,7 @@
 -export([
          preplan/2,
          chain_op/4,
+         chain_op/5,
          default_filter/2
         ]).
 
@@ -57,6 +58,14 @@ chain_op(Op, OutputPid, OutputRef, State) ->
     erlang:spawn_link(F),
     {ok, 1}.
 
+chain_op(Op, OutputPid, OutputRef, State, DocIds) ->
+    F = fun() ->
+                erlang:link(State#search_state.parent),
+                start_loop(Op, OutputPid, OutputRef, State, DocIds)
+        end,
+    erlang:spawn_link(F),
+    {ok, 1}.
+
 start_loop(Op, OutputPid, OutputRef, State) ->
     %% Get the current index/field...
     IndexName = State#search_state.index,
@@ -65,6 +74,21 @@ start_loop(Op, OutputPid, OutputRef, State) ->
 
     %% Stream the results for a single term...
     FilterFun = State#search_state.filter,
+    {ok, Ref} = stream(IndexName, FieldName, Term, FilterFun),
+
+    %% Collect the results...
+    TransformFun = generate_transform_function(Op, State),
+    riak_search_op_utils:gather_stream_results(Ref, OutputPid, OutputRef, TransformFun).
+
+
+start_loop(Op, OutputPid, OutputRef, State, DocIds) ->
+    %% Get the current index/field...
+    IndexName = State#search_state.index,
+    FieldName = State#search_state.field,
+    Term = to_binary(Op#term.s),
+
+    %% Stream the results for a single term...
+    FilterFun = filter_docs(DocIds),
     {ok, Ref} = stream(IndexName, FieldName, Term, FilterFun),
 
     %% Collect the results...
@@ -90,7 +114,31 @@ stream(Index, Field, Term, FilterFun) ->
     end,
     riak_search_vnode:stream([PreflistEntry], Index, Field, Term, FilterFun, self()).
 
+%% stream(Index, Field, Term, FilterFun, DocIds) ->
+%%     %% Get the primary preflist, minus any down nodes. (We don't use
+%%     %% secondary nodes since we ultimately read results from one node
+%%     %% anyway.)
+%%     DocIdx = riak_search_ring_utils:calc_partition(Index, Field, Term),
+%%     {ok, Schema} = riak_search_config:get_schema(Index),
+%%     NVal = Schema:n_val(),
+%%     Preflist = get_preflist(DocIdx, NVal),
+
+%%     %% Try to use the local node if possible. Otherwise choose
+%%     %% randomly.
+%%     case lists:keyfind(node(), 2, Preflist) of
+%%         false ->
+%%             PreflistEntry = riak_search_utils:choose(Preflist);
+%%         PreflistEntry ->
+%%             PreflistEntry = PreflistEntry
+%%     end,
+%%     riak_search_vnode:stream([PreflistEntry], Index, Field, Term, FilterFun, self()).
+
 default_filter(_, _) -> true.
+
+filter_docs(DocIds) ->
+    fun(DocId, _) ->
+            ordsets:is_element(DocId, DocIds)
+    end.
 
 info(Index, Field, Term) ->
     %% Get the primary preflist, minus any down nodes. (We don't use

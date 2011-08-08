@@ -30,13 +30,19 @@ preplan(Op, State) ->
 %% way down to merge_index to act as low-level filter)
 chain_op(Op, OutputPid, OutputRef, State) ->
     %% Create an iterator chain...
-    [H|OpList] = Op#intersection.ops,
+    {M, Ops} = find_min(Op#intersection.ops),
+    lager:error("%%%% Minimum op: ~p", [M]),
+    lager:error("$$$$ Ops: ~p", [Ops]),
 
     %% RPZ Right here I want to execute first term to completion
-    First1 = riak_search_op_utils:iterator_tree(fun select_fun/2, [H], State),
-    First2 = make_filter_iterator(First1)
+    First1 = riak_search_op_utils:iterator_tree(fun select_fun/2, [M], State),
+    First2 = make_filter_iterator(First1),
 
-    Iterator1 = riak_search_op_utils:iterator_tree(fun select_fun/2, OpList, State),
+    DocIds = riak_search_op_utils:docs(First2),
+
+    Iterator1 =
+        riak_search_op_utils:iterator_tree(fun select_fun/2,
+                                           Ops, State, DocIds),
     Iterator2 = make_filter_iterator(Iterator1),
 
     %% Spawn up pid to gather and send results...
@@ -48,6 +54,15 @@ chain_op(Op, OutputPid, OutputRef, State) ->
 
     %% Return.
     {ok, 1}.
+
+find_min([H|T]) ->
+    find_min(T, H, []).
+
+find_min([#term{doc_freq=N}=H|T], #term{doc_freq=M}=X, Ops) ->
+    if N < M -> find_min(T, H, [X|Ops]);
+       true -> find_min(T, X, [H|Ops])
+    end;
+find_min([], Min, Ops) -> {Min, Ops}.
 
 %% Given an iterator, return a new iterator that filters out any
 %% negated results.

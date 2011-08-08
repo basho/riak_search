@@ -8,6 +8,8 @@
 
 -export([
     iterator_tree/3,
+    iterator_tree/4,
+    docs/1,
     gather_iterator_results/3,
     gather_stream_results/4
 ]).
@@ -24,6 +26,11 @@
 iterator_tree(SelectFun, OpList, SearchState) ->
     %% Turn all operations into iterators and then combine into a tree.
     Iterators = [it_op(X, SearchState) || X <- OpList],
+    it_combine(SelectFun, Iterators).
+
+iterator_tree(SelectFun, OpList, SearchState, DocIds) ->
+    %% Turn all operations into iterators and then combine into a tree.
+    Iterators = [it_op(X, SearchState, DocIds) || X <- OpList],
     it_combine(SelectFun, Iterators).
 
 %% @private Given a list of iterators, combine into a tree. Works by
@@ -77,6 +84,26 @@ it_op(Op, SearchState) ->
             it_op_inner(Pid, Ref, Op)
     end.
 
+it_op(Op, SearchState, DocIds) ->
+    %% Spawn a collection process...
+    Ref = make_ref(),
+    F = fun() ->
+                Parent = SearchState#search_state.parent,
+                erlang:link(Parent),
+                erlang:process_flag(trap_exit, true),
+                it_op_collector_loop(Parent, Ref, [])
+        end,
+    Pid = erlang:spawn_link(F),
+
+    %% Chain the op...
+    riak_search_op:chain_op(Op, Pid, Ref, SearchState, DocIds),
+
+    %% Return an iterator function. Returns
+    %% a new result.
+    fun() ->
+            it_op_inner(Pid, Ref, Op)
+    end.
+
 %% @private Holds the function body of a leaf-iterator. When called,
 %% it requests the next result from the mailbox, and serves it up
 %% along with the new Iterator function to be called in the form
@@ -88,7 +115,7 @@ it_op_inner(Pid, Ref, Op) ->
         {result, eof, Ref} ->
             {eof, Op};
         {result, Result, Ref} ->
-            {Result, Op, fun() -> it_op_inner(Pid, Ref, Op) end};
+            {Result, Op, fun() -> it_op_inner(Pid, Ref, Op) end}
    end.
 
 %% @private This runs in a separate process, collecting the incoming
@@ -141,18 +168,13 @@ gather_iterator_results(OutputPid, OutputRef, {eof, _}, Acc) ->
     OutputPid ! {results, lists:reverse(Acc), OutputRef},
     OutputPid ! {disconnect, OutputRef}.
 
-gather_iterator_results(OutputPid, OutputRef, Iterator) ->
-    gather_iterator_results(OutputPid, OutputRef, Iterator, []).
-gather_iterator_results(OutputPid, OutputRef, {Term, Op, Iterator}, Acc)
-  when length(Acc) > ?RESULTVEC_SIZE ->
-    OutputPid ! {results, lists:reverse(Acc), OutputRef},
-    gather_iterator_results(OutputPid, OutputRef, {Term, Op, Iterator}, []);
-gather_iterator_results(OutputPid, OutputRef, {Term, _Op, Iterator}, Acc) ->
-    gather_iterator_results(OutputPid, OutputRef, Iterator(), [Term|Acc]);
-gather_iterator_results(OutputPid, OutputRef, {eof, _}, Acc) ->
-    OutputPid ! {results, lists:reverse(Acc), OutputRef},
-    OutputPid ! {disconnect, OutputRef}.
+docs(Iterator) ->
+    docs(Iterator, []).
 
+docs({{_Idx,DocId}, _Op, Iterator}, Acc) ->
+    docs(Iterator(), [DocId|Acc]);
+docs({eof, _}, Acc) ->
+    ordsets:from_list(Acc).
 
 %% Gathers result vectors sent to the current Pid by a backend stream
 %% or range operation, run a transform function, and shuttles the
