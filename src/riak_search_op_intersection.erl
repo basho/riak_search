@@ -33,8 +33,6 @@ chain_op(Op, OutputPid, OutputRef, State) ->
     %% {M, Ops} = find_min(Op#intersection.ops),
     %% Require min to be 1st for now
     [M|Ops] = Op#intersection.ops,
-    lager:error("%%%% Minimum op: ~p", [M]),
-    lager:error("$$$$ Ops: ~p", [Ops]),
 
     %% RPZ Right here I want to execute first term to completion
     First1 = riak_search_op_utils:iterator_tree(fun select_fun/2, [M], State),
