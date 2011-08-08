@@ -10,7 +10,8 @@
 -module(riak_search_op_scope).
 -export([
          preplan/2,
-         chain_op/4
+         chain_op/4,
+         chain_op/5
         ]).
 
 -include("riak_search.hrl").
@@ -25,6 +26,11 @@ chain_op(Op, OutputPid, OutputRef, State) ->
     %% Update state and switch control to the group operator...
     NewState = update_state(Op, State),
     riak_search_op:chain_op(Op#scope.ops, OutputPid, OutputRef, NewState).
+
+chain_op(Op, OutputPid, OutputRef, State, DocIds) ->
+    %% Update state and switch control to the group operator...
+    NewState = update_state(Op, State),
+    riak_search_op:chain_op(Op#scope.ops, OutputPid, OutputRef, NewState, DocIds).
 
 update_state(Op, State) ->
     %% Get the new index...
