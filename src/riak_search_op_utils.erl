@@ -169,7 +169,7 @@ gather_iterator_results(OutputPid, OutputRef, {eof, _}, Acc) ->
     OutputPid ! {disconnect, OutputRef}.
 
 docs(Iterator) ->
-    docs(Iterator, []).
+    docs(Iterator(), []).
 
 docs({{_Idx,DocId}, _Op, Iterator}, Acc) ->
     docs(Iterator(), [DocId|Acc]);
