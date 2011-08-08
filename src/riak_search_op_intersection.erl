@@ -30,7 +30,9 @@ preplan(Op, State) ->
 %% way down to merge_index to act as low-level filter)
 chain_op(Op, OutputPid, OutputRef, State) ->
     %% Create an iterator chain...
-    {M, Ops} = find_min(Op#intersection.ops),
+    %% {M, Ops} = find_min(Op#intersection.ops),
+    %% Require min to be 1st for now
+    [M|Ops] = Op#intersection.ops,
     lager:error("%%%% Minimum op: ~p", [M]),
     lager:error("$$$$ Ops: ~p", [Ops]),
 
@@ -55,14 +57,14 @@ chain_op(Op, OutputPid, OutputRef, State) ->
     %% Return.
     {ok, 1}.
 
-find_min([H|T]) ->
-    find_min(T, H, []).
+%% find_min([H|T]) ->
+%%     find_min(T, H, []).
 
-find_min([#term{doc_freq=N}=H|T], #term{doc_freq=M}=X, Ops) ->
-    if N < M -> find_min(T, H, [X|Ops]);
-       true -> find_min(T, X, [H|Ops])
-    end;
-find_min([], Min, Ops) -> {Min, Ops}.
+%% find_min([#term{doc_freq=N}=H|T], #term{doc_freq=M}=X, Ops) ->
+%%     if N < M -> find_min(T, H, [X|Ops]);
+%%        true -> find_min(T, X, [H|Ops])
+%%     end;
+%% find_min([], Min, Ops) -> {Min, Ops}.
 
 %% Given an iterator, return a new iterator that filters out any
 %% negated results.
