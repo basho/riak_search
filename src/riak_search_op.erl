@@ -14,10 +14,11 @@
 -include("riak_search.hrl").
 -include_lib("lucene_parser/include/lucene_parser.hrl").
 
-preplan(#scope { ops=[#negation { }]}) ->
-    throw({error, single_negated_term});
 preplan(Op) ->
     preplan(Op, #search_state {}).
+
+preplan(#scope { ops=[#negation { }]}, _State) ->
+    throw({error, single_negated_term});
 preplan(OpList, State) when is_list(OpList) ->
     [preplan(X, State) || X <- OpList];
 preplan(Op, State) when is_tuple(Op) ->

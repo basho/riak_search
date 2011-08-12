@@ -32,6 +32,9 @@
 %% {delobj, Bucket, Key} : Delete a riak object
 %%
 %% {exists, Bucket, Key, boolean()} : Check whether key exists.
+%% 
+%% {error, Test, Type, Error} : Run the `Test' spec expecting an
+%% exception with `Type':`Error'.
 %%
 %% Validators:
 %% {length, N} : Make sure there are exactly N results.
@@ -95,8 +98,19 @@ test_inner({delete, Path}, Root) ->
     search:delete_dir(?TEST_INDEX, filename:join(Root, Path)),
     true;
 
+test_inner({error, Test, Type, Error}, _Root) ->
+    try test_inner(Test, _Root)
+    catch
+        Type:Error ->
+            io:format("~n    [√] PASS ERROR » ~p~n", [Test]),
+            true;
+        Type2:Error2 ->
+            io:format("~n    [ ] FAIL ERROR » ~p ~p ~p~n", [Test, Type2, Error2]),
+            false
+    end;
+
 test_inner({search, Query, Validators}, _Root) ->
-    try search:search(?TEST_INDEX, Query) of
+    case search:search(?TEST_INDEX, Query) of
         {Length, Results} ->
             case validate_results(Length, Results, Validators) of
                 pass -> 
@@ -111,12 +125,8 @@ test_inner({search, Query, Validators}, _Root) ->
             io:format("~n    [ ] FAIL QUERY » ~s~n", [Query]),
             io:format("        - ERROR1: ~p~n", [Error]),
             false
-    catch 
-        _Type : Error ->
-            io:format("~n    [ ] FAIL QUERY » ~s~n", [Query]),
-            io:format("        - ERROR2: ~p : ~p~n", [Error, erlang:get_stacktrace()]),
-            false
     end;
+
 test_inner({solr_select, Params, Validators}, _Root) ->
     %% Run the query...
     inets:start(),
