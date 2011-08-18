@@ -33,8 +33,7 @@ usage() ->
     search-cmd solr [INDEX] PATH             : Run the Solr file.
     search-cmd install BUCKET                : Install kv/search integration hook
     search-cmd uninstall BUCKET              : Uninstall kv/search integration hook
-    search-cmd test PATH                     : Run a test package
-    ",
+    search-cmd test PATH                     : Run a test package~n",
     io:format(Usage).
 
 %% Set Schema
@@ -204,18 +203,18 @@ search_doc(DefaultIndex, Query, Filter) ->
         {Length, MaxScore, Results} ->
             F = fun(X) ->
                 %% Index.
-                Index = X#riak_idx_doc.index,
-                DocID = X#riak_idx_doc.id,
+                Index = riak_indexed_doc:index(X),
+                DocID = riak_indexed_doc:id(X),
                 io:format("index/id: ~s/~s~n", [Index, DocID]),
 
                 %% Fields...
                 [io:format("~p => ~p~n", [Key, Value]) ||
-                {Key, Value} <- X#riak_idx_doc.fields],
+                {Key, Value} <- riak_indexed_doc:fields(X)],
                 io:format("~n"),
 
                 %% Properties...
                 [io:format("~p -> ~p~n", [Key, Value]) ||
-                {Key, Value} <- X#riak_idx_doc.props],
+                {Key, Value} <- riak_indexed_doc:props(X)],
                 io:format("------------------------------~n~n")
             end,
             [F(X) || X <- Results],
