@@ -8,7 +8,8 @@
 -export([install/1,
          uninstall/1,
          precommit_def/0,
-         precommit/1]).
+         precommit/1,
+         fixup/2]).
 
 -include("riak_search.hrl").
 
@@ -53,34 +54,37 @@
 -type search_data() :: string() | binary().
     
 
-%% Install the kv/search integration hook on the specified bucket
-%% TODO: The code below can be
-%% simplified. riak_core_bucket:set_bucket/2 does not require you to
-%% set ALL bucket props, just the properties that have changed.
-install(Bucket) -> 
-    BucketProps = riak_core_bucket:get_bucket(Bucket),
-    CleanPrecommit = strip_precommit(BucketProps),
-    case CleanPrecommit ++ [precommit_def()] of
-        [{struct, _}]=Y ->
-            UpdPrecommit=Y;
-        Y ->
-            UpdPrecommit=Y
-    end,
+%% Bucket fixup hook for actually setting up the search hook
+fixup(_Bucket, BucketProps) ->
+    case proplists:get_value(search, BucketProps) of
+        true ->
+            CleanPrecommit = strip_precommit(BucketProps),
+            case CleanPrecommit ++ [precommit_def()] of
+                [{struct, _}]=Y ->
+                    UpdPrecommit=Y;
+                Y ->
+                    UpdPrecommit=Y
+            end,
 
-    %% Update the bucket properties
-    UpdBucketProps = lists:keyreplace(precommit, 1, BucketProps, 
-                                      {precommit, UpdPrecommit}),
-    riak_core_bucket:set_bucket(Bucket, UpdBucketProps).
+            %% Update the bucket properties
+            {ok, lists:keyreplace(precommit, 1, BucketProps, 
+                    {precommit, UpdPrecommit})};
+        _ ->
+            %% remove the precommit hook, if any
+            CleanPrecommit = strip_precommit(BucketProps),
+            %% Update the bucket properties
+            UpdBucketProps = lists:keyreplace(precommit, 1, BucketProps, 
+                {precommit, CleanPrecommit}),
+            {ok, UpdBucketProps}
+    end.
+
+%% Install the kv/search integration hook on the specified bucket
+install(Bucket) -> 
+    riak_core_bucket:set_bucket(Bucket, [{search, true}]).
 
 %% Uninstall kv/search integration hook from specified bucket
 uninstall(Bucket) ->
-    BucketProps = riak_core_bucket:get_bucket(Bucket),
-    CleanPrecommit = strip_precommit(BucketProps),
-
-    %% Update the bucket properties
-    UpdBucketProps = lists:keyreplace(precommit, 1, BucketProps, 
-                                      {precommit, CleanPrecommit}),
-    riak_core_bucket:set_bucket(Bucket, UpdBucketProps).
+    riak_core_bucket:set_bucket(Bucket, [{search, false}]).
 
 precommit_def() ->
     {struct, [{<<"mod">>,atom_to_binary(?MODULE, latin1)},

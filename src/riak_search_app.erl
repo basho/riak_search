@@ -22,7 +22,10 @@ start(_StartType, _StartArgs) ->
                 {ok, Pid} ->
                     %% Register the search vnode with core and mark the node
                     %% as available for search requests.
-                    riak_core:register_vnode_module(riak_search_vnode),
+                    riak_core:register_application([
+                            {vnode_module, riak_search_vnode},
+                            {bucket_fixup, riak_search_kv_hook}
+                        ]),
                     riak_core_node_watcher:service_up(riak_search, self()),
 
                     %% Register our cluster_info app callback modules, with catch if
