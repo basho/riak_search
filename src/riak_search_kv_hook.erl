@@ -59,12 +59,7 @@ fixup(_Bucket, BucketProps) ->
     case proplists:get_value(search, BucketProps) of
         true ->
             CleanPrecommit = strip_precommit(BucketProps),
-            case CleanPrecommit ++ [precommit_def()] of
-                [{struct, _}]=Y ->
-                    UpdPrecommit=Y;
-                Y ->
-                    UpdPrecommit=Y
-            end,
+            UpdPrecommit = CleanPrecommit ++ [precommit_def()],
 
             %% Update the bucket properties
             {ok, lists:keyreplace(precommit, 1, BucketProps, 
