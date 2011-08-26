@@ -62,13 +62,13 @@ fixup(_Bucket, BucketProps) ->
             UpdPrecommit = CleanPrecommit ++ [precommit_def()],
 
             %% Update the bucket properties
-            {ok, lists:keyreplace(precommit, 1, BucketProps, 
+            {ok, lists:keystore(precommit, 1, BucketProps, 
                     {precommit, UpdPrecommit})};
         _ ->
             %% remove the precommit hook, if any
             CleanPrecommit = strip_precommit(BucketProps),
             %% Update the bucket properties
-            UpdBucketProps = lists:keyreplace(precommit, 1, BucketProps, 
+            UpdBucketProps = lists:keystore(precommit, 1, BucketProps, 
                 {precommit, CleanPrecommit}),
             {ok, UpdBucketProps}
     end.
@@ -327,12 +327,14 @@ strip_precommit(BucketProps) ->
 
 install_test() ->
     application:load(riak_core),
+    application:set_env(riak_core, bucket_fixups, [{riak_search,
+                riak_search_kv_hook}]),
     %% Make sure the bucket proplist is not an improper list by
     %% setting the defaults, normally this would be done by starting
     %% the riak_core app.
     riak_core_bucket:append_bucket_defaults([]),
     RingEvtPid = maybe_start_link(riak_core_ring_events:start_link()),
-    RingMgrPid = maybe_start_link(riak_core_ring_manager:start_link()),
+    RingMgrPid = maybe_start_link(riak_core_ring_manager:start_link(test)),
 
     WithoutPrecommitProps = [{n_val,3},
                              {allow_mult,false},
@@ -371,6 +373,7 @@ install_test() ->
 
     stop_pid(RingMgrPid),
     stop_pid(RingEvtPid),
+    application:unset_env(riak_core, bucket_fixups),
     ok.
 
 search_hook_present(Bucket) ->
