@@ -55,7 +55,7 @@
     
 
 %% Bucket fixup hook for actually setting up the search hook
-fixup(_Bucket, BucketProps) ->
+fixup(Bucket, BucketProps) ->
     case proplists:get_value(search, BucketProps) of
         true ->
             CleanPrecommit = strip_precommit(BucketProps),
@@ -64,13 +64,32 @@ fixup(_Bucket, BucketProps) ->
             %% Update the bucket properties
             {ok, lists:keystore(precommit, 1, BucketProps, 
                     {precommit, UpdPrecommit})};
-        _ ->
+        false ->
             %% remove the precommit hook, if any
             CleanPrecommit = strip_precommit(BucketProps),
             %% Update the bucket properties
             UpdBucketProps = lists:keystore(precommit, 1, BucketProps, 
                 {precommit, CleanPrecommit}),
-            {ok, UpdBucketProps}
+            {ok, UpdBucketProps};
+        _ when Bucket /= default ->
+            %% rolling upgrade or no search ever configured
+            %% check if the hook is present.
+            %% we don't do this on the default bucket because we don't want to
+            %% inherit the search parameter.
+            Precommit = case proplists:get_value(precommit, BucketProps) of
+                undefined -> [];
+                {struct, _} = X -> [X];
+                X when is_list(X) -> X
+            end,
+
+            case lists:member(precommit_def(), Precommit) of
+                true ->
+                    {ok, [{search, true}|BucketProps]};
+                false ->
+                    {ok, [{search, false}|BucketProps]}
+            end;
+        _ ->
+            {ok, BucketProps}
     end.
 
 %% Install the kv/search integration hook on the specified bucket

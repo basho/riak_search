@@ -29,6 +29,7 @@ fixup_test_() ->
         [
             fun simple/0,
             fun preexisting_search_hook/0,
+            fun rolling_upgrade/0,
             fun other_precommit_hook/0,
             fun install_uninstall/0,
             fun blank_bucket/0
@@ -62,7 +63,7 @@ simple() ->
 
 preexisting_search_hook() ->
     riak_core_bucket:set_bucket("testbucket", [{precommit,
-                [riak_search_kv_hook:precommit_def()]}]),
+                [riak_search_kv_hook:precommit_def()]}, {search, false}]),
     Props = riak_core_bucket:get_bucket("testbucket"),
     ?assertEqual([],
         proplists:get_value(precommit, Props)),
@@ -70,6 +71,25 @@ preexisting_search_hook() ->
     Props2 = riak_core_bucket:get_bucket("testbucket"),
     ?assertEqual([riak_search_kv_hook:precommit_def()],
         proplists:get_value(precommit, Props2)),
+    ok.
+
+rolling_upgrade() ->
+    application:set_env(riak_core, bucket_fixups, []),
+    riak_core_bucket:set_bucket("testbucket1", [{precommit,
+                [riak_search_kv_hook:precommit_def()]}]),
+    application:set_env(riak_core, bucket_fixups, [{riak_search,
+                riak_search_kv_hook}]),
+    Props = riak_core_bucket:get_bucket("testbucket1"),
+    ?assertEqual([riak_search_kv_hook:precommit_def()],
+        proplists:get_value(precommit, Props)),
+    ?assertEqual(undefined,
+        proplists:get_value(search, Props)),
+    riak_core_bucket:set_bucket("testbucket1", [{foo, bar}]),
+    Props2 = riak_core_bucket:get_bucket("testbucket1"),
+    ?assertEqual([riak_search_kv_hook:precommit_def()],
+        proplists:get_value(precommit, Props2)),
+    ?assertEqual(true,
+        proplists:get_value(search, Props2)),
     ok.
 
 other_precommit_hook() ->
