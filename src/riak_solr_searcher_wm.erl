@@ -22,7 +22,8 @@
                 query_ops,
                 sort,
                 presort,
-                filter_ops}).
+                filter_ops,
+                fl}).
 
 -define(DEFAULT_RESULT_SIZE, 10).
 -define(DEFAULT_TIMEOUT, 60000).
@@ -63,7 +64,8 @@ malformed_request(Req, State) ->
                                                  squery=SQuery, query_ops=QueryOps, filter_ops=FilterOps,
                                                  sort=wrq:get_qs_value("sort", "none", Req),
                                                  wt=wrq:get_qs_value("wt", "standard", Req),
-                                                 presort=to_atom(string:to_lower(wrq:get_qs_value("presort", "score", Req)))}}
+                                                 presort=to_atom(string:to_lower(wrq:get_qs_value("presort", "score", Req))),
+                                                 fl=wrq:get_qs_value("fl", "*", Req)}}
                     catch _ : Error ->
                             Msg = riak_search_utils:err_msg(Error),
                             lager:error(Msg),
@@ -97,31 +99,63 @@ content_types_provided(Req, #state{wt=WT}=State) ->
             end,
     {Types, Req, State}.
 
-to_json(Req, #state{sort=SortBy}=State) ->
+parse_fl(FL) ->
+    if
+        FL == "*" ->
+            [ ];
+        true ->
+            re:split(FL, "[, ]")
+    end.
+
+
+to_json(Req, #state{sort=SortBy, fl=FL}=State) ->
     #state{schema=Schema, squery=SQuery}=State,
     %% Run the query...
-    {ElapsedTime, NumFound, MaxScore, Docs} = run_query(State),
+    {ElapsedTime, NumFound, MaxScore, DocsOrIDs} = run_query(State),
     %% Generate output
-    {riak_solr_output:json_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, Docs), Req, State}.
-
-to_xml(Req, #state{sort=SortBy}=State) ->
+    if 
+        FL == "id" -> 
+            {riak_solr_output:json_response_ids_only(Schema, ElapsedTime, SQuery, NumFound, MaxScore, DocsOrIDs), Req, State};
+        true ->
+            {riak_solr_output:json_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, DocsOrIDs, parse_fl(FL)), 
+             Req, State}
+    end.
+    
+to_xml(Req, #state{sort=SortBy, fl=FL}=State) ->
     #state{schema=Schema, squery=SQuery}=State,
     %% Run the query...
-    {ElapsedTime, NumFound, MaxScore, Docs} = run_query(State),
+    {ElapsedTime, NumFound, MaxScore, DocsOrIDs} = run_query(State),
     %% Generate output
-    {riak_solr_output:xml_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, Docs), Req, State}.
-
+    if
+        FL == "id" ->
+            {riak_solr_output:xml_response_ids_only(Schema, ElapsedTime, SQuery, NumFound, MaxScore, DocsOrIDs), Req, State};
+        true ->
+            {riak_solr_output:xml_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, DocsOrIDs, parse_fl(FL)), Req, State}
+    end.
+    
 run_query(#state{client=Client, schema=Schema, squery=SQuery,
-                 query_ops=QueryOps, filter_ops=FilterOps, presort=Presort}) ->
+                 query_ops=QueryOps, filter_ops=FilterOps, presort=Presort,
+                 fl=FL}) ->
+
     #squery{query_start=QStart, query_rows=QRows}=SQuery,
 
     %% Run the query...
     StartTime = erlang:now(),
-    {NumFound, MaxScore, Docs} = Client:search_doc(Schema, QueryOps, FilterOps,
-                                                   QStart, QRows, Presort,
-                                                   ?DEFAULT_TIMEOUT),
+    if
+        FL == "id" ->
+            {NumFound, Results} = Client:search(Schema, QueryOps, FilterOps,
+                                                          QStart, QRows, Presort,
+                                                          ?DEFAULT_TIMEOUT),
+            DocsOrIDs = [DocID || {_, DocID, _} <- Results],
+            MaxScore = "0.0"; % What to do with this?
+        true ->
+            {NumFound, MaxScore, DocsOrIDs} = Client:search_doc(Schema, QueryOps, FilterOps,
+                                                           QStart, QRows, Presort,
+                                                           ?DEFAULT_TIMEOUT)
+    end,
+            
     ElapsedTime = erlang:round(timer:now_diff(erlang:now(), StartTime) / 1000),
-    {ElapsedTime, NumFound, MaxScore, Docs}.
+    {ElapsedTime, NumFound, MaxScore, DocsOrIDs}.
 
 %% @private
 %% Pull the index name from the request. If not found, then use the

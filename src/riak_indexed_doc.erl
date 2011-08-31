@@ -13,7 +13,7 @@
     fields/1, regular_fields/1, inline_fields/1,
     props/1, add_prop/3, set_props/2, clear_props/1, 
     postings/1,
-    to_mochijson2/1, to_mochijson2/2,
+    to_mochijson2/1, to_mochijson2/2, to_mochijson2/3,
     analyze/1,
     new_obj/2, get_obj/3, put_obj/2, get/3, put/2, put/3,
     delete/2, delete/3,
@@ -97,6 +97,14 @@ to_mochijson2(XForm, #riak_idx_doc{id=Id, index=Index, fields=Fields, inline_fie
                                   XForm({Name, Value})} || {Name, Value, _} <- lists:keysort(1, Fields ++ Inlines)]}},
               {props, {struct, Props}}]}.
 
+to_mochijson2(XForm, #riak_idx_doc{id=Id, index=Index, fields=Fields, inline_fields=Inlines, props=Props}, FL) ->
+    {struct, [{id, Id},
+              {index, Index},
+              {fields, {struct, [{Name,
+                                  XForm({Name, Value})} || {Name, Value, _} <- lists:keysort(1, Fields ++ Inlines),
+                                lists:member(Name, FL)]}},
+              {props, {struct, Props}}]}.
+
 %% Currently Unused?
 %% from_json(Json) ->
 %%     case mochijson2:decode(Json) of
@@ -131,7 +139,6 @@ to_mochijson2(XForm, #riak_idx_doc{id=Id, index=Index, fields=Fields, inline_fie
 %%         _ ->
 %%             []
 %%     end.
-
 
 %% Parse a #riak_idx_doc{} record
 %% Return {ok, [{Index, FieldName, Term, DocID, Props}]}.
