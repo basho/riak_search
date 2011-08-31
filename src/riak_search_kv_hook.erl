@@ -8,7 +8,8 @@
 -export([install/1,
          uninstall/1,
          precommit_def/0,
-         precommit/1]).
+         precommit/1,
+         fixup/2]).
 
 -include("riak_search.hrl").
 
@@ -43,34 +44,51 @@
 -type search_data() :: string() | binary().
     
 
-%% Install the kv/search integration hook on the specified bucket
-%% TODO: The code below can be
-%% simplified. riak_core_bucket:set_bucket/2 does not require you to
-%% set ALL bucket props, just the properties that have changed.
-install(Bucket) -> 
-    BucketProps = riak_core_bucket:get_bucket(Bucket),
-    CleanPrecommit = strip_precommit(BucketProps),
-    case CleanPrecommit ++ [precommit_def()] of
-        [{struct, _}]=Y ->
-            UpdPrecommit=Y;
-        Y ->
-            UpdPrecommit=Y
-    end,
+%% Bucket fixup hook for actually setting up the search hook
+fixup(Bucket, BucketProps) ->
+    case proplists:get_value(search, BucketProps) of
+        true ->
+            CleanPrecommit = strip_precommit(BucketProps),
+            UpdPrecommit = CleanPrecommit ++ [precommit_def()],
 
-    %% Update the bucket properties
-    UpdBucketProps = lists:keyreplace(precommit, 1, BucketProps, 
-                                      {precommit, UpdPrecommit}),
-    riak_core_bucket:set_bucket(Bucket, UpdBucketProps).
+            %% Update the bucket properties
+            {ok, lists:keystore(precommit, 1, BucketProps, 
+                    {precommit, UpdPrecommit})};
+        false ->
+            %% remove the precommit hook, if any
+            CleanPrecommit = strip_precommit(BucketProps),
+            %% Update the bucket properties
+            UpdBucketProps = lists:keystore(precommit, 1, BucketProps, 
+                {precommit, CleanPrecommit}),
+            {ok, UpdBucketProps};
+        _ when Bucket /= default ->
+            %% rolling upgrade or no search ever configured
+            %% check if the hook is present.
+            %% we don't do this on the default bucket because we don't want to
+            %% inherit the search parameter.
+            Precommit = case proplists:get_value(precommit, BucketProps) of
+                undefined -> [];
+                {struct, _} = X -> [X];
+                X when is_list(X) -> X
+            end,
+
+            case lists:member(precommit_def(), Precommit) of
+                true ->
+                    {ok, [{search, true}|BucketProps]};
+                false ->
+                    {ok, [{search, false}|BucketProps]}
+            end;
+        _ ->
+            {ok, BucketProps}
+    end.
+
+%% Install the kv/search integration hook on the specified bucket
+install(Bucket) -> 
+    riak_core_bucket:set_bucket(Bucket, [{search, true}]).
 
 %% Uninstall kv/search integration hook from specified bucket
 uninstall(Bucket) ->
-    BucketProps = riak_core_bucket:get_bucket(Bucket),
-    CleanPrecommit = strip_precommit(BucketProps),
-
-    %% Update the bucket properties
-    UpdBucketProps = lists:keyreplace(precommit, 1, BucketProps, 
-                                      {precommit, CleanPrecommit}),
-    riak_core_bucket:set_bucket(Bucket, UpdBucketProps).
+    riak_core_bucket:set_bucket(Bucket, [{search, false}]).
 
 precommit_def() ->
     {struct, [{<<"mod">>,atom_to_binary(?MODULE, latin1)},
@@ -224,12 +242,14 @@ strip_precommit(BucketProps) ->
 
 install_test() ->
     application:load(riak_core),
+    application:set_env(riak_core, bucket_fixups, [{riak_search,
+                riak_search_kv_hook}]),
     %% Make sure the bucket proplist is not an improper list by
     %% setting the defaults, normally this would be done by starting
     %% the riak_core app.
     riak_core_bucket:append_bucket_defaults([]),
     RingEvtPid = maybe_start_link(riak_core_ring_events:start_link()),
-    RingMgrPid = maybe_start_link(riak_core_ring_manager:start_link()),
+    RingMgrPid = maybe_start_link(riak_core_ring_manager:start_link(test)),
 
     WithoutPrecommitProps = [{n_val,3},
                              {allow_mult,false},
@@ -268,6 +288,7 @@ install_test() ->
 
     stop_pid(RingMgrPid),
     stop_pid(RingEvtPid),
+    application:unset_env(riak_core, bucket_fixups),
     ok.
 
 search_hook_present(Bucket) ->
