@@ -9,7 +9,7 @@
 
 -include_lib("eqc/include/eqc.hrl").
 -include_lib("eqc/include/eqc_fsm.hrl").
--include_lib("riak_search/include/riak_search.hrl").
+-include_lib("riak_search.hrl").
 
 -compile(export_all).
 
