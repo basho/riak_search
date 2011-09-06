@@ -214,11 +214,8 @@ render_xml_params(NumFound, Schema, SQuery) ->
 
 
 render_xml_fields(_Schema, [], FL, Accum) ->
-    lists:flatten(lists:reverse(Accum));
-render_xml_fields(Schema, [{Name, Value}|T], [], Accum) -> 
-    Field = Schema:find_field(Name),
-    render_xml_fields(Schema, T, [], [render_xml_field(Schema, Field, Name, Value)|Accum]);
-render_xml_fields(Schema, [{Name, Value}|T], FL, Accum) -> 
+    lists:flatten(lists:reverse(Accum));    
+render_xml_fields(Schema, [{Name, Value}|T], FL, Accum) when is_list(FL) ->
     Show = lists:member(Name, FL),
     if
         Show ->
@@ -226,7 +223,10 @@ render_xml_fields(Schema, [{Name, Value}|T], FL, Accum) ->
             render_xml_fields(Schema, T, FL, [render_xml_field(Schema, Field, Name, Value)|Accum]);
         true ->
             render_xml_fields(Schema, T, FL, Accum)
-    end.
+    end;
+render_xml_fields(Schema, [{Name, Value}|T], FL, Accum) -> 
+    Field = Schema:find_field(Name),
+    render_xml_fields(Schema, T, FL, [render_xml_field(Schema, Field, Name, Value)|Accum]).
 
 render_xml_field(Schema, Field, Name, Value) ->
     Tag = case Schema:field_type(Field) of

@@ -97,13 +97,15 @@ to_mochijson2(XForm, #riak_idx_doc{id=Id, index=Index, fields=Fields, inline_fie
                                   XForm({Name, Value})} || {Name, Value, _} <- lists:keysort(1, Fields ++ Inlines)]}},
               {props, {struct, Props}}]}.
 
-to_mochijson2(XForm, #riak_idx_doc{id=Id, index=Index, fields=Fields, inline_fields=Inlines, props=Props}, FL) ->
+to_mochijson2(XForm, #riak_idx_doc{id=Id, index=Index, fields=Fields, inline_fields=Inlines, props=Props}, FL) when is_list(FL) ->
     {struct, [{id, Id},
               {index, Index},
               {fields, {struct, [{Name,
                                   XForm({Name, Value})} || {Name, Value, _} <- lists:keysort(1, Fields ++ Inlines),
                                 lists:member(Name, FL)]}},
-              {props, {struct, Props}}]}.
+              {props, {struct, Props}}]};
+to_mochijson2(XForm, IdxDoc, _FL) ->
+    to_mochijson2(XForm, IdxDoc).
 
 %% Currently Unused?
 %% from_json(Json) ->

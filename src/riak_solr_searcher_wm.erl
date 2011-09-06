@@ -102,7 +102,7 @@ content_types_provided(Req, #state{wt=WT}=State) ->
 parse_fl(FL) ->
     if
         FL == "*" ->
-            [ ];
+            undefined;
         true ->
             re:split(FL, "[, ]")
     end.
