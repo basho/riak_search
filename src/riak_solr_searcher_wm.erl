@@ -45,6 +45,15 @@ allowed_methods(Req, State) ->
     end,
     {['GET'], NewReq, State}.
 
+validate_state(#state{fl=FL, sort=Sort}=State) ->
+    io:format("FL = ~s, Sort = ~s~n", [FL, Sort]),
+    if
+        FL == "id" andalso Sort /= "none" ->
+            throw({error, {400, "Cannot sort when fl = id"}});
+        true ->
+            State
+    end.
+
 malformed_request(Req, State) ->
     %% Try to get the schema...
     Index = get_index_name(Req),
@@ -60,12 +69,12 @@ malformed_request(Req, State) ->
                     try
                         {ok, QueryOps} = Client:parse_query(Schema, SQuery#squery.q),
                         {ok, FilterOps} = Client:parse_filter(Schema, SQuery#squery.filter),
-                        {false, Req, State#state{schema=Schema, 
-                                                 squery=SQuery, query_ops=QueryOps, filter_ops=FilterOps,
-                                                 sort=wrq:get_qs_value("sort", "none", Req),
-                                                 wt=wrq:get_qs_value("wt", "standard", Req),
-                                                 presort=to_atom(string:to_lower(wrq:get_qs_value("presort", "score", Req))),
-                                                 fl=wrq:get_qs_value("fl", "*", Req)}}
+                        {false, Req, validate_state(State#state{schema=Schema, 
+                                                                squery=SQuery, query_ops=QueryOps, filter_ops=FilterOps,
+                                                                sort=wrq:get_qs_value("sort", "none", Req),
+                                                                wt=wrq:get_qs_value("wt", "standard", Req),
+                                                                presort=to_atom(string:to_lower(wrq:get_qs_value("presort", "score", Req))),
+                                                                fl=wrq:get_qs_value("fl", "*", Req)})}
                     catch _ : Error ->
                             Msg = riak_search_utils:err_msg(Error),
                             lager:error(Msg),
@@ -86,7 +95,7 @@ malformed_request(Req, State) ->
 
 content_types_provided(Req, #state{wt=WT}=State) ->
     Types = case WT of
-                "standard" ->
+                  "standard" ->
                     [{"text/xml", to_xml}];
                 "xml" ->
                     [{"text/xml", to_xml}];
@@ -111,27 +120,18 @@ parse_fl(FL) ->
 to_json(Req, #state{sort=SortBy, fl=FL}=State) ->
     #state{schema=Schema, squery=SQuery}=State,
     %% Run the query...
-    {ElapsedTime, NumFound, MaxScore, DocsOrIDs} = run_query(State),
+    {ElapsedTime, NumFound, MaxScore, DocsOrIDs} = run_query(State),    
     %% Generate output
-    if 
-        FL == "id" -> 
-            {riak_solr_output:json_response_ids_only(Schema, ElapsedTime, SQuery, NumFound, MaxScore, DocsOrIDs), Req, State};
-        true ->
-            {riak_solr_output:json_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, DocsOrIDs, parse_fl(FL)), 
-             Req, State}
-    end.
+    {riak_solr_output:json_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore,
+                                    DocsOrIDs, parse_fl(FL)), Req, State}.
     
 to_xml(Req, #state{sort=SortBy, fl=FL}=State) ->
     #state{schema=Schema, squery=SQuery}=State,
     %% Run the query...
     {ElapsedTime, NumFound, MaxScore, DocsOrIDs} = run_query(State),
     %% Generate output
-    if
-        FL == "id" ->
-            {riak_solr_output:xml_response_ids_only(Schema, ElapsedTime, SQuery, NumFound, MaxScore, DocsOrIDs), Req, State};
-        true ->
-            {riak_solr_output:xml_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, DocsOrIDs, parse_fl(FL)), Req, State}
-    end.
+    {riak_solr_output:xml_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore,
+                                   DocsOrIDs, parse_fl(FL)), Req, State}.
     
 run_query(#state{client=Client, schema=Schema, squery=SQuery,
                  query_ops=QueryOps, filter_ops=FilterOps, presort=Presort,
@@ -143,15 +143,16 @@ run_query(#state{client=Client, schema=Schema, squery=SQuery,
     StartTime = erlang:now(),
     if
         FL == "id" ->
+            MaxScore = "0.0", %% Max score is meaningless when only returning ids
             {NumFound, Results} = Client:search(Schema, QueryOps, FilterOps,
-                                                          QStart, QRows, Presort,
-                                                          ?DEFAULT_TIMEOUT),
-            DocsOrIDs = [DocID || {_, DocID, _} <- Results],
-            MaxScore = "0.0"; % What to do with this?
+                                                QStart, QRows, Presort,
+                                                ?DEFAULT_TIMEOUT),
+            DocsOrIDs = {ids, [DocID || {_, DocID, _} <- Results]};
         true ->
-            {NumFound, MaxScore, DocsOrIDs} = Client:search_doc(Schema, QueryOps, FilterOps,
+            {NumFound, MaxScore, Docs} = Client:search_doc(Schema, QueryOps, FilterOps,
                                                            QStart, QRows, Presort,
-                                                           ?DEFAULT_TIMEOUT)
+                                                           ?DEFAULT_TIMEOUT),
+            DocsOrIDs = {docs, Docs}
     end,
             
     ElapsedTime = erlang:round(timer:now_diff(erlang:now(), StartTime) / 1000),
