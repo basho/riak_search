@@ -102,45 +102,10 @@ to_mochijson2(XForm, #riak_idx_doc{id=Id, index=Index, fields=Fields, inline_fie
               {index, Index},
               {fields, {struct, [{Name,
                                   XForm({Name, Value})} || {Name, Value, _} <- lists:keysort(1, Fields ++ Inlines),
-                                lists:member(Name, FL)]}},
+                                                           lists:member(Name, FL)]}},
               {props, {struct, Props}}]};
 to_mochijson2(XForm, IdxDoc, _FL) ->
     to_mochijson2(XForm, IdxDoc).
-
-%% Currently Unused?
-%% from_json(Json) ->
-%%     case mochijson2:decode(Json) of
-%%         {struct, Data} ->
-%%             Id = proplists:get_value(<<"id">>, Data),
-%%             Index = proplists:get_value(<<"index">>, Data),
-%%             build_doc(Id, Index, Data);
-%%         {error, _} = Error ->
-%%             Error;
-%%         _NonsenseJson ->
-%%             {error, bad_json_format}
-%%     end.
-
-%% %% @private
-%% build_doc(Id, Index, _Data) when Id =:= undefined orelse
-%%                                  Index =:= undefined ->
-%%     {error, missing_id_or_index};
-%% build_doc(Id, Index, Data) ->
-%%     Fields = [{Name, Value, []} || {Name, Value} <- read_json_fields(<<"fields">>, Data)),
-%%     Props = read_json_fields(<<"props">>, Data),
-%%     #riak_idx_doc{id=riak_search_utils:from_binary(Id), 
-%%                   index=binary_to_list(Index),
-%%                   fields=Fields,
-%%                   props=Props}.
-        
-%% %% @private
-%% read_json_fields(Key, Data) ->
-%%     case proplists:get_value(Key, Data) of
-%%         {struct, Fields} ->
-%%             [{riak_search_utils:from_binary(Name),
-%%               riak_search_utils:from_binary(Value)} || {Name, Value} <- Fields];
-%%         _ ->
-%%             []
-%%     end.
 
 %% Parse a #riak_idx_doc{} record
 %% Return {ok, [{Index, FieldName, Term, DocID, Props}]}.

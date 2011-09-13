@@ -46,7 +46,6 @@ allowed_methods(Req, State) ->
     {['GET'], NewReq, State}.
 
 validate_state(#state{fl=FL, sort=Sort}=State) ->
-    io:format("FL = ~s, Sort = ~s~n", [FL, Sort]),
     if
         FL == "id" andalso Sort /= "none" ->
             throw({error, {400, "Cannot sort when fl = id"}});
@@ -70,7 +69,9 @@ malformed_request(Req, State) ->
                         {ok, QueryOps} = Client:parse_query(Schema, SQuery#squery.q),
                         {ok, FilterOps} = Client:parse_filter(Schema, SQuery#squery.filter),
                         {false, Req, validate_state(State#state{schema=Schema, 
-                                                                squery=SQuery, query_ops=QueryOps, filter_ops=FilterOps,
+                                                                squery=SQuery,
+                                                                query_ops=QueryOps,
+                                                                filter_ops=FilterOps,
                                                                 sort=wrq:get_qs_value("sort", "none", Req),
                                                                 wt=wrq:get_qs_value("wt", "standard", Req),
                                                                 presort=to_atom(string:to_lower(wrq:get_qs_value("presort", "score", Req))),
@@ -95,7 +96,7 @@ malformed_request(Req, State) ->
 
 content_types_provided(Req, #state{wt=WT}=State) ->
     Types = case WT of
-                  "standard" ->
+                "standard" ->
                     [{"text/xml", to_xml}];
                 "xml" ->
                     [{"text/xml", to_xml}];
@@ -109,29 +110,24 @@ content_types_provided(Req, #state{wt=WT}=State) ->
     {Types, Req, State}.
 
 parse_fl(FL) ->
-    if
-        FL == "*" ->
-            undefined;
-        true ->
-            re:split(FL, "[, ]")
+    if FL == "*" -> undefined;
+       true -> re:split(FL, "[, ]")
     end.
-
 
 to_json(Req, #state{sort=SortBy, fl=FL}=State) ->
     #state{schema=Schema, squery=SQuery}=State,
-    %% Run the query...
     {ElapsedTime, NumFound, MaxScore, DocsOrIDs} = run_query(State),    
-    %% Generate output
-    {riak_solr_output:json_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore,
-                                    DocsOrIDs, parse_fl(FL)), Req, State}.
+    {riak_solr_output:json_response(Schema, SortBy, ElapsedTime, SQuery,
+                                    NumFound, MaxScore, DocsOrIDs,
+                                    parse_fl(FL)),
+     Req, State}.
     
 to_xml(Req, #state{sort=SortBy, fl=FL}=State) ->
     #state{schema=Schema, squery=SQuery}=State,
-    %% Run the query...
     {ElapsedTime, NumFound, MaxScore, DocsOrIDs} = run_query(State),
-    %% Generate output
-    {riak_solr_output:xml_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore,
-                                   DocsOrIDs, parse_fl(FL)), Req, State}.
+    {riak_solr_output:xml_response(Schema, SortBy, ElapsedTime, SQuery,
+                                   NumFound, MaxScore, DocsOrIDs, parse_fl(FL)),
+     Req, State}.
     
 run_query(#state{client=Client, schema=Schema, squery=SQuery,
                  query_ops=QueryOps, filter_ops=FilterOps, presort=Presort,
