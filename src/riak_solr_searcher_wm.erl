@@ -137,9 +137,10 @@ run_query(#state{client=Client, schema=Schema, squery=SQuery,
     #squery{query_start=QStart, query_rows=QRows}=SQuery,
 
     %% Run the query...
+    UK = binary_to_list(Schema:unique_key()),
     StartTime = erlang:now(),
     if
-        FL == "id" ->
+        FL == UK ->
             MaxScore = "0.0", %% Max score is meaningless when only returning ids
             {NumFound, Results} = Client:search(Schema, QueryOps, FilterOps,
                                                 QStart, QRows, Presort,
