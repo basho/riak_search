@@ -10,10 +10,12 @@
     new/4,
     index/1, id/1, 
     idx_doc_bucket/1,
-    fields/1, regular_fields/1, inline_fields/1,
+    fields/1, fields/2,
+    regular_fields/1, regular_fields/2,
+    inline_fields/1, inline_fields/2,
     props/1, add_prop/3, set_props/2, clear_props/1, 
     postings/1,
-    to_mochijson2/1, to_mochijson2/2, to_mochijson2/3,
+    to_mochijson2/3,
     analyze/1,
     new_obj/2, get_obj/3, put_obj/2, get/3, put/2, put/3,
     delete/2, delete/3,
@@ -35,14 +37,24 @@ new(Index, Id, Fields, Props) ->
                    inline_fields=InlineFields, 
                    props=Props }.
 
-fields(IdxDoc) ->
-    regular_fields(IdxDoc) ++ inline_fields(IdxDoc).
+fields(IdxDoc) -> fields(IdxDoc, all).
 
-regular_fields(#riak_idx_doc{fields=Fields}) ->
-    [{FieldName, FieldValue} || {FieldName, FieldValue, _} <- Fields].
+fields(IdxDoc, FL) -> regular_fields(IdxDoc, FL) ++ inline_fields(IdxDoc, FL).
 
-inline_fields(#riak_idx_doc{inline_fields=InlineFields}) ->
-    [{FieldName, FieldValue} || {FieldName, FieldValue, _} <- InlineFields].
+regular_fields(IdxDoc) -> regular_fields(IdxDoc, all).
+
+regular_fields(#riak_idx_doc{fields=Fields}, FL) -> filter_fields(Fields, FL).
+
+inline_fields(IdxDoc) -> inline_fields(IdxDoc, all).
+
+inline_fields(#riak_idx_doc{inline_fields=InlineFields}, FL) ->
+    filter_fields(InlineFields, FL).
+
+%% @private
+filter_fields(Fields, all) -> [{Name, Val} || {Name, Val, _} <- Fields];
+filter_fields(Fields, FL) ->
+    FS = ordsets:from_list(FL),
+    [{Name, Val} || {Name, Val, _} <- Fields, ordsets:is_element(Name, FS)].
 
 index(#riak_idx_doc{index=Index}) ->
     Index.
@@ -82,30 +94,13 @@ postings(IdxDoc) ->
          end,
     lists:foldl(F1, [], IdxDoc#riak_idx_doc.fields).
 
-%% Currently unused?
-%% to_json(Doc) ->
-%%     mochijson2:encode(to_mochijson2(Doc)).
-
-to_mochijson2(Doc) ->
-    F = fun({_Name, Value}) -> Value end,
-    to_mochijson2(F, Doc).
-
-to_mochijson2(XForm, #riak_idx_doc{id=Id, index=Index, fields=Fields, inline_fields=Inlines, props=Props}) ->
+to_mochijson2(XForm, IdxDoc=#riak_idx_doc{id=Id, index=Index, props=Props}, FL) ->
+    Fields = riak_indexed_doc:fields(IdxDoc, FL),
     {struct, [{id, Id},
               {index, Index},
-              {fields, {struct, [{Name,
-                                  XForm({Name, Value})} || {Name, Value, _} <- lists:keysort(1, Fields ++ Inlines)]}},
+              {fields, {struct, [XForm(Field)
+                                 || Field <- lists:keysort(1, Fields)]}},
               {props, {struct, Props}}]}.
-
-to_mochijson2(XForm, #riak_idx_doc{id=Id, index=Index, fields=Fields, inline_fields=Inlines, props=Props}, FL) when is_list(FL) ->
-    {struct, [{id, Id},
-              {index, Index},
-              {fields, {struct, [{Name,
-                                  XForm({Name, Value})} || {Name, Value, _} <- lists:keysort(1, Fields ++ Inlines),
-                                                           lists:member(Name, FL)]}},
-              {props, {struct, Props}}]};
-to_mochijson2(XForm, IdxDoc, _FL) ->
-    to_mochijson2(XForm, IdxDoc).
 
 %% Parse a #riak_idx_doc{} record
 %% Return {ok, [{Index, FieldName, Term, DocID, Props}]}.

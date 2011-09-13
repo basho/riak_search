@@ -66,7 +66,7 @@ json_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, {docs, Do
             undefined ->
                 Type = unknown
         end,
-        convert_type(Value, Type)
+        {Name, convert_type(Value, Type)}
     end,
     Docs = riak_solr_sort:sort(Docs0, SortBy, Schema),
     XForm = fun(Doc) -> riak_indexed_doc:to_mochijson2(F, Doc, FL) end,
@@ -129,12 +129,12 @@ xml_indent(Size, EmitNewLine) ->
     #xmlText{value=Value}.
 
 render_xml_doc(Schema, Doc, FL) ->
-    Fields0 = lists:keysort(1, riak_indexed_doc:fields(Doc)),
+    Fields0 = lists:keysort(1, riak_indexed_doc:fields(Doc, FL)),
     UniqueKey = Schema:unique_key(),
     Fields = [{UniqueKey, riak_indexed_doc:id(Doc)}|Fields0],
     [xml_nl(),
      xml_indent(4), {doc, [],
-                     render_xml_fields(Schema, Fields, FL, []) ++
+                     lists:flatmap(render_xml_field(Schema), Fields) ++
                      [xml_nl(), xml_indent(4)]}].
 
 render_xml_params(NumFound, Schema, SQuery) ->
@@ -161,33 +161,16 @@ render_xml_params(NumFound, Schema, SQuery) ->
       xml_nl(),
       xml_indent(4)]}].
 
-
-render_xml_fields(_Schema, [], _FL, Accum) ->
-    lists:flatten(lists:reverse(Accum));    
-render_xml_fields(Schema, [{Name, Value}|T], FL, Accum) when is_list(FL) ->
-    Show = lists:member(Name, FL),
-    if
-        Show ->
+render_xml_field(Schema) ->
+    fun({Name, Value}) ->
             Field = Schema:find_field(Name),
-            render_xml_fields(Schema, T, FL, [render_xml_field(Schema, Field, Name, Value)|Accum]);
-        true ->
-            render_xml_fields(Schema, T, FL, Accum)
-    end;
-render_xml_fields(Schema, [{Name, Value}|T], FL, Accum) -> 
-    Field = Schema:find_field(Name),
-    render_xml_fields(Schema, T, FL, [render_xml_field(Schema, Field, Name, Value)|Accum]).
-
-render_xml_field(Schema, Field, Name, Value) ->
-    Tag = case Schema:field_type(Field) of
-              string ->
-                  str;
-              integer ->
-                  int;
-              date ->
-                  date;
-              _ ->
-                   str
-          end,
-    [xml_nl(),
-     xml_indent(6), {Tag, [{name, Name}], [#xmlText{value=Value},
-                                           xml_nl(), xml_indent(6)]}].
+            Tag = case Schema:field_type(Field) of
+                      string -> str;
+                      integer -> int;
+                      date -> date;
+                      _ -> str
+                  end,
+            [xml_nl(),
+             xml_indent(6), {Tag, [{name, Name}], [#xmlText{value=Value},
+                                                   xml_nl(), xml_indent(6)]}]
+    end.
