@@ -45,10 +45,11 @@ allowed_methods(Req, State) ->
     end,
     {['GET'], NewReq, State}.
 
-validate_state(#state{fl=FL, sort=Sort}=State) ->
+validate_state(#state{schema=Schema, fl=FL, sort=Sort}=State) ->
+    UK = binary_to_list(Schema:unique_key()),
     if
-        FL == "id" andalso Sort /= "none" ->
-            throw({error, {400, "Cannot sort when fl = id"}});
+        FL == UK andalso Sort /= "none" ->
+            throw({error, fl_id_with_sort, UK});
         true ->
             State
     end.

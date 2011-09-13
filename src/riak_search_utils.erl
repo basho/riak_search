@@ -249,6 +249,8 @@ ptransform_collect(_, [], Acc) ->
 
 err_msg({error, missing_field, FieldName}) ->
     ?FMT("Request references undefined field: ~p~n", [FieldName]);
+err_msg({error, fl_id_with_sort, UniqKey}) ->
+    ?FMT("cannot sort when fl=~s~n", [UniqKey]);
 err_msg(Error) ->
     ?FMT("Unable to parse request: ~p", [Error]).
 
