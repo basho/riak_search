@@ -118,7 +118,11 @@ ceiling(Numerator, Denominator) ->
 zip_with_partition_and_index(Postings) ->
     %% Get the number of partitions.
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
-    {chstate, _, _, CHash, _} = Ring,
+    CHash =
+        case Ring of
+            {chstate, _, _, CH, _} -> CH;
+            {chstate_v2, _, _, CH, _, _, _, _, _, _, _} -> CH
+        end,
     {NumPartitions, _} = CHash,
     RingTop = ?RINGTOP,
     Inc = ?RINGTOP div NumPartitions,

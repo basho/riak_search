@@ -18,17 +18,19 @@
 -export([run_mod_fun_extract_test_fun/3]).
 -endif.
 
--define(DEFAULT_EXTRACTOR, {modfun, riak_search_kv_extractor, extract}).
--define(DEFAULT_ARGS,      undefined).
+-define(EX_PROP_NAME, search_extractor).
+-define(LEGACY_EX_PROP_NAME, rs_extractfun).
+-define(DEFAULT_EXTRACTOR, {riak_search_kv_extractor, extract, undefined}).
 
 -type user_funterm() :: {modfun, user_modname(), user_funname()} |
-                        {qfun, extract_qfun()}.
+                        {qfun, extract_qfun()} |
+                        mfargs().
 -type user_modname() :: string() | module().
 -type user_funname() :: string() | atom().
 
--type extractdef() :: {funterm(), args()}.
--type funterm() :: {modfun, atom(), atom()} |
-                   {qfun, extract_qfun()}.
+-type mfargs() :: {atom(), atom(), args()}.
+-type fargs() :: {function(), args()}.
+-type extractdef() :: mfargs() | fargs().
 
 -type riak_object() :: tuple(). % no good way to define riak_object
 
@@ -116,41 +118,44 @@ precommit(RiakObject) ->
 
 %% Decide if an object should be indexed, and if so the extraction function to 
 %% pull out the search fields.
--spec get_extractor(riak_object()) -> {funterm(), any()}.
+-spec get_extractor(riak_object()) -> extractdef().
 get_extractor(RiakObject) ->
     BucketProps = riak_core_bucket:get_bucket(riak_object:bucket(RiakObject)),
-    validate_extractor(proplists:get_value(rs_extractfun, BucketProps, undefined)).
+    Ex = try_keys([?LEGACY_EX_PROP_NAME, ?EX_PROP_NAME], BucketProps),
+    validate_extractor(Ex).
 
 %% Validate the extraction function and normalize to {FunTerm, Args}
 -spec validate_extractor(undefined |
                          user_funterm() |
-                         {user_funterm(), args()}) -> {funterm(), args()}.
+                         {user_funterm(), args()}) ->
+                                extractdef().
 validate_extractor(undefined) ->
-    {?DEFAULT_EXTRACTOR, ?DEFAULT_ARGS};
-validate_extractor({struct, JsonExtractor}) ->
-    Lang = proplists:get_value(<<"language">>, JsonExtractor),    
-    validate_extractor(erlify_json_funterm(Lang, JsonExtractor));
-validate_extractor({FunTerm, Args}) when is_tuple(FunTerm) ->
-    {validate_funterm(FunTerm), Args};
-validate_extractor(FunTerm) ->
-    {validate_funterm(FunTerm), undefined}.
-
--spec validate_funterm(user_funterm()) -> funterm().
-validate_funterm({modfun, Mod, Fun}) ->
-    {modfun, to_modfun(Mod), to_modfun(Fun)};
-validate_funterm({qfun, Fun}=FunTerm) when is_function(Fun) ->
-    FunTerm;
-validate_funterm(FunTerm) ->
-    throw({"cannot parse funterm", FunTerm}).
+    ?DEFAULT_EXTRACTOR;
+validate_extractor({struct, Json}) ->
+    validate_extractor(erlify_json_funterm(Json));
+validate_extractor({{modfun, M, F}, Arg}) ->
+    {to_modfun(M), to_modfun(F), Arg};
+validate_extractor({modfun, M, F}) ->
+    {to_modfun(M), to_modfun(F), undefined};
+validate_extractor({{qfun, F}, Arg}) when is_function(F) -> {F, Arg};
+validate_extractor({qfun, F}) when is_function(F) -> {F, undefined};
+validate_extractor({M, F}) when is_atom(M), is_atom(F) -> {M, F, undefined};
+validate_extractor({M, F, Arg}) when is_atom(M), is_atom(F) -> {M, F, Arg};
+validate_extractor(Other) -> throw({invalid_extractor, Other}).
 
 %% Decode a bucket property that was set using JSON/HTTP interface
-erlify_json_funterm(<<"erlang">>, Props) ->
-    Mod = to_modfun(proplists:get_value(<<"module">>, Props, undefined)),
-    Fun = to_modfun(proplists:get_value(<<"function">>, Props, undefined)),
-    Arg = proplists:get_value(<<"arg">>, Props, undefined),
-    {{modfun, Mod, Fun}, Arg};
-erlify_json_funterm(_Lang, _Props) ->
-    throw({"Malformed KV/Search extractor", _Props}).
+erlify_json_funterm(Props) ->
+    M = try_keys([<<"module">>, <<"mod">>], Props),
+    F = try_keys([<<"function">>, <<"fun">>], Props),
+    Arg = proplists:get_value(<<"arg">>, Props),
+    {to_modfun(M), to_modfun(F), Arg}.
+
+try_keys([], _) -> undefined;
+try_keys([K|T], Props) ->
+    case proplists:get_value(K, Props) of
+        undefined -> try_keys(T, Props);
+        V -> V
+    end.
 
 -spec to_modfun(list() | atom()) -> atom().
 to_modfun(List) when is_list(List) ->
@@ -217,12 +222,10 @@ make_docid(RiakObject) ->
 %% Run the extraction function against the RiakObject to get a list of
 %% search fields and data
 -spec run_extract(riak_object(), string(), extractdef()) -> search_fields().
-run_extract(RiakObject, DefaultField, {{modfun, Mod, Fun}, Arg}) ->
-    Mod:Fun(RiakObject, DefaultField, Arg);
-run_extract(RiakObject, DefaultField, {{qfun, Fun}, Arg}) ->
-    Fun(RiakObject, DefaultField, Arg);
-run_extract(_, _, ExtractDef) ->
-    throw({error, {not_implemented, ExtractDef}}).
+run_extract(RiakObject, DefaultField, {M, F, A}) ->
+    M:F(RiakObject, DefaultField, A);
+run_extract(RiakObject, DefaultField, {F, A}) ->
+    F(RiakObject, DefaultField, A).
         
 %% Get the precommit hook from the bucket and strip any
 %% existing index hooks.
@@ -302,10 +305,46 @@ search_hook_present(Bucket) ->
             Precommit == IndexHook
     end.
 
+extractor_test() ->
+    ?assertEqual({riak_search_kv_extractor, extract, undefined},
+                 validate_extractor(undefined)),
+    ?assertEqual({m, f, arg}, validate_extractor({m, f, arg})),
+    ?assertEqual({m, f, undefined}, validate_extractor({m, f})),
+
+    J1 = {struct, [{<<"mod">>, <<"m">>}, {<<"fun">>, <<"f">>}]},
+    ?assertEqual({m, f, undefined}, validate_extractor(J1)),
+
+    J2 = {struct, [{<<"mod">>, <<"m">>}, {<<"fun">>, <<"f">>},
+                   {<<"arg">>, <<"arg">>}]},
+    ?assertEqual({m, f, <<"arg">>}, validate_extractor(J2)),
+
+    %% TODO Remove legacy stuff in future version -- everything below
+    %% is legacy support
+    ?assertEqual({m, f, undefined},
+                 validate_extractor({modfun, m, f})),
+
+    ?assertEqual({m, f, arg},
+                 validate_extractor({{modfun, m, f}, arg})),
+
+    F = fun(_Obj, _Arg) -> noop end,
+    ?assertEqual({F, undefined},
+                 validate_extractor({qfun, F})),
+
+    ?assertEqual({F, arg},
+                 validate_extractor({{qfun, F}, arg})),
+
+    J3 = {struct, [{<<"language">>, <<"erlang">>}, {<<"module">>, <<"m">>},
+                   {<<"function">>, <<"f">>}]},
+    ?assertEqual({m, f, undefined}, validate_extractor(J3)),
+
+    J4 = {struct, [{<<"language">>, <<"erlang">>}, {<<"module">>, <<"m">>},
+                   {<<"function">>, <<"f">>}, {<<"arg">>, <<"arg">>}]},
+    ?assertEqual({m, f, <<"arg">>}, validate_extractor(J4)).
+
 run_mod_fun_extract_test() ->
     %% Try the anonymous function
     TestObj = conflict_test_object(),
-    Extractor = validate_extractor({{modfun, ?MODULE, run_mod_fun_extract_test_fun}, undefined}),
+    Extractor = validate_extractor({?MODULE, run_mod_fun_extract_test_fun}),
     ?assertEqual([{<<"data">>,<<"some data">>}],
                  run_extract(TestObj, <<"data">>, Extractor)).
  
@@ -315,7 +354,8 @@ run_mod_fun_extract_test_fun(O, DefaultValue, _Args) ->
     [{DefaultValue, list_to_binary(Data)}].
 
 run_qfun_extract_test() ->
-    %% Try the anonymous function
+    %% TODO qfun doesn't work on a running system, probably should
+    %% remove support.
     TestObj = conflict_test_object(),
     Fun1 = fun(O, D, _Args) ->
                    StrVals = [binary_to_list(B) || B <- riak_object:get_values(O)],
