@@ -151,11 +151,16 @@ test_inner({search, Node, Query, Validators}, _Root) ->
     end;
 
 test_inner({solr_select, Params, Validators}, _Root) ->
+    test_inner({solr_select, Params, 200, Validators}, _Root);
+
+test_inner({solr_select, Params, Expect, Validators}, _Root) ->
     {Host, Port} = hd(app_helper:get_env(riak_core, http)),
-    test_inner({solr_select, Host, Port, Params, Validators}, _Root);
+    test_inner({solr_select, Host, Port, Params, Expect, Validators}, _Root);
 
 test_inner({solr_select, Host, Port, Params, Validators}, _Root) ->
-    %% Run the query...
+    test_inner({solr_select, Host, Port, Params, 200, Validators}, _Root);
+
+test_inner({solr_select, Host, Port, Params, Expected, Validators}, _Root) ->
     inets:start(),
     Query = proplists:get_value(q, Params),
     QS = to_querystring(Params),
@@ -175,6 +180,11 @@ test_inner({solr_select, Host, Port, Params, Validators}, _Root) ->
                     [io:format("        - ~s~n", [X]) || X <- Errors],
                     false
             end;
+        {ok, {{_, Status, _}, _, _}} when Status == Expected ->
+            %% If non-200 assuming we don't care about the body
+            io:format("~n    [√] PASS SOLR SELECT » ~s:~p ~s (~s)~n",
+                      [Host, Port, Query, QS]),
+            true;
         {ok, {{_, Status, _}, _, _}} ->
             io:format("~n    [ ] FAIL SOLR SELECT » ~s:~p ~s (~s)~n",
                       [Host, Port, Query, QS]),
