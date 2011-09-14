@@ -389,8 +389,11 @@ parse_solr_select_result(json, Body) ->
 parse_solr_select_result(xml, Body) -> 
     {XMLDoc, _Rest} = xmerl_scan:string(Body),
     Matches = xmerl_xpath:string("//response/result/doc/str[@name='id']/text()", XMLDoc),
-    Results = [X#xmlText.value || X <- Matches],
+    Results = [strip(X#xmlText.value) || X <- Matches],
     {length(Results), Results}.
+
+strip(S) ->
+    string:strip(string:strip(S, both), both, $\n).
 
 to_querystring(Params) ->
     %% Turn params into a querystring...
