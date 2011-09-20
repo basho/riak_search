@@ -235,7 +235,7 @@ strip_precommit(BucketProps) ->
     %% Add kv/search hook - make sure there are not duplicate entries
     CurrentPrecommit -- [precommit_def()].
 
-%% Check is the precommit is already installed
+%% Check if the precommit is already installed
 has_search_precommit(BucketProps) ->
     Precommit = get_precommit(BucketProps),
     lists:member(precommit_def(), Precommit).
