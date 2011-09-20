@@ -50,8 +50,14 @@
 fixup(Bucket, BucketProps) ->
     case proplists:get_value(search, BucketProps) of
         true ->
-            CleanPrecommit = strip_precommit(BucketProps),
-            UpdPrecommit = CleanPrecommit ++ [precommit_def()],
+            CurrentPrecommit = get_precommit(BucketProps),
+    
+            UpdPrecommit = case has_search_precommit(BucketProps) of
+                false ->
+                    CurrentPrecommit ++ [precommit_def()];
+                _ ->
+                    CurrentPrecommit
+            end,
 
             %% Update the bucket properties
             {ok, lists:keystore(precommit, 1, BucketProps, 
@@ -68,13 +74,7 @@ fixup(Bucket, BucketProps) ->
             %% check if the hook is present.
             %% we don't do this on the default bucket because we don't want to
             %% inherit the search parameter.
-            Precommit = case proplists:get_value(precommit, BucketProps) of
-                undefined -> [];
-                {struct, _} = X -> [X];
-                X when is_list(X) -> X
-            end,
-
-            case lists:member(precommit_def(), Precommit) of
+            case has_search_precommit(BucketProps) of
                 true ->
                     {ok, [{search, true}|BucketProps]};
                 false ->
@@ -231,15 +231,41 @@ run_extract(RiakObject, DefaultField, {F, A}) ->
 %% existing index hooks.
 strip_precommit(BucketProps) ->
     %% Get the current precommit hook
-    case proplists:get_value(precommit, BucketProps, []) of
-        X when is_list(X) ->
-            CurrentPrecommit=X;
-        {struct, _}=X ->
-            CurrentPrecommit=[X]
-    end,
-    
+    CurrentPrecommit = get_precommit(BucketProps),
     %% Add kv/search hook - make sure there are not duplicate entries
     CurrentPrecommit -- [precommit_def()].
+
+%% Check is the precommit is already installed
+has_search_precommit(BucketProps) ->
+    Precommit = get_precommit(BucketProps),
+    lists:member(precommit_def(), Precommit).
+
+get_precommit(BucketProps) ->
+    Precommit = case proplists:get_value(precommit, BucketProps, []) of
+        X when is_list(X) ->
+            X;
+        {struct, _}=X ->
+            [X]
+    end,
+    
+    %% strip out any duplicate search hooks
+    Count = lists:foldl(fun(E, Acc) ->
+                case E == precommit_def() of
+                    true ->
+                        Acc +1;
+                    _ ->
+                        Acc
+                end
+        end, 0, Precommit),
+
+    case Count > 1 of
+        true ->
+            %% more than one precommit found, remove all but one
+            Precommit -- lists:duplicate(Count - 1, precommit_def());
+        _ ->
+            Precommit
+    end.
+
 
 -ifdef(TEST).
 

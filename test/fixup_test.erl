@@ -32,7 +32,9 @@ fixup_test_() ->
             fun rolling_upgrade/0,
             fun other_precommit_hook/0,
             fun install_uninstall/0,
-            fun blank_bucket/0
+            fun blank_bucket/0,
+            fun custom_hook_order/0,
+            fun duplicate_hook/0
         ]
     }.
 
@@ -133,6 +135,43 @@ blank_bucket() ->
     ?assertEqual([],
         proplists:get_value(precommit, Props3)),
     ok.
+
+custom_hook_order() ->
+    riak_core_bucket:set_bucket("testbucket", [{search, true}]),
+    riak_core_bucket:set_bucket("testbucket", [{precommit,
+                [my_precommit_def(), riak_search_kv_hook:precommit_def()]}]),
+    Props = riak_core_bucket:get_bucket("testbucket"),
+    ?assertEqual([my_precommit_def(), riak_search_kv_hook:precommit_def()],
+        proplists:get_value(precommit, Props)),
+    riak_core_bucket:set_bucket("testbucket", [{precommit,
+                [riak_search_kv_hook:precommit_def(), my_precommit_def()]}]),
+    Props2 = riak_core_bucket:get_bucket("testbucket"),
+    ?assertEqual([riak_search_kv_hook:precommit_def(), my_precommit_def()],
+        proplists:get_value(precommit, Props2)),
+    ok.
+
+duplicate_hook() ->
+    riak_core_bucket:set_bucket("testbucket", [{search, true}]),
+    riak_core_bucket:set_bucket("testbucket", [{precommit,
+                [riak_search_kv_hook:precommit_def(),
+                    my_precommit_def(), riak_search_kv_hook:precommit_def()]}]),
+    Props = riak_core_bucket:get_bucket("testbucket"),
+    ?assertEqual([my_precommit_def(), riak_search_kv_hook:precommit_def()],
+        proplists:get_value(precommit, Props)),
+    riak_core_bucket:set_bucket("testbucket", [{precommit,
+                [riak_search_kv_hook:precommit_def(),
+                    riak_search_kv_hook:precommit_def(),
+                    riak_search_kv_hook:precommit_def(),
+                    my_precommit_def(),
+                    riak_search_kv_hook:precommit_def(),
+                    riak_search_kv_hook:precommit_def(),
+                    riak_search_kv_hook:precommit_def()]
+            }]),
+    Props2 = riak_core_bucket:get_bucket("testbucket"),
+    ?assertEqual([my_precommit_def(), riak_search_kv_hook:precommit_def()],
+        proplists:get_value(precommit, Props2)),
+    ok.
+
 
 my_precommit_def() ->
     {struct, [{<<"mod">>,atom_to_binary(?MODULE, latin1)},
