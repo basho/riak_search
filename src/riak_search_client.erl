@@ -27,6 +27,7 @@
     %% Indexing...
     index_doc/1,
     index_docs/1,
+    index_docs/2,
     index_term/5, index_term/6,
     index_terms/1,
 
@@ -205,6 +206,10 @@ index_docs(IdxDocs) ->
     FlatIndexAcc = lists:flatten(IndexAcc),
     index_terms(FlatIndexAcc),
     ok.
+
+%% @private This is for backwards compatibility with 0.14.2.
+index_docs(Docs, _) ->
+    index_docs(Docs).
 
 %% Index the specified term - better to use the plural 'terms' interfaces
 index_term(Index, Field, Term, DocID, Props) ->
