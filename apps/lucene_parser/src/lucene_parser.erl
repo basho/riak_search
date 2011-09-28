@@ -27,6 +27,9 @@ parse(DefaultIndex, DefaultField, QueryString) when is_list(DefaultIndex) andals
             end;
         {error, Error} ->
             %% Scanning error.
+            {error, Error};
+        {error, Error, _} ->
+            %% Scanning error.
             {error, Error}
     end.
 
