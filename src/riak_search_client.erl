@@ -57,12 +57,11 @@ parse_query(IndexOrSchema, Query) ->
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
     DefaultIndex = Schema:name(),
     DefaultField = Schema:default_field(),
-    DefaultOp = Schema:default_op(),
     {ok, Ops} = lucene_parser:parse(
                   riak_search_utils:to_list(DefaultIndex),
                   riak_search_utils:to_list(DefaultField),
                   riak_search_utils:to_list(Query)),
-    {ok, riak_search_op:preplan(Ops, #search_state{default_op=DefaultOp})}.
+    {ok, riak_search_op:preplan(Ops)}.
 
 %% Parse the provided filter. Returns either {ok, FilterOps} or {error,
 %% Error}.

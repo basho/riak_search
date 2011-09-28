@@ -181,12 +181,7 @@ parse_squery(Req) ->
         false ->
             Filter = wrq:get_qs_value("filter", "", Req),
             DefaultField = wrq:get_qs_value("df", undefined, Req),
-            DefaultOp = case wrq:get_qs_value("q.op", undefined, Req) of
-                            undefined ->
-                                undefined;
-                            Other ->
-                                to_atom(string:to_lower(Other))
-                        end,
+            DefaultOp = to_atom(wrq:get_qs_value("q.op", undefined, Req)),
             QueryStart = to_integer(wrq:get_qs_value("start", 0, Req)),
             QueryRows = to_integer(wrq:get_qs_value("rows", ?DEFAULT_RESULT_SIZE, Req)),
             SQuery = #squery{q=Query,

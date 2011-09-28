@@ -23,6 +23,8 @@ fixup_test_() ->
         fun({RingEvtPid, RingMgrPid}) ->
                 stop_pid(RingMgrPid),
                 stop_pid(RingEvtPid),
+                wait_until_dead(RingMgrPid),
+                wait_until_dead(RingEvtPid),
                 application:unset_env(riak_core, bucket_fixups),
                 application:unset_env(riak_core, default_bucket_props)
         end,
@@ -37,6 +39,19 @@ fixup_test_() ->
             fun duplicate_hook/0
         ]
     }.
+
+
+%% Minor sin of cut-and-paste.... (again)
+wait_until_dead(Pid) when is_pid(Pid) ->
+    Ref = monitor(process, Pid),
+    receive
+        {'DOWN', Ref, process, _Obj, Info} ->
+            Info
+    after 10*1000 ->
+            exit({timeout_waiting_for, Pid})
+    end;
+wait_until_dead(_) ->
+    ok.
 
 maybe_start_link({ok, Pid}) -> 
     Pid;
