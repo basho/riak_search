@@ -174,7 +174,7 @@ binary_contains(_, <<>>) ->
 %% A name pattern must have a wildcard. Check for it and
 %% replace it with the regex ".*"
 calculate_name_pattern_regex(Name) ->
-    list_to_binary(calculate_name_pattern_regex_1(Name)).
+    list_to_binary("^" ++ calculate_name_pattern_regex_1(Name) ++ "$").
 calculate_name_pattern_regex_1(<<$*, T/binary>>) -> 
     [$.,$*|calculate_name_pattern_regex_1(T)];
 calculate_name_pattern_regex_1(<<H, T/binary>>) -> 
@@ -268,7 +268,7 @@ bad_alias_regexp_test() ->
     SchemaDef = {schema, SchemaProps, FieldDefs},
     ?assertThrow({error, {bad_alias_wildcard,
                            {<<"[*">>,
-                            {"missing terminating ] for character class",3}}}},
+                            {"missing terminating ] for character class",5}}}},
                  from_eterm(<<"bad_alias_regexp_test">>, SchemaDef)).
 
 alias_on_dynamic_field_invalid_test() ->
