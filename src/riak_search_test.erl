@@ -115,24 +115,12 @@ test_inner({error, Test, Type, Error}, _Root) ->
     end;
 
 test_inner({search, Query, Validators}, _Root) ->
-    case search:search(?TEST_INDEX, Query) of
-        {Length, Results} ->
-            case validate_results(Length, Results, Validators) of
-                pass -> 
-                    io:format("~n    [√] PASS QUERY » ~s~n", [Query]),
-                    true;
-                {fail, Errors} ->
-                    io:format("~n    [ ] FAIL QUERY » ~s~n", [Query]),
-                    [io:format("        - ~s~n", [X]) || X <- Errors],
-                    false
-            end;
-        Error ->
-            io:format("~n    [ ] FAIL QUERY » ~s~n", [Query]),
-            io:format("        - ERROR1: ~p~n", [Error]),
-            false
-    end;
+    test_inner({search_node, node(), Query, "", Validators}, _Root);
 
-test_inner({search, Node, Query, Validators}, _Root) ->
+test_inner({search, Query, Filter, Validators}, _Root) ->
+    test_inner({search_node, node(), Query, Filter, Validators}, _Root);
+
+test_inner({search_node, Node, Query, [], Validators}, _Root) ->
     case rpc:call(Node, search, search, [?TEST_INDEX, Query]) of
         {Length, Results} ->
             case validate_results(Length, Results, Validators) of
@@ -146,6 +134,23 @@ test_inner({search, Node, Query, Validators}, _Root) ->
             end;
         Error ->
             io:format("~n    [ ] FAIL QUERY » ~s~n", [Query]),
+            io:format("        - ERROR1: ~p~n", [Error]),
+            false
+    end;
+test_inner({search_node, Node, Query, Filter, Validators}, _Root) ->
+    case rpc:call(Node, search, search, [?TEST_INDEX, Query, Filter]) of
+        {Length, Results} ->
+            case validate_results(Length, Results, Validators) of
+                pass ->
+                    io:format("~n    [√] PASS QUERY » ~s / ~s~n", [Query, Filter]),
+                    true;
+                {fail, Errors} ->
+                    io:format("~n    [ ] FAIL QUERY » ~s / ~s~n", [Query, Filter]),
+                    [io:format("        - ~s~n", [X]) || X <- Errors],
+                    false
+            end;
+        Error ->
+            io:format("~n    [ ] FAIL QUERY » ~s / ~s~n", [Query, Filter]),
             io:format("        - ERROR1: ~p~n", [Error]),
             false
     end;
@@ -353,7 +358,8 @@ validate_results_inner(Length, _Results, {length, ValidLength}) ->
     end;
 validate_results_inner(_Length, Results, {property, Key, Value}) ->
     F = fun({_, _, Props}) ->
-        lists:member({Key, Value}, Props)
+        lists:member({Key, Value}, Props) orelse
+        lists:member(Value, proplists:get_value(Key, Props, []))
     end,
     case (length(Results) > 0) andalso lists:all(F, Results) of
         true -> 
