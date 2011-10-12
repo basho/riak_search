@@ -107,10 +107,17 @@ is_exact_match(Positions) ->
     end.
 
 %% Return true if the provided list of integers is sequential.
-is_sequential(List) ->
-    Min = lists:min(List),
-    Max = lists:max(List),
-    List == lists:seq(Min, Max).
+is_sequential([X|Rest]) ->
+    case Rest of
+        [Y|_] when Y =:= X + 1 ->
+            is_sequential(Rest);
+        [] ->
+            true;
+        _ ->
+            false
+    end;
+is_sequential([]) ->
+   true.
 
 %% Given a result iterator, only return results that are within a
 %% certain proximity of eachother.
