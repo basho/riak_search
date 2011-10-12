@@ -9,7 +9,14 @@
          preplan/2,
          chain_op/4
         ]).
+
 -include("riak_search.hrl").
+-ifdef(TEST).
+-ifdef(EQC).
+-include_lib("eqc/include/eqc.hrl").
+-endif.
+-include_lib("eunit/include/eunit.hrl").
+-endif.
 -define(INDEX_DOCID(Term), ({element(1, Term), element(2, Term)})).
 
 %%% Conduct a proximity match over the terms. The #proximity operator
@@ -87,25 +94,34 @@ exact_match_iterator({eof, _}) ->
 %% Return true if all of the terms exist within Proximity words from
 %% eachother.
 is_exact_match(Positions) ->
-    is_exact_match_1(undefined, Positions).
-is_exact_match_1(LastMin, Positions) ->
-    case remove_smallest_position(LastMin, Positions) of
-        undefined -> 
+    case get_position_heads(Positions) of
+        undefined ->
+            %% We've come to the end of a position list. Not an exact match.
             false;
-        {Min, Max, NextPass} ->
-            case is_exact_match_2(lists:seq(Min, Max), [hd(X) || X <- NextPass]) of
-                true -> 
+        Heads ->
+            %% This position list represents an exact match if it is
+            %% sequential, ie: it's in ascending order with no gaps.
+            case is_sequential(Heads) of
+                true ->
                     true;
                 false ->
-                    is_exact_match_1(Min, NextPass)
+                    NewPositions = remove_next_term_position(Positions),
+                    is_exact_match(NewPositions)
             end
     end.
-%% Return true if the two lists match. Broken out because we'll
-%% eventually need to handle skipped terms in here.
-%% TODO - Handle skipped terms.
-is_exact_match_2(L1, L2) ->
-    L1 == L2.
 
+%% Return true if the provided list of integers is sequential.
+is_sequential([X|Rest]) ->
+    case Rest of
+        [Y|_] when Y =:= X + 1 ->
+            is_sequential(Rest);
+        [] ->
+            true;
+        _ ->
+            false
+    end;
+is_sequential([]) ->
+   true.
 
 %% Given a result iterator, only return results that are within a
 %% certain proximity of eachother.
@@ -123,49 +139,106 @@ proximity_iterator({Term, PositionLists, Iterator}, Proximity) ->
     end;
 proximity_iterator({eof, _}, _) ->
     {eof, ignore}.
-        
+
 %% Return true if all of the terms exist within Proximity words from
 %% eachother.
 within_proximity(Proximity, Positions) ->
-    within_proximity_1(Proximity, undefined, Positions).
-within_proximity_1(Proximity, LastMin, Positions) ->
-    case remove_smallest_position(LastMin, Positions) of
-        undefined -> 
+    case get_position_heads(Positions) of
+        undefined ->
+            %% We've come to the end of a position list. Not a proximity match.
             false;
-        {Min, Max, _NextPass} when abs(Min - Max) < Proximity ->
-            true;
-        {Min, _, NextPass} ->
-            within_proximity_1(Proximity, Min, NextPass)
+        Heads ->
+            %% This position list represents a phrase match if the Max
+            %% minus the Min value is less than our Proximity target.
+            IsInProximity  = abs(lists:max(Heads) - lists:min(Heads)) < Proximity,
+            case IsInProximity of
+                true ->
+                    true;
+                false ->
+                    NewPositions = remove_next_term_position(Positions),
+                    within_proximity(Proximity, NewPositions)
+            end
     end.
 
-%% Given a list of Positions, remove the smallest position in the
-%% list, and return the new minimum and maximum plus the new list of
-%% Positions.
-remove_smallest_position(LastMin, Positions) ->
-    remove_smallest_position(LastMin, undefined, undefined, Positions, []).
-remove_smallest_position(LastMin, Min, Max, [[LastMin|Ps]|Rest], NextPass) ->
-    %% This is the same Min we saw last time, so toss it.
-    remove_smallest_position(LastMin, Min, Max, [Ps|Rest], NextPass);
-remove_smallest_position(LastMin, undefined, undefined, [[P|Ps]|Rest], NextPass) ->
-    %% First time through the loop. Set Min and Max.
-    remove_smallest_position(LastMin, P, P, Rest, [[P|Ps]|NextPass]);
-remove_smallest_position(LastMin, Min, Max, [[P|Ps]|Rest], NextPass) when Min > P ->
-    %% Found a new minimum...
-    remove_smallest_position(LastMin, P, Max, Rest, [[P|Ps]|NextPass]);
-remove_smallest_position(LastMin, Min, Max, [[P|Ps]|Rest], NextPass) when Max < P ->
-    %% Found a new maximum...
-    remove_smallest_position(LastMin, Min, P, Rest, [[P|Ps]|NextPass]);
-remove_smallest_position(LastMin, Min, Max, [[P|Ps]|Rest], NextPass) ->
-    %% Just loop...
-    remove_smallest_position(LastMin, Min, Max, Rest, [[P|Ps]|NextPass]);
-remove_smallest_position(_, _, _, [[]|_], _) ->
+%% Given a list of term positions, remove a single term position
+%% according to a set of rules, and return the new list.
+%%
+%% The term position to remove is either the smallest duplicated
+%% position, or if there are no duplicates, the smallest position
+%% overall.
+%%
+%% This essentially mimics walking through the document from start to
+%% finish, continually removing the earliest occurring term from
+%% consideration. The functions that call this one then check to see
+%% if the new set of positions represent a successfull proximity match
+%% or exact phrase match, depending upon the search query.
+remove_next_term_position([]) ->
+    undefined;
+remove_next_term_position(Positions) ->
+    case get_position_heads(Positions) of
+        undefined ->
+            %% Can't calculate position heads. That means one of the
+            %% lists is empty, so return undefined.
+            undefined;
+        List ->
+            %% Figure out which value to remove. This is the smallest
+            %% duplicated value, or if no values are duplicated, then the
+            %% smallest value.
+            ToRemove = get_smallest_duplicate_or_not(List),
+            remove_next_term_position(ToRemove, lists:reverse(Positions), [])
+    end.
+remove_next_term_position(ToRemove, [[ToRemove|Ps]|Rest], NextPass) ->
+    %% We've found the value to remove, so toss it and don't remove
+    %% anything else.
+    remove_next_term_position(undefined, [Ps|Rest], NextPass);
+remove_next_term_position(_,  [[]|_], _) ->
     %% Reached the end of a position list, no way to continue.
     undefined;
-remove_smallest_position(_LastMin, Min, Max, [], NextPass) ->
+remove_next_term_position(ToRemove, [Ps|Rest], NextPass) ->
+    %% Just loop...
+    remove_next_term_position(ToRemove, Rest, [Ps|NextPass]);
+remove_next_term_position(_ToRemove, [], NextPass) ->
     %% We've processed all the position lists for this pass, so continue.
-    {Min, Max, lists:reverse(NextPass)}.
+    NextPass.
 
-    
+get_position_heads(undefined) ->
+    undefined;
+get_position_heads(List) ->
+    get_position_heads(List, []).
+get_position_heads([[]|_Rest], _Acc) ->
+    undefined;
+get_position_heads([[H|_]|Rest], Acc) ->
+    get_position_heads(Rest, [H|Acc]);
+get_position_heads([], Acc) ->
+    lists:reverse(Acc).
+
+%% Given a list of integers, return the smallest integer that is a duplicate.
+get_smallest_duplicate_or_not(undefined) ->
+    undefined;
+get_smallest_duplicate_or_not(List) ->
+    get_smallest_duplicate_or_not(lists:sort(List), undefined, undefined).
+get_smallest_duplicate_or_not([H,H|Rest], SmallestDup, SmallestVal)
+  when SmallestDup == undefined orelse H < SmallestDup ->
+    %% We found a duplicate, and it's the first duplicate we've seen,
+    %% or it's smaller than the previous one we found, so use this as
+    %% the new duplicate value.
+    get_smallest_duplicate_or_not(Rest, H, SmallestVal);
+get_smallest_duplicate_or_not([H|Rest], SmallestDup, SmallestVal) 
+  when SmallestVal == undefined orelse H < SmallestVal ->
+    %% We found a new smallest value.
+    get_smallest_duplicate_or_not(Rest, SmallestDup, H);
+get_smallest_duplicate_or_not([_|Rest], SmallestDup, SmallestVal) ->
+    %% Next result is not special, ignore it.
+    get_smallest_duplicate_or_not(Rest, SmallestDup, SmallestVal);
+get_smallest_duplicate_or_not([], SmallestDup, SmallestVal) ->
+    %% Nothing left to process. Return either the smallest duplicate,
+    %% the smallest value, or undefined.
+    if
+        SmallestDup /= undefined -> SmallestDup;
+        SmallestVal /= undefined -> SmallestVal;
+        true -> undefined
+    end.
+
 %% Given a pair of iterators, combine into a single iterator returning
 %% results of the form {Term, PositionLists, NewIterator}. Apart from
 %% the PositionLists, this is very similar to the #intersection
@@ -199,3 +272,101 @@ select_fun(_, {eof, _}) ->
     %% Hit an eof, no more results...
     {eof, []}.
 
+
+-ifdef(TEST).
+
+remove_next_term_position_1_test() ->
+    %% Test when ToRemove == undefined...
+    Input =
+        [[1,2,3],
+         [4,5,6],
+         [7,8,9]],
+    Expected =
+        [[2,3],
+         [4,5,6],
+         [7,8,9]],
+    ?assertEqual(remove_next_term_position(Input), Expected).
+
+remove_next_term_position_2_test() ->
+    %% Test when there is a single matching position in middle list...
+    Input =
+        [[4,5,6],
+         [1,2,3],
+         [7,8,9]],
+    Expected =
+        [[4,5,6],
+         [2,3],
+         [7,8,9]],
+    ?assertEqual(remove_next_term_position(Input), Expected).
+
+remove_next_term_position_3_test() ->
+    %% Test when there is a single matching position in end list...
+    Input =
+        [[4,5,6],
+         [7,8,9],
+         [1,2,3]],
+    Expected =
+        [[4,5,6],
+         [7,8,9],
+         [2,3]],
+    ?assertEqual(remove_next_term_position(Input), Expected).
+
+remove_next_term_position_4_test() ->
+    %% Test when there are multiple matching positions. Should only remove the last one.
+    Input =
+        [[1,2,3],
+         [4,5,6],
+         [7,8,9],
+         [1,2,3]],
+    Expected =
+        [[1,2,3],
+         [4,5,6],
+         [7,8,9],
+         [2,3]],
+    ?assertEqual(remove_next_term_position(Input), Expected).
+
+remove_next_term_position_5_test() ->
+    %% Test when there are multiple matching positions. Should only remove the last one.
+    Input =
+        [[0],
+         [1,2,3],
+         [4,5,6],
+         [7,8,9],
+         [1,2,3]],
+    Expected =
+        [[0],
+         [1,2,3],
+         [4,5,6],
+         [7,8,9],
+         [2,3]],
+    ?assertEqual(remove_next_term_position(Input), Expected).
+
+remove_next_term_position_6_test() ->
+    %% Test when a list is empty...
+    Input =
+        [[1,2,3],
+         [4,5,6],
+         [],
+         [1,2,3]],
+    Expected =
+        undefined,
+    ?assertEqual(remove_next_term_position(Input), Expected).
+
+-ifdef(EQC).
+
+is_sequential_prop() ->
+    ?FORALL(L, non_empty(list(int())),
+            begin
+                A = lists:min(L),
+                Z = lists:max(L),
+                ?assertEqual(L =:= lists:seq(A, Z),
+                             is_sequential(L)),
+                true
+            end).
+
+is_sequential_test() ->
+    true = eqc:quickcheck(eqc:numtests(5000, is_sequential_prop())).
+
+-endif. % EQC
+
+-endif.
