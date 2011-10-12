@@ -161,20 +161,24 @@ within_proximity(Proximity, Positions) ->
 %% consideration. The functions that call this one then check to see
 %% if the new set of positions represent a successfull proximity match
 %% or exact phrase match, depending upon the search query.
+remove_next_term_position([]) ->
+    undefined;
 remove_next_term_position(Positions) ->
-    %% Figure out which value to remove. This is the smallest
-    %% duplicated value, or if no values are duplicated, then the
-    %% smallest value.
-    ToRemove =
-        case get_position_heads(Positions) of
-            undefined ->
-                undefined;
-            List ->
-                get_smallest_duplicate_or_not(List)
-        end,
-    remove_next_term_position(ToRemove, lists:reverse(Positions), []).
+    case get_position_heads(Positions) of
+        undefined ->
+            %% Can't calculate position heads. That means one of the
+            %% lists is empty, so return undefined.
+            undefined;
+        List ->
+            %% Figure out which value to remove. This is the smallest
+            %% duplicated value, or if no values are duplicated, then the
+            %% smallest value.
+            ToRemove = get_smallest_duplicate_or_not(List),
+            remove_next_term_position(ToRemove, lists:reverse(Positions), [])
+    end.
 remove_next_term_position(ToRemove, [[ToRemove|Ps]|Rest], NextPass) ->
-    %% We've found the value to remove, so toss it and don't remove anything else.
+    %% We've found the value to remove, so toss it and don't remove
+    %% anything else.
     remove_next_term_position(undefined, [Ps|Rest], NextPass);
 remove_next_term_position(_,  [[]|_], _) ->
     %% Reached the end of a position list, no way to continue.
