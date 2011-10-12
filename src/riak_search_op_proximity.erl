@@ -9,8 +9,12 @@
          preplan/2,
          chain_op/4
         ]).
+
 -include("riak_search.hrl").
 -ifdef(TEST).
+-ifdef(EQC).
+-include_lib("eqc/include/eqc.hrl").
+-endif.
 -include_lib("eunit/include/eunit.hrl").
 -endif.
 -define(INDEX_DOCID(Term), ({element(1, Term), element(2, Term)})).
@@ -347,5 +351,22 @@ remove_next_term_position_6_test() ->
     Expected =
         undefined,
     ?assertEqual(remove_next_term_position(Input), Expected).
+
+-ifdef(EQC).
+
+is_sequential_prop() ->
+    ?FORALL(L, non_empty(list(int())),
+            begin
+                A = lists:min(L),
+                Z = lists:max(L),
+                ?assertEqual(L =:= lists:seq(A, Z),
+                             is_sequential(L)),
+                true
+            end).
+
+is_sequential_test() ->
+    true = eqc:quickcheck(eqc:numtests(5000, is_sequential_prop())).
+
+-endif. % EQC
 
 -endif.
