@@ -12,7 +12,7 @@
 %% consists of a nested set of Erlang records found in lucene_parser.hrl.
 parse(DefaultIndex, DefaultField, QueryString) when is_list(DefaultIndex) andalso is_list(DefaultField) andalso is_list(QueryString) ->
     case lucene_scan:string(QueryString) of
-        {ok, Tokens, 1} -> 
+        {ok, Tokens, _Line} ->
             case lucene_parse:parse(Tokens) of
                 {ok, QueryGraph} -> 
                     %% Success case.
