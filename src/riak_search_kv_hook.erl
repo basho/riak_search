@@ -32,9 +32,9 @@
 -type fargs() :: {function(), args()}.
 -type extractdef() :: mfargs() | fargs().
 
--type riak_object() :: tuple(). % no good way to define riak_object
+-type obj() :: riak_object:riak_object().
 
--type extract_qfun() :: fun((riak_object(),any()) -> search_fields()).
+-type extract_qfun() :: fun((obj(),any()) -> search_fields()).
 -type args() :: any().
 
 -type index() :: binary().
@@ -100,8 +100,7 @@ precommit_def() ->
 %% Precommit hook for riak k/v and search integration.  Executes
 %% the desired mapping on the riak object to produce a search
 %% document to store in riak search.
-%%
--spec precommit(riak_object()) -> {fail, any()} | riak_object().
+-spec precommit(obj()) -> {fail, any()} | obj().
 precommit(RiakObject) ->
     Extractor = get_extractor(RiakObject),
     try
@@ -118,7 +117,7 @@ precommit(RiakObject) ->
 
 %% Decide if an object should be indexed, and if so the extraction function to 
 %% pull out the search fields.
--spec get_extractor(riak_object()) -> extractdef().
+-spec get_extractor(obj()) -> extractdef().
 get_extractor(RiakObject) ->
     BucketProps = riak_core_bucket:get_bucket(riak_object:bucket(RiakObject)),
     Ex = try_keys([?LEGACY_EX_PROP_NAME, ?EX_PROP_NAME], BucketProps),
@@ -172,7 +171,7 @@ to_modfun(Val) ->
 %%
 %% Index the provided riak object and return ok on success.
 %%
--spec index_object(riak_object(), extractdef()) -> ok.
+-spec index_object(obj(), extractdef()) -> ok.
 index_object(RiakObject, Extractor) ->
     %% Set up
     {ok, RiakClient} = riak:local_client(),
@@ -197,7 +196,7 @@ index_object(RiakObject, Extractor) ->
     end.
 
 %% Make an indexed document under Index/DocId from the RiakObject
--spec make_indexed_doc(index(), docid(), riak_object(), extractdef()) -> idxdoc().
+-spec make_indexed_doc(index(), docid(), obj(), extractdef()) -> idxdoc().
 make_indexed_doc(Index, DocId, RiakObject, Extractor) ->
     case riak_kv_util:is_x_deleted(RiakObject) of
         true ->
@@ -211,17 +210,17 @@ make_indexed_doc(Index, DocId, RiakObject, Extractor) ->
             IdxDoc
     end.
  
--spec make_index(riak_object()) -> binary().
+-spec make_index(obj()) -> binary().
 make_index(RiakObject) ->
     riak_object:bucket(RiakObject).
 
--spec make_docid(riak_object()) -> binary().
+-spec make_docid(obj()) -> binary().
 make_docid(RiakObject) ->
     riak_object:key(RiakObject).
     
 %% Run the extraction function against the RiakObject to get a list of
 %% search fields and data
--spec run_extract(riak_object(), string(), extractdef()) -> search_fields().
+-spec run_extract(obj(), string(), extractdef()) -> search_fields().
 run_extract(RiakObject, DefaultField, {M, F, A}) ->
     M:F(RiakObject, DefaultField, A);
 run_extract(RiakObject, DefaultField, {F, A}) ->
