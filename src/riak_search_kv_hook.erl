@@ -196,7 +196,8 @@ index_object(RiakObject, Extractor) ->
     end.
 
 %% Make an indexed document under Index/DocId from the RiakObject
--spec make_indexed_doc(index(), docid(), obj(), extractdef()) -> idxdoc().
+-spec make_indexed_doc(index(), docid(), obj(), extractdef()) ->
+                              idxdoc() | deleted.
 make_indexed_doc(Index, DocId, RiakObject, Extractor) ->
     case riak_kv_util:is_x_deleted(RiakObject) of
         true ->
