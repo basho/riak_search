@@ -39,7 +39,7 @@
 
 -type index() :: binary().
 -type docid() :: binary().
--type idxdoc() :: tuple(). % #riak_indexed_doc{}
+-type idxdoc() :: #riak_idx_doc{}.
 
 -type search_fields() :: [{search_field(),search_data()}].
 -type search_field() :: string().
