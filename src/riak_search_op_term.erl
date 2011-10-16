@@ -148,7 +148,5 @@ calculate_score(ScoringVars, Props) ->
     lists:keystore(score, 1, Props, {score, ScoreList}).
 
 get_preflist(DocIdx, NVal) ->
-    [{Idx,Node}
-     || {{Idx,Node},primary} <- riak_core_apl:get_primary_apl(DocIdx,
-                                                              NVal,
-                                                              riak_search)].
+    lists:map(fun({IdxNode, _}) -> IdxNode end,
+              riak_core_apl:get_primary_apl(DocIdx, NVal, riak_search)).
