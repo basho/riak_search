@@ -1,3 +1,7 @@
+%%%===================================================================
+%%% Macros
+%%%===================================================================
+
 -ifndef(PRINT).
 -define(PRINT(Var), io:format("DEBUG: ~p:~p - ~p~n~n ~p~n~n", [?MODULE, ?LINE, ??Var, Var])).
 -define(TIMEON, erlang:put(debug_timer, [now()|case erlang:get(debug_timer) == undefined of true -> []; false -> erlang:get(debug_timer) end])).
@@ -8,6 +12,16 @@
 -define(DEFAULT_INDEX, <<"search">>).
 -define(RESULTVEC_SIZE, 1000).
 -define(OPKEY(Tag, Op), {Tag, element(2, Op)}).
+
+%%%===================================================================
+%%% Types
+%%%===================================================================
+
+-type index() :: binary().
+
+%%%===================================================================
+%%% Records
+%%%===================================================================
 
 -record(search_state, {
           parent=undefined,
