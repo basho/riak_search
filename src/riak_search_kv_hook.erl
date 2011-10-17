@@ -37,7 +37,6 @@
 -type extract_qfun() :: fun((obj(),any()) -> search_fields()).
 -type args() :: any().
 
--type index() :: binary().
 -type docid() :: binary().
 -type idxdoc() :: #riak_idx_doc{}.
 
