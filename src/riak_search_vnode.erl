@@ -19,8 +19,6 @@
 
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 -include_lib("riak_core/include/riak_core_pb.hrl").
--define(PRINT(Var), io:format("DEBUG: ~p:~p - ~p~n~n ~p~n~n", [?MODULE, ?LINE, ??Var, Var])).
-
 
 -record(vstate, {idx, bmod, bstate}).
 -record(index_v1, {iftvp_list}).

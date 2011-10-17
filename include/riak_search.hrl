@@ -4,14 +4,11 @@
 
 -ifndef(PRINT).
 -define(PRINT(Var), io:format("DEBUG: ~p:~p - ~p~n~n ~p~n~n", [?MODULE, ?LINE, ??Var, Var])).
--define(TIMEON, erlang:put(debug_timer, [now()|case erlang:get(debug_timer) == undefined of true -> []; false -> erlang:get(debug_timer) end])).
--define(TIMEOFF(Var), io:format("~s :: ~10.2f ms : ~p : ~p~n", [string:copies(" ", length(erlang:get(debug_timer))), (timer:now_diff(now(), hd(erlang:get(debug_timer)))/1000), ??Var, Var]), erlang:put(debug_timer, tl(erlang:get(debug_timer)))).
 -endif.
 -define(FMT(S, L), lists:flatten(io_lib:format(S, L))).
 
 -define(DEFAULT_INDEX, <<"search">>).
 -define(RESULTVEC_SIZE, 1000).
--define(OPKEY(Tag, Op), {Tag, element(2, Op)}).
 
 %%%===================================================================
 %%% Types
