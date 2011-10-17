@@ -34,9 +34,6 @@
                     | eof
                     | {error, Reason::any()}.
 
--spec stream_worker(pid(), index(), field(), s_term(), fun(), sender()) ->
-                           any().
-
 % @type state() = term().
 -record(state, {partition, pid}).
 
@@ -137,6 +134,8 @@ drop(State) ->
 %%% Internal Functions
 %%%===================================================================
 
+-spec stream_worker(pid(), index(), field(), s_term(), fun(), sender()) ->
+                           any().
 stream_worker(Pid, Index, Field, Term, Filter, Sender) ->
     Iter = merge_index:lookup(Pid, Index, Field, Term, Filter),
     stream_to(Iter(), Sender).
