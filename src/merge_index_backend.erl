@@ -23,7 +23,19 @@
 -export([stream_worker/6,
          range_worker/8]).
 
+-include_lib("riak_core/include/riak_core_vnode.hrl").
 -include("riak_search.hrl").
+
+-type mi_size() :: all | pos_integer().
+-type(iterator() :: fun(() -> {any(), iterator()}
+                                  | eof
+                                  | {error, Reason::any()})).
+-type itr_result() :: {any(), iterator()}
+                    | eof
+                    | {error, Reason::any()}.
+
+-spec stream_worker(pid(), index(), field(), s_term(), fun(), sender()) ->
+                           any().
 
 % @type state() = term().
 -record(state, {partition, pid}).
@@ -127,18 +139,21 @@ drop(State) ->
 
 stream_worker(Pid, Index, Field, Term, Filter, Sender) ->
     Iter = merge_index:lookup(Pid, Index, Field, Term, Filter),
-    iterate(Iter(), Sender).
+    stream_to(Iter(), Sender).
 
+-spec range_worker(pid(), index(), field(), s_term(), s_term(), mi_size(),
+                   fun(), sender()) -> any().
 range_worker(Pid, Index, Field, StartTerm, EndTerm, Size, Filter, Sender) ->
     Iter = merge_index:range(Pid, Index, Field, StartTerm, EndTerm,
                              Size, Filter),
-    iterate(Iter(), Sender).
+    stream_to(Iter(), Sender).
 
-iterate(eof, Sender) ->
-    riak_search_backend:response_done(Sender);
-iterate({error, Reason}, Sender) ->
-    riak_search_backend:response_error(Sender, Reason);
-iterate({Results, Iter}, Sender) ->
-    riak_search_backend:response_results(Sender, Results),
-    iterate(Iter(), Sender).
+-spec stream_to(itr_result(), sender()) -> any().
+stream_to(eof, To) ->
+    riak_search_backend:response_done(To);
+stream_to({error, Reason}, To) ->
+    riak_search_backend:response_error(To, Reason);
+stream_to({Results, Iter}, To) ->
+    riak_search_backend:response_results(To, Results),
+    stream_to(Iter(), To).
 
