@@ -5,6 +5,8 @@
          calc_partition/3
         ]).
 
+-include("riak_search.hrl").
+
 %% Pick out the preflist of covering nodes. There are two approaches
 %% in the face of down nodes. One is to minimize the amount of
 %% duplicate data that we read. The other is maximize load
@@ -146,7 +148,6 @@ zip_with_partition_and_index(Postings) ->
 %% riak_core_util:chash_key/N, but we don't allow Riak Search to
 %% specify custom hashes. It just takes too long to look up for every
 %% term and kills performance.
+-spec calc_partition(index(), field(), term()) -> binary().
 calc_partition(Index, Field, Term) ->
     crypto:sha(term_to_binary({Index, Field, Term})).
-
-

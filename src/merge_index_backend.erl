@@ -74,6 +74,7 @@ info(Index, Field, Term, Sender, State) ->
     riak_search_backend:info_response(Sender, [{Term, node(), Count}]),
     noreply.
 
+-spec stream(index(), field(), s_term(), fun(), sender(), #state{}) -> noreply.
 stream(Index, Field, Term, Filter, Sender, State) ->
     Pid = State#state.pid,
     spawn_link(?MODULE, stream_worker, [Pid, Index, Field,

@@ -19,6 +19,7 @@
 
 -include_lib("riak_core/include/riak_core_vnode.hrl").
 -include_lib("riak_core/include/riak_core_pb.hrl").
+-include("riak_search.hrl").
 
 -record(vstate, {idx, bmod, bstate}).
 -record(index_v1, {iftvp_list}).
@@ -51,6 +52,8 @@ info(Preflist, Index, Field, Term, ReplyTo) ->
     command(Preflist, Req, {raw, Ref, ReplyTo}),
     {ok, Ref}.
 
+-spec stream(list(), index(), field(), term(), fun(), pid()) ->
+                    {ok, stream_ref()}.
 stream(Preflist, Index, Field, Term, FilterFun, ReplyTo) ->
     Req = #stream_v1{
       index = Index,
