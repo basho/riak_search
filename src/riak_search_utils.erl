@@ -112,15 +112,12 @@ current_key_clock() ->
     (Seconds * 1000000) + 
     MilliSeconds.
 
-%% Choose a random element from the List or Array.
-choose(List) when is_list(List) ->
+%% Choose a random element from the List.
+-spec choose(list()) -> any().
+choose(List) ->
     random:seed(now()),
     N = random:uniform(length(List)),
-    lists:nth(N, List);
-choose(Array) when element(1, Array) == array ->
-    random:seed(now()),
-    N = random:uniform(Array:size()),
-    Array:get(N - 1).
+    lists:nth(N, List).
 
 %% Take the first defined element.
 coalesce(undefined, B) -> B;

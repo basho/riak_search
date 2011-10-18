@@ -147,6 +147,10 @@ gather_iterator_results(OutputPid, OutputRef, {eof, _}, Acc) ->
 %% Gathers result vectors sent to the current Pid by a backend stream
 %% or range operation, run a transform function, and shuttles the
 %% results to the given OutputPid and OutputRef.
+%%
+%% TODO maybe instead of throw return timeout or {error, timeout}
+-spec gather_stream_results(stream_ref(), pid(), reference(), fun()) ->
+                                   any() | no_return().
 gather_stream_results(Ref, OutputPid, OutputRef, TransformFun) ->
     receive 
         {Ref, done} ->
