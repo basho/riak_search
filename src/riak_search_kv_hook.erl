@@ -170,7 +170,7 @@ to_modfun(Val) ->
 %%
 %% Index the provided riak object and return ok on success.
 %%
--spec index_object(obj(), extractdef()) -> ok.
+-spec index_object(obj(), extractdef()) -> ok | {error, Reason::any()}.
 index_object(RiakObject, Extractor) ->
     %% Set up
     {ok, RiakClient} = riak:local_client(),
