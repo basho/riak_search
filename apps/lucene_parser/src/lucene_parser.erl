@@ -25,12 +25,7 @@ parse(DefaultIndex, DefaultField, QueryString) when is_list(DefaultIndex) andals
                     %% Other parsing error.
                     {error, Error}
             end;
-        {error, Error} ->
-            %% Scanning error.
-            {error, Error};
-        {error, Error, _} ->
-            %% Scanning error.
-            {error, Error}
+        {error, Error, _Line} -> {error, Error}
     end.
 
 
