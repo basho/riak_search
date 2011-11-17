@@ -1,13 +1,12 @@
 -module(riak_search_repl_helper).
 
--export([send/1, recv/1]).
+-export([send/2, recv/1]).
 
 %% when sending the object, ensure that both the KV and proxy objexts are sent
-send(Obj) ->
+send(Obj, C) ->
     B = riak_object:bucket(Obj),
     K = riak_object:key(Obj),
     PO = is_proxy_object(B),
-    {ok, C} = riak:local_client(),
     SHI = proplists:get_value(search, C:get_bucket(B)),
 
     case SHI of
