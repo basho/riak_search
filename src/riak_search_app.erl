@@ -16,6 +16,11 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
+    %% ALWAYS register the repl hook, incase we're getting search data repled
+    %% to us
+    riak_core:register([
+            {repl_helper, riak_search_repl_helper}
+        ]),
     case app_helper:get_env(riak_search, enabled, false) of
         true ->
             %% Ensure that the KV service has fully loaded.
