@@ -16,11 +16,6 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    %% ALWAYS register the repl hook, incase we're getting search data repled
-    %% to us
-    riak_core:register([
-            {repl_helper, riak_search_repl_helper}
-        ]),
     case app_helper:get_env(riak_search, enabled, false) of
         true ->
             %% Ensure that the KV service has fully loaded.
@@ -31,9 +26,10 @@ start(_StartType, _StartArgs) ->
                     %% Register the search vnode with core and mark the node
                     %% as available for search requests.
                     riak_core:register(riak_search, [
-                        {vnode_module, riak_search_vnode},
-                        {bucket_fixup, riak_search_kv_hook}
-                    ]),
+                            {vnode_module, riak_search_vnode},
+                            {bucket_fixup, riak_search_kv_hook},
+                            {repl_helper, riak_search_repl_helper}
+                        ]),
 
                     %% Register our cluster_info app callback modules, with catch if
                     %% the app is missing or packaging is broken.
