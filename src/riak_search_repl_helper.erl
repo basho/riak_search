@@ -1,3 +1,8 @@
+%% -------------------------------------------------------------------
+%%
+%% Copyright (c) 2007-2011 Basho Technologies, Inc.  All Rights Reserved.
+%%
+%% -------------------------------------------------------------------
 -module(riak_search_repl_helper).
 
 -export([send_realtime/2, send/2, recv/1]).
