@@ -23,7 +23,11 @@ send(Obj, C) ->
     B = riak_object:bucket(Obj),
     K = riak_object:key(Obj),
     PO = is_proxy_object(B),
-    SHI = proplists:get_value(search, C:get_bucket(B)),
+    %% is the search hook installed, or is this a proxy object
+    %% if either is true, invoke the special search handling rules
+    SHI = proplists:get_value(search, riak_core_bucket:get_bucket(B), false) orelse PO,
+
+    lager:debug("SHI ~p", [SHI]),
 
     case SHI of
         true ->
@@ -39,12 +43,19 @@ send(Obj, C) ->
 send_search(true, _PO, IdxB, K, C) ->
     lager:debug("Outgoing indexed KV obj ~p/~p", [IdxB, K]),
     <<"_rsid_",B/binary>> = IdxB,
-    case C:get(B, K) of
-        {ok, KVO} ->
-            [KVO];
-        Other ->
-            lager:info("Couldn't find expected KV obj ~p/~p ~p", [B, K, Other]),
-            ok
+    case proplists:get_value(repl, riak_core_bucket:get_bucket(B), false) of
+        true ->
+            case C:get(B, K) of
+                {ok, KVO} ->
+                    [KVO];
+                Other ->
+                    lager:info("Couldn't find expected KV obj ~p/~p ~p", [B, K, Other]),
+                    ok
+            end;
+        _ ->
+            lager:debug("Repl disabled on proxy object parent bucket ~p",
+                [B]),
+            cancel
     end;
 
 send_search(false, _KVO, B, K, C) ->
