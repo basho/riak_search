@@ -1,6 +1,22 @@
 -module(riak_search_repl_helper).
 
--export([send/2, recv/1]).
+-export([send_realtime/2, send/2, recv/1]).
+
+send_realtime(Obj, _C) ->
+    Bucket = riak_object:bucket(Obj),
+    case Bucket of
+        <<"_rsid_", B/binary>> ->
+            SearchBucketProps = riak_core_bucket:get_bucket(B),
+            case proplists:get_value(repl, SearchBucketProps, false) of
+                false ->
+                    lager:debug("repl disabled on bucket for this proxy object"),
+                    cancel;
+                _ ->
+                    ok
+            end;
+        _ ->
+            ok
+    end.
 
 %% when sending the object, ensure that both the KV and proxy objexts are sent
 send(Obj, C) ->
@@ -20,7 +36,7 @@ send(Obj, C) ->
             ok
     end.
 
-send_search(true, PO, IdxB, K, C) ->
+send_search(true, _PO, IdxB, K, C) ->
     lager:debug("Outgoing indexed KV obj ~p/~p", [IdxB, K]),
     <<"_rsid_",B/binary>> = IdxB,
     case C:get(B, K) of
@@ -31,7 +47,7 @@ send_search(true, PO, IdxB, K, C) ->
             ok
     end;
 
-send_search(false, KVO, B, K, C) ->
+send_search(false, _KVO, B, K, C) ->
     lager:debug("Outgoing indexed KV obj ~p/~p", [B, K]),
     IdxB = <<"_rsid_",B/binary>>,
     case C:get(IdxB, K) of
