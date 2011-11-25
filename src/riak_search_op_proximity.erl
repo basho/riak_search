@@ -24,16 +24,16 @@
 %%% "spot", and the third is the positions for "run".
 %%%
 %%% A final iterator compares the positions to ensure that we find the
-%%% terms all within the right distance from eachother. This acts
+%%% terms all within the right distance from each other. This acts
 %%% differently depending on whether we are doing an exact phrase search vs. a proximity search. 
 %%%
 %%% - For exact phrase search, the terms should be within N words from
-%%% eachother, where N is the number of words in the phrase
+%%% each other, where N is the number of words in the phrase
 %%% (accounting for stopwords). The sublists should line up so that
 %%% some combination of word positions is M, M+1, M+2, etc.
 %%%
 %%% - For proximity search, the terms should be within N words from
-%%% eachother, where N is specified by the user, ie: ("spot see
+%%% each other, where N is specified by the user, ie: ("spot see
 %%% run"~5). This works by continually peeling off the smallest value
 %%% that we find in a sublist, and then check the min and maximum
 %%% value across *all* sublists. If max-min < N then we have a match.
@@ -85,7 +85,7 @@ exact_match_iterator({eof, _}) ->
     {eof, ignore}.
 
 %% Return true if all of the terms exist within Proximity words from
-%% eachother.
+%% each other.
 is_exact_match(Positions) ->
     is_exact_match_1(undefined, Positions).
 is_exact_match_1(LastMin, Positions) ->
@@ -108,7 +108,7 @@ is_exact_match_2(L1, L2) ->
 
 
 %% Given a result iterator, only return results that are within a
-%% certain proximity of eachother.
+%% certain proximity of each other.
 make_proximity_iterator(Iterator, Proximity) ->
     fun() -> proximity_iterator(Iterator(), Proximity) end.
 proximity_iterator({Term, PositionLists, Iterator}, Proximity) ->
@@ -125,7 +125,7 @@ proximity_iterator({eof, _}, _) ->
     {eof, ignore}.
         
 %% Return true if all of the terms exist within Proximity words from
-%% eachother.
+%% each other.
 within_proximity(Proximity, Positions) ->
     within_proximity_1(Proximity, undefined, Positions).
 within_proximity_1(Proximity, LastMin, Positions) ->
