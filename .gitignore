@@ -13,3 +13,4 @@ doc/*.html
 doc/edoc-info
 doc/*.png
 doc/stylesheet.css
+*~
