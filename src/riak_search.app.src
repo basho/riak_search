@@ -11,7 +11,7 @@
                  ]},
   {mod, {riak_search_app, []}},
 
-  {env, [{search_backend, merge_index_backend},
+  {env, [{search_backend, riak_search_lets_backend},
          %% N value to use for indices
          {n_val, 2},
 

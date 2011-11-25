@@ -4,7 +4,7 @@
 %%
 %% -------------------------------------------------------------------
 
--module(riak_search_lets_backend).
+-module(riak_search_ets_backend).
 -behavior(riak_search_backend).
 
 -export([
@@ -28,7 +28,7 @@
 -record(state, {partition, table}).
 
 start(Partition, _Config) ->
-    Table = lets:new(list_to_atom(integer_to_list(Partition)),
+    Table = ets:new(list_to_atom(integer_to_list(Partition)),
                     [protected, ordered_set]),
     {ok, #state{partition=Partition, table=Table}}.
 
@@ -93,7 +93,7 @@ info(Index, Field, Term, Sender, State) ->
 range(Index, Field, StartTerm, EndTerm, _Size, FilterFun, Sender, State) ->
     ST = b(StartTerm),
     ET = b(EndTerm),
-    spawn(riak_search_lets_backend, stream_results,
+    spawn(riak_search_ets_backend, stream_results,
           [Sender,
            FilterFun,
            ets:select(State#state.table,
@@ -104,7 +104,7 @@ range(Index, Field, StartTerm, EndTerm, _Size, FilterFun, Sender, State) ->
     noreply.
 
 stream(Index, Field, Term, FilterFun, Sender, State) ->
-    spawn(riak_search_lets_backend, stream_results,
+    spawn(riak_search_ets_backend, stream_results,
           [Sender,
            FilterFun,
            ets:select(State#state.table,

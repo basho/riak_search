@@ -25,32 +25,45 @@
 
 -include("riak_search.hrl").
 
+% @type state() = term().
 -record(state, {partition, table}).
 
+%% @spec start(Partition :: integer(), Config :: proplist()) ->
+%%          {ok, state()} | {{error, Reason :: term()}, state()}
+%% @doc Start this backend.
 start(Partition, _Config) ->
+    PartitionStr = lists:flatten(io_lib:format("~p", [Partition])),
+%TODO    {ok, ARoot} = application:get_env(lets_index, data_root),
+    Root = "./data/lets_index",
+    PartitionRoot = filename:join([Root, PartitionStr]),
+    ok = filelib:ensure_dir(PartitionRoot),
     Table = lets:new(list_to_atom(integer_to_list(Partition)),
-                    [protected, ordered_set]),
+                    [protected, ordered_set, compressed,
+                    {db, [{path, PartitionRoot},
+                         {create_if_missing, true},
+                          {max_open_files, 20}
+                          ]}]),
     {ok, #state{partition=Partition, table=Table}}.
 
-stop(State) ->
-    maybe_delete(State).
+stop(_State) ->
+    ok.
 
 index(IFTVPKList, #state{table=Table}=State) ->
     lists:foreach(
       fun({I, F, T, V, P, K}) ->
               Key = {b(I), b(F), b(T), b(V)},
-              case ets:lookup(Table, Key) of
+              case lets:lookup(Table, Key) of
                   [{_, _, ExistingKeyClock}] ->
                       if ExistingKeyClock > K ->
                               %% stored data is newer
                               ok;
                          true ->
                               %% stored data is older
-                              ets:update_element(Table, Key,
+                              lets:update_element(Table, Key,
                                                  [{2, P},{3, K}])
                       end;
                   [] ->
-                      ets:insert(Table, {Key, P, K})
+                      lets:insert(Table, {Key, P, K})
               end
       end,
       IFTVPKList),
@@ -63,14 +76,14 @@ delete(IFTVKList, State) ->
 
 delete_fun({I, F, T, V, K}, Table) ->
     Key = {b(I), b(F), b(T), b(V)},
-    case ets:lookup(Table, Key) of
+    case lets:lookup(Table, Key) of
         [{Key, _Props, ExistingKeyClock}] ->
             if ExistingKeyClock > K ->
                     %% stored data is newer
                     ok;
                true ->
                     %% stored data is older
-                    ets:delete(Table, Key)
+                    lets:delete(Table, Key)
             end;
         [] ->
             ok
@@ -81,7 +94,7 @@ delete_fun({I, F, T, V, _P, K}, Table) ->
     delete_fun({I, F, T, V, K}, Table).
 
 info(Index, Field, Term, Sender, State) ->
-    Count = ets:select_count(State#state.table,
+    Count = lets:select_count(State#state.table,
                              [{{{b(Index), b(Field), b(Term), '_'},
                                 '_', '_'},
                                [],[true]}]),
@@ -96,7 +109,7 @@ range(Index, Field, StartTerm, EndTerm, _Size, FilterFun, Sender, State) ->
     spawn(riak_search_lets_backend, stream_results,
           [Sender,
            FilterFun,
-           ets:select(State#state.table,
+           lets:select(State#state.table,
                       [{{{b(Index), b(Field), '$1', '$2'}, '$3', '_'},
                         [{'>=', '$1', ST}, {'=<', '$1', ET}],
                         [{{'$2', '$3'}}]}],
@@ -107,7 +120,7 @@ stream(Index, Field, Term, FilterFun, Sender, State) ->
     spawn(riak_search_lets_backend, stream_results,
           [Sender,
            FilterFun,
-           ets:select(State#state.table,
+           lets:select(State#state.table,
                       [{{{b(Index), b(Field), b(Term), '$1'}, '$2', '_'},
                         [], [{{'$1', '$2'}}]}],
                       ?STREAM_SIZE)]),
@@ -120,10 +133,20 @@ stream_results(Sender, FilterFun, {Results0, Continuation}) ->
         Results ->
             riak_search_backend:response_results(Sender, Results)
     end,
-    stream_results(Sender, FilterFun, ets:select(Continuation));
+    stream_results(Sender, FilterFun, lets:select(Continuation));
 stream_results(Sender, _, '$end_of_table') ->
     riak_search_backend:response_done(Sender).
 
+%% @doc Fold over all IFTs in the index.
+%%
+%% `FoldFun' - Function to fold over data.  It takes 7 args.  1-6 are `I',
+%% `F', `T', `Value', `Props', `Timestamp' and the 7th is the
+%% accumulator.
+%%
+%% `Acc' - The accumulator to seed the fold with.
+%%
+%% `Acc2' - The final accumulator.
+-spec fold(function(), any(), any()) -> {ok, Acc2::any()}.
 fold(FoldFun, Acc, State) ->
     Fun = fun({{I,F,T,V},P,K}, {OuterAcc, {{I,{F,T}},InnerAcc}}) ->
                   %% same IFT, just accumulate doc/props/clock
@@ -137,7 +160,7 @@ fold(FoldFun, Acc, State) ->
                   %% first round through the fold - just start building
                   {OuterAcc, {{I,{F,T}},[{V,P,K}]}}
           end,
-    {OuterAcc0, Final} = ets:foldl(Fun, {Acc, undefined}, State#state.table),
+    {OuterAcc0, Final} = lets:foldl(Fun, {Acc, undefined}, State#state.table),
     OuterAcc = case Final of
                    {FoldKey, VPKList} ->
                        %% one last IFT to send off
@@ -148,20 +171,22 @@ fold(FoldFun, Acc, State) ->
                end,
     {reply, OuterAcc, State}.
 
+%% @doc Predicate to determine if the buffers AND segments are empty.
 is_empty(State) ->
-    0 == ets:info(State#state.table, size).
+    0 == lets:info(State#state.table, size).
 
+%% @doc Drop all current state and start from scratch.
+-spec drop(pid()) -> ok.
 drop(State) ->
-    maybe_delete(State).
+    lets:delete(State#state.table).
 
-maybe_delete(State) ->
-    case lists:member(State#state.table, ets:all()) of
-        true ->
-            ets:delete(State#state.table),
-            ok;
-        false ->
-            ok
-    end.
 
+%%%===================================================================
+%%% Internal Functions
+%%%===================================================================
+
+%% @private
 b(Binary) when is_binary(Binary) -> Binary;
+
+%% @private
 b(List) when is_list(List) -> iolist_to_binary(List).
