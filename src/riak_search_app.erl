@@ -26,7 +26,7 @@ start(_StartType, _StartArgs) ->
                             {vnode_module, riak_search_vnode},
                             {bucket_fixup, riak_search_kv_hook}
                         ]),
-                    riak_core_node_watcher:service_up(riak_search, self()),
+                    riak_core_ring_events:force_sync_update(),
 
                     %% Register our cluster_info app callback modules, with catch if
                     %% the app is missing or packaging is broken.
