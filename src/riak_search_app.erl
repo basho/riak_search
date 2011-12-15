@@ -18,15 +18,17 @@
 start(_StartType, _StartArgs) ->
     case app_helper:get_env(riak_search, enabled, false) of
         true ->
+            %% Ensure that the KV service has fully loaded.
+            riak_core:wait_for_service(riak_kv),
+
             case riak_search_sup:start_link() of
                 {ok, Pid} ->
                     %% Register the search vnode with core and mark the node
                     %% as available for search requests.
-                    riak_core:register([
-                            {vnode_module, riak_search_vnode},
-                            {bucket_fixup, riak_search_kv_hook}
-                        ]),
-                    riak_core_ring_events:force_sync_update(),
+                    riak_core:register(riak_search, [
+                        {vnode_module, riak_search_vnode},
+                        {bucket_fixup, riak_search_kv_hook}
+                    ]),
 
                     %% Register our cluster_info app callback modules, with catch if
                     %% the app is missing or packaging is broken.
