@@ -133,10 +133,9 @@ to_xml(Req, #state{sort=SortBy, fl=FL}=State) ->
 run_query(#state{client=Client, schema=Schema, squery=SQuery,
                  query_ops=QueryOps, filter_ops=FilterOps, presort=Presort,
                  fl=FL}) ->
-
     #squery{query_start=QStart, query_rows=QRows}=SQuery,
 
-    %% Run the query...
+    riak_search_stat:update(solr_query_begin),
     UK = binary_to_list(Schema:unique_key()),
     StartTime = erlang:now(),
     if
@@ -147,13 +146,17 @@ run_query(#state{client=Client, schema=Schema, squery=SQuery,
                                                 ?DEFAULT_TIMEOUT),
             DocsOrIDs = {ids, [DocID || {_, DocID, _} <- Results]};
         true ->
-            {NumFound, MaxScore, Docs} = Client:search_doc(Schema, QueryOps, FilterOps,
-                                                           QStart, QRows, Presort,
-                                                           ?DEFAULT_TIMEOUT),
+            {NumFound, MaxScore, Docs} =
+                Client:search_doc(Schema, QueryOps, FilterOps,
+                                  QStart, QRows, Presort,
+                                  ?DEFAULT_TIMEOUT),
             DocsOrIDs = {docs, Docs}
     end,
-            
-    ElapsedTime = erlang:round(timer:now_diff(erlang:now(), StartTime) / 1000),
+
+    TD = timer:now_diff(erlang:now(), StartTime),
+    ElapsedTime = erlang:round(TD / 1000),
+
+    riak_search_stat:update({solr_query_end, TD}),
     {ElapsedTime, NumFound, MaxScore, DocsOrIDs}.
 
 %% @private
