@@ -95,12 +95,17 @@ precommit_def() ->
 %% the desired mapping on the riak object to produce a search
 %% document to store in riak search.
 -spec precommit(obj()) -> {fail, any()} | obj().
-precommit(RiakObject) ->
-    Extractor = get_extractor(RiakObject),
+precommit(Obj) ->
+    T1 = now(),
+    riak_search_stat:update(index_begin),
+    Extractor = get_extractor(Obj),
     try
-        case index_object(RiakObject, Extractor) of
+        case index_object(Obj, Extractor) of
             ok ->
-                RiakObject;
+                T2 = now(),
+                TD = timer:now_diff(T2, T1),
+                riak_search_stat:update({index_end, TD}),
+                Obj;
             {error, Reason1} ->
                 {fail, Reason1}
         end
@@ -185,6 +190,7 @@ index_object(RiakObject, Extractor) ->
         _ ->
             %% Update the search index and store the indexed_doc in k/v
             Postings = riak_indexed_doc:postings(NewIdxDoc),
+            riak_search_stat:update({index_entries, length(Postings)}),
             SearchClient:index_terms(Postings),
             riak_indexed_doc:put(RiakClient, NewIdxDoc)
     end.
