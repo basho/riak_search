@@ -35,11 +35,9 @@
 
     %% Indexing.
     index_doc/2, index_doc/3, index_doc/4, index_docs/1,
-    index_dir/1, index_dir/2,
 
     %% Deletion.
     delete_doc/2, delete_docs/1,
-    delete_dir/1, delete_dir/2
 ]).
 
 -include("riak_search.hrl").
@@ -166,41 +164,6 @@ index_docs(Docs) ->
     {ok, Client} = riak_search:local_client(),
     Client:index_docs(IdxDocs),
     ok.
-
-%% Full text index the specified directory of plain text files.
-index_dir(Directory) ->
-    index_dir(?DEFAULT_INDEX, Directory).
-
-%% Full text index the specified directory of plain text files.
-index_dir(Index, Directory) ->
-    Fun = fun(Schema, Files) ->
-                  F = fun(File) ->
-                              {ok, Data} = file:read_file(File),
-                              DocID = riak_search_utils:to_binary(filename:basename(File)),
-                              Fields = [{Schema:default_field(), Data}],
-                              riak_indexed_doc:new(Schema:name(), DocID, Fields, [])
-                      end,
-                  IdxDocs = [F(X) || X <- Files],
-                  {ok, Client} = riak_search:local_client(),
-                  Client:index_docs(IdxDocs)
-          end,
-    riak_search_dir_indexer:index(Index, Directory, Fun).
-
-delete_dir(Directory) ->
-    delete_dir(?DEFAULT_INDEX, Directory).
-
-delete_dir(Index, Directory) ->
-    Fun = fun(Schema, Files) ->
-                  F = fun(File) ->
-                              DocID = riak_search_utils:to_binary(filename:basename(File)),
-                              {Schema:name(), DocID}
-                      end,
-                  IdxDocs = [F(X) || X <- Files],
-                  {ok, Client} = riak_search:local_client(),
-                  Client:delete_docs(IdxDocs)
-          end,
-    riak_search_dir_indexer:index(Index, Directory, Fun).
-    
 
 delete_doc(DocIndex, DocID) ->
     delete_docs([{DocIndex, DocID}]).

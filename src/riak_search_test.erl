@@ -88,11 +88,6 @@ test_inner({schema, Node, Schema}, Root) ->
              [?TEST_INDEX, filename:join(Root, Schema)]),
     true;
 
-test_inner({solr, Path}, Root) ->
-    io:format("~n :: Running Solr document(s) '~s'...~n", [Path]),
-    solr_search:index_dir(?TEST_INDEX, filename:join(Root, Path)),
-    true;
-
 test_inner({index, Path}, Root) ->
     io:format("~n :: Indexing path '~s'...~n~n", [Path]),
     search:index_dir(?TEST_INDEX, filename:join(Root, Path)),

@@ -28,9 +28,6 @@ usage() ->
     search-cmd search-doc [INDEX] QUERY      : Perform a document search.
     search-cmd search-doc INDEX QUERY FILTER : Perform a document search.
     search-cmd explain [INDEX] QUERY         : Display an execution plan.
-    search-cmd index [INDEX] PATH            : Index files in a path.
-    search-cmd delete [INDEX] PATH           : De-index files in a path.
-    search-cmd solr [INDEX] PATH             : Run the Solr file.
     search-cmd install BUCKET                : Install kv/search integration hook
     search-cmd uninstall BUCKET              : Uninstall kv/search integration hook
     search-cmd test PATH                     : Run a test package~n",
@@ -94,28 +91,6 @@ command([_CurDir, "explain", Index, Query]) ->
     explain(Index, Query, "");
 command([_CurDir, "explain", Index, Query, Filter]) ->
     explain(Index, Query, Filter);
-
-%% Index
-command([CurDir, "index", Path]) ->
-    Path1 = filename:join(CurDir, Path),
-    index(?DEFAULT_INDEX, Path1);
-command([CurDir, "index", Index, Path]) ->
-    Path1 = filename:join(CurDir, Path),
-    index(Index, Path1);
-
-command([CurDir, "delete", Path]) ->
-    Path1 = filename:join(CurDir, Path),
-    delete(?DEFAULT_INDEX, Path1);
-command([CurDir, "delete", Index, Path]) ->
-    Path1 = filename:join(CurDir, Path),
-    delete(Index, Path1);
-
-command([CurDir, "solr", Path]) ->
-    Path1 = filename:join(CurDir, Path),
-    solr(?DEFAULT_INDEX, Path1);
-command([CurDir, "solr", Index, Path]) ->
-    Path1 = filename:join(CurDir, Path),
-    solr(Index, Path1);
 
 command([CurDir, "test", Path]) ->
     Path1 = filename:join(CurDir, Path),
@@ -226,18 +201,6 @@ explain(DefaultIndex, Query, Filter) ->
     io:format("~n :: Explaining query '~s' / '~s' in ~s...~n~n", [Query, Filter, DefaultIndex]),
     Plan = search:explain(DefaultIndex, Query, Filter),
     io:format("~p", [Plan]).
-
-index(Index, Path) -> 
-    io:format("~n :: Indexing path '~s' in ~s...~n~n", [Path, Index]),
-    search:index_dir(Index, Path).
-
-delete(Index, Path) -> 
-    io:format("~n :: De-Indexing path '~s' in ~s...~n~n", [Path, Index]),
-    search:delete_dir(Index, Path).
-
-solr(Index, Path) -> 
-    io:format("~n :: Running Solr document(s) '~s' in ~s...~n", [Path, Index]),
-    solr_search:index_dir(Index, Path).
 
 test(Path) ->
     riak_search_test:test(Path).
