@@ -34,13 +34,14 @@ start(_StartType, _StartArgs) ->
                     %% the app is missing or packaging is broken.
                     catch cluster_info:register_app(riak_search_cinfo),
 
-                    Root = app_helper:get_env(riak_solr, solr_name, "solr"),
-                    case riak_solr_sup:start_link() of
+                    Root = app_helper:get_env(riak_search, url_root, "search"),
+
+                    case rs_query_sup:start_link() of
                         {ok, _} ->
-                            webmachine_router:add_route({[Root, index, "select"],
-                                                         riak_solr_searcher_wm, []}),
-                            webmachine_router:add_route({[Root, "select"],
-                                                         riak_solr_searcher_wm, []}),
+                            webmachine_router:add_route({[Root, index],
+                                                         rs_query_wm, []}),
+                            webmachine_router:add_route({[Root],
+                                                         rs_query_wm, []}),
                             {ok, Pid};
                         Error ->
                             Error

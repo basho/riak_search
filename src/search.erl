@@ -37,7 +37,7 @@
     index_doc/2, index_doc/3, index_doc/4, index_docs/1,
 
     %% Deletion.
-    delete_doc/2, delete_docs/1,
+    delete_doc/2, delete_docs/1
 ]).
 
 -include("riak_search.hrl").

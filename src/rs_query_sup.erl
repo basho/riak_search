@@ -4,7 +4,7 @@
 %%
 %% -------------------------------------------------------------------
 
--module(riak_solr_sup).
+-module(rs_query_sup).
 
 -behaviour(supervisor).
 
