@@ -8,7 +8,6 @@
 
 -include_lib("xmerl/include/xmerl.hrl").
 -include("riak_search.hrl").
--include("riak_solr.hrl").
 
 -export([xml_response/8,
          json_response/8]).
