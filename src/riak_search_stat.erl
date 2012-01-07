@@ -37,9 +37,9 @@
           index_latency,
           index_pending,
           index_throughput,
-          solr_query_latency,
-          solr_query_pending,
-          solr_query_throughput,
+          query_latency,
+          query_pending,
+          query_throughput,
           legacy
         }).
 
@@ -103,11 +103,11 @@ index_stats(Moment, S) ->
     {_, Mean2, {Median2, NF2, NN2, Max2}} =
         slide_minute(Moment, #state.index_entries, S, 0,
                      5000000, 20000, down),
-    Thru2 = spiral_minute(Moment, #state.solr_query_throughput, S),
+    Thru2 = spiral_minute(Moment, #state.query_throughput, S),
     {_, Mean3, {Median3, NF3, NN3, Max3}} =
-        slide_minute(Moment, #state.solr_query_latency, S, 0,
+        slide_minute(Moment, #state.query_latency, S, 0,
                      5000000, 20000, down),
-    QPending = S#state.solr_query_pending,
+    QPending = S#state.query_pending,
 
     [{search_index_throughput, Thru},
      {search_index_latency_mean, Mean},
@@ -121,13 +121,13 @@ index_stats(Moment, S) ->
      {search_index_entries_95, NF2},
      {search_index_entries_99, NN2},
      {search_index_entries_100, Max2},
-     {search_solr_query_throughput, Thru2},
-     {search_solr_query_latency_mean, Mean3},
-     {search_solr_query_latency_median, Median3},
-     {search_solr_query_latency_95, NF3},
-     {search_solr_query_latency_99, NN3},
-     {search_solr_query_latency_100, Max3},
-     {search_solr_query_pending, QPending}].
+     {search_query_throughput, Thru2},
+     {search_query_latency_mean, Mean3},
+     {search_query_latency_median, Median3},
+     {search_query_latency_95, NF3},
+     {search_query_latency_99, NN3},
+     {search_query_latency_100, Max3},
+     {search_query_pending, QPending}].
     
 legacy_init() ->
     {ok, #state{
@@ -135,9 +135,9 @@ legacy_init() ->
        index_latency=slide:fresh(),
        index_pending=0,
        index_throughput=spiraltime:fresh(),
-       solr_query_pending=0,
-       solr_query_latency=slide:fresh(),
-       solr_query_throughput=spiraltime:fresh(),
+       query_pending=0,
+       query_latency=slide:fresh(),
+       query_throughput=spiraltime:fresh(),
        legacy=true
       }}.
 
@@ -168,12 +168,12 @@ update1({index_end, Time}, Moment, S=#state{index_latency=Latency,
             index_throughput=spiraltime:incr(1, Moment, Thru)};
 update1({index_entries, N}, Moment, S=#state{index_entries=Entries}) ->
     S#state{index_entries=slide:update(Entries, N, Moment)};
-update1(solr_query_begin, _Moment, S=#state{solr_query_pending=Pending}) ->
-    S#state{solr_query_pending=Pending + 1};
-update1({solr_query_end, Time}, Moment,
-        S=#state{solr_query_latency=Latency,
-                 solr_query_pending=Pending,
-                 solr_query_throughput=Thru}) ->
-    S#state{solr_query_latency=slide:update(Latency, Time, Moment),
-            solr_query_pending=Pending - 1,
-            solr_query_throughput=spiraltime:incr(1, Moment, Thru)}.
+update1(query_begin, _Moment, S=#state{query_pending=Pending}) ->
+    S#state{query_pending=Pending + 1};
+update1({query_end, Time}, Moment,
+        S=#state{query_latency=Latency,
+                 query_pending=Pending,
+                 query_throughput=Thru}) ->
+    S#state{query_latency=slide:update(Latency, Time, Moment),
+            query_pending=Pending - 1,
+            query_throughput=spiraltime:incr(1, Moment, Thru)}.

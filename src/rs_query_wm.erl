@@ -134,7 +134,7 @@ run_query(#state{client=Client, schema=Schema, squery=SQuery,
                  fl=FL}) ->
     #squery{query_start=QStart, query_rows=QRows}=SQuery,
 
-    riak_search_stat:update(solr_query_begin),
+    riak_search_stat:update(query_begin),
     UK = binary_to_list(Schema:unique_key()),
     StartTime = erlang:now(),
     if
@@ -155,7 +155,7 @@ run_query(#state{client=Client, schema=Schema, squery=SQuery,
     TD = timer:now_diff(erlang:now(), StartTime),
     ElapsedTime = erlang:round(TD / 1000),
 
-    riak_search_stat:update({solr_query_end, TD}),
+    riak_search_stat:update({query_end, TD}),
     {ElapsedTime, NumFound, MaxScore, DocsOrIDs}.
 
 %% @private
