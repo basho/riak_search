@@ -4,7 +4,7 @@
 %%
 %% -------------------------------------------------------------------
 
--module(riak_solr_sort).
+-module(rs_sort).
 
 -export([sort/3]).
 -include("riak_search.hrl").

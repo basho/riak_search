@@ -4,7 +4,7 @@
 %%
 %% -------------------------------------------------------------------
 
--module(riak_solr_output).
+-module(rs_output).
 
 -include_lib("xmerl/include/xmerl.hrl").
 -include("riak_search.hrl").
@@ -22,7 +22,7 @@
 -define(XML_PROLOG, {prolog, ["<?xml version=\"1.0\" encoding=\"UTF-8\"?>"]}).
 
 xml_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, {docs, Docs0}, FL) ->
-    Docs = riak_solr_sort:sort(Docs0, SortBy, Schema),
+    Docs = rs_sort:sort(Docs0, SortBy, Schema),
     RenderedDocs = lists:flatten([render_xml_doc(Schema, Doc, FL) || Doc <- Docs]),
     xml_response(Schema, ElapsedTime, SQuery, NumFound, MaxScore, RenderedDocs);
 xml_response(Schema, _SortBy, ElapsedTime, SQuery, NumFound, MaxScore, {ids, IDs}, _FL) ->
@@ -68,7 +68,7 @@ json_response(Schema, SortBy, ElapsedTime, SQuery, NumFound, MaxScore, {docs, Do
         end,
         {Name, convert_type(Value, Type)}
     end,
-    Docs = riak_solr_sort:sort(Docs0, SortBy, Schema),
+    Docs = rs_sort:sort(Docs0, SortBy, Schema),
     XForm = fun(Doc) -> riak_indexed_doc:to_mochijson2(F, Doc, FL) end,
     json_response(Schema, ElapsedTime, SQuery, NumFound, MaxScore, Docs, XForm);
 json_response(Schema, _SortBy, ElapsedTime, SQuery, NumFound, MaxScore, {ids, IDs}, _FL) ->

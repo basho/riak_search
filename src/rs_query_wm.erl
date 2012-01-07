@@ -118,16 +118,16 @@ parse_fl(FL) ->
 to_json(Req, #state{sort=SortBy, fl=FL}=State) ->
     #state{schema=Schema, squery=SQuery}=State,
     {ElapsedTime, NumFound, MaxScore, DocsOrIDs} = run_query(State),    
-    {riak_solr_output:json_response(Schema, SortBy, ElapsedTime, SQuery,
-                                    NumFound, MaxScore, DocsOrIDs,
-                                    parse_fl(FL)),
+    {rs_output:json_response(Schema, SortBy, ElapsedTime, SQuery,
+                             NumFound, MaxScore, DocsOrIDs,
+                             parse_fl(FL)),
      Req, State}.
     
 to_xml(Req, #state{sort=SortBy, fl=FL}=State) ->
     #state{schema=Schema, squery=SQuery}=State,
     {ElapsedTime, NumFound, MaxScore, DocsOrIDs} = run_query(State),
-    {riak_solr_output:xml_response(Schema, SortBy, ElapsedTime, SQuery,
-                                   NumFound, MaxScore, DocsOrIDs, parse_fl(FL)),
+    {rs_output:xml_response(Schema, SortBy, ElapsedTime, SQuery,
+                            NumFound, MaxScore, DocsOrIDs, parse_fl(FL)),
      Req, State}.
     
 run_query(#state{client=Client, schema=Schema, squery=SQuery,
