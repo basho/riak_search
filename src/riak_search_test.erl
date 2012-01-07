@@ -88,16 +88,6 @@ test_inner({schema, Node, Schema}, Root) ->
              [?TEST_INDEX, filename:join(Root, Schema)]),
     true;
 
-test_inner({index, Path}, Root) ->
-    io:format("~n :: Indexing path '~s'...~n~n", [Path]),
-    search:index_dir(?TEST_INDEX, filename:join(Root, Path)),
-    true;
-
-test_inner({delete, Path}, Root) ->
-    io:format("~n :: De-Indexing path '~s'...~n~n", [Path]),
-    search:delete_dir(?TEST_INDEX, filename:join(Root, Path)),
-    true;
-
 test_inner({error, Test, Type, Error}, _Root) ->
     try test_inner(Test, _Root)
     catch
