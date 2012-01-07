@@ -170,12 +170,8 @@ consult_1(Tokens) ->
             Error
     end.
 consult_2(AST) ->
-    case erl_eval:exprs(AST, []) of
-        {value, Term, _} ->
-            {ok, Term};
-        Error ->
-            Error
-    end.
+    {value, Term, _} = erl_eval:exprs(AST, []),
+    {ok, Term}.
 
 
 %% Run a transform operation in parallel. Results are returned as a
