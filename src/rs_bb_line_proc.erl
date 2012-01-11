@@ -25,16 +25,17 @@
 %% ====================================================================
 
 %% @doc Return a {Field, Terms} pair.
--spec get_ft(pid()) -> {field(), sterms()}.
-get_ft(LP) -> get_ft(LP, 1).
+-spec get_ft() -> {field(), sterms()}.
+get_ft() -> get_ft(1).
 
 %% @doc Return a {Field, Terms} pair.  An attempt will be made to
 %% return N terms but could be less.
--spec get_ft(pid(), pos_integer()) -> {field(), sterms()}.
-get_ft(LP, N) -> gen_server:call(LP, {ft, N}).
+-spec get_ft(pos_integer()) -> {field(), sterms()}.
+get_ft(N) -> gen_server:call(?MODULE, {ft, N}).
 
 start_link(Path, Fields, Schema) ->
-    gen_server:start_link(?MODULE, [Path, Fields, Schema], []).
+    gen_server:start_link({local, ?MODULE}, ?MODULE,
+                          [Path, Fields, Schema], []).
 
 %% ====================================================================
 %% Callbacks
