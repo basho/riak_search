@@ -4,14 +4,14 @@
 %% they are requested.
 %%
 %% 1/11/12 - Using my MBP with a SSD and 4 concurrent workers I was
-%% able to get thoughput of 6K/s with an average latency below 1ms and
-%% 99.9th of 6ms.  Therefore, if you start to see benchmarks against
-%% search at 6K/s thru and 6ms 99.9th latency then this server should
-%% be revisited for performance improvements.  Until then it should be
-%% good enough.  That said, this may not be sound advice on a
-%% mechanical disk.  I'm assuming SSD for
-%% now (http://www.youtube.com/watch?v=H7PJ1oeEyGg).
--module(rs_bb_line_proc).
+%% able to get thoughput of 8K/s with an average latency below 0.25ms
+%% and 99.9th of 5.25ms.  Therefore, if you start to see benchmarks
+%% against search at 8K/s thru and 5.25ms 99.9th latency then this
+%% server should be revisited for performance improvements.  Until
+%% then it should be good enough.  That said, this may not be sound
+%% advice on a mechanical disk.  I'm assuming SSD for now
+%% (http://www.youtube.com/watch?v=H7PJ1oeEyGg).
+-module(rs_bb_file_terms).
 -behavior(gen_server).
 -compile(export_all).
 
