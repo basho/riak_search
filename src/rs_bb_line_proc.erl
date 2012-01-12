@@ -1,18 +1,24 @@
-%% Generating keys...
-%% 1. assume file is lines of JSON
-%% 2. make sure file exists and open
-%% 3. read a line or exit
-%% 4. decode JSON using mochijson2:decode
-%% 5. filter out only list of fields passed (all by default) and create {Field,Val} pairs
-%% 6. map analyzer across Vals creating {Field, Terms} pair, use schema info to pick correct analyzer
-%% 7. goto step 3
+%% @doc This server is used to generate {Field, Terms} pairs.  It is
+%% given a file, a list of fileds, and a schema which it then uses to
+%% iterate the file, line by line, extracting {Field, Terms} pairs as
+%% they are requested.
+%%
+%% 1/11/12 - Using my MBP with a SSD and 4 concurrent workers I was
+%% able to get thoughput of 6K/s with an average latency below 1ms and
+%% 99.9th of 6ms.  Therefore, if you start to see benchmarks against
+%% search at 6K/s thru and 6ms 99.9th latency then this server should
+%% be revisited for performance improvements.  Until then it should be
+%% good enough.  That said, this may not be sound advice on a
+%% mechanical disk.  I'm assuming SSD for
+%% now (http://www.youtube.com/watch?v=H7PJ1oeEyGg).
 -module(rs_bb_line_proc).
 -behavior(gen_server).
 -compile(export_all).
 
 %% Callbacks
--export([init/1, handle_call/3]).
+-export([init/1, handle_call/3, terminate/2]).
 
+-include_lib("basho_bench/include/basho_bench.hrl").
 -define(MB, 1048576).
 -record(state, {cache, fields, file, schema}).
 
@@ -51,15 +57,7 @@ handle_call({ft, N}, _From, S=#state{cache=[],
                                      fields=Fields,
                                      file=F,
                                      schema=Schema}) ->
-    case file:read_line(F) of
-        {ok, Line} -> ok;
-        eof ->
-            file:position(F, bof),
-            {ok, Line} = file:read_line(F),
-            ok
-    end,
-    Pairs = riak_search_kv_json_extractor:extract_value(Line, default_field,
-                                                        ignored),
+    Pairs = read_pairs(F),
     Pairs2 = lists:filter(match(Fields), Pairs),
     Pairs3 = lists:map(analyze(Schema), Pairs2),
     {Pair, Cache2} = get_terms(Pairs3, N),
@@ -67,6 +65,8 @@ handle_call({ft, N}, _From, S=#state{cache=[],
 handle_call({ft, N}, _From, S=#state{cache=Cache}) ->
     {Pair, Cache2} = get_terms(Cache, N),
     {reply, Pair, S#state{cache=Cache2}}.
+
+terminate(_Reason, _State) -> ignore.
 
 %% ====================================================================
 %% Private
@@ -100,3 +100,28 @@ load_schema(Path) ->
     {ok, S2} = riak_search_utils:consult(S1),
     {ok, S3} = riak_search_schema_parser:from_eterm(<<"test">>, S2),
     S3.
+
+read_pairs(F) ->
+    read_pairs(F, 0).
+
+read_pairs(_F, 100) ->
+    %% Guard against infinite loop
+    throw({field_extraction, too_many_retries});
+
+read_pairs(F, Retry) ->
+    case file:read_line(F) of
+        {ok, Line} -> ok;
+        eof ->
+            file:position(F, bof),
+            {ok, Line} = file:read_line(F),
+            ok
+    end,
+
+    %% Guard against invalid JSON
+    try
+        riak_search_kv_json_extractor:extract_value(Line, default_field,
+                                                    ignored)
+    catch _:Reason ->
+            ?ERROR("Failed to extract line: ~p", [Reason]),
+            read_pairs(F, Retry+1)
+    end.
