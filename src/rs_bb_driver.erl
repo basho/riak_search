@@ -35,10 +35,10 @@ run(search, KeyGen, _ValGen, S=#state{i={Idx,_}=I, urls=URLs}) ->
     {Field, [Term]} = KeyGen(),
     Qry = ?FMT("~s:~s", [Field, Term]),
     Params = mochiweb_util:urlencode([{<<"q">>, Qry}]),
-    URL = ?FMT("~s~s", [Base, Params]),
+    URL = ?FMT("~s?~s", [Base, Params]),
     S2 = S#state{i=wrap(I)},
     case http_get(URL) of
-        {ok, _, _} -> {ok, S2};
+        ok -> {ok, S2};
         {error, Reason} -> {error, Reason, S2}
     end.
 
