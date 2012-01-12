@@ -23,8 +23,6 @@ new(_Id) ->
 
 run(search, KeyGen, _ValGen, S=#state{urls=URLs}) ->
     K = KeyGen(),
-    io:format("query ~p with key ~p~n", [hd(URLs), K]),
-    timer:sleep(1000),
     {ok, S}.
 
 %% ====================================================================
@@ -36,11 +34,11 @@ terms_from_file(Id, Path, Fields, Schema) ->
     %% simply querying for the same terms.
     N = basho_bench_config:get(concurrent),
     if Id == N ->
-            {ok, _} = rs_bb_line_proc:start_link(Path, Fields, Schema);
+            {ok, _} = rs_bb_file_terms:start_link(Path, Fields, Schema);
        true -> ok
     end,
     fun() ->
-            rs_bb_line_proc:get_ft()
+            rs_bb_file_terms:get_ft()
     end.
 
 %% ====================================================================
