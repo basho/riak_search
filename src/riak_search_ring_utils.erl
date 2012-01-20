@@ -126,10 +126,48 @@ zip_with_partition_and_index(Postings) ->
             {chstate_v2, _, _, CH, _, _, _, _, _, _, _} -> CH
         end,
     {NumPartitions, _} = CHash,
+    %% FIXME: Is there an off-by-one when RINGTOP does not
+    %% evenly divide by NumPartitions
     RingTop = ?RINGTOP,
     Inc = ?RINGTOP div NumPartitions,
 
     F = fun(Posting = {I,F,T,_,_,_}) ->
+                %% IndexAsInt - index into ring (0 to 2^60-1)
+                %%
+                %% Inc - The size of a partition in terms of how many
+                %% indexes of the ring a parititon contains.
+                %%
+                %% (IndexAsInt rem Inc) - how far beyond a partition
+                %% boundry is this index (which partition isn't known)
+                %%
+                %% (IndexAsInt - (IndexAsInt rem Inc) + Inc) - So
+                %% IndexAsInt is where you're at in the ring, then you
+                %% figure out how far that index is past the start of
+                %% the partition it landed in (remember a partition is
+                %% just a set of indexes in the ring), subtract that
+                %% from the index to normalize the index to the
+                %% beginning of partition (so if you land in partition
+                %% P's index range then get the first index of that
+                %% partition), finally add Inc (the partition size) to
+                %% determine the first partition the data should be
+                %% stored in.
+                %%
+                %% Ring=36,Q=6,Inc=6
+                %%     (1 - (1 rem 6) + 6) = 6
+                %%     (2 - (2 rem 6) + 6) = 6
+                %%     (7 - (7 rem 6) + 6) = 12
+                %%     (8 - (8 rem 6) + 6) = 12
+                %%
+                %% Ring=37,Q=6,Inc=6
+                %%     (1 - (1 rem 6) + 6) = 6
+                %%     (35 - (35 rem 6) + 6) = 36
+                %%     (36 - (36 rem 6) + 6) = 42
+                %%
+                %% In the last case it looks like 42 would be passed
+                %% down to chash:ordered_from causing
+                %% split(8,[N1,N2,N3,N4,N5,N6]) to get called which
+                %% will result in a badarg since the list is not large
+                %% enough.
                 <<IndexAsInt:160/integer>> = calc_partition(I, F, T),
                 case (IndexAsInt - (IndexAsInt rem Inc) + Inc) of
                     RingTop   -> {{0, I}, Posting};

@@ -247,6 +247,11 @@ process_terms_1(IndexFun, BatchSize, PreflistCache, Terms) ->
         %% the place on the ring. Index is the actual search index,
         %% such as <<"products">>. We do this because later we'll need
         %% to look up the n_val for the Index.
+        %%
+        %% FIXME This comment says that the partition number will be
+        %% between 0 and 2^160-1 but that's not true if the number of
+        %% partitions doesn't evenly divide into 2^160 and the key
+        %% hashes to 2^160-1.
         Batch1 = riak_search_ring_utils:zip_with_partition_and_index(Batch),
         true = ets:insert(SubBatchTable, Batch1),
 
@@ -259,6 +264,14 @@ process_terms_1(IndexFun, BatchSize, PreflistCache, Terms) ->
                              %% Create a sample DocIdx in the section
                              %% of the ring where we want a partition.
                              {Partition, Index} = PIKey,
+                             %% FIXME: Why are we subtracting 1?
+                             %% ring_utils went thru all the trouble
+                             %% of putting the index on a partition
+                             %% boundry only to have this subtract
+                             %% one.  What happens when ring_utils
+                             %% returns 0?
+                             %%
+                             %% apl will end up calling ring:preflist.
                              DocIdx = <<(Partition - 1):160/integer>>,
 
                              %% Get the n_val...
