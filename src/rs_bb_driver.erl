@@ -22,7 +22,7 @@ new(_Id) ->
     SPath = basho_bench_config:get(rs_search_path, "/search/test"),
     IURLs = array:from_list(lists:map(make_url(IPath), Ports)),
     SURLs = array:from_list(lists:map(make_url(SPath), Ports)),
-    N = basho_bench_config:get(concurrent),
+    N = length(Ports),
     {ok, #state{iurls={IURLs, {0,N}}, surls={SURLs, {0,N}}}}.
 
 run(search, _KeyGen, ValGen, S=#state{surls=URLs}) ->
@@ -31,6 +31,7 @@ run(search, _KeyGen, ValGen, S=#state{surls=URLs}) ->
     Qry = ?FMT("~s:~s", [Field, Term]),
     Params = mochiweb_util:urlencode([{<<"q">>, Qry}]),
     URL = ?FMT("~s?~s", [Base, Params]),
+    %% ?ERROR("search url: ~p~n", [URL]),
     S2 = S#state{surls=wrap(URLs)},
     case http_get(URL) of
         ok -> {ok, S2};
@@ -91,6 +92,7 @@ http_get(URL) ->
 http_put(URL, CT, Body) ->
     case ibrowse:send_req(URL, [{content_type, CT}], put, Body, [{content_type, CT}]) of
         {ok, "200", _, _} -> ok;
+        {ok, "201", _, _} -> ok;
         {ok, "204", _, _} -> ok;
         {ok, Status, _, Resp} -> {error, {bad_status, Status, URL, Resp}};
         {error, Reason} -> {error, Reason}
