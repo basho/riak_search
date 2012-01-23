@@ -272,6 +272,11 @@ process_terms_1(IndexFun, BatchSize, PreflistCache, Terms) ->
                              %% returns 0?
                              %%
                              %% apl will end up calling ring:preflist.
+                             %%
+                             %% w/ the current impl Partition will be
+                             %% > than RINGTOP but because we are only
+                             %% using 160 bits it will wrap around
+                             %% appropriately.
                              DocIdx = <<(Partition - 1):160/integer>>,
 
                              %% Get the n_val...
