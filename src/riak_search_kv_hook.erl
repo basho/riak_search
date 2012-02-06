@@ -290,7 +290,7 @@ install_test() ->
                              {old_vclock,86400},
                              {young_vclock,20},
                              {big_vclock,50},
-                             {small_vclock,10},
+                             {small_vclock,50},
                              {r,quorum},
                              {w,quorum},
                              {dw,quorum},
