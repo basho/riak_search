@@ -40,7 +40,7 @@
 mapred(DefaultIndex, SearchQuery, SearchFilter, MRQuery, ResultTransformer, Timeout) ->
     {ok, ReqID} = mapred_stream(DefaultIndex, SearchQuery, SearchFilter, MRQuery, self(), ResultTransformer, Timeout),
     luke_flow:collect_output(ReqID, Timeout).
-        
+
 mapred_stream(DefaultIndex, SearchQuery, SearchFilter, MRQuery, ClientPid,
               ResultTransformer, Timeout) ->
     InputDef = {modfun, riak_search, mapred_search,
@@ -77,8 +77,8 @@ parse_filter(IndexOrSchema, Filter) ->
                   riak_search_utils:to_list(Filter)),
     {ok, Ops}.
 
-    
-    
+
+
 %% Run the Query, return the list of keys.
 %% Timeout is in milliseconds.
 %% Return the {Length, Results}.
@@ -365,7 +365,7 @@ stream_search(IndexOrSchema, QueryOps, FilterOps) ->
 
     %% Get the total number of terms and weight in query...
     {NumTerms, NumDocs, QueryNorm} = get_scoring_info(QueryOps),
-    
+
     %% Create the inline field filter fun...
     FilterFun = fun(_Value, Props) ->
                         riak_search_inlines:passes_inlines(Schema, Props, FilterOps)
