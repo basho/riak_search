@@ -45,18 +45,18 @@ preplan(Op, State) ->
     Weights2 = [{Node, Count} || {_, Node, Count} <- Weights1],
     TotalCount = lists:sum([Count || {_, _, Count} <- Weights1]),
     case length(Weights1) == 0 of
-        true  -> 
+        true  ->
             throw({error, data_not_available, {IndexName, FieldName, Term}}),
             DocFrequency = undefined; %% Make compiler happy.
-        false -> 
+        false ->
             DocFrequency = TotalCount / length(Weights1)
     end,
     Op#term { weights=Weights2, doc_freq=DocFrequency }.
 
 chain_op(Op, OutputPid, OutputRef, State) ->
-    F = fun() -> 
+    F = fun() ->
                 erlang:link(State#search_state.parent),
-                start_loop(Op, OutputPid, OutputRef, State) 
+                start_loop(Op, OutputPid, OutputRef, State)
         end,
     erlang:spawn_link(F),
     {ok, 1}.
@@ -81,10 +81,7 @@ stream(Index, Field, Term, FilterFun) ->
     %% Get the primary preflist, minus any down nodes. (We don't use
     %% secondary nodes since we ultimately read results from one node
     %% anyway.)
-    DocIdx = riak_search_ring_utils:calc_partition(Index, Field, Term),
-    {ok, Schema} = riak_search_config:get_schema(Index),
-    NVal = Schema:n_val(),
-    Preflist = get_preflist(DocIdx, NVal),
+    Preflist = riak_search_utils:preflist(Index, Field, Term),
 
     %% Try to use the local node if possible. Otherwise choose
     %% randomly.
@@ -103,11 +100,8 @@ info(Index, Field, Term) ->
     %% Get the primary preflist, minus any down nodes. (We don't use
     %% secondary nodes since we ultimately read results from one node
     %% anyway.)
-    DocIdx = riak_search_ring_utils:calc_partition(Index, Field, Term),
-    {ok, Schema} = riak_search_config:get_schema(Index),
-    NVal = Schema:n_val(),
-    Preflist = get_preflist(DocIdx, NVal),
-    
+    Preflist = riak_search_utils:preflist(Index, Field, Term),
+
     {ok, Ref} = riak_search_vnode:info(Preflist, Index, Field, Term, self()),
     {ok, Results} = riak_search_backend:collect_info_response(length(Preflist), Ref, []),
     Results.
@@ -144,7 +138,7 @@ calculate_score(ScoringVars, Props) ->
     TF = math:pow(Frequency, 0.5),
     IDF = (1 + math:log(NumDocs/DocFrequency)),
     Norm = DocFieldBoost,
-    
+
     Score = TF * math:pow(IDF, 2) * TermBoost * Norm,
     ScoreList = case lists:keyfind(score, 1, Props) of
                     {score, OldScores} ->
@@ -153,8 +147,3 @@ calculate_score(ScoringVars, Props) ->
                         [Score]
                 end,
     lists:keystore(score, 1, Props, {score, ScoreList}).
-
--spec get_preflist(binary(), pos_integer()) -> list().
-get_preflist(DocIdx, NVal) ->
-    lists:map(fun({IdxNode, _}) -> IdxNode end,
-              riak_core_apl:get_primary_apl(DocIdx, NVal, riak_search)).

@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
@@ -8,6 +8,7 @@
 
 -export([
     combine_terms/2,
+    preflist/3,
     to_atom/1,
     to_binary/1,
     to_utf8/1,
@@ -108,8 +109,8 @@ from_binary(L) ->
 %% Return a key clock to use for revisioning IFTVPs
 current_key_clock() ->
     {MegaSeconds,Seconds,MilliSeconds}=erlang:now(),
-    (MegaSeconds * 1000000000000) + 
-    (Seconds * 1000000) + 
+    (MegaSeconds * 1000000000000) +
+    (Seconds * 1000000) +
     MilliSeconds.
 
 %% Choose a random element from the List.
@@ -123,7 +124,7 @@ choose(List) ->
 coalesce(undefined, B) -> B;
 coalesce(A, _) -> A.
 
-coalesce([undefined|T]) -> 
+coalesce([undefined|T]) ->
     coalesce(T);
 coalesce([H|_]) ->
     H;
@@ -157,7 +158,7 @@ ets_keys_1(Table, Key) ->
 %% Given a binary, return an Erlang term.
 consult(Binary) ->
     case erl_scan:string(riak_search_utils:to_list(Binary)) of
-        {ok, Tokens, _} -> 
+        {ok, Tokens, _} ->
             consult_1(Tokens);
         Error ->
             Error
@@ -177,6 +178,15 @@ consult_2(AST) ->
             Error
     end.
 
+%% @doc Get preflist for the given IFT.
+-spec preflist(index(), field(), s_term()) -> list().
+preflist(Index, Field, Term) ->
+    DocIdx = riak_search_ring_utils:calc_partition(Index, Field, Term),
+    {ok, Schema} = riak_search_config:get_schema(Index),
+    NVal = Schema:n_val(),
+    [IdxNode || {IdxNode, _} <- riak_core_apl:get_primary_apl(DocIdx,
+                                                              NVal,
+                                                              riak_search)].
 
 %% Run a transform operation in parallel. Results are returned as a
 %% list, ordering is not guaranteed in any way. This was implemented
@@ -202,7 +212,7 @@ ptransform(F, List, NumProcesses) ->
     %% the number of processes. Batch size should be at least 1.
     ListLength = length(List),
     BatchSize = lists:max([1, ListLength div NumProcesses]),
-    
+
     %% Create a ref, used to prevent later interference.
     Ref = make_ref(),
     Pids = ptransform_spawn(F, List, ListLength, Ref, BatchSize, []),
@@ -215,7 +225,7 @@ ptransform_spawn(F, List, ListLength, Ref, BatchSize, Pids) when List /= [] ->
         true ->
             {Pre, Post} = {List, []},
             NewListLength = 0;
-        false -> 
+        false ->
             {Pre, Post} = lists:split(BatchSize, List),
             NewListLength = ListLength - BatchSize
     end,
@@ -234,7 +244,7 @@ ptransform_spawn(_, [], 0, _, _, Pids) ->
 
 ptransform_collect(Ref, Pids, Acc) when Pids /= [] ->
     %% Collect a chunk, and concat results.
-    receive 
+    receive
         {results, Results, Pid, Ref} ->
             NewPids = Pids -- [Pid],
             NewAcc = Results ++ Acc,
