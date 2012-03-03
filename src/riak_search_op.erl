@@ -49,11 +49,4 @@ chain_op(Op, OutputPid, Ref, SearchState) ->
 
 op_to_module(Op) ->
     ModuleString = "riak_search_op_" ++ atom_to_list(element(1, Op)),
-    Module = list_to_atom(ModuleString),
-    case code:ensure_loaded(Module) of
-	{module, Module} -> 
-            Module;
-	{error, _}       -> 
-            ?PRINT({unknown_op, Op}),
-            throw({unknown_op, Op})
-    end.
+    list_to_atom(ModuleString).
