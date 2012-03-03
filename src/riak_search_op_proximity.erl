@@ -6,6 +6,7 @@
 
 -module(riak_search_op_proximity).
 -export([
+         extract_scoring_props/1,
          preplan/2,
          chain_op/4
         ]).
@@ -44,6 +45,9 @@
 %%% run"~5). This works by continually peeling off the smallest value
 %%% that we find in a sublist, and then check the min and maximum
 %%% value across *all* sublists. If max-min < N then we have a match.
+
+extract_scoring_props(Op) ->
+    riak_search_op:extract_scoring_props(Op#proximity.ops).
 
 preplan(Op, State) ->
     ChildOps = riak_search_op:preplan(Op#proximity.ops, State),

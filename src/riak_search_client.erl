@@ -425,7 +425,7 @@ collect_result(#riak_search_ref{id=Id, inputcount=InputCount}=SearchRef, Timeout
 %% http://lucene.apache.org/java/2_4_0/api/org/apache/lucene/search/Similarity.html
 get_scoring_info(QueryOps) ->
     %% Calculate num terms...
-    ScoringProps = get_scoring_props(QueryOps),
+    ScoringProps = lists:flatten([riak_search_op:extract_scoring_props(QueryOps)]),
     NumTerms = length(ScoringProps),
     NumDocs = lists:sum([0] ++ [DocFrequency || {DocFrequency, _} <- ScoringProps]),
 
@@ -437,17 +437,6 @@ get_scoring_info(QueryOps) ->
     SumOfSquaredWeights = lists:foldl(F, 0, ScoringProps),
     QueryNorm = 1 / math:pow(SumOfSquaredWeights + 1, 0.5),
     {NumTerms, NumDocs, QueryNorm}.
-
-get_scoring_props(Ops) ->
-    lists:flatten([get_scoring_props_1(Ops)]).
-get_scoring_props_1(Ops) when is_list(Ops) ->
-    [get_scoring_props_1(X) || X <- Ops];
-get_scoring_props_1(#term { doc_freq=DocFrequency, boost=Boost }) ->
-    {DocFrequency, Boost};
-get_scoring_props_1(Op) when is_tuple(Op) ->
-    get_scoring_props_1(tuple_to_list(Op));
-get_scoring_props_1(_) ->
-    [].
 
 sort_by_key(SearchRef, Results) ->
     sort_results(SearchRef, Results, 3).

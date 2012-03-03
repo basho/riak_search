@@ -9,6 +9,7 @@
 
 -module(riak_search_op_scope).
 -export([
+         extract_scoring_props/1,
          preplan/2,
          chain_op/4
         ]).
@@ -16,7 +17,10 @@
 -include("riak_search.hrl").
 -include_lib("lucene_parser/include/lucene_parser.hrl").
 
-preplan(Op, State) -> 
+extract_scoring_props(Op) ->
+    riak_search_op:extract_scoring_props(Op#scope.ops).
+
+preplan(Op, State) ->
     NewState = update_state(Op, State),
     ChildOps = riak_search_op:preplan(#group { ops=Op#scope.ops }, NewState),
     Op#scope { ops=ChildOps }.

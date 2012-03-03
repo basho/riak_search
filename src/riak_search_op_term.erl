@@ -6,6 +6,7 @@
 
 -module(riak_search_op_term).
 -export([
+         extract_scoring_props/1,
          preplan/2,
          chain_op/4,
          default_filter/2
@@ -20,6 +21,9 @@
 
 -include("riak_search.hrl").
 -include_lib("lucene_parser/include/lucene_parser.hrl").
+
+extract_scoring_props(#term{doc_freq=Frequency, boost=Boost}) ->
+    {Frequency, Boost}.
 
 %% Need term count for node planning. Used in #intersection and
 %% #union. Calculate this during preplan based on where the most

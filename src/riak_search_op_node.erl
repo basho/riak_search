@@ -1,15 +1,19 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
 -module(riak_search_op_node).
 -export([
+         extract_scoring_props/1,
          preplan/2,
          chain_op/4
         ]).
 -include("riak_search.hrl").
+
+extract_scoring_props(Op) ->
+    riak_search_op:extract_scoring_props(Op#node.ops).
 
 preplan(Op, _State) ->
     ChildOps = Op#node.ops,
@@ -40,7 +44,7 @@ get_target_node(Ops) ->
 
     %% Sort in descending order by count...
     F1 = fun({_, Weight1}, {_, Weight2}) ->
-                Weight1 >= Weight2 
+                Weight1 >= Weight2
         end,
     NodeWeights3 = lists:sort(F1, NodeWeights2),
 
@@ -58,7 +62,6 @@ get_target_node(Ops) ->
     NodeWeights4 = lists:takewhile(F2, NodeWeights3),
     {Node, _} = riak_search_utils:choose(NodeWeights4),
     Node.
-   
 
 get_term_weights(Ops) ->
     lists:flatten(get_term_weights_1(Ops)).

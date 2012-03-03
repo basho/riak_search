@@ -1,11 +1,12 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
 -module(riak_search_op_intersection).
 -export([
+         extract_scoring_props/1,
          preplan/2,
          chain_op/4,
          make_filter_iterator/1
@@ -14,9 +15,12 @@
 -include_lib("lucene_parser/include/lucene_parser.hrl").
 -define(INDEX_DOCID(Term), ({element(1, Term), element(2, Term)})).
 
+extract_scoring_props(Op) ->
+    riak_search_op:extract_scoring_props(Op#intersection.ops).
+
 preplan(Op, State) ->
     case riak_search_op:preplan(Op#intersection.ops, State) of
-        [ChildOp] -> 
+        [ChildOp] ->
             ChildOp;
         ChildOps ->
             NewOp = Op#intersection { ops=ChildOps },
@@ -31,9 +35,9 @@ chain_op(Op, OutputPid, OutputRef, State) ->
     Iterator2 = make_filter_iterator(Iterator1),
 
     %% Spawn up pid to gather and send results...
-    F = fun() -> 
+    F = fun() ->
                 erlang:link(State#search_state.parent),
-                riak_search_op_utils:gather_iterator_results(OutputPid, OutputRef, Iterator2()) 
+                riak_search_op_utils:gather_iterator_results(OutputPid, OutputRef, Iterator2())
         end,
     erlang:spawn_link(F),
 
@@ -44,7 +48,7 @@ chain_op(Op, OutputPid, OutputRef, State) ->
 %% negated results.
 make_filter_iterator(Iterator) ->
     fun() -> filter_iterator(Iterator()) end.
-filter_iterator({_, Op, Iterator}) 
+filter_iterator({_, Op, Iterator})
   when (is_tuple(Op) andalso is_record(Op, negation)) orelse Op == true ->
     %% Term is negated, so skip it.
     filter_iterator(Iterator());

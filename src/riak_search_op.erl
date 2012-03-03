@@ -1,11 +1,12 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
 -module(riak_search_op).
 -export([
+         extract_scoring_props/1,
          preplan/1,
          preplan/2,
          chain_op/4,
@@ -13,6 +14,12 @@
         ]).
 -include("riak_search.hrl").
 -include_lib("lucene_parser/include/lucene_parser.hrl").
+
+extract_scoring_props(Ops) when is_list(Ops) ->
+    [extract_scoring_props(Op) || Op <- Ops];
+extract_scoring_props(Op) when is_tuple(Op) ->
+    Mod = riak_search_op:op_to_module(Op),
+    Mod:extract_scoring_props(Op).
 
 preplan(Op) ->
     preplan(Op, #search_state {}).
