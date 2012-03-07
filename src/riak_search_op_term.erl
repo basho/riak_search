@@ -6,11 +6,12 @@
 
 -module(riak_search_op_term).
 -export([
-         extract_scoring_props/1,
-         preplan/2,
          chain_op/4,
          chain_op/5,
-         default_filter/2
+         default_filter/2,
+         extract_scoring_props/1,
+         frequency/1,
+         preplan/2
         ]).
 
 -import(riak_search_utils, [to_binary/1]).
@@ -25,6 +26,10 @@
 
 extract_scoring_props(#term{doc_freq=Frequency, boost=Boost}) ->
     {Frequency, Boost}.
+
+-spec frequency(term()) -> {Frequency::non_neg_integer(), term()}.
+frequency(Op=#term{doc_freq=Freq}) ->
+    {Freq, Op}.
 
 %% Need term count for node planning. Used in #intersection and
 %% #union. Calculate this during preplan based on where the most

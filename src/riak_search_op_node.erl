@@ -6,9 +6,9 @@
 
 -module(riak_search_op_node).
 -export([
+         chain_op/4,
          extract_scoring_props/1,
-         preplan/2,
-         chain_op/4
+         preplan/2
         ]).
 -include("riak_search.hrl").
 

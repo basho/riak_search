@@ -6,10 +6,11 @@
 
 -module(riak_search_op_proximity).
 -export([
-         extract_scoring_props/1,
-         preplan/2,
          chain_op/4,
-         chain_op/5
+         chain_op/5,
+         extract_scoring_props/1,
+         frequency/1,
+         preplan/2
         ]).
 
 -include("riak_search.hrl").
@@ -49,6 +50,11 @@
 
 extract_scoring_props(Op) ->
     riak_search_op:extract_scoring_props(Op#proximity.ops).
+
+frequency(Op) ->
+    Freqs = [riak_search_op:frequency(Child) || Child <- Op#proximity.ops],
+    Sum = lists:sum([Freq || {Freq, _} <- Freqs]),
+    {Sum, Op}.
 
 preplan(Op, State) ->
     ChildOps = riak_search_op:preplan(Op#proximity.ops, State),

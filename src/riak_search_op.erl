@@ -7,6 +7,7 @@
 -module(riak_search_op).
 -export([
          extract_scoring_props/1,
+         frequency/1,
          preplan/1,
          preplan/2,
          chain_op/4,
@@ -21,6 +22,13 @@ extract_scoring_props(Ops) when is_list(Ops) ->
 extract_scoring_props(Op) when is_tuple(Op) ->
     Mod = riak_search_op:op_to_module(Op),
     Mod:extract_scoring_props(Op).
+
+%% @doc Return the `Frequency' of the search term in the index along
+%% with its corresponding `Op'.
+-spec frequency(term()) -> {Frequency::non_neg_integer(), Op::term()}.
+frequency(Op) ->
+    Mod = riak_search_op:op_to_module(Op),
+    Mod:frequency(Op).
 
 preplan(Op) ->
     preplan(Op, #search_state {}).

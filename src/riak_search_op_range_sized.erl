@@ -6,11 +6,12 @@
 
 -module(riak_search_op_range_sized).
 -export([
-         extract_scoring_props/1,
-         preplan/2,
          chain_op/4,
          chain_op/5,
-         correct_term_order/2
+         correct_term_order/2,
+         extract_scoring_props/1,
+         frequency/1,
+         preplan/2
         ]).
 
 -import(riak_search_utils, [to_binary/1]).
@@ -22,6 +23,9 @@ extract_scoring_props(_Op) ->
     %% Don't alter the scoring props, return addition/multiplication
     %% identities.
     {0,1}.
+
+frequency(Op) ->
+    {unknown, Op}.
 
 preplan(Op, _State) ->
     Op.
