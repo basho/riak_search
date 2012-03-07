@@ -18,13 +18,17 @@
 -include("riak_search.hrl").
 -define(STREAM_TIMEOUT, 15000).
 
-%% @doc Return `Filter' function that matches only if `DocId' is in
-%% `CandidateSet'.
+%% @doc Return `Filter' function that matches only if `{DocId,
+%% Props}' is in `CandidateSet'.
+%%
+%% NOTE: It sucks to have to check for `{DocId, Props}' but this
+%% cannot be avoided without changing the merge_index API.  A battle
+%% to fight another day.
 -spec candidate_filter(gb_set(), function()) -> Filter::function().
 candidate_filter(CandidateSet, OriginalFilter) ->
     fun(DocId, Props) ->
             case OriginalFilter(DocId, Props) of
-                true -> gb_sets:is_element(DocId, CandidateSet);
+                true -> gb_sets:is_element({DocId, Props}, CandidateSet);
                 false -> false
             end
     end.

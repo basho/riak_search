@@ -34,10 +34,6 @@ preplan(Op, State) ->
 
 chain_op(Op, OutputPid, OutputRef, State) ->
     %% 1. order the operations by ascending frequency
-    %%
-    %% TODO: Need to be able to determine frequency of all ops (since
-    %% there is no proper term-frequency index need to assume range as
-    %% larger than everything else.
     Ops = order_ops(fun order_by_freq/2, Op#intersection.ops),
 
     %% 2. realize the candidate set
@@ -47,30 +43,35 @@ chain_op(Op, OutputPid, OutputRef, State) ->
 
     %% 3. sequentially check candidate set against rest of term
     %% indexes
-    Answer = lists:foldl(intersection(State), CandidateSet, Ops2).
+    FinalSet = lists:foldl(intersection(State), CandidateSet, Ops2),
 
     %% 4. output results
+    send_results(FinalSet, {OutputPid, OutputRef, State#search_state.index}).
 
-
-    %% Create an iterator chain...
-    %% OpList = Op#intersection.ops,
-    %% Iterator1 = riak_search_op_utils:iterator_tree(fun select_fun/2, OpList, State),
-    %% Iterator2 = make_filter_iterator(Iterator1),
-
-    %% %% Spawn up pid to gather and send results...
-    %% F = fun() ->
-    %%             erlang:link(State#search_state.parent),
-    %%             riak_search_op_utils:gather_iterator_results(OutputPid, OutputRef, Iterator2())
-    %%     end,
-    %% erlang:spawn_link(F),
-
-    %% %% Return.
-    %% {ok, 1}.
 
 %% Given an iterator, return a new iterator that filters out any
 %% negated results.
 make_filter_iterator(Iterator) ->
     fun() -> filter_iterator(Iterator()) end.
+
+send_results(FinalSet, O) ->
+    send_results(gb_sets:iterator(FinalSet), O, []).
+
+%% TODO: MICROOPT: Explicitly keep track of count to avoid calling
+%% `length' each time.
+send_results(Itr, {OutputPid, OutputRef, _Idx}=O, Acc)
+  when length(Acc) > ?RESULTVEC_SIZE ->
+    OutputPid ! {results, lists:reverse(Acc), OutputRef},
+    send_results(Itr, O, []);
+send_results(Itr, {OutputPid, OutputRef, Idx}=O, Acc) ->
+    case gb_sets:next(Itr) of
+        {{DocId, Props}, Itr2} ->
+            %% need to add the Idx back for upstream
+            send_results(Itr2, O, [{Idx, DocId, Props}|Acc]);
+        none ->
+            OutputPid ! {results, lists:reverse(Acc), OutputRef},
+            OutputPid ! {disconnect, OutputRef}
+    end.
 
 %%%===================================================================
 %%% Private
@@ -87,7 +88,7 @@ make_filter_iterator(Iterator) ->
 intersection(State) ->
     fun(Op, CandidateSet) ->
             Itr = riak_search_op_utils:iterator_tree(none, [Op],
-                                                     State, CandidateSet),
+                                                     CandidateSet, State),
             ResultSet = id_set(Itr),
             case riak_search_op_negation:is_negation(Op) of
                 true ->
@@ -122,10 +123,10 @@ get_candidate_set(Op, State) ->
     id_set(Itr).
 
 id_set(Itr) ->
-    id_set(Itr(), gb_set:new()).
+    id_set(Itr(), gb_sets:new()).
 
 id_set({{_Idx, DocId, Props}, _, Itr}, Set) ->
-    id_set(Itr(), gb_set:add({DocId, Props}, Set));
+    id_set(Itr(), gb_sets:add({DocId, Props}, Set));
 id_set({eof, _}, Set) ->
     Set.
 
@@ -156,7 +157,7 @@ order_ops(Fun, Ops) ->
 -spec swap_front([term()]) -> [term()].
 swap_front(Ops) ->
     {Negations, [H|T]} =
-        lists:takewhile(fun riak_search_op_negation:is_negation/1, Ops),
+        lists:splitwith(fun riak_search_op_negation:is_negation/1, Ops),
     [H] ++ Negations ++ T.
 
 %% Now, treat the operation as a comparison between two terms. Return
