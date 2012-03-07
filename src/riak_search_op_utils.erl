@@ -7,6 +7,7 @@
 -module(riak_search_op_utils).
 
 -export([
+    candidate_filter/2,
     iterator_tree/3,
     iterator_tree/4,
     gather_iterator_results/3,
@@ -15,6 +16,17 @@
 
 -include("riak_search.hrl").
 -define(STREAM_TIMEOUT, 15000).
+
+%% @doc Return `Filter' function that matches only if `DocId' is in
+%% `CandidateSet'.
+-spec candidate_filter(gb_set(), function()) -> Filter::function().
+candidate_filter(CandidateSet, OriginalFilter) ->
+    fun(DocId, Props) ->
+            case OriginalFilter(DocId, Props) of
+                true -> gb_sets:is_element(DocId, CandidateSet);
+                false -> false
+            end
+    end.
 
 %% Given a long list of iterators (which are zero arity functions that
 %% dole out results one at a time in the form {Term, Op, NewIterator}

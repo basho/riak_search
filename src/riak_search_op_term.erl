@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
@@ -9,6 +9,7 @@
          extract_scoring_props/1,
          preplan/2,
          chain_op/4,
+         chain_op/5,
          default_filter/2
         ]).
 
@@ -56,21 +57,36 @@ preplan(Op, State) ->
 chain_op(Op, OutputPid, OutputRef, State) ->
     F = fun() ->
                 erlang:link(State#search_state.parent),
-                start_loop(Op, OutputPid, OutputRef, State)
+                start_loop(Op, OutputPid, OutputRef, none, State)
         end,
     erlang:spawn_link(F),
     {ok, 1}.
 
--spec start_loop(any(), pid(), reference(), #search_state{}) -> any().
-start_loop(Op, OutputPid, OutputRef, State) ->
+chain_op(Op, OutputPid, OutputRef, CandidateSet, State) ->
+    F = fun() ->
+                erlang:link(State#search_state.parent),
+                start_loop(Op, OutputPid, OutputRef, CandidateSet, State)
+        end,
+    erlang:spawn_link(F),
+    {ok, 1}.
+
+-spec start_loop(any(), pid(), reference(), gb_set() | none,
+                 #search_state{}) -> any().
+start_loop(Op, OutputPid, OutputRef, CandidateSet, State) ->
     %% Get the current index/field...
     IndexName = State#search_state.index,
     FieldName = State#search_state.field,
     Term = to_binary(Op#term.s),
 
-    %% Stream the results for a single term...
-    FilterFun = State#search_state.filter,
-    {ok, Ref} = stream(IndexName, FieldName, Term, FilterFun),
+    %% query index, wrap filter with another if candidate set is
+    %% specified
+    Filter1 = State#search_state.filter,
+    Filter2 =
+        case CandidateSet of
+            none -> Filter1;
+            _ -> riak_search_op_utils:candidate_filter(CandidateSet, Filter1)
+        end,
+    {ok, Ref} = stream(IndexName, FieldName, Term, Filter2),
 
     %% Collect the results...
     TransformFun = generate_transform_function(Op, State),

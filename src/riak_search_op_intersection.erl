@@ -80,6 +80,9 @@ make_filter_iterator(Iterator) ->
 %%
 %% @doc Return a `Fun' used to perform the intersection of `Op'
 %% results against `CandidateSet'.
+%%
+%% NOTE: An assumption is made that intersection ops do no nest
+%% (rewritten by preplan).
 -spec intersection(term()) -> function().
 intersection(State) ->
     fun(Op, CandidateSet) ->

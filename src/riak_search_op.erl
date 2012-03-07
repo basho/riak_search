@@ -10,6 +10,7 @@
          preplan/1,
          preplan/2,
          chain_op/4,
+         chain_op/5,
          op_to_module/1
         ]).
 -include("riak_search.hrl").
@@ -43,6 +44,20 @@ chain_op(Op, OutputPid, Ref, SearchState) ->
                 erlang:link(SearchState#search_state.parent),
                 Module = op_to_module(Op),
                 Module:chain_op(Op, OutputPid, Ref, SearchState)
+        end,
+    erlang:spawn_link(F),
+    {ok, 1}.
+
+%% TODO: Integrate this properly, i.e. don't use copy/paste, one-off
+%% function here.
+chain_op(Op, OutputPid, Ref, CandidateSet, SearchState) ->
+    F = fun() ->
+                erlang:link(SearchState#search_state.parent),
+                Module = op_to_module(Op),
+                %% NOTE: chain_op/5 must be supported by any op that
+                %% can be a child of intersection: term, range,
+                %% negation, proximity, union, and scope
+                Module:chain_op(Op, OutputPid, Ref, CandidateSet, SearchState)
         end,
     erlang:spawn_link(F),
     {ok, 1}.
