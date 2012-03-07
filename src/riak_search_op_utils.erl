@@ -24,12 +24,11 @@
 %% NOTE: It sucks to have to check for `{DocId, Props}' but this
 %% cannot be avoided without changing the merge_index API.  A battle
 %% to fight another day.
--spec candidate_filter(gb_set(), function()) -> Filter::function().
+-spec candidate_filter(gb_tree(), function()) -> Filter::function().
 candidate_filter(CandidateSet, OriginalFilter) ->
     fun(DocId, Props) ->
             case OriginalFilter(DocId, Props) of
                 true -> gb_trees:is_defined(DocId, CandidateSet);
-                %% true -> gb_sets:is_element({DocId, Props}, CandidateSet);
                 false -> false
             end
     end.
@@ -41,7 +40,7 @@ candidate_filter(CandidateSet, OriginalFilter) ->
 %% results in sorted order, so a SelectFun is used to maintain the
 %% sorted order as well as filter out any results that we don't want.
 iterator_tree(SelectFun, OpList, SearchState) ->
-    iterator_tree(SearchState, OpList, none, SearchState).
+    iterator_tree(SelectFun, OpList, none, SearchState).
 
 iterator_tree(SelectFun, OpList, CandidateSet, SearchState) ->
     %% Turn all operations into iterators and then combine into a tree.
@@ -57,10 +56,10 @@ it_combine(SelectFun, Iterators) ->
         [] ->
             %% No iterators, so return eof.
             fun() -> {eof, undefined} end;
-        [OneIterator] -> 
+        [OneIterator] ->
             %% We've successfully collapsed to a single iterator.
             OneIterator;
-        ManyIterators -> 
+        ManyIterators ->
             %% More collapsing is neccessary.
             it_combine(SelectFun, ManyIterators)
     end.
@@ -181,10 +180,10 @@ gather_iterator_results(OutputPid, OutputRef, {eof, _}, Acc) ->
 -spec gather_stream_results(stream_ref(), pid(), reference(), fun()) ->
                                    any() | no_return().
 gather_stream_results(Ref, OutputPid, OutputRef, TransformFun) ->
-    receive 
+    receive
         {Ref, done} ->
             OutputPid!{disconnect, OutputRef};
-            
+
         {Ref, {result_vec, ResultVec}} ->
             ResultVec2 = lists:map(TransformFun, ResultVec),
             OutputPid!{results, ResultVec2, OutputRef},
@@ -204,7 +203,7 @@ gather_stream_results(Ref, OutputPid, OutputRef, TransformFun) ->
     end.
 
 %% @doc Potentially wrap the `OriginalFilter' with a candidate filter.
--spec wrap_filter(gb_set() | none, function()) -> function().
+-spec wrap_filter(gb_tree() | none, function()) -> function().
 wrap_filter(none, OriginalFilter) ->
     OriginalFilter;
 wrap_filter(CandidateSet, OriginalFilter) ->

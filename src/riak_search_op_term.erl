@@ -75,7 +75,7 @@ chain_op(Op, OutputPid, OutputRef, CandidateSet, State) ->
     erlang:spawn_link(F),
     {ok, 1}.
 
--spec start_loop(any(), pid(), reference(), gb_set() | none,
+-spec start_loop(any(), pid(), reference(), gb_tree() | none,
                  #search_state{}) -> any().
 start_loop(Op, OutputPid, OutputRef, CandidateSet, State) ->
     %% Get the current index/field...

@@ -38,7 +38,6 @@ chain_op(Op, OutputPid, OutputRef, State) ->
 
     %% 2. realize the candidate set
     [Op1|Ops2] = Ops,
-    %% make sure get_candidate_set select first _non_ negation op
     CandidateSet = get_candidate_set(Op1, State),
 
     %% 3. sequentially check candidate set against rest of term
@@ -55,26 +54,6 @@ chain_op(Op, OutputPid, OutputRef, State) ->
 %% negated results.
 make_filter_iterator(Iterator) ->
     fun() -> filter_iterator(Iterator()) end.
-
-send_results(FinalSet, O) ->
-    send_results(gb_trees:iterator(FinalSet), O, []).
-
-%% TODO: MICROOPT: Explicitly keep track of count to avoid calling
-%% `length' each time.
-send_results(Itr, {OutputPid, OutputRef, _Idx}=O, Acc)
-  when length(Acc) > ?RESULTVEC_SIZE ->
-    OutputPid ! {results, lists:reverse(Acc), OutputRef},
-    send_results(Itr, O, []);
-send_results(Itr, {OutputPid, OutputRef, Idx}=O, Acc) ->
-    case gb_trees:next(Itr) of
-        %% {{DocId, Props}, Itr2} ->
-        {DocId, Props, Itr2} ->
-            %% need to add the Idx back for upstream
-            send_results(Itr2, O, [{Idx, DocId, Props}|Acc]);
-        none ->
-            OutputPid ! {results, lists:reverse(Acc), OutputRef},
-            OutputPid ! {disconnect, OutputRef}
-    end.
 
 %%%===================================================================
 %%% Private
@@ -96,8 +75,6 @@ intersection(State) ->
             case riak_search_op_negation:is_negation(Op) of
                 true ->
                     subtract(CandidateSet, gb_trees:iterator(ResultSet));
-                    %% lists:foldl(fun gb_trees:delete_any/2, CandidateSet, ResultSet);
-                    %% gb_sets:subtract(CandidateSet, ResultSet);
                 false ->
                     ResultSet
             end
@@ -130,7 +107,7 @@ filter_iterator({eof, _}) ->
 %% are to be realized immediately.  Instead call chain_op and directly
 %% collect.
 %%
--spec get_candidate_set(term(), term()) -> gb_set().
+-spec get_candidate_set(term(), term()) -> gb_tree().
 get_candidate_set(Op, State) ->
     Itr = riak_search_op_utils:iterator_tree(none, [Op], State),
     id_set(Itr).
@@ -140,7 +117,6 @@ id_set(Itr) ->
 
 id_set({{_Idx, DocId, Props}, _, Itr}, Set) ->
     id_set(Itr(), gb_trees:insert(DocId, Props, Set));
-    %% id_set(Itr(), gb_sets:add({DocId, Props}, Set));
 id_set({eof, _}, Set) ->
     Set.
 
@@ -278,6 +254,25 @@ swap_front(Ops) ->
 %%     ok;
 %% exhaust_it({_,_,It}) ->
 %%     exhaust_it(It()).
+
+send_results(FinalSet, O) ->
+    send_results(gb_trees:iterator(FinalSet), O, []).
+
+%% TODO: MICROOPT: Explicitly keep track of count to avoid calling
+%% `length' each time.
+send_results(Itr, {OutputPid, OutputRef, _Idx}=O, Acc)
+  when length(Acc) > ?RESULTVEC_SIZE ->
+    OutputPid ! {results, lists:reverse(Acc), OutputRef},
+    send_results(Itr, O, []);
+send_results(Itr, {OutputPid, OutputRef, Idx}=O, Acc) ->
+    case gb_trees:next(Itr) of
+        {DocId, Props, Itr2} ->
+            %% need to add the Idx back for upstream
+            send_results(Itr2, O, [{Idx, DocId, Props}|Acc]);
+        none ->
+            OutputPid ! {results, lists:reverse(Acc), OutputRef},
+            OutputPid ! {disconnect, OutputRef}
+    end.
 
 %%%===================================================================
 %%% Tests
