@@ -1,15 +1,17 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
 -module(riak_search_op_term).
 -export([
-         extract_scoring_props/1,
-         preplan/2,
          chain_op/4,
-         default_filter/2
+         chain_op/5,
+         default_filter/2,
+         extract_scoring_props/1,
+         frequency/1,
+         preplan/2
         ]).
 
 -import(riak_search_utils, [to_binary/1]).
@@ -24,6 +26,10 @@
 
 extract_scoring_props(#term{doc_freq=Frequency, boost=Boost}) ->
     {Frequency, Boost}.
+
+-spec frequency(term()) -> {Frequency::non_neg_integer(), term()}.
+frequency(Op=#term{doc_freq=Freq}) ->
+    {Freq, Op}.
 
 %% Need term count for node planning. Used in #intersection and
 %% #union. Calculate this during preplan based on where the most
@@ -56,28 +62,39 @@ preplan(Op, State) ->
 chain_op(Op, OutputPid, OutputRef, State) ->
     F = fun() ->
                 erlang:link(State#search_state.parent),
-                start_loop(Op, OutputPid, OutputRef, State)
+                start_loop(Op, OutputPid, OutputRef, none, State)
         end,
     erlang:spawn_link(F),
     {ok, 1}.
 
--spec start_loop(any(), pid(), reference(), #search_state{}) -> any().
-start_loop(Op, OutputPid, OutputRef, State) ->
+chain_op(Op, OutputPid, OutputRef, CandidateSet, State) ->
+    F = fun() ->
+                erlang:link(State#search_state.parent),
+                start_loop(Op, OutputPid, OutputRef, CandidateSet, State)
+        end,
+    erlang:spawn_link(F),
+    {ok, 1}.
+
+-spec start_loop(any(), pid(), reference(), gb_tree() | none,
+                 #search_state{}) -> any().
+start_loop(Op, OutputPid, OutputRef, CandidateSet, State) ->
     %% Get the current index/field...
     IndexName = State#search_state.index,
     FieldName = State#search_state.field,
     Term = to_binary(Op#term.s),
 
-    %% Stream the results for a single term...
-    FilterFun = State#search_state.filter,
-    {ok, Ref} = stream(IndexName, FieldName, Term, FilterFun),
+    %% query index, wrap filter with another if candidate set is
+    %% specified
+    Filter = riak_search_op_utils:wrap_filter(CandidateSet,
+                                              State#search_state.filter),
+    {ok, Ref} = stream(IndexName, FieldName, Term, Filter),
 
     %% Collect the results...
     TransformFun = generate_transform_function(Op, State),
     riak_search_op_utils:gather_stream_results(Ref, OutputPid, OutputRef, TransformFun).
 
 -spec stream(index(), field(), s_term(), fun()) -> {ok, stream_ref()}.
-stream(Index, Field, Term, FilterFun) ->
+stream(Index, Field, Term, Filter) ->
     %% Get the primary preflist, minus any down nodes. (We don't use
     %% secondary nodes since we ultimately read results from one node
     %% anyway.)
@@ -91,7 +108,7 @@ stream(Index, Field, Term, FilterFun) ->
         PreflistEntry ->
             PreflistEntry = PreflistEntry
     end,
-    riak_search_vnode:stream([PreflistEntry], Index, Field, Term, FilterFun,
+    riak_search_vnode:stream([PreflistEntry], Index, Field, Term, Filter,
                              self()).
 
 default_filter(_, _) -> true.

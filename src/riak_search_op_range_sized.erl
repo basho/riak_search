@@ -1,15 +1,17 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
 -module(riak_search_op_range_sized).
 -export([
-         extract_scoring_props/1,
-         preplan/2,
          chain_op/4,
-         correct_term_order/2
+         chain_op/5,
+         correct_term_order/2,
+         extract_scoring_props/1,
+         frequency/1,
+         preplan/2
         ]).
 
 -import(riak_search_utils, [to_binary/1]).
@@ -22,18 +24,30 @@ extract_scoring_props(_Op) ->
     %% identities.
     {0,1}.
 
+-spec frequency(term()) -> {unknown, Op::term()}.
+frequency(Op) ->
+    {unknown, Op}.
+
 preplan(Op, _State) ->
     Op.
 
 chain_op(Op, OutputPid, OutputRef, State) ->
     F = fun() ->
                 erlang:link(State#search_state.parent),
-                start_loop(Op, OutputPid, OutputRef, State)
+                start_loop(Op, OutputPid, OutputRef, none, State)
         end,
     erlang:spawn_link(F),
     {ok, 1}.
 
-start_loop(Op, OutputPid, OutputRef, State) ->
+chain_op(Op, OutputPid, OutputRef, CandidateSet, State) ->
+    F = fun() ->
+                erlang:link(State#search_state.parent),
+                start_loop(Op, OutputPid, OutputRef, CandidateSet, State)
+        end,
+    erlang:spawn_link(F),
+    {ok, 1}.
+
+start_loop(Op, OutputPid, OutputRef, CandidateSet, State) ->
     %% Figure out how many extra nodes to add to make the groups even.
     IndexName = State#search_state.index,
     {ok, Schema} = riak_search_config:get_schema(IndexName),
@@ -47,7 +61,7 @@ start_loop(Op, OutputPid, OutputRef, State) ->
 
     %% Create the iterator...
     SelectFun = fun(I1, I2) -> select_fun(I1, I2) end,
-    Iterator1 = riak_search_op_utils:iterator_tree(SelectFun, OpList, State),
+    Iterator1 = riak_search_op_utils:iterator_tree(SelectFun, OpList, CandidateSet, State),
     Iterator2 = make_dedup_iterator(Iterator1),
 
     %% Spawn up pid to gather and send results...

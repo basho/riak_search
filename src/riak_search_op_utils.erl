@@ -1,19 +1,37 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
 -module(riak_search_op_utils).
 
 -export([
+    candidate_filter/2,
     iterator_tree/3,
+    iterator_tree/4,
     gather_iterator_results/3,
-    gather_stream_results/4
+    gather_stream_results/4,
+    wrap_filter/2
 ]).
 
 -include("riak_search.hrl").
 -define(STREAM_TIMEOUT, 15000).
+
+%% @doc Return `Filter' function that matches only if `{DocId,
+%% Props}' is in `CandidateSet'.
+%%
+%% NOTE: It sucks to have to check for `{DocId, Props}' but this
+%% cannot be avoided without changing the merge_index API.  A battle
+%% to fight another day.
+-spec candidate_filter(gb_tree(), function()) -> Filter::function().
+candidate_filter(CandidateSet, OriginalFilter) ->
+    fun(DocId, Props) ->
+            case OriginalFilter(DocId, Props) of
+                true -> gb_trees:is_defined(DocId, CandidateSet);
+                false -> false
+            end
+    end.
 
 %% Given a long list of iterators (which are zero arity functions that
 %% dole out results one at a time in the form {Term, Op, NewIterator}
@@ -22,8 +40,11 @@
 %% results in sorted order, so a SelectFun is used to maintain the
 %% sorted order as well as filter out any results that we don't want.
 iterator_tree(SelectFun, OpList, SearchState) ->
+    iterator_tree(SelectFun, OpList, none, SearchState).
+
+iterator_tree(SelectFun, OpList, CandidateSet, SearchState) ->
     %% Turn all operations into iterators and then combine into a tree.
-    Iterators = [it_op(X, SearchState) || X <- OpList],
+    Iterators = [it_op(X, CandidateSet, SearchState) || X <- OpList],
     it_combine(SelectFun, Iterators).
 
 %% @private Given a list of iterators, combine into a tree. Works by
@@ -35,10 +56,10 @@ it_combine(SelectFun, Iterators) ->
         [] ->
             %% No iterators, so return eof.
             fun() -> {eof, undefined} end;
-        [OneIterator] -> 
+        [OneIterator] ->
             %% We've successfully collapsed to a single iterator.
             OneIterator;
-        ManyIterators -> 
+        ManyIterators ->
             %% More collapsing is neccessary.
             it_combine(SelectFun, ManyIterators)
     end.
@@ -52,28 +73,34 @@ it_combine_inner(_SelectFun, [Iterator]) ->
 it_combine_inner(SelectFun, [IteratorA,IteratorB|Rest]) ->
     Iterator = fun() -> SelectFun(IteratorA(), IteratorB()) end,
     [Iterator|it_combine_inner(SelectFun, Rest)].
-    
-%% @private Chain an operator, and build an iterator function around
-%% it. The iterator will return {Result, NotFlag, NewIteratorFun} each
-%% time it is called, or block until one is available. When there are
-%% no more results, it will return {eof, NotFlag}.
-it_op(Op, SearchState) ->
-    %% Spawn a collection process...
+
+%% @private
+%%
+%% @doc Execute the `Op', building an iterator function around it. The
+%% iterator will return `{Result, NotFlag, NewIteratorFun}' each time
+%% it is called, or block until one is available. When there are no
+%% more results, it will return `{eof, NotFlag}'.
+it_op(Op, CandidateSet, SearchState) ->
+    %% spawn the collection process
     Ref = make_ref(),
-    F = fun() -> 
+    F = fun() ->
                 Parent = SearchState#search_state.parent,
                 erlang:link(Parent),
                 erlang:process_flag(trap_exit, true),
-                it_op_collector_loop(Parent, Ref, []) 
+                it_op_collector_loop(Parent, Ref, [])
         end,
     Pid = erlang:spawn_link(F),
 
-    %% Chain the op...
-    riak_search_op:chain_op(Op, Pid, Ref, SearchState),
+    %% execute the operation
+    case CandidateSet of
+        none ->
+            riak_search_op:chain_op(Op, Pid, Ref, SearchState);
+        _ ->
+            riak_search_op:chain_op(Op, Pid, Ref, CandidateSet, SearchState)
+    end,
 
-    %% Return an iterator function. Returns
-    %% a new result.
-    fun() -> 
+    %% return an iterator that wraps the execution
+    fun() ->
             it_op_inner(Pid, Ref, Op)
     end.
 
@@ -90,7 +117,8 @@ it_op_inner(Pid, Ref, Op) ->
         {result, Result, Ref} ->
             {Result, Op, fun() -> it_op_inner(Pid, Ref, Op) end};
         X ->
-            io:format("it_inner(~p, ~p, ~p)~n>> unknown message: ~p~n", [Pid, Ref, Op, X])
+            lager:error("it_inner(~p, ~p, ~p) received unknown message: ~p",
+                        [Pid, Ref, Op, X])
     end.
 
 %% @private This runs in a separate process, collecting the incoming
@@ -152,10 +180,10 @@ gather_iterator_results(OutputPid, OutputRef, {eof, _}, Acc) ->
 -spec gather_stream_results(stream_ref(), pid(), reference(), fun()) ->
                                    any() | no_return().
 gather_stream_results(Ref, OutputPid, OutputRef, TransformFun) ->
-    receive 
+    receive
         {Ref, done} ->
             OutputPid!{disconnect, OutputRef};
-            
+
         {Ref, {result_vec, ResultVec}} ->
             ResultVec2 = lists:map(TransformFun, ResultVec),
             OutputPid!{results, ResultVec2, OutputRef},
@@ -174,3 +202,9 @@ gather_stream_results(Ref, OutputPid, OutputRef, TransformFun) ->
             throw(stream_timeout)
     end.
 
+%% @doc Potentially wrap the `OriginalFilter' with a candidate filter.
+-spec wrap_filter(gb_tree() | none, function()) -> function().
+wrap_filter(none, OriginalFilter) ->
+    OriginalFilter;
+wrap_filter(CandidateSet, OriginalFilter) ->
+    candidate_filter(CandidateSet, OriginalFilter).

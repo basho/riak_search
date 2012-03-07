@@ -6,14 +6,21 @@
 
 -module(riak_search_op_node).
 -export([
+         chain_op/4,
+         chain_op/5,
          extract_scoring_props/1,
-         preplan/2,
-         chain_op/4
+         frequency/1,
+         preplan/2
         ]).
 -include("riak_search.hrl").
 
 extract_scoring_props(Op) ->
     riak_search_op:extract_scoring_props(Op#node.ops).
+
+%% NOTE: Relies on the fact that a node op only ever wraps an
+%% intersection or union op.
+frequency(Op) ->
+    riak_search_op:frequency(Op#node.ops).
 
 preplan(Op, _State) ->
     ChildOps = Op#node.ops,
@@ -24,6 +31,12 @@ chain_op(Op, OutputPid, OutputRef, State) ->
     Node = Op#node.node,
     Ops = Op#node.ops,
     rpc:call(Node, riak_search_op, chain_op, [Ops, OutputPid, OutputRef, State]).
+
+chain_op(Op, OutputPid, OutputRef, CandidateSet, State) ->
+    Node = Op#node.node,
+    Ops = Op#node.ops,
+    rpc:call(Node, riak_search_op, chain_op, [Ops, OutputPid, OutputRef,
+                                              CandidateSet, State]).
 
 
 %% Crawl through the ops list looking for #term {} records. When we
