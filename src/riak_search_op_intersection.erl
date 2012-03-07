@@ -15,6 +15,10 @@
 -include_lib("lucene_parser/include/lucene_parser.hrl").
 -define(INDEX_DOCID(Term), ({element(1, Term), element(2, Term)})).
 
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+-endif.
+
 extract_scoring_props(Op) ->
     riak_search_op:extract_scoring_props(Op#intersection.ops).
 
@@ -29,25 +33,47 @@ preplan(Op, State) ->
     end.
 
 chain_op(Op, OutputPid, OutputRef, State) ->
+    %% 1. order the operations by ascending frequency
+    %%
+    %% TODO: Need to be able to determine frequency of all ops (since
+    %% there is no proper term-frequency index need to assume range as
+    %% larger than everything else.
+    Ops = order_ops(fun order_by_freq/2, Op#intersection.ops),
+
+    %% 2. realize the candidate set
+    [Op1|Ops2] = Ops,
+    CandidateSet = get_candidate_set(Op1).
+
+    %% 3. sequentially check candidate set against rest of term
+    %% indexes
+
+    %% 4. output results
+
+
     %% Create an iterator chain...
-    OpList = Op#intersection.ops,
-    Iterator1 = riak_search_op_utils:iterator_tree(fun select_fun/2, OpList, State),
-    Iterator2 = make_filter_iterator(Iterator1),
+    %% OpList = Op#intersection.ops,
+    %% Iterator1 = riak_search_op_utils:iterator_tree(fun select_fun/2, OpList, State),
+    %% Iterator2 = make_filter_iterator(Iterator1),
 
-    %% Spawn up pid to gather and send results...
-    F = fun() ->
-                erlang:link(State#search_state.parent),
-                riak_search_op_utils:gather_iterator_results(OutputPid, OutputRef, Iterator2())
-        end,
-    erlang:spawn_link(F),
+    %% %% Spawn up pid to gather and send results...
+    %% F = fun() ->
+    %%             erlang:link(State#search_state.parent),
+    %%             riak_search_op_utils:gather_iterator_results(OutputPid, OutputRef, Iterator2())
+    %%     end,
+    %% erlang:spawn_link(F),
 
-    %% Return.
-    {ok, 1}.
+    %% %% Return.
+    %% {ok, 1}.
 
 %% Given an iterator, return a new iterator that filters out any
 %% negated results.
 make_filter_iterator(Iterator) ->
     fun() -> filter_iterator(Iterator()) end.
+
+%%%===================================================================
+%%% Private
+%%%===================================================================
+
 filter_iterator({_, Op, Iterator})
   when (is_tuple(Op) andalso is_record(Op, negation)) orelse Op == true ->
     %% Term is negated, so skip it.
@@ -58,6 +84,28 @@ filter_iterator({Term, _, Iterator}) ->
 filter_iterator({eof, _}) ->
     %% No more results.
     {eof, ignore}.
+
+
+%% @private
+%%
+%% @doc Order operations by frequency.
+-spec order_by_freq({non_neg_integer(), term()}, {non_neg_integer(), term()}) ->
+                           boolean().
+order_by_freq({FreqA, _}, {unknown, _}) ->
+    true;
+order_by_freq({unknown, _}, {FreqB, _}) ->
+    false;
+order_by_freq({FreqA, _}, {FreqB, _}) ->
+    FreqA =< FreqB.
+
+%% @private
+%%
+%% @doc Order the operations in ascending order based on frequency of
+%% matched objects.
+-spec order_ops(function(), [{non_neg_integer(), term()}]) -> [term()].
+order_ops(Fun, Ops) ->
+    Asc = lists:sort(Fun, lists:map(fun riak_search_op:frequency/1, Ops)),
+    [Op || {_, Op} <- Asc].
 
 %% Now, treat the operation as a comparison between two terms. Return
 %% a term if it successfully meets our conditions, or else toss it and
@@ -155,6 +203,7 @@ select_fun(Iterator1, Iterator2) ->
     ?PRINT({select_fun, unhandled_case, 'intersection', Iterator1, Iterator2}),
     throw({select_fun, unhandled_case, 'intersection', Iterator1, Iterator2}).
 
+
 %% @private
 %%
 %% @doc Exhaust the iterator of all results.
@@ -162,3 +211,18 @@ exhaust_it({eof, _}) ->
     ok;
 exhaust_it({_,_,It}) ->
     exhaust_it(It()).
+
+%%%===================================================================
+%%% Tests
+%%%===================================================================
+
+-ifdef(TEST).
+
+order_by_freq_test() ->
+    Unordered = [{10,op1}, {unknown,op2}, {2,op3}, {unknown,op4},
+                 {unknown,op5}, {7,op6}],
+    Expect = [op3, op6, op1, op2, op4, op5],
+    Asc = [Op || {_, Op} <- lists:sort(fun order_by_freq/2, Unordered)],
+    ?assertEqual(Expect, Asc).
+
+-endif.
