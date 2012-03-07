@@ -9,7 +9,8 @@
          extract_scoring_props/1,
          is_negation/1,
          preplan/2,
-         chain_op/4
+         chain_op/4,
+         chain_op/5
         ]).
 
 -include("riak_search.hrl").
@@ -30,3 +31,10 @@ chain_op(Op, OutputPid, OutputRef, State) ->
     %% look for the presence of the #negation operator during merge
     %% joins.  No actual work is done here.
     riak_search_op:chain_op(Op#negation.op, OutputPid, OutputRef, State).
+
+chain_op(Op, OutputPid, OutputRef, CandidateSet, State) ->
+    %% Higher order operations (specifically #intersection and #union)
+    %% look for the presence of the #negation operator during merge
+    %% joins.  No actual work is done here.
+    riak_search_op:chain_op(Op#negation.op, OutputPid, OutputRef, CandidateSet,
+                            State).

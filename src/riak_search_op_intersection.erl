@@ -87,8 +87,14 @@ make_filter_iterator(Iterator) ->
 intersection(State) ->
     fun(Op, CandidateSet) ->
             Itr = riak_search_op_utils:iterator_tree(none, [Op],
-                                                      State, CandidateSet),
-            id_set(Itr)
+                                                     State, CandidateSet),
+            ResultSet = id_set(Itr),
+            case riak_search_op_negation:is_negation(Op) of
+                true ->
+                    gb_sets:subtract(CandidateSet, ResultSet);
+                false ->
+                    ResultSet
+            end
     end.
 
 filter_iterator({_, Op, Iterator})
