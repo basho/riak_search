@@ -43,10 +43,11 @@ chain_op(Op, OutputPid, OutputRef, State) ->
     %% 2. realize the candidate set
     [Op1|Ops2] = Ops,
     %% make sure get_candidate_set select first _non_ negation op
-    CandidateSet = get_candidate_set(Op1, State).
+    CandidateSet = get_candidate_set(Op1, State),
 
     %% 3. sequentially check candidate set against rest of term
     %% indexes
+    Answer = lists:foldl(intersection(State), CandidateSet, Ops2).
 
     %% 4. output results
 
@@ -74,6 +75,18 @@ make_filter_iterator(Iterator) ->
 %%%===================================================================
 %%% Private
 %%%===================================================================
+
+%% @private
+%%
+%% @doc Return a `Fun' used to perform the intersection of `Op'
+%% results against `CandidateSet'.
+-spec intersection(term()) -> function().
+intersection(State) ->
+    fun(Op, CandidateSet) ->
+            Itr = riak_search_op_utils:iterator_tree(none, [Op],
+                                                      State, CandidateSet),
+            id_set(Itr)
+    end.
 
 filter_iterator({_, Op, Iterator})
   when (is_tuple(Op) andalso is_record(Op, negation)) orelse Op == true ->
@@ -142,105 +155,105 @@ swap_front(Ops) ->
 %% iterate to the next term.
 
 %% Normalize Op1 and Op2 into boolean NotFlags...
-select_fun({Term1, Op1, Iterator1}, I2) when is_tuple(Op1) ->
-    select_fun({Term1, is_record(Op1, negation), Iterator1}, I2);
+%% select_fun({Term1, Op1, Iterator1}, I2) when is_tuple(Op1) ->
+%%     select_fun({Term1, is_record(Op1, negation), Iterator1}, I2);
 
-select_fun({eof, Op1}, I2) when is_tuple(Op1) ->
-    select_fun({eof, is_record(Op1, negation)}, I2);
+%% select_fun({eof, Op1}, I2) when is_tuple(Op1) ->
+%%     select_fun({eof, is_record(Op1, negation)}, I2);
 
-select_fun(I1, {Term2, Op2, Iterator2}) when is_tuple(Op2) ->
-    select_fun(I1, {Term2, is_record(Op2, negation), Iterator2});
+%% select_fun(I1, {Term2, Op2, Iterator2}) when is_tuple(Op2) ->
+%%     select_fun(I1, {Term2, is_record(Op2, negation), Iterator2});
 
-select_fun(I1, {eof, Op2}) when is_tuple(Op2) ->
-    select_fun(I1, {eof, is_record(Op2, negation)});
-
-
-
-%% Handle 'AND' cases, notflags = [false, false]
-select_fun({Term1, false, Iterator1}, {Term2, false, Iterator2}) when ?INDEX_DOCID(Term1) == ?INDEX_DOCID(Term2) ->
-    NewTerm = riak_search_utils:combine_terms(Term1, Term2),
-    {NewTerm, false, fun() -> select_fun(Iterator1(), Iterator2()) end};
-
-select_fun({Term1, false, Iterator1}, {Term2, false, Iterator2}) when ?INDEX_DOCID(Term1) < ?INDEX_DOCID(Term2) ->
-    select_fun(Iterator1(), {Term2, false, Iterator2});
-
-select_fun({Term1, false, Iterator1}, {Term2, false, Iterator2}) when ?INDEX_DOCID(Term1) > ?INDEX_DOCID(Term2) ->
-    select_fun({Term1, false, Iterator1}, Iterator2());
-
-select_fun({eof, false}, {_Term2, false, Iterator2}) ->
-    exhaust_it(Iterator2()),
-    {eof, false};
-
-select_fun({_Term1, false, Iterator1}, {eof, false}) ->
-    exhaust_it(Iterator1()),
-    {eof, false};
-
-%% Handle 'AND' cases, notflags = [false, true]
-select_fun({Term1, false, Iterator1}, {Term2, true, Iterator2}) when ?INDEX_DOCID(Term1) == ?INDEX_DOCID(Term2) ->
-    select_fun(Iterator1(), {Term2, true, Iterator2});
-
-select_fun({Term1, false, Iterator1}, {Term2, true, Iterator2}) when ?INDEX_DOCID(Term1) < ?INDEX_DOCID(Term2) ->
-    {Term1, false, fun() -> select_fun(Iterator1(), {Term2, true, Iterator2}) end};
-
-select_fun({Term1, false, Iterator1}, {Term2, true, Iterator2}) when ?INDEX_DOCID(Term1) > ?INDEX_DOCID(Term2) ->
-    select_fun({Term1, false, Iterator1}, Iterator2());
-
-select_fun({eof, false}, {_Term2, true, Iterator2}) ->
-    exhaust_it(Iterator2()),
-    {eof, false};
-
-select_fun({Term1, false, Iterator1}, {eof, true}) ->
-    {Term1, false, fun() -> select_fun(Iterator1(), {eof, true}) end};
+%% select_fun(I1, {eof, Op2}) when is_tuple(Op2) ->
+%%     select_fun(I1, {eof, is_record(Op2, negation)});
 
 
-%% Handle 'AND' cases, notflags = [true, false], use previous clauses...
-select_fun({Term1, true, Iterator1}, {Term2, false, Iterator2}) ->
-    select_fun({Term2, false, Iterator2}, {Term1, true, Iterator1});
 
-select_fun({eof, true}, {Term2, false, Iterator2}) ->
-    select_fun({Term2, false, Iterator2}, {eof, true});
+%% %% Handle 'AND' cases, notflags = [false, false]
+%% select_fun({Term1, false, Iterator1}, {Term2, false, Iterator2}) when ?INDEX_DOCID(Term1) == ?INDEX_DOCID(Term2) ->
+%%     NewTerm = riak_search_utils:combine_terms(Term1, Term2),
+%%     {NewTerm, false, fun() -> select_fun(Iterator1(), Iterator2()) end};
 
-select_fun({Term1, true, Iterator1}, {eof, false}) ->
-    select_fun({eof, false}, {Term1, true, Iterator1});
+%% select_fun({Term1, false, Iterator1}, {Term2, false, Iterator2}) when ?INDEX_DOCID(Term1) < ?INDEX_DOCID(Term2) ->
+%%     select_fun(Iterator1(), {Term2, false, Iterator2});
 
+%% select_fun({Term1, false, Iterator1}, {Term2, false, Iterator2}) when ?INDEX_DOCID(Term1) > ?INDEX_DOCID(Term2) ->
+%%     select_fun({Term1, false, Iterator1}, Iterator2());
 
-%% Handle 'AND' cases, notflags = [true, true]
-select_fun({Term1, true, Iterator1}, {Term2, true, Iterator2}) when ?INDEX_DOCID(Term1) == ?INDEX_DOCID(Term2) ->
-    NewTerm = riak_search_utils:combine_terms(Term1, Term2),
-    {NewTerm, true, fun() -> select_fun(Iterator1(), Iterator2()) end};
+%% select_fun({eof, false}, {_Term2, false, Iterator2}) ->
+%%     exhaust_it(Iterator2()),
+%%     {eof, false};
 
-select_fun({Term1, true, Iterator1}, {Term2, true, Iterator2}) when ?INDEX_DOCID(Term1) < ?INDEX_DOCID(Term2) ->
-    {Term1, true, fun() -> select_fun(Iterator1(), {Term2, true, Iterator2}) end};
+%% select_fun({_Term1, false, Iterator1}, {eof, false}) ->
+%%     exhaust_it(Iterator1()),
+%%     {eof, false};
 
-select_fun({Term1, true, Iterator1}, {Term2, true, Iterator2}) when ?INDEX_DOCID(Term1) > ?INDEX_DOCID(Term2) ->
-    {Term2, true, fun() -> select_fun({Term1, true, Iterator1}, Iterator2()) end};
+%% %% Handle 'AND' cases, notflags = [false, true]
+%% select_fun({Term1, false, Iterator1}, {Term2, true, Iterator2}) when ?INDEX_DOCID(Term1) == ?INDEX_DOCID(Term2) ->
+%%     select_fun(Iterator1(), {Term2, true, Iterator2});
 
-select_fun({eof, true}, {Term2, true, Iterator2}) ->
-    {Term2, true, fun() -> select_fun({eof, true}, Iterator2()) end};
+%% select_fun({Term1, false, Iterator1}, {Term2, true, Iterator2}) when ?INDEX_DOCID(Term1) < ?INDEX_DOCID(Term2) ->
+%%     {Term1, false, fun() -> select_fun(Iterator1(), {Term2, true, Iterator2}) end};
 
-select_fun({Term1, true, Iterator1}, {eof, true}) ->
-    {Term1, true, fun() -> select_fun(Iterator1(), {eof, true}) end};
+%% select_fun({Term1, false, Iterator1}, {Term2, true, Iterator2}) when ?INDEX_DOCID(Term1) > ?INDEX_DOCID(Term2) ->
+%%     select_fun({Term1, false, Iterator1}, Iterator2());
 
-%% HANDLE 'AND' case, end of results.
-select_fun({eof, true}, {eof, true}) ->
-    {eof, true};
+%% select_fun({eof, false}, {_Term2, true, Iterator2}) ->
+%%     exhaust_it(Iterator2()),
+%%     {eof, false};
 
-select_fun({eof, _}, {eof, _}) ->
-    {eof, false};
-
-%% Error on any unhandled cases...
-select_fun(Iterator1, Iterator2) ->
-    ?PRINT({select_fun, unhandled_case, 'intersection', Iterator1, Iterator2}),
-    throw({select_fun, unhandled_case, 'intersection', Iterator1, Iterator2}).
+%% select_fun({Term1, false, Iterator1}, {eof, true}) ->
+%%     {Term1, false, fun() -> select_fun(Iterator1(), {eof, true}) end};
 
 
-%% @private
-%%
-%% @doc Exhaust the iterator of all results.
-exhaust_it({eof, _}) ->
-    ok;
-exhaust_it({_,_,It}) ->
-    exhaust_it(It()).
+%% %% Handle 'AND' cases, notflags = [true, false], use previous clauses...
+%% select_fun({Term1, true, Iterator1}, {Term2, false, Iterator2}) ->
+%%     select_fun({Term2, false, Iterator2}, {Term1, true, Iterator1});
+
+%% select_fun({eof, true}, {Term2, false, Iterator2}) ->
+%%     select_fun({Term2, false, Iterator2}, {eof, true});
+
+%% select_fun({Term1, true, Iterator1}, {eof, false}) ->
+%%     select_fun({eof, false}, {Term1, true, Iterator1});
+
+
+%% %% Handle 'AND' cases, notflags = [true, true]
+%% select_fun({Term1, true, Iterator1}, {Term2, true, Iterator2}) when ?INDEX_DOCID(Term1) == ?INDEX_DOCID(Term2) ->
+%%     NewTerm = riak_search_utils:combine_terms(Term1, Term2),
+%%     {NewTerm, true, fun() -> select_fun(Iterator1(), Iterator2()) end};
+
+%% select_fun({Term1, true, Iterator1}, {Term2, true, Iterator2}) when ?INDEX_DOCID(Term1) < ?INDEX_DOCID(Term2) ->
+%%     {Term1, true, fun() -> select_fun(Iterator1(), {Term2, true, Iterator2}) end};
+
+%% select_fun({Term1, true, Iterator1}, {Term2, true, Iterator2}) when ?INDEX_DOCID(Term1) > ?INDEX_DOCID(Term2) ->
+%%     {Term2, true, fun() -> select_fun({Term1, true, Iterator1}, Iterator2()) end};
+
+%% select_fun({eof, true}, {Term2, true, Iterator2}) ->
+%%     {Term2, true, fun() -> select_fun({eof, true}, Iterator2()) end};
+
+%% select_fun({Term1, true, Iterator1}, {eof, true}) ->
+%%     {Term1, true, fun() -> select_fun(Iterator1(), {eof, true}) end};
+
+%% %% HANDLE 'AND' case, end of results.
+%% select_fun({eof, true}, {eof, true}) ->
+%%     {eof, true};
+
+%% select_fun({eof, _}, {eof, _}) ->
+%%     {eof, false};
+
+%% %% Error on any unhandled cases...
+%% select_fun(Iterator1, Iterator2) ->
+%%     ?PRINT({select_fun, unhandled_case, 'intersection', Iterator1, Iterator2}),
+%%     throw({select_fun, unhandled_case, 'intersection', Iterator1, Iterator2}).
+
+
+%% %% @private
+%% %%
+%% %% @doc Exhaust the iterator of all results.
+%% exhaust_it({eof, _}) ->
+%%     ok;
+%% exhaust_it({_,_,It}) ->
+%%     exhaust_it(It()).
 
 %%%===================================================================
 %%% Tests

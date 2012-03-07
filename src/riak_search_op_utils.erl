@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
@@ -8,6 +8,7 @@
 
 -export([
     iterator_tree/3,
+    iterator_tree/4,
     gather_iterator_results/3,
     gather_stream_results/4
 ]).
@@ -22,8 +23,11 @@
 %% results in sorted order, so a SelectFun is used to maintain the
 %% sorted order as well as filter out any results that we don't want.
 iterator_tree(SelectFun, OpList, SearchState) ->
+    iterator_tree(SearchState, OpList, none, SearchState).
+
+iterator_tree(SelectFun, OpList, CandidateSet, SearchState) ->
     %% Turn all operations into iterators and then combine into a tree.
-    Iterators = [it_op(X, SearchState) || X <- OpList],
+    Iterators = [it_op(X, CandidateSet, SearchState) || X <- OpList],
     it_combine(SelectFun, Iterators).
 
 %% @private Given a list of iterators, combine into a tree. Works by
@@ -59,7 +63,7 @@ it_combine_inner(SelectFun, [IteratorA,IteratorB|Rest]) ->
 %% iterator will return `{Result, NotFlag, NewIteratorFun}' each time
 %% it is called, or block until one is available. When there are no
 %% more results, it will return `{eof, NotFlag}'.
-it_op(Op, SearchState) ->
+it_op(Op, CandidateSet, SearchState) ->
     %% spawn the collection process
     Ref = make_ref(),
     F = fun() ->
@@ -71,7 +75,12 @@ it_op(Op, SearchState) ->
     Pid = erlang:spawn_link(F),
 
     %% execute the operation
-    riak_search_op:chain_op(Op, Pid, Ref, SearchState),
+    case CandidateSet of
+        none ->
+            riak_search_op:chain_op(Op, Pid, Ref, SearchState);
+        _ ->
+            riak_search_op:chain_op(Op, Pid, Ref, CandidateSet, SearchState)
+    end,
 
     %% return an iterator that wraps the execution
     fun() ->
