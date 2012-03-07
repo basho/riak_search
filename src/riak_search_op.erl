@@ -7,9 +7,11 @@
 -module(riak_search_op).
 -export([
          extract_scoring_props/1,
+         frequency/1,
          preplan/1,
          preplan/2,
          chain_op/4,
+         chain_op/5,
          op_to_module/1
         ]).
 -include("riak_search.hrl").
@@ -20,6 +22,13 @@ extract_scoring_props(Ops) when is_list(Ops) ->
 extract_scoring_props(Op) when is_tuple(Op) ->
     Mod = riak_search_op:op_to_module(Op),
     Mod:extract_scoring_props(Op).
+
+%% @doc Return the `Frequency' of the search term in the index along
+%% with its corresponding `Op'.
+-spec frequency(term()) -> {Frequency::non_neg_integer(), Op::term()}.
+frequency(Op) ->
+    Mod = riak_search_op:op_to_module(Op),
+    Mod:frequency(Op).
 
 preplan(Op) ->
     preplan(Op, #search_state {}).
@@ -43,6 +52,27 @@ chain_op(Op, OutputPid, Ref, SearchState) ->
                 erlang:link(SearchState#search_state.parent),
                 Module = op_to_module(Op),
                 Module:chain_op(Op, OutputPid, Ref, SearchState)
+        end,
+    erlang:spawn_link(F),
+    {ok, 1}.
+
+%% TODO: Integrate this properly, i.e. don't use copy/paste, one-off
+%% function here.
+chain_op(OpList, OutputPid, Ref, CandidateSet, SearchState) when is_list(OpList)->
+    erlang:link(SearchState#search_state.parent),
+    [chain_op(Op, OutputPid, Ref, CandidateSet, SearchState) || Op <- OpList],
+    {ok, length(OpList)};
+
+chain_op(Op, OutputPid, Ref, CandidateSet, SearchState) ->
+    F = fun() ->
+                erlang:link(SearchState#search_state.parent),
+                Module = op_to_module(Op),
+                %% NOTE: chain_op/5 must be supported by any op that
+                %% can be a child of intersection: term, range,
+                %% negation, proximity, union, and scope
+                %%
+                %% TODO: actually, need to specially handle negation
+                Module:chain_op(Op, OutputPid, Ref, CandidateSet, SearchState)
         end,
     erlang:spawn_link(F),
     {ok, 1}.
