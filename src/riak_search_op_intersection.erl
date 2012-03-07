@@ -46,7 +46,9 @@ chain_op(Op, OutputPid, OutputRef, State) ->
     FinalSet = lists:foldl(intersection(State), CandidateSet, Ops2),
 
     %% 4. output results
-    send_results(FinalSet, {OutputPid, OutputRef, State#search_state.index}).
+    send_results(FinalSet, {OutputPid, OutputRef, State#search_state.index}),
+
+    {ok, 1}.
 
 
 %% Given an iterator, return a new iterator that filters out any
@@ -55,7 +57,7 @@ make_filter_iterator(Iterator) ->
     fun() -> filter_iterator(Iterator()) end.
 
 send_results(FinalSet, O) ->
-    send_results(gb_sets:iterator(FinalSet), O, []).
+    send_results(gb_trees:iterator(FinalSet), O, []).
 
 %% TODO: MICROOPT: Explicitly keep track of count to avoid calling
 %% `length' each time.
@@ -64,8 +66,9 @@ send_results(Itr, {OutputPid, OutputRef, _Idx}=O, Acc)
     OutputPid ! {results, lists:reverse(Acc), OutputRef},
     send_results(Itr, O, []);
 send_results(Itr, {OutputPid, OutputRef, Idx}=O, Acc) ->
-    case gb_sets:next(Itr) of
-        {{DocId, Props}, Itr2} ->
+    case gb_trees:next(Itr) of
+        %% {{DocId, Props}, Itr2} ->
+        {DocId, Props, Itr2} ->
             %% need to add the Idx back for upstream
             send_results(Itr2, O, [{Idx, DocId, Props}|Acc]);
         none ->
@@ -92,10 +95,20 @@ intersection(State) ->
             ResultSet = id_set(Itr),
             case riak_search_op_negation:is_negation(Op) of
                 true ->
-                    gb_sets:subtract(CandidateSet, ResultSet);
+                    subtract(CandidateSet, gb_trees:iterator(ResultSet));
+                    %% lists:foldl(fun gb_trees:delete_any/2, CandidateSet, ResultSet);
+                    %% gb_sets:subtract(CandidateSet, ResultSet);
                 false ->
                     ResultSet
             end
+    end.
+
+subtract(CandidateSet, Itr) ->
+    case gb_trees:next(Itr) of
+        {DocId, _Props, Itr2} ->
+            subtract(gb_trees:delete_any(DocId, CandidateSet), Itr2);
+        none ->
+            CandidateSet
     end.
 
 filter_iterator({_, Op, Iterator})
@@ -123,10 +136,11 @@ get_candidate_set(Op, State) ->
     id_set(Itr).
 
 id_set(Itr) ->
-    id_set(Itr(), gb_sets:new()).
+    id_set(Itr(), gb_trees:empty()).
 
 id_set({{_Idx, DocId, Props}, _, Itr}, Set) ->
-    id_set(Itr(), gb_sets:add({DocId, Props}, Set));
+    id_set(Itr(), gb_trees:insert(DocId, Props, Set));
+    %% id_set(Itr(), gb_sets:add({DocId, Props}, Set));
 id_set({eof, _}, Set) ->
     Set.
 

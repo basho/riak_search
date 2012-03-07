@@ -28,7 +28,8 @@
 candidate_filter(CandidateSet, OriginalFilter) ->
     fun(DocId, Props) ->
             case OriginalFilter(DocId, Props) of
-                true -> gb_sets:is_element({DocId, Props}, CandidateSet);
+                true -> gb_trees:is_defined(DocId, CandidateSet);
+                %% true -> gb_sets:is_element({DocId, Props}, CandidateSet);
                 false -> false
             end
     end.
