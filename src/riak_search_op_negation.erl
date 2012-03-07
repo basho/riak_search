@@ -1,12 +1,13 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
 -module(riak_search_op_negation).
 -export([
          extract_scoring_props/1,
+         is_negation/1,
          preplan/2,
          chain_op/4
         ]).
@@ -16,6 +17,9 @@
 
 extract_scoring_props(Op) ->
     riak_search_op:extract_scoring_props(Op#negation.op).
+
+is_negation(#negation{}) -> true;
+is_negation(_) -> false.
 
 preplan(Op, State) ->
     ChildOp = riak_search_op:preplan(Op#negation.op, State),

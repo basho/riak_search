@@ -42,7 +42,8 @@ chain_op(Op, OutputPid, OutputRef, State) ->
 
     %% 2. realize the candidate set
     [Op1|Ops2] = Ops,
-    CandidateSet = get_candidate_set(Op1).
+    %% make sure get_candidate_set select first _non_ negation op
+    CandidateSet = get_candidate_set(Op1, State).
 
     %% 3. sequentially check candidate set against rest of term
     %% indexes
@@ -85,15 +86,35 @@ filter_iterator({eof, _}) ->
     %% No more results.
     {eof, ignore}.
 
+%% @private
+%%
+%% @doc Realize the results for `Op'.
+%%
+%% TODO: The usual iterator fuss can be bypassed since these results
+%% are to be realized immediately.  Instead call chain_op and directly
+%% collect.
+%%
+-spec get_candidate_set(term(), term()) -> gb_set().
+get_candidate_set(Op, State) ->
+    Itr = riak_search_op_utils:iterator_tree(none, [Op], State),
+    id_set(Itr).
+
+id_set(Itr) ->
+    id_set(Itr(), gb_set:new()).
+
+id_set({{_Idx, DocId, Props}, _, Itr}, Set) ->
+    id_set(Itr(), gb_set:add({DocId, Props}, Set));
+id_set({eof, _}, Set) ->
+    Set.
 
 %% @private
 %%
 %% @doc Order operations by frequency.
 -spec order_by_freq({non_neg_integer(), term()}, {non_neg_integer(), term()}) ->
                            boolean().
-order_by_freq({FreqA, _}, {unknown, _}) ->
+order_by_freq({_FreqA, _}, {unknown, _}) ->
     true;
-order_by_freq({unknown, _}, {FreqB, _}) ->
+order_by_freq({unknown, _}, {_FreqB, _}) ->
     false;
 order_by_freq({FreqA, _}, {FreqB, _}) ->
     FreqA =< FreqB.
@@ -105,7 +126,16 @@ order_by_freq({FreqA, _}, {FreqB, _}) ->
 -spec order_ops(function(), [{non_neg_integer(), term()}]) -> [term()].
 order_ops(Fun, Ops) ->
     Asc = lists:sort(Fun, lists:map(fun riak_search_op:frequency/1, Ops)),
-    [Op || {_, Op} <- Asc].
+    swap_front([Op || {_, Op} <- Asc]).
+
+%% @private
+%%
+%% @doc Make sure that `Ops' does not start with negation op.
+-spec swap_front([term()]) -> [term()].
+swap_front(Ops) ->
+    {Negations, [H|T]} =
+        lists:takewhile(fun riak_search_op_negation:is_negation/1, Ops),
+    [H] ++ Negations ++ T.
 
 %% Now, treat the operation as a comparison between two terms. Return
 %% a term if it successfully meets our conditions, or else toss it and

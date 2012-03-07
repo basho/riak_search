@@ -52,28 +52,29 @@ it_combine_inner(_SelectFun, [Iterator]) ->
 it_combine_inner(SelectFun, [IteratorA,IteratorB|Rest]) ->
     Iterator = fun() -> SelectFun(IteratorA(), IteratorB()) end,
     [Iterator|it_combine_inner(SelectFun, Rest)].
-    
-%% @private Chain an operator, and build an iterator function around
-%% it. The iterator will return {Result, NotFlag, NewIteratorFun} each
-%% time it is called, or block until one is available. When there are
-%% no more results, it will return {eof, NotFlag}.
+
+%% @private
+%%
+%% @doc Execute the `Op', building an iterator function around it. The
+%% iterator will return `{Result, NotFlag, NewIteratorFun}' each time
+%% it is called, or block until one is available. When there are no
+%% more results, it will return `{eof, NotFlag}'.
 it_op(Op, SearchState) ->
-    %% Spawn a collection process...
+    %% spawn the collection process
     Ref = make_ref(),
-    F = fun() -> 
+    F = fun() ->
                 Parent = SearchState#search_state.parent,
                 erlang:link(Parent),
                 erlang:process_flag(trap_exit, true),
-                it_op_collector_loop(Parent, Ref, []) 
+                it_op_collector_loop(Parent, Ref, [])
         end,
     Pid = erlang:spawn_link(F),
 
-    %% Chain the op...
+    %% execute the operation
     riak_search_op:chain_op(Op, Pid, Ref, SearchState),
 
-    %% Return an iterator function. Returns
-    %% a new result.
-    fun() -> 
+    %% return an iterator that wraps the execution
+    fun() ->
             it_op_inner(Pid, Ref, Op)
     end.
 
@@ -90,7 +91,8 @@ it_op_inner(Pid, Ref, Op) ->
         {result, Result, Ref} ->
             {Result, Op, fun() -> it_op_inner(Pid, Ref, Op) end};
         X ->
-            io:format("it_inner(~p, ~p, ~p)~n>> unknown message: ~p~n", [Pid, Ref, Op, X])
+            lager:error("it_inner(~p, ~p, ~p) received unknown message: ~p",
+                        [Pid, Ref, Op, X])
     end.
 
 %% @private This runs in a separate process, collecting the incoming
