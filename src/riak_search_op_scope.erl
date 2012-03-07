@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
@@ -11,7 +11,8 @@
 -export([
          extract_scoring_props/1,
          preplan/2,
-         chain_op/4
+         chain_op/4,
+         chain_op/5
         ]).
 
 -include("riak_search.hrl").
@@ -29,6 +30,11 @@ chain_op(Op, OutputPid, OutputRef, State) ->
     %% Update state and switch control to the group operator...
     NewState = update_state(Op, State),
     riak_search_op:chain_op(Op#scope.ops, OutputPid, OutputRef, NewState).
+
+chain_op(Op, OutputPid, OutputRef, CandidateSet, State) ->
+    %% Update state and switch control to the group operator...
+    NewState = update_state(Op, State),
+    riak_search_op:chain_op(Op#scope.ops, OutputPid, OutputRef, CandidateSet, NewState).
 
 update_state(Op, State) ->
     %% Get the new index...

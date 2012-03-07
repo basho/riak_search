@@ -50,6 +50,11 @@ chain_op(Op, OutputPid, Ref, SearchState) ->
 
 %% TODO: Integrate this properly, i.e. don't use copy/paste, one-off
 %% function here.
+chain_op(OpList, OutputPid, Ref, CandidateSet, SearchState) when is_list(OpList)->
+    erlang:link(SearchState#search_state.parent),
+    [chain_op(Op, OutputPid, Ref, CandidateSet, SearchState) || Op <- OpList],
+    {ok, length(OpList)};
+
 chain_op(Op, OutputPid, Ref, CandidateSet, SearchState) ->
     F = fun() ->
                 erlang:link(SearchState#search_state.parent),
@@ -57,6 +62,8 @@ chain_op(Op, OutputPid, Ref, CandidateSet, SearchState) ->
                 %% NOTE: chain_op/5 must be supported by any op that
                 %% can be a child of intersection: term, range,
                 %% negation, proximity, union, and scope
+                %%
+                %% TODO: actually, need to specially handle negation
                 Module:chain_op(Op, OutputPid, Ref, CandidateSet, SearchState)
         end,
     erlang:spawn_link(F),

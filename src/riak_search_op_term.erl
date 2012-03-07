@@ -80,20 +80,16 @@ start_loop(Op, OutputPid, OutputRef, CandidateSet, State) ->
 
     %% query index, wrap filter with another if candidate set is
     %% specified
-    Filter1 = State#search_state.filter,
-    Filter2 =
-        case CandidateSet of
-            none -> Filter1;
-            _ -> riak_search_op_utils:candidate_filter(CandidateSet, Filter1)
-        end,
-    {ok, Ref} = stream(IndexName, FieldName, Term, Filter2),
+    Filter = riak_search_op_utils:wrap_filter(CandidateSet,
+                                              State#search_state.filter),
+    {ok, Ref} = stream(IndexName, FieldName, Term, Filter),
 
     %% Collect the results...
     TransformFun = generate_transform_function(Op, State),
     riak_search_op_utils:gather_stream_results(Ref, OutputPid, OutputRef, TransformFun).
 
 -spec stream(index(), field(), s_term(), fun()) -> {ok, stream_ref()}.
-stream(Index, Field, Term, FilterFun) ->
+stream(Index, Field, Term, Filter) ->
     %% Get the primary preflist, minus any down nodes. (We don't use
     %% secondary nodes since we ultimately read results from one node
     %% anyway.)
@@ -107,7 +103,7 @@ stream(Index, Field, Term, FilterFun) ->
         PreflistEntry ->
             PreflistEntry = PreflistEntry
     end,
-    riak_search_vnode:stream([PreflistEntry], Index, Field, Term, FilterFun,
+    riak_search_vnode:stream([PreflistEntry], Index, Field, Term, Filter,
                              self()).
 
 default_filter(_, _) -> true.

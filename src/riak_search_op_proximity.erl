@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
@@ -8,7 +8,8 @@
 -export([
          extract_scoring_props/1,
          preplan/2,
-         chain_op/4
+         chain_op/4,
+         chain_op/5
         ]).
 
 -include("riak_search.hrl").
@@ -56,8 +57,9 @@ preplan(Op, State) ->
 chain_op(Op, OutputPid, OutputRef, State) ->
     %% Create an iterator chain...
     OpList = Op#proximity.ops,
-    Iterator1 = riak_search_op_utils:iterator_tree(fun select_fun/2, OpList, State),
-    
+    Iterator1 = riak_search_op_utils:iterator_tree(fun select_fun/2, OpList,
+                                                   State),
+
     %% Wrap the iterator depending on whether this is an exact match
     %% or proximity search.
     case Op#proximity.proximity of
@@ -66,11 +68,36 @@ chain_op(Op, OutputPid, OutputRef, State) ->
         Proximity ->
             Iterator2 = make_proximity_iterator(Iterator1, Proximity)
     end,
-            
+
     %% Spawn up pid to gather and send results...
-    F = fun() -> 
+    F = fun() ->
                 erlang:link(State#search_state.parent),
-                riak_search_op_utils:gather_iterator_results(OutputPid, OutputRef, Iterator2()) 
+                riak_search_op_utils:gather_iterator_results(OutputPid, OutputRef, Iterator2())
+        end,
+    erlang:spawn_link(F),
+
+    %% Return.
+    {ok, 1}.
+
+chain_op(Op, OutputPid, OutputRef, CandidateSet, State) ->
+    %% Create an iterator chain...
+    OpList = Op#proximity.ops,
+    Iterator1 = riak_search_op_utils:iterator_tree(fun select_fun/2, OpList,
+                                                   CandidateSet, State),
+
+    %% Wrap the iterator depending on whether this is an exact match
+    %% or proximity search.
+    case Op#proximity.proximity of
+        exact ->
+            Iterator2 = make_exact_match_iterator(Iterator1);
+        Proximity ->
+            Iterator2 = make_proximity_iterator(Iterator1, Proximity)
+    end,
+
+    %% Spawn up pid to gather and send results...
+    F = fun() ->
+                erlang:link(State#search_state.parent),
+                riak_search_op_utils:gather_iterator_results(OutputPid, OutputRef, Iterator2())
         end,
     erlang:spawn_link(F),
 

@@ -11,7 +11,8 @@
     iterator_tree/3,
     iterator_tree/4,
     gather_iterator_results/3,
-    gather_stream_results/4
+    gather_stream_results/4,
+    wrap_filter/2
 ]).
 
 -include("riak_search.hrl").
@@ -197,3 +198,9 @@ gather_stream_results(Ref, OutputPid, OutputRef, TransformFun) ->
             throw(stream_timeout)
     end.
 
+%% @doc Potentially wrap the `OriginalFilter' with a candidate filter.
+-spec wrap_filter(gb_set() | none, function()) -> function().
+wrap_filter(none, OriginalFilter) ->
+    OriginalFilter;
+wrap_filter(CandidateSet, OriginalFilter) ->
+    candidate_filter(CandidateSet, OriginalFilter).

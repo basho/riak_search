@@ -9,7 +9,8 @@
 -export([
          extract_scoring_props/1,
          preplan/2,
-         chain_op/4
+         chain_op/4,
+         chain_op/5
         ]).
 -include("riak_search.hrl").
 -include_lib("lucene_parser/include/lucene_parser.hrl").
@@ -32,6 +33,23 @@ chain_op(Op, OutputPid, OutputRef, State) ->
     %% Create an iterator chain...
     OpList = Op#union.ops,
     Iterator1 = riak_search_op_utils:iterator_tree(fun select_fun/2, OpList, State),
+    Iterator2 = riak_search_op_intersection:make_filter_iterator(Iterator1),
+
+    %% Spawn up pid to gather and send results...
+    F = fun() ->
+                erlang:link(State#search_state.parent),
+                riak_search_op_utils:gather_iterator_results(OutputPid, OutputRef, Iterator2())
+        end,
+    erlang:spawn_link(F),
+
+    %% Return.
+    {ok, 1}.
+
+chain_op(Op, OutputPid, OutputRef, CandidateSet, State) ->
+    %% Create an iterator chain...
+    OpList = Op#union.ops,
+    Iterator1 = riak_search_op_utils:iterator_tree(fun select_fun/2, OpList,
+                                                   CandidateSet, State),
     Iterator2 = riak_search_op_intersection:make_filter_iterator(Iterator1),
 
     %% Spawn up pid to gather and send results...
