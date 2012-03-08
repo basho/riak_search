@@ -7,6 +7,7 @@
 -module(riak_search_op_intersection).
 -export([
          chain_op/4,
+         chain_op/5,
          extract_scoring_props/1,
          frequency/1,
          make_filter_iterator/1,
@@ -49,6 +50,24 @@ chain_op(Op, OutputPid, OutputRef, State) ->
     %% 3. sequentially check candidate set against rest of term
     %% indexes
     FinalSet = lists:foldl(intersection(State), CandidateSet, Ops2),
+
+    %% 4. output results
+    send_results(FinalSet, {OutputPid, OutputRef, State#search_state.index}),
+
+    {ok, 1}.
+
+%% Nested intersection query, use incoming candidate set.
+chain_op(Op, OutputPid, OutputRef, CandidateSet, State) ->
+    %% 1. order the operations by ascending frequency
+    Ops = order_ops(fun order_by_freq/2, Op#intersection.ops),
+
+    %% 2. realize the candidate set
+    %% [Op1|Ops2] = Ops,
+    %% CandidateSet = get_candidate_set(Op1, State),
+
+    %% 3. sequentially check candidate set against rest of term
+    %% indexes
+    FinalSet = lists:foldl(intersection(State), CandidateSet, Ops),
 
     %% 4. output results
     send_results(FinalSet, {OutputPid, OutputRef, State#search_state.index}),
