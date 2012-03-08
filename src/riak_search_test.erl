@@ -120,8 +120,16 @@ test_inner({search, Query, Validators}, _Root) ->
 test_inner({search, Query, Filter, Validators}, _Root) ->
     test_inner({search_node, node(), Query, Filter, Validators}, _Root);
 
-test_inner({search_node, Node, Query, [], Validators}, _Root) ->
-    case rpc:call(Node, search, search, [?TEST_INDEX, Query]) of
+test_inner({search_node, Node, Query, Filter, Validators}, _Root) ->
+    Args = case Filter of
+               [] -> [?TEST_INDEX, Query];
+               _ -> [?TEST_INDEX, Query, Filter]
+           end,
+    case rpc:call(Node, search, search, Args) of
+        {badrpc, Reason} ->
+                    io:format("~n    [ ] FAIL QUERY » ~s~n", [Query]),
+                    io:format("        - BADRPC: ~p~n", [Reason]),
+                    false;
         {Length, Results} ->
             case validate_results(Length, Results, Validators) of
                 pass ->
@@ -134,23 +142,6 @@ test_inner({search_node, Node, Query, [], Validators}, _Root) ->
             end;
         Error ->
             io:format("~n    [ ] FAIL QUERY » ~s~n", [Query]),
-            io:format("        - ERROR1: ~p~n", [Error]),
-            false
-    end;
-test_inner({search_node, Node, Query, Filter, Validators}, _Root) ->
-    case rpc:call(Node, search, search, [?TEST_INDEX, Query, Filter]) of
-        {Length, Results} ->
-            case validate_results(Length, Results, Validators) of
-                pass ->
-                    io:format("~n    [√] PASS QUERY » ~s / ~s~n", [Query, Filter]),
-                    true;
-                {fail, Errors} ->
-                    io:format("~n    [ ] FAIL QUERY » ~s / ~s~n", [Query, Filter]),
-                    [io:format("        - ~s~n", [X]) || X <- Errors],
-                    false
-            end;
-        Error ->
-            io:format("~n    [ ] FAIL QUERY » ~s / ~s~n", [Query, Filter]),
             io:format("        - ERROR1: ~p~n", [Error]),
             false
     end;
