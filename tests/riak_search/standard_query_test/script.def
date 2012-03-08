@@ -87,12 +87,12 @@
     %% {search,  "color:rad~0.5", [{length, 15}]},
     %% {search,  "color:blum~0.5", [{length, 14}]},
 
-    %% {echo,    "Complex Queries - Not Fully Supported"},
+    {echo,    "Complex Queries"},
     %% {search,  "(color:re* OR color:blub~) AND (parity:{d TO f})", [{length, 14}]},
-    %% {search,  "(acc:AFA AND -acc:AGA) AND -color:oran*", [{length, 8}]},
-    %% {search,  "(acc:AFA AND (NOT acc:AGA)) AND (NOT color:oran*)", [{length, 0}]},
-    %% {search,  "acc:(AFA NOT AGA) AND -color:oran*", [{length, 8}]},
-    %% {search,  "acc:(AFA AND (NOT AGA)) AND (NOT color:oran*)", [{length, 0}]},
+    {search,  "(acc:AFA AND -acc:AGA) AND -color:oran*", [{length, 8}]},
+    {search,  "(acc:AFA AND (NOT acc:AGA)) AND (NOT color:oran*)", [{length, 8}]},
+    {search,  "acc:(AFA NOT AGA) AND -color:oran*", [{length, 8}]},
+    {search,  "acc:(AFA AND (NOT AGA)) AND (NOT color:oran*)", [{length, 8}]},
 
     %% test nested intersection
     {search, "acc:(AAB AND NOT ABA) AND acc:AAF", [{length, 5}]},
