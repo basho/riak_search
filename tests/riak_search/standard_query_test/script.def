@@ -94,6 +94,9 @@
     %% {search,  "acc:(AFA NOT AGA) AND -color:oran*", [{length, 8}]},
     %% {search,  "acc:(AFA AND (NOT AGA)) AND (NOT color:oran*)", [{length, 0}]},
 
+    %% test nested intersection
+    {search, "acc:(AAB AND NOT ABA) AND acc:AAF", [{length, 5}]},
+
     %% Cleanup.
     {echo,   "De-indexing documents..."},
     {solr_update,   "../_files/sample100/solr_delete_all.xml"},
