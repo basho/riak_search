@@ -22,7 +22,8 @@ extract_scoring_props(Op) ->
 
 -spec frequency(term()) -> {Frequency::non_neg_integer(), term()}.
 frequency(Op) ->
-    {riak_search_op:frequency(Op#negation.op), Op}.
+    {Frequency, _} = riak_search_op:frequency(Op#negation.op),
+    {Frequency, Op}.
 
 is_negation(#negation{}) -> true;
 is_negation(_) -> false.
