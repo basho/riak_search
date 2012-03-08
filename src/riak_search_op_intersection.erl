@@ -6,10 +6,11 @@
 
 -module(riak_search_op_intersection).
 -export([
-         extract_scoring_props/1,
-         preplan/2,
          chain_op/4,
-         make_filter_iterator/1
+         extract_scoring_props/1,
+         frequency/1,
+         make_filter_iterator/1,
+         preplan/2
         ]).
 -include("riak_search.hrl").
 -include_lib("lucene_parser/include/lucene_parser.hrl").
@@ -21,6 +22,11 @@
 
 extract_scoring_props(Op) ->
     riak_search_op:extract_scoring_props(Op#intersection.ops).
+
+frequency(Op) ->
+    Freqs = [riak_search_op:frequency(Child) || Child <- Op#intersection.ops],
+    Sum = lists:sum([Freq || {Freq, _} <- Freqs, Freq /= unknown]),
+    {Sum, Op}.
 
 preplan(Op, State) ->
     case riak_search_op:preplan(Op#intersection.ops, State) of

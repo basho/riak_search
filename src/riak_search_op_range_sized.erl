@@ -24,6 +24,7 @@ extract_scoring_props(_Op) ->
     %% identities.
     {0,1}.
 
+-spec frequency(term()) -> {unknown, Op::term()}.
 frequency(Op) ->
     {unknown, Op}.
 

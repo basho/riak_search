@@ -22,10 +22,13 @@
 extract_scoring_props(Op) ->
     riak_search_op:extract_scoring_props(Op#scope.ops).
 
+%% NOTE: Relies on fact that currently preplan always rewrites
+%% `#scope.op' into either `#union' or `#intersection' op.  I.e. even
+%% though the name of the field is `ops' it's actually just a single
+%% op after preplan.
 frequency(Op) ->
-    Freqs = [riak_search_op:frequency(Child) || Child <- Op#scope.ops],
-    Sum = lists:sum([Freq || {Freq, _} <- Freqs]),
-    {Sum, Op}.
+    {Freq, _} = riak_search_op:frequency(Op#scope.ops),
+    {Freq, Op}.
 
 preplan(Op, State) ->
     NewState = update_state(Op, State),
