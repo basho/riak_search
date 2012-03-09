@@ -63,8 +63,12 @@ parse_query(IndexOrSchema, Query) ->
                   riak_search_utils:to_list(Query)),
     {ok, riak_search_op:preplan(Ops)}.
 
-%% Parse the provided filter. Returns either {ok, FilterOps} or {error,
-%% Error}.
+
+%% @doc Parse the `Filter' into an `Op' tree.
+-spec parse_filter(index(), binary() | string()) ->
+                          {ok, []} |
+                          {ok, Op::term()} |
+                          {error, Reason::term()}.
 parse_filter(_, Filter) when Filter == <<>> orelse Filter == "" ->
     {ok, []};
 parse_filter(IndexOrSchema, Filter) ->
@@ -367,9 +371,16 @@ stream_search(IndexOrSchema, QueryOps, FilterOps) ->
     {NumTerms, NumDocs, QueryNorm} = get_scoring_info(QueryOps),
 
     %% Create the inline field filter fun...
-    FilterFun = fun(_Value, Props) ->
-                        riak_search_inlines:passes_inlines(Schema, Props, FilterOps)
-                end,
+    Filter =
+        case FilterOps of
+            [] -> none;
+            _ ->
+                fun(_Value, Props) ->
+                        riak_search_inlines:passes_inlines(Schema,
+                                                           Props,
+                                                           FilterOps)
+                end
+        end,
 
     %% Run the query...
     SearchState = #search_state {
@@ -379,7 +390,7 @@ stream_search(IndexOrSchema, QueryOps, FilterOps) ->
       num_terms=NumTerms,
       num_docs=NumDocs,
       query_norm=QueryNorm,
-      filter=FilterFun
+      filter=Filter
      },
 
     %% Start the query process...

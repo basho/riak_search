@@ -24,7 +24,11 @@
 %% NOTE: It sucks to have to check for `{DocId, Props}' but this
 %% cannot be avoided without changing the merge_index API.  A battle
 %% to fight another day.
--spec candidate_filter(gb_tree(), function()) -> Filter::function().
+-spec candidate_filter(gb_tree(), function() | none) -> Filter::function().
+candidate_filter(CandidateSet, none) ->
+    fun(DocId, _Props) ->
+            gb_trees:is_defined(DocId, CandidateSet)
+    end;
 candidate_filter(CandidateSet, OriginalFilter) ->
     fun(DocId, Props) ->
             case OriginalFilter(DocId, Props) of
