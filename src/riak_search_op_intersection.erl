@@ -88,20 +88,25 @@ make_filter_iterator(Iterator) ->
 %%
 %% @doc Return a `Fun' used to perform the intersection of `Op'
 %% results against `CandidateSet'.
-%%
-%% NOTE: An assumption is made that intersection ops do no nest
-%% (rewritten by preplan).
 -spec intersection(term()) -> function().
 intersection(State) ->
     fun(Op, CandidateSet) ->
-            Itr = riak_search_op_utils:iterator_tree(none, [Op],
-                                                     CandidateSet, State),
-            ResultSet = id_set(Itr),
-            case riak_search_op_negation:is_negation(Op) of
+            case gb_trees:is_empty(CandidateSet) of
                 true ->
-                    subtract(CandidateSet, gb_trees:iterator(ResultSet));
+                    CandidateSet;
                 false ->
-                    ResultSet
+                    Itr = riak_search_op_utils:iterator_tree(none,
+                                                             [Op],
+                                                             CandidateSet,
+                                                             State),
+                    ResultSet = id_set(Itr),
+                    case riak_search_op_negation:is_negation(Op) of
+                        true ->
+                            subtract(CandidateSet,
+                                     gb_trees:iterator(ResultSet));
+                        false ->
+                            ResultSet
+                    end
             end
     end.
 
