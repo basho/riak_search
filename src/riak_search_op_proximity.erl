@@ -213,8 +213,6 @@ get_position_heads([], Acc) ->
     lists:reverse(Acc).
 
 %% Given a list of integers, return the smallest integer that is a duplicate.
-get_smallest_duplicate_or_not(undefined) ->
-    undefined;
 get_smallest_duplicate_or_not(List) ->
     get_smallest_duplicate_or_not(lists:sort(List), undefined, undefined).
 get_smallest_duplicate_or_not([H,H|Rest], SmallestDup, SmallestVal)

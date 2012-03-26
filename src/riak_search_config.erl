@@ -46,6 +46,9 @@ clear() ->
 
 %% Get schema information for the provided index name.
 %% @param Schema - Either the name of an index, or a schema record.
+%%
+%% TODO This spec/fun needs help
+-spec get_schema(any()) -> {ok, any()} | {error, badarg} | any().
 get_schema(Schema) when is_tuple(Schema) ->
     case element(1, Schema) of
         riak_search_schema ->

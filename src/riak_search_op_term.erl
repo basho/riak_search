@@ -57,6 +57,7 @@ chain_op(Op, OutputPid, OutputRef, State) ->
     erlang:spawn_link(F),
     {ok, 1}.
 
+-spec start_loop(any(), pid(), reference(), #search_state{}) -> any().
 start_loop(Op, OutputPid, OutputRef, State) ->
     %% Get the current index/field...
     IndexName = State#search_state.index,
@@ -71,6 +72,7 @@ start_loop(Op, OutputPid, OutputRef, State) ->
     TransformFun = generate_transform_function(Op, State),
     riak_search_op_utils:gather_stream_results(Ref, OutputPid, OutputRef, TransformFun).
 
+-spec stream(index(), field(), s_term(), fun()) -> {ok, stream_ref()}.
 stream(Index, Field, Term, FilterFun) ->
     %% Get the primary preflist, minus any down nodes. (We don't use
     %% secondary nodes since we ultimately read results from one node
@@ -88,7 +90,8 @@ stream(Index, Field, Term, FilterFun) ->
         PreflistEntry ->
             PreflistEntry = PreflistEntry
     end,
-    riak_search_vnode:stream([PreflistEntry], Index, Field, Term, FilterFun, self()).
+    riak_search_vnode:stream([PreflistEntry], Index, Field, Term, FilterFun,
+                             self()).
 
 default_filter(_, _) -> true.
 
@@ -147,8 +150,7 @@ calculate_score(ScoringVars, Props) ->
                 end,
     lists:keystore(score, 1, Props, {score, ScoreList}).
 
+-spec get_preflist(binary(), pos_integer()) -> list().
 get_preflist(DocIdx, NVal) ->
-    [{Idx,Node}
-     || {{Idx,Node},primary} <- riak_core_apl:get_primary_apl(DocIdx,
-                                                              NVal,
-                                                              riak_search)].
+    lists:map(fun({IdxNode, _}) -> IdxNode end,
+              riak_core_apl:get_primary_apl(DocIdx, NVal, riak_search)).
