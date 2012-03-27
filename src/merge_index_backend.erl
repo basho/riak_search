@@ -91,10 +91,38 @@ is_empty(State) ->
     Pid = State#state.pid,
     merge_index:is_empty(Pid).
 
+%% Note: Always async folding
 fold(FoldFun, Acc, State) ->
-    %% Copied almost verbatim from riak_search_ets_backend.
-    {ok, FoldBatchSize} = application:get_env(riak_search, fold_batch_size),
-    Fun = fun
+    AsyncFold = async_fold_fun(FoldFun, Acc, State),
+    {async, AsyncFold}.
+
+drop(State) ->
+    Pid = State#state.pid,
+    merge_index:drop(Pid).
+
+%%%===================================================================
+%%% Internal Functions
+%%%===================================================================
+
+async_fold_fun(FoldFun, Acc, State) ->
+    fun() ->
+            {ok, BatchSize} = application:get_env(riak_search, fold_batch_size),
+            Pid = State#state.pid,
+            Fun = batch_fold(FoldFun, BatchSize),
+            {ok, {OuterAcc0, Final, _Count}} =
+                merge_index:fold(Pid, Fun, {Acc, undefined, 0}),
+            case Final of
+                {FoldKey, VPKList} ->
+                    %% one last IFT to send off
+                    FoldFun(FoldKey, VPKList, OuterAcc0);
+                undefined ->
+                    %% this partition was empty
+                    OuterAcc0
+            end
+    end.
+
+batch_fold(FoldFun, FoldBatchSize) ->
+    fun
         (I,F,T,V,P,K, {OuterAcc, {FoldKey = {I,{F,T}}, VPKList}, Count}) ->
             %% same IFT. If we have reached the fold_batch_size, then
             %% call FoldFun/3 on the batch and start the next
@@ -114,26 +142,7 @@ fold(FoldFun, Acc, State) ->
         (I,F,T,V,P,K, {OuterAcc, undefined, _Count}) ->
             %% first round through the fold - just start building
             {OuterAcc, {{I,{F,T}},[{V,P,K}]}, 1}
-        end,
-    Pid = State#state.pid,
-    {ok, {OuterAcc0, Final, _Count}} = merge_index:fold(Pid, Fun, {Acc, undefined, 0}),
-    OuterAcc = case Final of
-        {FoldKey, VPKList} ->
-            %% one last IFT to send off
-            FoldFun(FoldKey, VPKList, OuterAcc0);
-        undefined ->
-            %% this partition was empty
-            OuterAcc0
-    end,
-    {reply, OuterAcc, State}.
-
-drop(State) ->
-    Pid = State#state.pid,
-    merge_index:drop(Pid).
-
-%%%===================================================================
-%%% Internal Functions
-%%%===================================================================
+    end.
 
 -spec stream_worker(pid(), index(), field(), s_term(), fun(), sender()) ->
                            any().

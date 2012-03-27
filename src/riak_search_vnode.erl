@@ -9,7 +9,10 @@
          delete/2,
          info/5,
          stream/6,
-         range/8
+         range/8,
+         repair/1,
+         repair_status/1,
+         repair_filter/1
         ]).
 -export([start_vnode/1, init/1, handle_command/3,
          handle_handoff_command/3, handle_handoff_data/2,
@@ -91,6 +94,21 @@ sync_command(IndexNode, Msg) ->
     riak_core_vnode_master:sync_command(IndexNode, Msg,
                                         riak_search_vnode_master, infinity).
 
+%% @doc Repair the index at the given `Partition'.
+-spec repair(partition()) ->
+                    {ok, Pairs::[{partition(), node()}]} |
+                    {down, Down::[{partition(), node()}]}.
+repair(Partition) ->
+    Service = riak_search,
+    MP = {?MODULE, Partition},
+    FilterModFun = {?MODULE, repair_filter},
+    riak_core_vnode_manager:repair(Service, MP, FilterModFun).
+
+%% @doc Get the status of the repair process for the given `Partition'.
+-spec repair_status(partition()) -> no_repair | repair_in_progress.
+repair_status(Partition) ->
+    riak_core_vnode_manager:repair_status({riak_search_vnode, Partition}).
+
 %%
 %% Callbacks for riak_core_vnode
 %%
@@ -103,10 +121,10 @@ init([VNodeIndex]) ->
     BMod = app_helper:get_env(riak_search, search_backend),
     Configuration = app_helper:get_env(riak_search),
     {ok, BState} = BMod:start(VNodeIndex, Configuration),
+    State = #vstate{idx=VNodeIndex, bmod=BMod, bstate=BState},
+    Pool = {pool, riak_search_worker, 2, []},
 
-    {ok, #vstate{idx=VNodeIndex,
-                 bmod=BMod,
-                 bstate=BState}}.
+    {ok, State, [Pool]}.
 
 handle_command(#index_v1{iftvp_list = IFTVPList},
                _Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
@@ -140,9 +158,15 @@ handle_command(#range_v1{index = Index,
 
 %% Request from core_vnode_handoff_sender - fold function
 %% expects to be called with {{Bucket,Key},Value}
-handle_command(?FOLD_REQ{foldfun=Fun, acc0=Acc},_Sender,
+handle_command(?FOLD_REQ{foldfun=Fun, acc0=Acc},
+               Sender,
                #vstate{bmod=BMod,bstate=BState}=VState) ->
-    bmod_response(BMod:fold(Fun, Acc, BState), VState).
+    {async, AsyncFoldFun} = BMod:fold(Fun, Acc, BState),
+    FinishFun =
+        fun(FinalAcc) ->
+                riak_core_vnode:reply(Sender, FinalAcc)
+        end,
+    {async, {fold, AsyncFoldFun, FinishFun}, Sender, VState}.
 
 %% Handle a command during handoff - if it's a fold then
 %% make sure it runs locally, otherwise forward it on to the
@@ -194,3 +218,30 @@ bmod_response({noreply, NewBState}, VState) ->
     {noreply, VState#vstate{bstate=NewBState}};
 bmod_response({reply, Reply, NewBState}, VState) ->
     {reply, Reply, VState#vstate{bstate=NewBState}}.
+
+%% @private
+%%
+%% @doc Given a `Target' partition, a `Ring' generate a `Filter' fun
+%%      to use during partition repair.  The `NValMap' is a map from
+%%      index name to n_val and is needed to determine which hash
+%%      range a key must fall into to be included.  Only non-default
+%%      schemas will be included in the map.
+-spec repair_filter(partition()) -> Filter::function().
+repair_filter(Target) ->
+    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
+    CH = element(4, Ring),
+    NValMap = [{S:name(), S:n_val()} ||
+                  S <- riak_search_config:get_all_schemas()],
+    RangeMap = riak_core_repair:gen_range_map(Target, CH, NValMap),
+    DefaultN = riak_core_bucket:n_val(riak_core_config:default_bucket_props()),
+    Default = riak_core_repair:gen_range(Target, CH, DefaultN),
+    RangeFun = riak_core_repair:gen_range_fun(RangeMap, Default),
+    fun({I, {F, T}}) ->
+            Hash = riak_search_ring_utils:calc_partition(I, F, T),
+            case RangeFun(I) of
+                {nowrap, GTE, LTE} ->
+                    Hash >= GTE andalso Hash =< LTE;
+                {wrap, GTE, LTE} ->
+                    Hash >= GTE orelse Hash =< LTE
+            end
+    end.

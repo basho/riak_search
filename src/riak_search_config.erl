@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
@@ -22,11 +22,12 @@
 
 %% API
 -export([
-    start_link/0,
-    clear/0,
-    get_schema/1,
-    get_raw_schema/1,
-    put_raw_schema/2
+         clear/0,
+         get_all_schemas/0,
+         get_raw_schema/1,
+         get_schema/1,
+         put_raw_schema/2,
+         start_link/0
 ]).
 
 %% gen_server callbacks
@@ -43,6 +44,13 @@ start_link() ->
 %% Clear cached schemas.
 clear() ->
     gen_server:call(?SERVER, clear, infinity).
+
+%% @doc Return list of all `Schemas'.
+-spec get_all_schemas() -> Schemas::[any()].
+get_all_schemas() ->
+    {ok, C} = riak:local_client(),
+    {ok, Keys} = C:list_keys(?SCHEMA_BUCKET),
+    [S || {ok,S} <- [get_schema(K) || K <- Keys]].
 
 %% Get schema information for the provided index name.
 %% @param Schema - Either the name of an index, or a schema record.
