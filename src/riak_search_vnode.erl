@@ -34,13 +34,13 @@ index(IndexNode, IFTVPList) ->
     Req = #index_v1{
       iftvp_list = IFTVPList
      },
-    sync_command(IndexNode, Req).    
+    sync_command(IndexNode, Req).
 
 delete(IndexNode, IFTVList) ->
     Req = #delete_v1{
       iftv_list = IFTVList
      },
-    sync_command(IndexNode, Req).    
+    sync_command(IndexNode, Req).
 
 info(Preflist, Index, Field, Term, ReplyTo) ->
     Req = #info_v1{
@@ -88,7 +88,7 @@ command(PrefList, Req, Sender) ->
                                    riak_search_vnode_master).
 
 sync_command(IndexNode, Msg) ->
-    riak_core_vnode_master:sync_command(IndexNode, Msg, 
+    riak_core_vnode_master:sync_command(IndexNode, Msg,
                                         riak_search_vnode_master, infinity).
 
 %%
@@ -147,9 +147,9 @@ handle_command(?FOLD_REQ{foldfun=Fun, acc0=Acc},_Sender,
 %% Handle a command during handoff - if it's a fold then
 %% make sure it runs locally, otherwise forward it on to the
 %% correct vnode.
-handle_handoff_command(Req=?FOLD_REQ{}, Sender, VState) -> 
+handle_handoff_command(Req=?FOLD_REQ{}, Sender, VState) ->
     handle_command(Req, Sender, VState);
-handle_handoff_command(_Req, _Sender, VState) -> 
+handle_handoff_command(_Req, _Sender, VState) ->
     {forward, VState}.
 
 handoff_starting(_TargetNode, VState) ->
@@ -164,7 +164,7 @@ handoff_finished(_TargetNode, State) ->
 encode_handoff_item({Index,{Field,Term}}, VPKList) ->
     BinObj = term_to_binary({Index,Field,Term,VPKList}),
     <<?HANDOFF_VER:8,BinObj/binary>>.
-   
+
 handle_handoff_data(<<?HANDOFF_VER:8,BinObj/binary>>,
                     #vstate{bmod=BMod,bstate=BState}=VState) ->
     {I,F,T,VPKList} = binary_to_term(BinObj),
