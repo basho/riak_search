@@ -43,6 +43,7 @@ chain_op(Op, OutputPid, OutputRef, CandidateSet, State) ->
 %% find one, extract the weights from {Node, Weight}. Return the node
 %% with the greatest weight.
 get_target_node(Ops) ->
+    Local = node(),
     NodeWeights = get_term_weights(Ops),
     F = fun({Node, Weight}, Acc) ->
                 case gb_trees:lookup(Node, Acc) of
@@ -53,7 +54,7 @@ get_target_node(Ops) ->
                 end
         end,
     NodeWeights1 = lists:foldl(F, gb_trees:empty(), NodeWeights),
-    NodeWeights2 = [{node(), 0}|gb_trees:to_list(NodeWeights1)],
+    NodeWeights2 = [{Local, 0}|gb_trees:to_list(NodeWeights1)],
 
     %% Sort in descending order by count...
     F1 = fun({_, Weight1}, {_, Weight2}) ->
@@ -73,8 +74,12 @@ get_target_node(Ops) ->
          end
     end,
     NodeWeights4 = lists:takewhile(F2, NodeWeights3),
-    {Node, _} = riak_search_utils:choose(NodeWeights4),
-    Node.
+    case lists:keyfind(Local, 1, NodeWeights4) of
+        {Local, _} -> Local;
+        false ->
+            {Node, _} = riak_search_utils:choose(NodeWeights4),
+            Node
+    end.
 
 get_term_weights(Ops) ->
     lists:flatten(get_term_weights_1(Ops)).
