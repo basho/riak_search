@@ -180,8 +180,8 @@ consult_2(AST) ->
 
 %% @doc Get preflist for the given IFT.
 -spec preflist(index(), field(), s_term()) -> list().
-preflist(Index, Field, Term) ->
-    DocIdx = riak_search_ring_utils:calc_partition(Index, Field, Term),
+preflist(Index, Field, _Term) ->
+    DocIdx = riak_search_ring_utils:calc_partition(Index, Field),
     {ok, Schema} = riak_search_config:get_schema(Index),
     NVal = Schema:n_val(),
     [IdxNode || {IdxNode, _} <- riak_core_apl:get_primary_apl(DocIdx,

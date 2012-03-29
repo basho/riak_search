@@ -2,7 +2,7 @@
 -export([
          get_covering_preflist/1,
          zip_with_partition_and_index/1,
-         calc_partition/3
+         calc_partition/2
         ]).
 
 -include("riak_search.hrl").
@@ -110,15 +110,11 @@ ceiling(Numerator, Denominator) ->
         _ -> (Numerator div Denominator) + 1
     end.
 
-% @doc Returns a function F(Index, Field, Term) -> integer() that can
-% be used to calculate the partition on the ring. It is used in places
-% where we need to make repeated calls to get the actual partition
-% (not the DocIdx) of an Index/Field/Term combination. NOTE: This, or something like it,
-% should probably get moved to Riak Core in the future. 
--define(RINGTOP, trunc(math:pow(2,160)-1)).  % SHA-1 space
-
+%% @doc Builds a map of Posting to Partition.  That is, associate a
+%% location in the ring with each posting.
+-spec zip_with_partition_and_index(list()) -> [{{Partition::non_neg_integer(), index()},
+                                                Posting::any()}].
 zip_with_partition_and_index(Postings) ->
-    %% Get the number of partitions.
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
     CHash =
         case Ring of
@@ -126,17 +122,19 @@ zip_with_partition_and_index(Postings) ->
             {chstate_v2, _, _, CH, _, _, _, _, _, _, _} -> CH
         end,
     {NumPartitions, _} = CHash,
-    RingTop = ?RINGTOP,
-    Inc = ?RINGTOP div NumPartitions,
+    %% TODO bug waiting to happen, fix up chash and use it
+    RingTop = 1461501637330902918203684832716283019655932542976,
+    Inc = chash:ring_increment(NumPartitions),
 
-    F = fun(Posting = {I,F,T,_,_,_}) ->
-                <<IndexAsInt:160/integer>> = calc_partition(I, F, T),
+    F = fun(Posting = {I,F,_,_,_,_}) ->
+                <<IndexAsInt:160/integer>> = calc_partition(I, F),
                 case (IndexAsInt - (IndexAsInt rem Inc) + Inc) of
                     RingTop   -> {{0, I}, Posting};
                     Partition -> {{Partition, I}, Posting}
                 end;
-           (Posting = {I,F,T,_,_}) ->
-                <<IndexAsInt:160/integer>> = calc_partition(I, F, T),
+           %% TODO: dead code?
+           (Posting = {I,F,_,_,_}) ->
+                <<IndexAsInt:160/integer>> = calc_partition(I, F),
                 case (IndexAsInt - (IndexAsInt rem Inc) + Inc) of
                     RingTop   -> {{0, I}, Posting};
                     Partition -> {{Partition, I}, Posting}
@@ -148,6 +146,6 @@ zip_with_partition_and_index(Postings) ->
 %% riak_core_util:chash_key/N, but we don't allow Riak Search to
 %% specify custom hashes. It just takes too long to look up for every
 %% term and kills performance.
--spec calc_partition(index(), field(), term()) -> binary().
-calc_partition(Index, Field, Term) ->
-    crypto:sha(term_to_binary({Index, Field, Term})).
+-spec calc_partition(index(), field()) -> binary().
+calc_partition(Index, Field) ->
+    crypto:sha(term_to_binary({Index, Field})).

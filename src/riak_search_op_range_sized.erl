@@ -49,15 +49,25 @@ chain_op(Op, OutputPid, OutputRef, CandidateSet, State) ->
 
 start_loop(Op, OutputPid, OutputRef, CandidateSet, State) ->
     %% Figure out how many extra nodes to add to make the groups even.
-    IndexName = State#search_state.index,
-    {ok, Schema} = riak_search_config:get_schema(IndexName),
-    NVal = Schema:n_val(),
-    {ok, Preflist} = riak_search_ring_utils:get_covering_preflist(NVal),
+    Index = State#search_state.index,
+    Field = State#search_state.field,
+    %% {ok, Schema} = riak_search_config:get_schema(Index),
+    %% NVal = Schema:n_val(),
+    Preflist = riak_search_utils:preflist(Index, Field, ignored),
+    %% {ok, Preflist} = riak_search_ring_utils:get_covering_preflist(NVal),
 
     %% Create a #range_worker for each entry in the preflist...
     {From, To} = correct_term_order(Op#range_sized.from, Op#range_sized.to),
     RangeWorkerOp = #range_worker { from=From, to=To, size=all },
-    OpList = [RangeWorkerOp#range_worker { vnode=VNode } || VNode <- Preflist],
+    %% OpList = [RangeWorkerOp#range_worker { vnode=VNode } || VNode <- Preflist],
+
+    case lists:keyfind(node(), 2, Preflist) of
+        false ->
+            PreflistEntry = riak_search_utils:choose(Preflist);
+        PreflistEntry ->
+            PreflistEntry = PreflistEntry
+    end,
+    OpList = [RangeWorkerOp#range_worker{vnode=PreflistEntry}],
 
     %% Create the iterator...
     SelectFun = fun(I1, I2) -> select_fun(I1, I2) end,
