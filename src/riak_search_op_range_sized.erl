@@ -6,6 +6,7 @@
 
 -module(riak_search_op_range_sized).
 -export([
+         extract_scoring_props/1,
          preplan/2,
          chain_op/4,
          correct_term_order/2
@@ -16,13 +17,18 @@
 -include_lib("lucene_parser/include/lucene_parser.hrl").
 -define(INDEX_DOCID(Term), ({element(1, Term), element(2, Term)})).
 
-preplan(Op, _State) -> 
+extract_scoring_props(_Op) ->
+    %% Don't alter the scoring props, return addition/multiplication
+    %% identities.
+    {0,1}.
+
+preplan(Op, _State) ->
     Op.
 
 chain_op(Op, OutputPid, OutputRef, State) ->
-    F = fun() -> 
+    F = fun() ->
                 erlang:link(State#search_state.parent),
-                start_loop(Op, OutputPid, OutputRef, State) 
+                start_loop(Op, OutputPid, OutputRef, State)
         end,
     erlang:spawn_link(F),
     {ok, 1}.
@@ -31,7 +37,7 @@ start_loop(Op, OutputPid, OutputRef, State) ->
     %% Figure out how many extra nodes to add to make the groups even.
     IndexName = State#search_state.index,
     {ok, Schema} = riak_search_config:get_schema(IndexName),
-    NVal = Schema:n_val(), 
+    NVal = Schema:n_val(),
     {ok, Preflist} = riak_search_ring_utils:get_covering_preflist(NVal),
 
     %% Create a #range_worker for each entry in the preflist...
@@ -45,9 +51,9 @@ start_loop(Op, OutputPid, OutputRef, State) ->
     Iterator2 = make_dedup_iterator(Iterator1),
 
     %% Spawn up pid to gather and send results...
-    F = fun() -> 
+    F = fun() ->
                 erlang:link(State#search_state.parent),
-                riak_search_op_utils:gather_iterator_results(OutputPid, OutputRef, Iterator2()) 
+                riak_search_op_utils:gather_iterator_results(OutputPid, OutputRef, Iterator2())
         end,
     erlang:spawn_link(F),
 
@@ -57,7 +63,7 @@ start_loop(Op, OutputPid, OutputRef, State) ->
 
 %% Given two range boundaries, make sure to return the smaller one
 %% first.
-correct_term_order(From = {_, FromTerm}, To = {_, ToTerm}) -> 
+correct_term_order(From = {_, FromTerm}, To = {_, ToTerm}) ->
     case FromTerm =< ToTerm of
         true  -> {From, To};
         false -> {To, From}

@@ -1,17 +1,21 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
 -module(riak_search_op_group).
 -export([
+         extract_scoring_props/1,
          preplan/2,
          chain_op/4
         ]).
 
 -include("riak_search.hrl").
 -include_lib("lucene_parser/include/lucene_parser.hrl").
+
+extract_scoring_props(Op) ->
+    riak_search_op:extract_scoring_props(Op#group.ops).
 
 preplan(Op, State) -> 
     case Op#group.ops of
