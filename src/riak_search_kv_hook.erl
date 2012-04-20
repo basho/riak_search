@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
@@ -43,14 +43,14 @@
 -type search_fields() :: [{search_field(),search_data()}].
 -type search_field() :: string().
 -type search_data() :: string() | binary().
-    
+
 
 %% Bucket fixup hook for actually setting up the search hook
 fixup(Bucket, BucketProps) ->
     case proplists:get_value(search, BucketProps) of
         true ->
             CurrentPrecommit = get_precommit(BucketProps),
-    
+
             UpdPrecommit = case has_search_precommit(BucketProps) of
                 false ->
                     CurrentPrecommit ++ [precommit_def()];
@@ -59,13 +59,13 @@ fixup(Bucket, BucketProps) ->
             end,
 
             %% Update the bucket properties
-            {ok, lists:keystore(precommit, 1, BucketProps, 
+            {ok, lists:keystore(precommit, 1, BucketProps,
                     {precommit, UpdPrecommit})};
         false ->
             %% remove the precommit hook, if any
             CleanPrecommit = strip_precommit(BucketProps),
             %% Update the bucket properties
-            UpdBucketProps = lists:keystore(precommit, 1, BucketProps, 
+            UpdBucketProps = lists:keystore(precommit, 1, BucketProps,
                 {precommit, CleanPrecommit}),
             {ok, UpdBucketProps};
         _ when Bucket /= default ->
@@ -84,7 +84,7 @@ fixup(Bucket, BucketProps) ->
     end.
 
 %% Install the kv/search integration hook on the specified bucket
-install(Bucket) -> 
+install(Bucket) ->
     riak_core_bucket:set_bucket(Bucket, [{search, true}]).
 
 %% Uninstall kv/search integration hook from specified bucket
@@ -114,7 +114,7 @@ precommit(RiakObject) ->
             {fail, Reason2}
     end.
 
-%% Decide if an object should be indexed, and if so the extraction function to 
+%% Decide if an object should be indexed, and if so the extraction function to
 %% pull out the search fields.
 -spec get_extractor(obj()) -> extractdef().
 get_extractor(RiakObject) ->
@@ -158,7 +158,7 @@ try_keys([K|T], Props) ->
 -spec to_modfun(list() | atom()) -> atom().
 to_modfun(List) when is_list(List) ->
     %% Using list_to_atom here so that the extractor module
-    %% does not need to be pre-loaded.  
+    %% does not need to be pre-loaded.
     list_to_atom(List);
 to_modfun(Binary) when is_binary(Binary) ->
     binary_to_atom(Binary, utf8);
@@ -209,7 +209,7 @@ make_indexed_doc(Index, DocId, RiakObject, Extractor) ->
             IdxDoc = riak_indexed_doc:analyze(IdxDoc0),
             IdxDoc
     end.
- 
+
 -spec make_index(obj()) -> binary().
 make_index(RiakObject) ->
     riak_object:bucket(RiakObject).
@@ -217,7 +217,7 @@ make_index(RiakObject) ->
 -spec make_docid(obj()) -> binary().
 make_docid(RiakObject) ->
     riak_object:key(RiakObject).
-    
+
 %% Run the extraction function against the RiakObject to get a list of
 %% search fields and data
 -spec run_extract(obj(), string(), extractdef()) -> search_fields().
@@ -225,7 +225,7 @@ run_extract(RiakObject, DefaultField, {M, F, A}) ->
     M:F(RiakObject, DefaultField, A);
 run_extract(RiakObject, DefaultField, {F, A}) ->
     F(RiakObject, DefaultField, A).
-        
+
 %% Get the precommit hook from the bucket and strip any
 %% existing index hooks.
 strip_precommit(BucketProps) ->
@@ -246,7 +246,7 @@ get_precommit(BucketProps) ->
         {struct, _}=X ->
             [X]
     end,
-    
+
     %% strip out any duplicate search hooks
     Count = lists:foldl(fun(E, Acc) ->
                 case E == precommit_def() of
@@ -372,7 +372,7 @@ run_mod_fun_extract_test() ->
     Extractor = validate_extractor({?MODULE, run_mod_fun_extract_test_fun}),
     ?assertEqual([{<<"data">>,<<"some data">>}],
                  run_extract(TestObj, <<"data">>, Extractor)).
- 
+
 run_mod_fun_extract_test_fun(O, DefaultValue, _Args) ->
     StrVals = [binary_to_list(B) || B <- riak_object:get_values(O)],
     Data = string:join(StrVals, " "),
@@ -395,12 +395,12 @@ conflict_test_object() ->
     O0 = riak_object:new(<<"b">>,<<"k">>,<<"v">>),
     riak_object:set_contents(O0, [{dict:new(), <<"some">>},
                                   {dict:new(), <<"data">>}]).
-    
-maybe_start_link({ok, Pid}) -> 
+
+maybe_start_link({ok, Pid}) ->
     Pid;
 maybe_start_link({error, {already_started, _}}) ->
     undefined.
-        
+
 stop_pid(undefined) ->
     ok;
 stop_pid(Pid) ->
