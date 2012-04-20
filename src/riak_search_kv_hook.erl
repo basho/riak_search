@@ -44,6 +44,7 @@
 -type search_field() :: string().
 -type search_data() :: string() | binary().
 
+-type idx_method() :: '2i' | search | both.
 
 %% Bucket fixup hook for actually setting up the search hook
 fixup(Bucket, BucketProps) ->
@@ -177,6 +178,8 @@ index_object(RiakObject, Extractor) ->
     SearchClient = riak_search_client:new(RiakClient),
     Index = make_index(RiakObject),
     DocId = make_docid(RiakObject),
+    MD = riak_object:get_metadata(RiakObject),
+    _IdxMethod = determine_index_method(MD),
 
     %% Check the new doc is parsable and have it ready
     NewIdxDoc = make_indexed_doc(Index, DocId, RiakObject, Extractor),
@@ -208,6 +211,30 @@ make_indexed_doc(Index, DocId, RiakObject, Extractor) ->
             IdxDoc0 = riak_indexed_doc:new(Index, DocId, Fields, []),
             IdxDoc = riak_indexed_doc:analyze(IdxDoc0),
             IdxDoc
+    end.
+
+%%%===================================================================
+%%% Private
+%%%===================================================================
+
+%% @private
+%%
+%% @doc Based on the metadata `MD' from an object determine the method
+%% `Method' by which to index.
+%%
+%% `'2i'' - Index using 2i tags
+%%
+%% `search' - Index using search analysis
+%%
+%% `both' - Index using both
+-spec determine_index_method(dict()) -> idx_method().
+determine_index_method(D) ->
+    ContainIdx = riak_search_2i:does_contain_idx(D),
+    ContainTagAndAnalyze = riak_search_2i:should_tag_and_analyze(D),
+
+    if ContainTagAndAnalyze -> both;
+       ContainIdx -> '2i';
+       true -> search
     end.
 
 -spec make_index(obj()) -> binary().
@@ -265,6 +292,9 @@ get_precommit(BucketProps) ->
             Precommit
     end.
 
+%%%===================================================================
+%%% Tests
+%%%===================================================================
 
 -ifdef(TEST).
 
