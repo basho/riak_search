@@ -30,6 +30,9 @@
 %% Create a new indexed doc
 new(Index, Id, Fields, Props) ->
     {ok, Schema} = riak_search_config:get_schema(Index),
+
+    AnalyzeFields = proplists:get_value(analyze, Fields, []),
+
     {RegularFields, InlineFields} = normalize_fields(Fields, Schema),
     #riak_idx_doc{ index=Index,
                    id=Id,

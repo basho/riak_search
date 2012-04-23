@@ -40,10 +40,6 @@
 -type docid() :: binary().
 -type idxdoc() :: #riak_idx_doc{}.
 
--type search_fields() :: [{search_field(),search_data()}].
--type search_field() :: string().
--type search_data() :: string() | binary().
-
 -type idx_method() :: '2i' | search | both.
 
 %% Bucket fixup hook for actually setting up the search hook
@@ -179,10 +175,10 @@ index_object(RiakObject, Extractor) ->
     Index = make_index(RiakObject),
     DocId = make_docid(RiakObject),
     MD = riak_object:get_metadata(RiakObject),
-    _IdxMethod = determine_index_method(MD),
+    _Method = determine_index_method(MD),
 
     %% Check the new doc is parsable and have it ready
-    NewIdxDoc = make_indexed_doc(Index, DocId, RiakObject, Extractor),
+    NewIdxDoc = make_indexed_doc(Method, Index, DocId, RiakObject, Extractor),
 
     %% If all ok, remove the old entries and index the new
     riak_indexed_doc:remove_entries(RiakClient, SearchClient, Index, DocId),
@@ -197,25 +193,26 @@ index_object(RiakObject, Extractor) ->
             riak_indexed_doc:put(RiakClient, NewIdxDoc)
     end.
 
+
+%%%===================================================================
+%%% Private
+%%%===================================================================
+
 %% Make an indexed document under Index/DocId from the RiakObject
--spec make_indexed_doc(index(), docid(), obj(), extractdef()) ->
+-spec make_indexed_doc(idx_method(), index(), docid(), obj(), extractdef()) ->
                               idxdoc() | deleted.
-make_indexed_doc(Index, DocId, RiakObject, Extractor) ->
+make_indexed_doc(Method, Index, DocId, RiakObject, Extractor) ->
     case riak_kv_util:is_x_deleted(RiakObject) of
         true ->
             deleted;
         false ->
             {ok, Schema} = riak_search_config:get_schema(Index),
             DefaultField = Schema:default_field(),
-            Fields = run_extract(RiakObject, DefaultField, Extractor),
+            Fields = run_extract(Method, RiakObject, DefaultField, Extractor),
             IdxDoc0 = riak_indexed_doc:new(Index, DocId, Fields, []),
-            IdxDoc = riak_indexed_doc:analyze(IdxDoc0),
+            IdxDoc = riak_indexed_doc:analyze(Method, IdxDoc0),
             IdxDoc
     end.
-
-%%%===================================================================
-%%% Private
-%%%===================================================================
 
 %% @private
 %%
@@ -245,13 +242,27 @@ make_index(RiakObject) ->
 make_docid(RiakObject) ->
     riak_object:key(RiakObject).
 
-%% Run the extraction function against the RiakObject to get a list of
-%% search fields and data
--spec run_extract(obj(), string(), extractdef()) -> search_fields().
-run_extract(RiakObject, DefaultField, {M, F, A}) ->
-    M:F(RiakObject, DefaultField, A);
-run_extract(RiakObject, DefaultField, {F, A}) ->
-    F(RiakObject, DefaultField, A).
+%% @private
+%%
+%% @doc Run the extractor against the Riak Object `Obj' to get a list
+%%      of search fields and data.
+%%
+%% TODO: the return type is incorrect, the field is binary() or could
+%% even be error tuple.  Need to check UTF-8 code in general.
+-spec run_extract(idx_method(), obj(), string(), extractdef()) ->
+                         search_fields().
+run_extract('2i', Obj, _, _) ->
+    [{index, riak_search_2i:extract(Obj)}];
+run_extract(search, Obj, DefaultField, {M, F, A}) ->
+    [{analyze, M:F(Obj, DefaultField, A)}];
+run_extract(search, Obj, DefaultField, {F, A}) ->
+    [{analyze, F(Obj, DefaultField, A)}];
+run_extract(both, Obj, DefaultField, {M, F, A}) ->
+    [{index, riak_search_2i:extract(Obj)},
+     {analyze, M:F(Obj, DefaultField, A)}];
+run_extract(both, Obj, DefaultField, {F, A}) ->
+    [{index, riak_search_2i:extract(Obj)},
+     {analyze, F(Obj, DefaultField, A)}].
 
 %% Get the precommit hook from the bucket and strip any
 %% existing index hooks.
