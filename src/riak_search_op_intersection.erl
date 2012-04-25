@@ -105,9 +105,32 @@ intersection(State) ->
                             subtract(CandidateSet,
                                      gb_trees:iterator(ResultSet));
                         false ->
-                            ResultSet
+                            merge_props(CandidateSet, ResultSet)
                     end
             end
+    end.
+
+-spec merge_props(gb_tree(), gb_tree()) -> gb_tree().
+merge_props(CandidateSet, ResultSet) ->
+    Empty = gb_trees:is_empty(ResultSet),
+    if Empty ->
+            ResultSet;
+       true ->
+            merge_props_2(CandidateSet, gb_trees:iterator(ResultSet))
+    end.
+
+-spec merge_props_2(gb_tree(), any()) -> gb_tree().
+merge_props_2(CandidateSet, Itr) ->
+    case gb_trees:next(Itr) of
+        {DocId, PropsRS, Itr2} ->
+            PropsCS = gb_trees:get(DocId, CandidateSet),
+            {ignore, DocId, NewProps} =
+                riak_search_utils:combine_terms({ignore, DocId, PropsCS},
+                                                {ignore, DocId, PropsRS}),
+            CandidateSet2 = gb_trees:update(DocId, NewProps, CandidateSet),
+            merge_props_2(CandidateSet2, Itr2);
+        none ->
+            CandidateSet
     end.
 
 subtract(CandidateSet, Itr) ->
