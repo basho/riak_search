@@ -13,7 +13,7 @@
 
 %% This module runs the semi-automated test modules found in the
 %% ./tests directory. Each module contains a script.def file
-%% containing the test script. 
+%% containing the test script.
 %%
 %% The following test steps are allowed:
 %% {echo, Text}     : Echo text to the console.
@@ -32,7 +32,7 @@
 %% {delobj, Bucket, Key} : Delete a riak object
 %%
 %% {exists, Bucket, Key, boolean()} : Check whether key exists.
-%% 
+%%
 %% {error, Test, Type, Error} : Run the `Test' spec expecting an
 %% exception with `Type':`Error'.
 %%
@@ -49,7 +49,7 @@ test(Path) ->
     io:format("~n :: Running Test Package '~s'...~n", [filename:basename(Path)]),
     Path1 = filename:join(Path, "script.def"),
     case file:consult(Path1) of
-        {ok, Terms} -> 
+        {ok, Terms} ->
             case test_inner(Terms, Path) of
                 true -> ok;
                 false -> error
@@ -59,7 +59,7 @@ test(Path) ->
             error
     end.
 
-test_inner([], _Root) -> 
+test_inner([], _Root) ->
     true;
 
 test_inner([Op|Ops], Root) ->
@@ -166,7 +166,7 @@ test_inner({solr_select, Host, Port, Params, Expected, Validators}, _Root) ->
             Format = proplists:get_value(wt, Params, xml),
             {Length, Results} = parse_solr_select_result(Format, Body),
             case validate_results(Length, Results, Validators) of
-                pass -> 
+                pass ->
                     io:format("~n    [√] PASS SOLR SELECT » ~s:~p ~s (~s)~n",
                               [Host, Port, Query, QS]),
                     true;
@@ -191,7 +191,7 @@ test_inner({solr_select, Host, Port, Params, Expected, Validators}, _Root) ->
                       [Host, Port, Query, QS]),
             io:format("        - ERROR: ~p~n", [Error]),
             false
-    catch 
+    catch
         _Type : Error ->
             io:format("~n    [ ] FAIL SOLR SELECT » ~s:~p ~s (~s)~n",
                       [Host, Port, Query, QS]),
@@ -220,7 +220,7 @@ test_inner({solr_update, Path, Params}, Root) ->
                 {error, Error} ->
                     io:format("~n :: Solr Update Failed! (HTTP Error: ~p)~n", [Error]),
                     throw({solr_update_error, Error})
-            catch  
+            catch
                 _Type : Error ->
                     io:format("~n :: Solr Update Failed! (Exception: ~p)~n", [Error]),
                     throw({solr_update_error, Error})
@@ -243,7 +243,7 @@ test_inner({mapred, Bucket, Search, Phases, Validators}, _) ->
     try C:mapred(SearchInput, Phases) of
         {ok, Results} ->
             case validate_results(length(Results), Results, Validators) of
-                pass -> 
+                pass ->
                     io:format("~n    [√] PASS MAPRED QUERY » ~s~n", [Search]),
                     true;
                 {fail, Errors} ->
@@ -255,7 +255,7 @@ test_inner({mapred, Bucket, Search, Phases, Validators}, _) ->
             io:format("~n    [ ] FAIL MAPRED QUERY » ~s~n", [Search]),
             io:format("        - ERROR1: ~p~n", [Error]),
             false
-    catch 
+    catch
         _Type : Error ->
             io:format("~n    [ ] FAIL MAPRED QUERY » ~s~n", [Search]),
             io:format("        - ERROR2: ~p : ~p~n", [Error, erlang:get_stacktrace()]),
@@ -268,7 +268,7 @@ test_inner({mapred, Bucket, Search, Filter, Phases, Validators}, _) ->
     try C:mapred(SearchInput, Phases) of
         {ok, Results} ->
             case validate_results(length(Results), Results, Validators) of
-                pass -> 
+                pass ->
                     io:format("~n    [√] PASS MAPRED QUERY » ~s/~s~n", [Search, Filter]),
                     true;
                 {fail, Errors} ->
@@ -280,13 +280,13 @@ test_inner({mapred, Bucket, Search, Filter, Phases, Validators}, _) ->
             io:format("~n    [ ] FAIL MAPRED QUERY » ~s/~s~n", [Search, Filter]),
             io:format("        - ERROR1: ~p~n", [Error]),
             false
-    catch 
+    catch
         _Type : Error ->
             io:format("~n    [ ] FAIL MAPRED QUERY » ~s/~s~n", [Search, Filter]),
             io:format("        - ERROR2: ~p : ~p~n", [Error, erlang:get_stacktrace()]),
             false
     end;
-    
+
 test_inner({putobj, Bucket, Key, Ct, Value}, _) ->
     RObj = riak_object:new(Bucket, Key, Value, Ct),
     {ok,C} = riak:local_client(),
@@ -335,14 +335,14 @@ validate_results(Length, Results, Validators) ->
         []      -> pass;
         Errors  -> {fail, [X || {fail, X} <- Errors]}
     end.
-validate_results_inner(_Length, _Results, []) -> 
+validate_results_inner(_Length, _Results, []) ->
     [];
 validate_results_inner(Length, Results, [Validator|Validators]) ->
     [validate_results_inner(Length, Results, Validator)|
         validate_results_inner(Length, Results, Validators)];
 validate_results_inner(Length, _Results, {length, ValidLength}) ->
     case Length == ValidLength of
-        true -> 
+        true ->
             pass;
         false ->
             {fail, io_lib:format("Expected ~p result(s), got ~p!", [ValidLength, Length])}
@@ -353,7 +353,7 @@ validate_results_inner(_Length, Results, {property, Key, Value}) ->
         lists:member(Value, proplists:get_value(Key, Props, []))
     end,
     case (length(Results) > 0) andalso lists:all(F, Results) of
-        true -> 
+        true ->
             pass;
         false ->
             {fail, io_lib:format("Missing property: ~p -> ~p", [Key, Value])}
@@ -383,7 +383,7 @@ parse_solr_select_result(json, Body) ->
     end,
     Results = [F(X) || X <- Docs],
     {length(Results), Results};
-parse_solr_select_result(xml, Body) -> 
+parse_solr_select_result(xml, Body) ->
     {XMLDoc, _Rest} = xmerl_scan:string(Body),
     Matches = xmerl_xpath:string("//response/result/doc/str[@name='id']/text()", XMLDoc),
     Results = [strip(X#xmlText.value) || X <- Matches],
