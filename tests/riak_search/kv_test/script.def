@@ -30,12 +30,33 @@
 
  {echo, "Checking data present..."},
 
- {search, "value:quaint", [{length, 1}]},
- {search, "value:Peter", [{length, 4}]},
+ {search, "value:quaint", [{length, 1}, {property, p, [3]}]},
+ {search, "value:Peter", [{length, 4},
+                          {doc, <<"tt1_l1">>, {property, p, [0]}},
+                          {doc, <<"tt1_l2">>, {property, p, [5]}},
+                          {doc, <<"tt1_l3">>, {property, p, [1]}},
+                          {doc, <<"tt1_l4">>, {property, p, [6]}}]},
  {search, "doc_thing@id:abcd", [{length, 1}]},
  {search, "doc_item:ghij", [{length, 1}]},
  {search, "outer_inner1:snooty", [{length, 1}]},
  {search, "outer_inner2:fox", [{length, 1}]},
+
+ {echo, "Verify property merging..."},
+ {putobj, <<"test">>, <<"fruit1">>,
+  "text/plain", <<"banana strawberry apple">>},
+ {putobj, <<"test">>, <<"fruit2">>,
+  "text/plain", <<"apple banana strawberry">>},
+ {putobj, <<"test">>, <<"fruit3">>,
+  "text/plain", <<"orange grape banana">>},
+
+ {search, "value:banana AND value:strawberry",
+  [{length, 2},
+   {doc, <<"fruit1">>, {property, p, [0, 1]}},
+   {doc, <<"fruit2">>, {property, p, [1, 2]}}]},
+
+ {search, "value:banana NOT value:apple",
+  [{length, 1},
+   {doc, <<"fruit3">>, {property, p, [2]}}]},
 
  %% Cleanup.
  {echo, "De-indexing documents (by deleting k/v objects)..."},
@@ -49,6 +70,9 @@
  {delobj, <<"test">>, <<"tt1_l4">>},
  {delobj, <<"test">>, <<"x1">>},
  {delobj, <<"test">>, <<"j1">>},
+ {delobj, <<"test">>, <<"fruit1">>},
+ {delobj, <<"test">>, <<"fruit2">>},
+ {delobj, <<"test">>, <<"fruit3">>},
 
  {echo, "Checking data gone..."},
 
@@ -58,6 +82,7 @@
  {search, "doc_item:ghij", [{length, 0}]},
  {search, "outer_inner1:snooty", [{length, 0}]},
  {search, "outer_inner2:fox", [{length, 0}]},
+ {search, "value:banana", [{length, 0}]},
 
  {echo, "Done"}
 ].
