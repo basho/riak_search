@@ -51,8 +51,17 @@
 
  {search, "value:banana AND value:strawberry",
   [{length, 2},
-   {doc, <<"fruit1">>, {property, p, [0, 1]}},
-   {doc, <<"fruit2">>, {property, p, [1, 2]}}]},
+   {doc, <<"fruit1">>, {property, p, 0}},
+   {doc, <<"fruit1">>, {property, p, 1}},
+   {doc, <<"fruit2">>, {property, p, 1}},
+   {doc, <<"fruit2">>, {property, p, 2}}]},
+
+ {search, "value:strawberry AND value:banana",
+  [{length, 2},
+   {doc, <<"fruit1">>, {property, p, 0}},
+   {doc, <<"fruit1">>, {property, p, 1}},
+   {doc, <<"fruit2">>, {property, p, 1}},
+   {doc, <<"fruit2">>, {property, p, 2}}]},
 
  {search, "value:banana NOT value:apple",
   [{length, 1},
