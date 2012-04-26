@@ -6,10 +6,10 @@
          run/4]).
 
 %% Key Gens
--export([fruit_key_val_gen/1, valgen/4, valgen_i/1]).
+-export([always/2, fruit_key_val_gen/1, valgen/4, valgen_i/1]).
 
 -include_lib("basho_bench/include/basho_bench.hrl").
--record(state, {iurls, surls}).
+-record(state, {pb_conns, index, iurls, surls}).
 
 %% ====================================================================
 %% API
@@ -17,13 +17,21 @@
 
 new(_Id) ->
     ibrowse:start(),
+    Index = basho_bench_config:get(rs_index, "test"),
     Ports = basho_bench_config:get(rs_ports, [{"127.0.0.1", 8098}]),
+    PBPorts = basho_bench_config:get(pb_ports, [{"127.0.0.1", 8087}]),
     IPath = basho_bench_config:get(rs_index_path, "/riak/test"),
     SPath = basho_bench_config:get(rs_search_path, "/search/test"),
     IURLs = array:from_list(lists:map(make_url(IPath), Ports)),
     SURLs = array:from_list(lists:map(make_url(SPath), Ports)),
+    Conns = array:from_list(lists:map(fun make_conn/1, PBPorts)),
     N = length(Ports),
-    {ok, #state{iurls={IURLs, {0,N}}, surls={SURLs, {0,N}}}}.
+    M = length(PBPorts),
+
+    {ok, #state{pb_conns={Conns, {0,M}},
+                index=list_to_binary(Index),
+                iurls={IURLs, {0,N}},
+                surls={SURLs, {0,N}}}}.
 
 run(search, _KeyGen, ValGen, S=#state{surls=URLs}) ->
     Base = get_base(URLs),
@@ -48,10 +56,35 @@ run(index, _KeyGen, ValGen, S=#state{iurls=URLs}) ->
         {error, Reason} -> {error, Reason, S2}
     end;
 
+run(load_fruit, KeyValGen, _, S=#state{iurls=URLs}) ->
+    Base = get_base(URLs),
+    {Key, Val} = KeyValGen(),
+    URL = ?FMT("~s/~p", [Base, Key]),
+    S2 = S#state{iurls=wrap(URLs)},
+    case http_put(URL, "plain/text", Val) of
+        ok -> {ok, S2};
+        {error, Reason} -> {error, Reason, S2}
+    end;
+
+run(search_pb, _, QueryGen, S=#state{index=Index, pb_conns=Conns}) ->
+    Conn = get_conn(Conns),
+    Query = QueryGen(),
+    S2 = S#state{pb_conns=wrap(Conns)},
+    case search_pb(Conn, Index, Query) of
+        ok -> {ok, S2};
+        {error, Reason} -> {error, Reason, S2}
+    end;
+
 run(show, KeyGen, _ValGen, S) ->
     {K, V} = KeyGen(),
     io:format("~p: ~p~n", [K, V]),
     {ok, S}.
+
+search_pb(Conn, Index, Query) ->
+    case riakc_pb_socket:search(Conn, Index, Query) of
+        {ok, _Result} -> ok;
+        Other -> Other
+    end.
 
 %% ====================================================================
 %% Key Gens
@@ -84,13 +117,11 @@ valgen_i(search) ->
          {10, "nunga nance mulberry langsat karonda kumquat"},
          {1, "korlan jocote genip elderberry citron jujube"}]).
 
-combine(Fruits, N) ->
-    string:join([Str || {Count, Str} <- Fruits, Count >= N], " ").
 
 %% generates key and value because value is based on key
 fruit_key_val_gen(Id) ->
     Fruits2 = [{N, combine(?FRUITS, N)} || N <- [1, 10, 100, ?K1, ?K10, ?K100]],
-    StartKey = 0,
+    StartKey = 1,
     NumKeys = ?K100,
     Workers = basho_bench_config:get(concurrent),
     Range = NumKeys div Workers,
@@ -104,10 +135,8 @@ fruit_key_val_gen(Id) ->
             {K, V}
     end.
 
-first_large_enough(K, [{Count, Str}|Fruits]) ->
-    if Count >= K -> Str;
-       true -> first_large_enough(K, Fruits)
-    end.
+always(_Id, Val) ->
+    fun() -> Val end.
 
 %% ====================================================================
 %% Private
@@ -119,10 +148,24 @@ first_large_enough(K, [{Count, Str}|Fruits]) ->
 %%     S = os:cmd("wc -l " ++ File ++ " | awk -v ORS='' '{print $1}' "),
 %%     list_to_integer(S).
 
+combine(Fruits, N) ->
+    string:join([Str || {Count, Str} <- Fruits, Count >= N], " ").
+
+first_large_enough(K, [{Count, Str}|Fruits]) ->
+    if Count >= K -> Str;
+       true -> first_large_enough(K, Fruits)
+    end.
+
 get_base({URLs, {I,_}}) -> array:get(I, URLs).
+
+get_conn({Conns, {I,_}}) -> array:get(I, Conns).
 
 make_url(Path) ->
     fun({IP, Port}) -> ?FMT("http://~s:~w~s", [IP, Port, Path]) end.
+
+make_conn({IP, Port}) ->
+    {ok, Conn} = riakc_pb_socket:start_link(IP, Port),
+    Conn.
 
 http_get(URL) ->
     case ibrowse:send_req(URL, [], get) of
