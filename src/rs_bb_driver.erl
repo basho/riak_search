@@ -6,7 +6,7 @@
          run/4]).
 
 %% Key Gens
--export([valgen/4, valgen_i/1]).
+-export([fruit_key_val_gen/1, valgen/4, valgen_i/1]).
 
 -include_lib("basho_bench/include/basho_bench.hrl").
 -record(state, {iurls, surls}).
@@ -46,7 +46,12 @@ run(index, _KeyGen, ValGen, S=#state{iurls=URLs}) ->
     case http_put(URL, "application/json", Line) of
         ok -> {ok, S2};
         {error, Reason} -> {error, Reason, S2}
-    end.
+    end;
+
+run(show, KeyGen, _ValGen, S) ->
+    {K, V} = KeyGen(),
+    io:format("~p: ~p~n", [K, V]),
+    {ok, S}.
 
 %% ====================================================================
 %% Key Gens
@@ -71,22 +76,20 @@ valgen_i(search) ->
 -define(K10, 10000).
 -define(K1, 1000).
 
--define(?FRUITS,
-        [{?K100, "apple"}, {?K100, "grape"}, {?K100, "orange"},
-         {?K100, "pineapple"}, {?K100, "strawberry"}, {?K100, "kiwi"},
-         {?K10, "avocado"}, {?K10, "raspberry"}, {?K10, "persimmon"},
-         {?K10, "blackberry"}, {?K10, "cherry"}, {?K10, "tomato"},
-         {?K1, "clementine"}, {?K1, "lime"}, {?K1, "lemon"},
-         {?K1, "melon"}, {?K1, "plum"}, {?K1, "pear"},
-         {100, "marang"}, {100, "nutmeg"}, {100, "olive"},
-         {100, "pecan"}, {100, "peanut"}, {100, "tangerine"},
-         {10, "nunga"}, {10, "nance"}, {10, "mulberry"},
-         {10, "langsat"}, {10, "karonda"}, {10, "kumquat"},
-         {1, "korlan"}, {1, "jocote"}, {1, "genip"},
-         {1, "elderberry"}, {1, "citron"}, {1, "jujube"}]).
+-define(FRUITS,
+        [{?K100, "apple grape orange pineapple strawberry kiwi"},
+         {?K10, "avocado raspberry persimmon blackberry cherry tomato"},
+         {?K1, "clementine lime lemon melon plum pear"},
+         {100, "marang nutmeg olive pecan peanut tangerine"},
+         {10, "nunga nance mulberry langsat karonda kumquat"},
+         {1, "korlan jocote genip elderberry citron jujube"}]).
+
+combine(Fruits, N) ->
+    string:join([Str || {Count, Str} <- Fruits, Count >= N], " ").
 
 %% generates key and value because value is based on key
 fruit_key_val_gen(Id) ->
+    Fruits2 = [{N, combine(?FRUITS, N)} || N <- [1, 10, 100, ?K1, ?K10, ?K100]],
     StartKey = 0,
     NumKeys = ?K100,
     Workers = basho_bench_config:get(concurrent),
@@ -96,8 +99,14 @@ fruit_key_val_gen(Id) ->
     Ref = make_ref(),
     ?DEBUG("ID ~p generating range ~p to ~p\n", [Id, MinValue, MaxValue]),
     fun() ->
-            K = sequential_int_generator(Ref, Range) + MinValue,
-            lists:filter(
+            K = basho_bench_keygen:sequential_int_generator(Ref, Range) + MinValue,
+            V = first_large_enough(K, Fruits2),
+            {K, V}
+    end.
+
+first_large_enough(K, [{Count, Str}|Fruits]) ->
+    if Count >= K -> Str;
+       true -> first_large_enough(K, Fruits)
     end.
 
 %% ====================================================================
