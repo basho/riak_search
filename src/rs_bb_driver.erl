@@ -67,6 +67,39 @@ valgen_i(index) ->
 valgen_i(search) ->
     rs_bb_file_terms:get_ft().
 
+-define(K100, 100000).
+-define(K10, 10000).
+-define(K1, 1000).
+
+-define(?FRUITS,
+        [{?K100, "apple"}, {?K100, "grape"}, {?K100, "orange"},
+         {?K100, "pineapple"}, {?K100, "strawberry"}, {?K100, "kiwi"},
+         {?K10, "avocado"}, {?K10, "raspberry"}, {?K10, "persimmon"},
+         {?K10, "blackberry"}, {?K10, "cherry"}, {?K10, "tomato"},
+         {?K1, "clementine"}, {?K1, "lime"}, {?K1, "lemon"},
+         {?K1, "melon"}, {?K1, "plum"}, {?K1, "pear"},
+         {100, "marang"}, {100, "nutmeg"}, {100, "olive"},
+         {100, "pecan"}, {100, "peanut"}, {100, "tangerine"},
+         {10, "nunga"}, {10, "nance"}, {10, "mulberry"},
+         {10, "langsat"}, {10, "karonda"}, {10, "kumquat"},
+         {1, "korlan"}, {1, "jocote"}, {1, "genip"},
+         {1, "elderberry"}, {1, "citron"}, {1, "jujube"}]).
+
+%% generates key and value because value is based on key
+fruit_key_val_gen(Id) ->
+    StartKey = 0,
+    NumKeys = ?K100,
+    Workers = basho_bench_config:get(concurrent),
+    Range = NumKeys div Workers,
+    MinValue = StartKey + Range * (Id - 1),
+    MaxValue = StartKey + Range * Id,
+    Ref = make_ref(),
+    ?DEBUG("ID ~p generating range ~p to ~p\n", [Id, MinValue, MaxValue]),
+    fun() ->
+            K = sequential_int_generator(Ref, Range) + MinValue,
+            lists:filter(
+    end.
+
 %% ====================================================================
 %% Private
 %% ====================================================================
