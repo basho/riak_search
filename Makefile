@@ -50,7 +50,7 @@ dialyzer: compile
 	@echo Use "'make check_plt'" to check PLT prior to using this target.
 	@echo Use "'make build_plt'" to build PLT prior to using this target.
 	@echo
-	dialyzer -Wno_return --plt $(COMBO_PLT) deps/*/ebin apps/*/ebin | \
+	dialyzer -Wno_return --plt $(COMBO_PLT) ebin apps/*/ebin | \
 	    fgrep -v -f ./dialyzer.ignore-warnings
 
 cleanplt:
