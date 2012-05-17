@@ -46,6 +46,16 @@ run(search, _KeyGen, ValGen, S=#state{surls=URLs}) ->
         {error, Reason} -> {error, Reason, S2}
     end;
 
+run({exact_search, Qry}, _KeyGen, _ValGen, S=#state{surls=URLs}) ->
+    Base = get_base(URLs),
+    Params = mochiweb_util:urlencode([{<<"q">>, Qry}]),
+    URL = ?FMT("~s?~s", [Base, Params]),
+    S2 = S#state{surls=wrap(URLs)},
+    case http_get(URL) of
+        ok -> {ok, S2};
+        {error, Reason} -> {error, Reason, S2}
+    end;
+
 run(index, _KeyGen, ValGen, S=#state{iurls=URLs}) ->
     Base = get_base(URLs),
     {Key, Line} = ValGen(index),
