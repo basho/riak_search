@@ -137,6 +137,12 @@ set_schema(Index, SchemaFile) ->
         {ok, B} ->
             case riak_search_config:put_raw_schema(Index, B) of
                 ok ->
+                    %% Immediately clear the schema cache to avoid
+                    %% using old schema.
+                    %%
+                    %% TODO: Eventually the schema should be gossiped like
+                    %% the ring
+                    clear_schema_cache(),
                     io:format(" :: Done.~n");
                 Error ->
                     io:format(" :: ERROR: ~p~n", [Error]),
