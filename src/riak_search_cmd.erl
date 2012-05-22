@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
@@ -131,12 +131,18 @@ command([_CurDir, "uninstall", Bucket]) ->
 command(_) ->
     usage().
 
-set_schema(Index, SchemaFile) -> 
+set_schema(Index, SchemaFile) ->
     io:format("~n :: Updating schema for '~s'...~n", [Index]),
     case file:read_file(SchemaFile) of
         {ok, B} ->
             case riak_search_config:put_raw_schema(Index, B) of
                 ok ->
+                    %% Immediately clear the schema cache to avoid
+                    %% using old schema.
+                    %%
+                    %% TODO: Eventually the schema should be gossiped like
+                    %% the ring
+                    clear_schema_cache(),
                     io:format(" :: Done.~n");
                 Error ->
                     io:format(" :: ERROR: ~p~n", [Error]),
@@ -147,10 +153,10 @@ set_schema(Index, SchemaFile) ->
             erlang:exit(-1)
     end.
 
-show_schema(Index) -> 
+show_schema(Index) ->
     io:format("~n%% Schema for '~s'~n", [Index]),
     case riak_search_config:get_raw_schema(Index) of
-        {ok, RawSchemaBinary} -> 
+        {ok, RawSchemaBinary} ->
             io:format("~n~s~n", [RawSchemaBinary]);
         Error ->
             io:format(" :: ERROR: ~p~n", [Error])
@@ -175,7 +181,7 @@ clear_schema_cache() ->
             [ io:format("    ~p~n", [N]) || N <- BadNodes ]
     end.
 
-search(DefaultIndex, Query, Filter) -> 
+search(DefaultIndex, Query, Filter) ->
     io:format("~n :: Searching for '~s' / '~s' in ~s...~n~n", [Query, Filter,
                                                                DefaultIndex]),
     io:format("------------------------------~n~n"),
@@ -186,7 +192,7 @@ search(DefaultIndex, Query, Filter) ->
             F = fun(X) ->
                 {Index, DocID, Props} = X,
                 io:format("index/id: ~s/~s~n", [Index, DocID]),
-                [io:format("~p -> ~p~n", [Key, Value]) || 
+                [io:format("~p -> ~p~n", [Key, Value]) ||
                 {Key, Value} <- Props],
                 io:format("~n------------------------------~n~n")
             end,
@@ -194,7 +200,7 @@ search(DefaultIndex, Query, Filter) ->
             io:format(" :: Found ~p results.~n", [Length])
     end.
 
-search_doc(DefaultIndex, Query, Filter) -> 
+search_doc(DefaultIndex, Query, Filter) ->
     io:format("~n :: Searching for '~s' / '~s' in ~s...~n~n", [Query, Filter, DefaultIndex]),
     io:format("------------------------------~n~n"),
     case search:search_doc(DefaultIndex, Query, Filter) of
@@ -222,20 +228,20 @@ search_doc(DefaultIndex, Query, Filter) ->
             io:format(" :: Maximum score ~p.~n", [MaxScore])
     end.
 
-explain(DefaultIndex, Query, Filter) -> 
+explain(DefaultIndex, Query, Filter) ->
     io:format("~n :: Explaining query '~s' / '~s' in ~s...~n~n", [Query, Filter, DefaultIndex]),
     Plan = search:explain(DefaultIndex, Query, Filter),
     io:format("~p", [Plan]).
 
-index(Index, Path) -> 
+index(Index, Path) ->
     io:format("~n :: Indexing path '~s' in ~s...~n~n", [Path, Index]),
     search:index_dir(Index, Path).
 
-delete(Index, Path) -> 
+delete(Index, Path) ->
     io:format("~n :: De-Indexing path '~s' in ~s...~n~n", [Path, Index]),
     search:delete_dir(Index, Path).
 
-solr(Index, Path) -> 
+solr(Index, Path) ->
     io:format("~n :: Running Solr document(s) '~s' in ~s...~n", [Path, Index]),
     solr_search:index_dir(Index, Path).
 
