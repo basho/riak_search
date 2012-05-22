@@ -17,14 +17,25 @@
 %%
 %% The following test steps are allowed:
 %% {echo, Text}     : Echo text to the console.
+%%
 %% {sleep, Seconds} : Sleep for the specified number of seconds.
+%%
 %% {schema, Schema} : Set the schema.
+%%
 %% {solr, Path}     : Execute the provided Solr script through the cmdline interface.
+%%
 %% {index, Path}    : Index the documents in the provided path.
+%%
 %% {delete, Path}   : De-Index the documents in the provided path.
+%%
 %% {search, Query, Validators} : Search on the query, run the validators.
+%%
+%% {pb_search, Query, Validators} : Search via protobuff
+%%
 %% {solr_select, Params, Validators} : Search on the query, run the validators.
+%%
 %% {solr_update, Params, Path} : Execute the provided Solr script through the HTTP interface.
+%%
 %% {index_bucket, Bucket} : Enable indexing hook for bucket
 %%
 %% {putobj, Bucket, Key, ContentType, Value} : Put a riak object
@@ -145,6 +156,10 @@ test_inner({search_node, Node, Query, Filter, Validators}, _Root) ->
             io:format("        - ERROR1: ~p~n", [Error]),
             false
     end;
+
+test_inner({pb_search, Query, Validators}, _Root) ->
+    C = get_client(),
+    riak_pb_socket:
 
 test_inner({solr_select, Params, Validators}, _Root) ->
     test_inner({solr_select, Params, 200, Validators}, _Root);
