@@ -10,6 +10,9 @@
 -define(DEFAULT_INDEX, <<"search">>).
 -define(RESULTVEC_SIZE, 1000).
 
+-define(DEFAULT_RESULT_SIZE, 10).
+-define(DEFAULT_TIMEOUT, 60000).
+
 %%%===================================================================
 %%% Types
 %%%===================================================================

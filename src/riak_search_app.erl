@@ -36,6 +36,9 @@ start(_StartType, _StartArgs) ->
                     catch cluster_info:register_app(riak_search_cinfo),
 
                     Root = app_helper:get_env(riak_solr, solr_name, "solr"),
+
+                    ok = riak_api_pb_service:register(riak_search_pb_query, 27, 28),
+
                     case riak_solr_sup:start_link() of
                         {ok, _} ->
                             webmachine_router:add_route({[Root, index, "update"],

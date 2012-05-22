@@ -25,9 +25,6 @@
                 filter_ops,
                 fl}).
 
--define(DEFAULT_RESULT_SIZE, 10).
--define(DEFAULT_TIMEOUT, 60000).
-
 init(_) ->
     {ok, Client} = riak_search:local_client(),
     {ok, #state{ client=Client }}.
