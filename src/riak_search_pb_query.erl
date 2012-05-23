@@ -58,7 +58,7 @@ process(#rpbsearchqueryreq{index=Index, sort=Sort0, fl=FL0, presort=Presort0}=Ms
                     {error, "Missing query", State}
             end;
         Error ->
-            {error, {format, "Could not parse schema '~s': ~p", [Index, Error]}, State}
+            {error, {format, "Schema error for '~s': ~p", [Index, Error]}, State}
     end.
 
 %% @doc process_stream/3 callback. Ignored.
