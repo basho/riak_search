@@ -15,14 +15,13 @@
 -import(riak_search_utils, [to_atom/1, to_integer/1, to_binary/1, to_boolean/1, to_float/1]).
 -import(riak_pb_search_codec, [encode_search_doc/1]).
 
--record(?MODULE, {client}).
--define(state, #?MODULE).
+-record(state, {client}).
 
 %% @doc init/0 callback. Returns the service internal start state.
 -spec init() -> any().
 init() ->
     {ok, C} = riak_search:local_client(),
-    ?state{client=C}.
+    #state{client=C}.
 
 %% @doc decode/2 callback. Decodes an incoming message.
 decode(Code, Bin) ->
@@ -33,7 +32,7 @@ encode(Message) ->
     {ok, riak_pb_codec:encode(Message)}.
 
 %% @doc process/2 callback. Handles an incoming request message.
-process(#rpbsearchqueryreq{index=Index, sort=Sort0, fl=FL0, presort=Presort0}=Msg, ?state{client=Client}=State) ->
+process(#rpbsearchqueryreq{index=Index, sort=Sort0, fl=FL0, presort=Presort0}=Msg, #state{client=Client}=State) ->
     case riak_search_config:get_schema(Index) of
         {ok, Schema0} ->
             case parse_squery(Msg) of
