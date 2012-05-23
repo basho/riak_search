@@ -66,17 +66,17 @@ process(#rpbsearchqueryreq{index=Index, sort=Sort0, fl=FL0, presort=Presort0}=Ms
                     {ok, QueryOps} = Client:parse_query(Schema, SQuery#squery.q),
                     {ok, FilterOps} = Client:parse_filter(Schema, SQuery#squery.filter),
                     %% Validate
-                    DocKey = Schema:unique_key(),
+                    UK = Schema:unique_key(),
                     FL = default(FL0, <<"*">>),
                     Sort = default(Sort0, <<"none">>),
                     Presort = to_atom(default(Presort0, <<"score">>)),
                     if
-                        FL == [DocKey] andalso Sort /= <<"none">> ->
+                        FL == [UK] andalso Sort /= <<"none">> ->
                             {error, riak_search_utils:err_msg(fl_id_with_sort), State};
                         true ->
                             %% Execute
                             Result = run_query(Client, Schema, SQuery, QueryOps, FilterOps, Presort, FL),
-                            {reply, encode_results(Result), State}
+                            {reply, encode_results(Result, UK, FL), State}
                     end;
                 {error, missing_query} ->
                     {error, "Missing query", State}
@@ -93,38 +93,28 @@ process_stream(_,_,State) ->
 %% ---------------------------------
 %% Internal functions
 %% ---------------------------------
-run_query(Client, Schema, #squery{query_start=QStart, query_rows=QRows},
-          QueryOps, FilterOps, Presort, FL) ->
-    UK = Schema:unique_key(),
-    if
-        FL == [UK] ->
-            MaxScore = 0.0,
-            {NumFound, Results} = Client:search(Schema, QueryOps, FilterOps,
-                                                QStart, QRows, Presort, ?DEFAULT_TIMEOUT),
-            Docs = [ [{UK, DocID}] || {_, DocID, _} <- Results ];
-        true ->
-            {NumFound, MaxScore, Results} = Client:search_doc(Schema, QueryOps, FilterOps,
-                                                              QStart, QRows, Presort,
-                                                              ?DEFAULT_TIMEOUT),
-            Docs = [ [{UK, riak_indexed_doc:id(Doc)}|filter_fields(Doc, FL)] ||
-                Doc <- Results ]
-    end,
-    {NumFound, MaxScore, Docs}.
+run_query(Client, Schema, SQuery, QueryOps, FilterOps, Presort, FL) ->
+    {_Time, NumFound, MaxScore, DocsOrIDs} =
+        riak_search_utils:run_query(Client, Schema, SQuery, QueryOps,
+                                    FilterOps, Presort, FL),
+    {NumFound, MaxScore, DocsOrIDs}.
 
-encode_results({NumFound, MaxScore, Docs}) ->
+encode_results({NumFound, MaxScore, {ids, IDs}}, UK, FL) ->
     #rpbsearchqueryresp{
-                docs = [ encode_search_doc(Doc) || Doc <- Docs ],
+                docs = [ encode_search_doc({UK, ID}) || ID <- IDs ],
+                max_score = to_float(MaxScore),
+                num_found = NumFound
+                };
+
+encode_results({NumFound, MaxScore, {docs, Docs}}, UK, FL) ->
+    #rpbsearchqueryresp{
+                docs = [ begin
+                             Pairs = riak_indexed_doc:to_pairs(UK, Doc, FL),
+                             encode_search_doc(Pairs)
+                         end || Doc <- Docs ],
                 max_score = to_float(MaxScore),
                 num_found = NumFound
                }.
-filter_fields(Doc, [<<"*">>]) ->
-    riak_indexed_doc:fields(Doc);
-filter_fields(Doc, <<"*">>) ->
-    riak_indexed_doc:fields(Doc);
-filter_fields(Doc, FL) ->
-    [ Field || {Key, _}=Field <- riak_indexed_doc:fields(Doc),
-               lists:member(to_binary(Key), FL) ].
-
 
 parse_squery(#rpbsearchqueryreq{q = <<>>}) ->
     {error, missing_query};

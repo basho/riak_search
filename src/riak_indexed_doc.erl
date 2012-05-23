@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
@@ -16,6 +16,7 @@
     props/1, add_prop/3, set_props/2, clear_props/1,
     postings/1,
     to_mochijson2/3,
+    to_pairs/3,
     analyze/1,
     new_obj/2, get_obj/3, put_obj/2, get/3, put/2, put/3,
     delete/2, delete/3,
@@ -104,6 +105,10 @@ to_mochijson2(XForm, IdxDoc=#riak_idx_doc{id=Id, index=Index, props=Props}, FL) 
               {fields, {struct, [XForm(Field)
                                  || Field <- lists:keysort(1, Fields)]}},
               {props, {struct, Props}}]}.
+
+%% @doc This is for PB encoding
+to_pairs(UK, IdxDoc=#riak_idx_doc{id=Id}, FL) ->
+    [{UK, Id}|?MODULE:fields(IdxDoc, FL)].
 
 %% Parse a #riak_idx_doc{} record
 %% Return {ok, [{Index, FieldName, Term, DocID, Props}]}.
