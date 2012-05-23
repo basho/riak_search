@@ -12,7 +12,7 @@
          process/2,
          process_stream/3]).
 
--import(riak_search_utils, [to_atom/1, to_integer/1, to_binary/1, to_boolean/1, to_float/1]).
+-import(riak_search_utils, [to_atom/1, to_binary/1, to_float/1]).
 -import(riak_pb_search_codec, [encode_search_doc/1]).
 
 -record(state, {client}).
