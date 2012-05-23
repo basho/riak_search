@@ -24,10 +24,12 @@
     ets_keys/1,
     consult/1,
     ptransform/2,
-    err_msg/1
+    err_msg/1,
+    run_query/7
 ]).
 
 -include("riak_search.hrl").
+-include("riak_solr.hrl").
 -ifdef(TEST).
 -ifdef(EQC).
 -include_lib("eqc/include/eqc.hrl").
@@ -260,6 +262,32 @@ err_msg({error, fl_id_with_sort, UniqKey}) ->
     ?FMT("cannot sort when fl=~s~n", [UniqKey]);
 err_msg(Error) ->
     ?FMT("Unable to parse request: ~p", [Error]).
+
+%% @doc This is similar logic between PB and HTTP query.
+-spec run_query(any(), any(), any(), any(), any(), any(), [binary()]) -> any().
+run_query(Client, Schema, SQuery, QueryOps, FilterOps, Presort, FL) ->
+    UK = Schema:unique_key(),
+    StartTime = erlang:now(),
+    #squery{query_start=QStart, query_rows=QRows}=SQuery,
+
+    if
+        FL == [UK] ->
+            %% MaxScore is meaningless when only returning ids.
+            MaxScore = "0.0",
+            {NumFound, Results} = Client:search(Schema, QueryOps, FilterOps,
+                                                QStart, QRows, Presort,
+                                                ?DEFAULT_TIMEOUT),
+            DocsOrIDs = {ids, [DocID || {_, DocID, _} <- Results]};
+        true ->
+            {NumFound, MaxScore, Docs} = Client:search_doc(Schema, QueryOps, FilterOps,
+                                                           QStart, QRows, Presort,
+                                                           ?DEFAULT_TIMEOUT),
+            DocsOrIDs = {docs, Docs}
+    end,
+
+    ElapsedTime = erlang:round(timer:now_diff(erlang:now(), StartTime) / 1000),
+    {ElapsedTime, NumFound, MaxScore, DocsOrIDs}.
+
 
 -ifdef(TEST).
 

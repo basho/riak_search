@@ -28,6 +28,7 @@
 -endif.
 
 %% Create a new indexed doc
+-spec new(any(), any(), search_fields(), any()) -> #riak_idx_doc{}.
 new(Index, Id, Fields, Props) ->
     {ok, Schema} = riak_search_config:get_schema(Index),
     {RegularFields, InlineFields} = normalize_fields(Fields, Schema),
@@ -51,6 +52,8 @@ inline_fields(#riak_idx_doc{inline_fields=InlineFields}, FL) ->
     filter_fields(InlineFields, FL).
 
 %% @private
+-spec filter_fields([{binary(), any(), any()}], all | [binary()]) ->
+                           search_fields().
 filter_fields(Fields, all) -> [{Name, Val} || {Name, Val, _} <- Fields];
 filter_fields(Fields, FL) ->
     FS = ordsets:from_list(FL),

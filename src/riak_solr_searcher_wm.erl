@@ -114,44 +114,30 @@ parse_fl(FL) ->
 
 to_json(Req, #state{sort=SortBy, fl=FL}=State) ->
     #state{schema=Schema, squery=SQuery}=State,
-    {ElapsedTime, NumFound, MaxScore, DocsOrIDs} = run_query(State),    
+    FL2 = parse_fl(FL),
+    State2 = State#state{fl=FL2},
+
+    {ElapsedTime, NumFound, MaxScore, DocsOrIDs} = run_query(State2),
     {riak_solr_output:json_response(Schema, SortBy, ElapsedTime, SQuery,
                                     NumFound, MaxScore, DocsOrIDs,
-                                    parse_fl(FL)),
+                                    FL2),
      Req, State}.
-    
+
 to_xml(Req, #state{sort=SortBy, fl=FL}=State) ->
     #state{schema=Schema, squery=SQuery}=State,
-    {ElapsedTime, NumFound, MaxScore, DocsOrIDs} = run_query(State),
+    FL2 = parse_fl(FL),
+    State2 = State#state{fl=FL2},
+
+    {ElapsedTime, NumFound, MaxScore, DocsOrIDs} = run_query(State2),
     {riak_solr_output:xml_response(Schema, SortBy, ElapsedTime, SQuery,
-                                   NumFound, MaxScore, DocsOrIDs, parse_fl(FL)),
+                                   NumFound, MaxScore, DocsOrIDs, FL2),
      Req, State}.
-    
+
 run_query(#state{client=Client, schema=Schema, squery=SQuery,
                  query_ops=QueryOps, filter_ops=FilterOps, presort=Presort,
                  fl=FL}) ->
-
-    #squery{query_start=QStart, query_rows=QRows}=SQuery,
-
-    %% Run the query...
-    UK = binary_to_list(Schema:unique_key()),
-    StartTime = erlang:now(),
-    if
-        FL == UK ->
-            MaxScore = "0.0", %% Max score is meaningless when only returning ids
-            {NumFound, Results} = Client:search(Schema, QueryOps, FilterOps,
-                                                QStart, QRows, Presort,
-                                                ?DEFAULT_TIMEOUT),
-            DocsOrIDs = {ids, [DocID || {_, DocID, _} <- Results]};
-        true ->
-            {NumFound, MaxScore, Docs} = Client:search_doc(Schema, QueryOps, FilterOps,
-                                                           QStart, QRows, Presort,
-                                                           ?DEFAULT_TIMEOUT),
-            DocsOrIDs = {docs, Docs}
-    end,
-            
-    ElapsedTime = erlang:round(timer:now_diff(erlang:now(), StartTime) / 1000),
-    {ElapsedTime, NumFound, MaxScore, DocsOrIDs}.
+    riak_search_utils:run_query(Client, Schema, SQuery, QueryOps, FilterOps,
+                                Presort, FL).
 
 %% @private
 %% Pull the index name from the request. If not found, then use the

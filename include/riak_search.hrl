@@ -23,6 +23,11 @@
 
 -type stream_ref() :: {stream_response, reference()}.
 
+-type search_fields() :: [{search_field(),search_data()}].
+-type search_field() :: string().
+-type search_data() :: string() | binary().
+
+
 %%%===================================================================
 %%% Records
 %%%===================================================================
@@ -102,7 +107,7 @@
                           inputcount,
                           querynorm}).
 
--record(riak_search_field, {name,
+-record(riak_search_field, {name :: binary(),
                             aliases=[],
                             type,
                             padding_size,
