@@ -62,7 +62,8 @@ process(#rpbsearchqueryreq{index=Index, sort=Sort0, fl=FL0, presort=Presort0}=Ms
             case parse_squery(Msg) of
                 {ok, SQuery} ->
                     %% Construct schema, query, and filter
-                    Schema = replace_schema_defaults(SQuery, Schema0),
+                    Schema = riak_search_utils:replace_schema_defaults(SQuery,
+                                                                       Schema0),
                     {ok, QueryOps} = Client:parse_query(Schema, SQuery#squery.q),
                     {ok, FilterOps} = Client:parse_filter(Schema, SQuery#squery.filter),
                     %% Validate
@@ -133,21 +134,3 @@ default(undefined, Default) ->
     Default;
 default(Value, _) ->
     Value.
-
-%% @private
-%% @todo factor out of riak_solr_searcher_wm
-%% Override the provided schema with a new default field, if one is
-%% supplied in the query string.
-replace_schema_defaults(SQuery, Schema0) ->
-    Schema1 = case SQuery#squery.default_op of
-                  undefined ->
-                      Schema0;
-                  Op ->
-                      Schema0:set_default_op(Op)
-              end,
-    case SQuery#squery.default_field of
-        undefined ->
-            Schema1;
-        Field ->
-            Schema1:set_default_field(to_binary(Field))
-    end.

@@ -25,7 +25,8 @@
     consult/1,
     ptransform/2,
     err_msg/1,
-    run_query/7
+    run_query/7,
+    replace_schema_defaults/2
 ]).
 
 -include("riak_search.hrl").
@@ -287,6 +288,25 @@ run_query(Client, Schema, SQuery, QueryOps, FilterOps, Presort, FL) ->
 
     ElapsedTime = erlang:round(timer:now_diff(erlang:now(), StartTime) / 1000),
     {ElapsedTime, NumFound, MaxScore, DocsOrIDs}.
+
+
+
+%% @doc Override the provided `Schema' with a new default field, if
+%%      one is supplied in the `SQuery'.
+-spec replace_schema_defaults(#squery{}, any()) -> any().
+replace_schema_defaults(SQuery, Schema) ->
+    Schema2 = case SQuery#squery.default_op of
+                  undefined ->
+                      Schema;
+                  Op ->
+                      Schema:set_default_op(Op)
+              end,
+    case SQuery#squery.default_field of
+        undefined ->
+            Schema2;
+        Field ->
+            Schema2:set_default_field(to_binary(Field))
+    end.
 
 
 -ifdef(TEST).

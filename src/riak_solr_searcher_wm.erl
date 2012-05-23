@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
@@ -58,8 +58,8 @@ malformed_request(Req, State) ->
         {ok, Schema0} ->
             case parse_squery(Req) of
                 {ok, SQuery} ->
-                    %% Update schema defaults...
-                    Schema = replace_schema_defaults(SQuery, Schema0),
+                    Schema = riak_search_utils:replace_schema_defaults(SQuery,
+                                                                       Schema0),
 
                     %% Try to parse the query
                     Client = State#state.client,
@@ -174,22 +174,4 @@ parse_squery(Req) ->
                              query_start=QueryStart,
                              query_rows=QueryRows},
             {ok, SQuery}
-    end.
-
-
-%% @private
-%% Override the provided schema with a new default field, if one is
-%% supplied in the query string.
-replace_schema_defaults(SQuery, Schema0) ->
-    Schema1 = case SQuery#squery.default_op of
-                  undefined ->
-                      Schema0;
-                  Op ->
-                      Schema0:set_default_op(Op)
-              end,
-    case SQuery#squery.default_field of
-        undefined ->
-            Schema1;
-        Field ->
-            Schema1:set_default_field(to_binary(Field))
     end.
