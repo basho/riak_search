@@ -69,7 +69,7 @@ process(Msg, #state{client=Client}=State) ->
             {ok, FilterOps} = Client:parse_filter(Schema, SQuery#squery.filter),
             %% Validate
             UK = Schema:unique_key(),
-            FL = default(FL0, <<"*">>),
+            FL = parse_fl(default(FL0, [<<"*">>])),
             Sort = default(Sort0, <<"none">>),
             Presort = to_atom(default(Presort0, <<"score">>)),
             if
@@ -88,7 +88,6 @@ process(Msg, #state{client=Client}=State) ->
 process_stream(_,_,State) ->
     {ignore, State}.
 
-
 %% ---------------------------------
 %% Internal functions
 %% ---------------------------------
@@ -100,7 +99,7 @@ run_query(Client, Schema, SQuery, QueryOps, FilterOps, Presort, FL) ->
 
 encode_results({NumFound, MaxScore, {ids, IDs}}, UK, _FL) ->
     #rpbsearchqueryresp{
-                docs = [ encode_search_doc({UK, ID}) || ID <- IDs ],
+                docs = [ encode_search_doc([{UK, ID}]) || ID <- IDs ],
                 max_score = to_float(MaxScore),
                 num_found = NumFound
                 };
@@ -127,6 +126,9 @@ parse_squery(#rpbsearchqueryreq{q=Query,
                  default_field=default(DefaultField,undefined),
                  query_start=default(Start, 0),
                  query_rows=default(Rows, ?DEFAULT_RESULT_SIZE)}}.
+
+parse_fl([<<"*">>]) -> all;
+parse_fl(FL) -> FL.
 
 default(undefined, Default) ->
     Default;
