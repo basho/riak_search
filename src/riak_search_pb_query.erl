@@ -56,34 +56,32 @@ encode(Message) ->
     {ok, riak_pb_codec:encode(Message)}.
 
 %% @doc process/2 callback. Handles an incoming request message.
-process(#rpbsearchqueryreq{index=Index, sort=Sort0, fl=FL0, presort=Presort0}=Msg, #state{client=Client}=State) ->
-    case riak_search_config:get_schema(Index) of
-        {ok, Schema0} ->
-            case parse_squery(Msg) of
-                {ok, SQuery} ->
-                    %% Construct schema, query, and filter
-                    Schema = riak_search_utils:replace_schema_defaults(SQuery,
-                                                                       Schema0),
-                    {ok, QueryOps} = Client:parse_query(Schema, SQuery#squery.q),
-                    {ok, FilterOps} = Client:parse_filter(Schema, SQuery#squery.filter),
-                    %% Validate
-                    UK = Schema:unique_key(),
-                    FL = default(FL0, <<"*">>),
-                    Sort = default(Sort0, <<"none">>),
-                    Presort = to_atom(default(Presort0, <<"score">>)),
-                    if
-                        FL == [UK] andalso Sort /= <<"none">> ->
-                            {error, riak_search_utils:err_msg(fl_id_with_sort), State};
-                        true ->
-                            %% Execute
-                            Result = run_query(Client, Schema, SQuery, QueryOps, FilterOps, Presort, FL),
-                            {reply, encode_results(Result, UK, FL), State}
-                    end;
-                {error, missing_query} ->
-                    {error, "Missing query", State}
+process(Msg, #state{client=Client}=State) ->
+    #rpbsearchqueryreq{index=Index, sort=Sort0,
+                       fl=FL0, presort=Presort0}=Msg,
+    {ok, Schema0} = riak_search_config:get_schema(Index),
+    case parse_squery(Msg) of
+        {ok, SQuery} ->
+            %% Construct schema, query, and filter
+            Schema = riak_search_utils:replace_schema_defaults(SQuery,
+                                                               Schema0),
+            {ok, QueryOps} = Client:parse_query(Schema, SQuery#squery.q),
+            {ok, FilterOps} = Client:parse_filter(Schema, SQuery#squery.filter),
+            %% Validate
+            UK = Schema:unique_key(),
+            FL = default(FL0, <<"*">>),
+            Sort = default(Sort0, <<"none">>),
+            Presort = to_atom(default(Presort0, <<"score">>)),
+            if
+                FL == [UK] andalso Sort /= <<"none">> ->
+                    {error, riak_search_utils:err_msg(fl_id_with_sort), State};
+                true ->
+                    %% Execute
+                    Result = run_query(Client, Schema, SQuery, QueryOps, FilterOps, Presort, FL),
+                    {reply, encode_results(Result, UK, FL), State}
             end;
-        Error ->
-            {error, {format, "Schema error for '~s': ~p", [Index, Error]}, State}
+        {error, missing_query} ->
+            {error, "Missing query", State}
     end.
 
 %% @doc process_stream/3 callback. Ignored.
@@ -100,7 +98,7 @@ run_query(Client, Schema, SQuery, QueryOps, FilterOps, Presort, FL) ->
                                     FilterOps, Presort, FL),
     {NumFound, MaxScore, DocsOrIDs}.
 
-encode_results({NumFound, MaxScore, {ids, IDs}}, UK, FL) ->
+encode_results({NumFound, MaxScore, {ids, IDs}}, UK, _FL) ->
     #rpbsearchqueryresp{
                 docs = [ encode_search_doc({UK, ID}) || ID <- IDs ],
                 max_score = to_float(MaxScore),
