@@ -42,18 +42,18 @@ from_eterm(SchemaName, {schema, SchemaProps, FieldDefs}) when is_binary(SchemaNa
         throw({error, {malformed_schema, default_field, {schema, SchemaProps}}}),
 
     %% Verify that DefaultOp is either "and" or "or"...
-    lists:member(DefaultOp, ['and', 'or']) orelse 
+    lists:member(DefaultOp, ['and', 'or']) orelse
         throw({error, {malformed_schema, default_op, {schema, SchemaProps}}}),
 
     {ok, Fields} = parse_fields(FieldDefs, SchemaAnalyzer, []),
-    {ok, riak_search_schema:new(SchemaName, Version, NVal, DefaultField, UniqueKey, 
+    {ok, riak_search_schema:new(SchemaName, Version, NVal, DefaultField, UniqueKey,
                                 Fields, DefaultOp, SchemaAnalyzer)}.
 
 parse_fields([], _SchemaAnalyzer, Fields) ->
     {ok, lists:reverse(Fields)};
 parse_fields({fields, Fields}, SchemaAnalyzer, Fields) ->
     parse_fields(Fields, SchemaAnalyzer, Fields);
-parse_fields([{FieldClass, FieldProps}|T], SchemaAnalyzer, Fields) 
+parse_fields([{FieldClass, FieldProps}|T], SchemaAnalyzer, Fields)
 when FieldClass == field orelse FieldClass == dynamic_field ->
     %% Read fields...
     IsDynamic = (FieldClass == dynamic_field),
@@ -84,8 +84,8 @@ when FieldClass == field orelse FieldClass == dynamic_field ->
         throw({error, {malformed_schema, no_dynamic_field_aliases, FieldProps}}),
 
     %% Calculate Name...
-    case FieldClass of 
-        field  -> 
+    case FieldClass of
+        field  ->
             NewName = Name;
         dynamic_field ->
             NewName = calculate_name_pattern_regex(Name)
@@ -95,11 +95,11 @@ when FieldClass == field orelse FieldClass == dynamic_field ->
     Field0 = #riak_search_field {
       name=NewName,
       aliases=[calculate_alias_pattern(A) || A <- lists:usort(Aliases)],
-      type=Type, 
+      type=Type,
       padding_size=PaddingSize,
       padding_char=normalize_padding_char(PaddingChar, Name),
-      required=IsRequired, 
-      dynamic=IsDynamic, 
+      required=IsRequired,
+      dynamic=IsDynamic,
       skip=IsSkip,
       analyzer_factory=FieldAnalyzer,
       analyzer_args=FieldAnalyzerArgs,
@@ -107,7 +107,7 @@ when FieldClass == field orelse FieldClass == dynamic_field ->
      },
     NewAnalyzerArgs = calculate_analyzer_args(Field0),
     Field = Field0#riak_search_field{analyzer_args = NewAnalyzerArgs },
- 
+
     %% Add the field...
     parse_fields(T, SchemaAnalyzer, [Field|Fields]).
 
@@ -124,10 +124,10 @@ get_default_padding_char(Type) ->
     end.
 
 get_default_field_analyzer(Type, SchemaAnalyzer) ->
-    if 
-        Type == integer -> 
+    if
+        Type == integer ->
             ?INTEGER_ANALYZER;
-        Type == date    -> 
+        Type == date    ->
             ?NOOP_ANALYZER;
         true ->
             SchemaAnalyzer
@@ -164,9 +164,9 @@ calculate_alias_pattern(Alias) ->
             end
     end.
 
-binary_contains(H, <<H,_/binary>>) -> 
+binary_contains(H, <<H,_/binary>>) ->
     true;
-binary_contains(H, <<_,T/binary>>) -> 
+binary_contains(H, <<_,T/binary>>) ->
     binary_contains(H, T);
 binary_contains(_, <<>>) ->
     false.
@@ -175,15 +175,15 @@ binary_contains(_, <<>>) ->
 %% replace it with the regex ".*"
 calculate_name_pattern_regex(Name) ->
     list_to_binary("^" ++ calculate_name_pattern_regex_1(Name) ++ "$").
-calculate_name_pattern_regex_1(<<$*, T/binary>>) -> 
+calculate_name_pattern_regex_1(<<$*, T/binary>>) ->
     [$.,$*|calculate_name_pattern_regex_1(T)];
-calculate_name_pattern_regex_1(<<H, T/binary>>) -> 
+calculate_name_pattern_regex_1(<<H, T/binary>>) ->
     [H|calculate_name_pattern_regex_1(T)];
-calculate_name_pattern_regex_1(<<>>) -> 
+calculate_name_pattern_regex_1(<<>>) ->
     [].
 
 %% Calculate the arguments to send across to qilr for the analyzer_factory
-calculate_analyzer_args(Field=#riak_search_field{analyzer_args=Args}) when 
+calculate_analyzer_args(Field=#riak_search_field{analyzer_args=Args}) when
       Args =/= undefined ->
     case is_list(Args) andalso lists:all(fun is_string/1, Args) of
         true ->
@@ -198,7 +198,7 @@ calculate_analyzer_args(Field) ->
                 $0 ->
                     [integer_to_list(Field#riak_search_field.padding_size)];
                 _ ->
-                    throw({error, {integer_fields_only_pads_with_zeros, 
+                    throw({error, {integer_fields_only_pads_with_zeros,
                                    Field#riak_search_field.name}})
             end;
         _ ->
@@ -248,18 +248,18 @@ calculate_analyzer_args_test() ->
 
     ?assertThrow({error, {analyzer_args_must_be_strings, _}},
         calculate_analyzer_args(#riak_search_field{analyzer_args= <<"bin">>})).
-    
+
 normalize_padding_char_test() ->
     ?assertEqual($0, normalize_padding_char($0, fld)),
     ?assertEqual($0, normalize_padding_char("0", fld)),
 
     ?assertThrow({error, {bad_padding_char, _}},
                  normalize_padding_char(a, fld)),
-    ?assertThrow({error, {bad_padding_char, fld}}, 
+    ?assertThrow({error, {bad_padding_char, fld}},
                  normalize_padding_char(<<"0">>, fld)),
-    ?assertThrow({error, {bad_padding_char, fld}}, 
+    ?assertThrow({error, {bad_padding_char, fld}},
                  normalize_padding_char("00", fld)).
-    
+
 
 bad_alias_regexp_test() ->
     SchemaProps = [{version, 1},{default_field, <<"field">>}],
@@ -278,7 +278,7 @@ alias_on_dynamic_field_invalid_test() ->
     SchemaDef = {schema, SchemaProps, FieldDefs},
     ?assertThrow({error, {malformed_schema, no_dynamic_field_aliases, _FieldProps}},
                  from_eterm(<<"bad_alias_regexp_test">>, SchemaDef)).
- 
+
 
 
 -endif. % TEST
