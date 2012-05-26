@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
@@ -9,7 +9,6 @@
          from_eterm/2
         ]).
 
--include_lib("qilr.hrl").
 -include("riak_search.hrl").
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -182,7 +181,7 @@ calculate_name_pattern_regex_1(<<H, T/binary>>) ->
 calculate_name_pattern_regex_1(<<>>) ->
     [].
 
-%% Calculate the arguments to send across to qilr for the analyzer_factory
+%% Calculate the arguments for the analyzer_factory
 calculate_analyzer_args(Field=#riak_search_field{analyzer_args=Args}) when
       Args =/= undefined ->
     case is_list(Args) andalso lists:all(fun is_string/1, Args) of

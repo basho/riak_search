@@ -7,6 +7,9 @@
 -endif.
 -define(FMT(S, L), lists:flatten(io_lib:format(S, L))).
 
+-define(INTEGER_ANALYZER,    {erlang, text_analyzers, integer_analyzer_factory}).
+-define(NOOP_ANALYZER,       {erlang, text_analyzers, noop_analyzer_factory}).
+
 -define(DEFAULT_INDEX, <<"search">>).
 -define(RESULTVEC_SIZE, 1000).
 
