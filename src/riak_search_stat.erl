@@ -37,7 +37,7 @@ register_stats() ->
 
 %% @doc Return current aggregation of all stats.
 -spec get_stats() -> proplists:proplist().
-get_stats() -> 
+get_stats() ->
     {?APP, [{Name, get_metric_value({?APP, Name}, Type)} || {Name, Type} <- stats()]}.
 
 %% @doc Update the given `Stat'.
@@ -50,12 +50,25 @@ update({index_end, Time}) ->
     folsom_metrics:notify_existing_metric({?APP, index_pending}, {dec, 1}, counter);
 update({index_entries, N}) ->
     folsom_metrics:notify_existing_metric({?APP, index_entries}, N, histogram);
-update(solr_query_begin) ->
-    folsom_metrics:notify_existing_metric({?APP, solr_query_pending}, {inc, 1}, counter);
-update({solr_query_end, Time}) ->
-    folsom_metrics:notify_existing_metric({?APP, solr_query_latency}, Time, histogram),
-    folsom_metrics:notify_existing_metric({?APP, solr_query_throughput}, 1, meter),
-    folsom_metrics:notify_existing_metric({?APP, solr_query_pending}, {dec, 1}, counter).
+update(search_begin) ->
+    folsom_metrics:notify_existing_metric({?APP, search_pending}, {inc, 1}, counter);
+update({search_end, Time}) ->
+    folsom_metrics:notify_existing_metric({?APP, search_latency}, Time, histogram),
+    folsom_metrics:notify_existing_metric({?APP, search_throughput}, 1, meter),
+    folsom_metrics:notify_existing_metric({?APP, search_pending}, {dec, 1}, counter);
+update(search_fold_begin) ->
+    folsom_metrics:notify_existing_metric({?APP, search_fold_pending}, {inc, 1}, counter);
+update({search_fold_end, Time}) ->
+    folsom_metrics:notify_existing_metric({?APP, search_fold_latency}, Time, histogram),
+    folsom_metrics:notify_existing_metric({?APP, search_fold_throughput}, 1, meter),
+    folsom_metrics:notify_existing_metric({?APP, search_fold_pending}, {dec, 1}, counter);
+update(search_doc_begin) ->
+    folsom_metrics:notify_existing_metric({?APP, search_doc_pending}, {inc, 1}, counter);
+update({search_doc_end, Time}) ->
+    folsom_metrics:notify_existing_metric({?APP, search_doc_latency}, Time, histogram),
+    folsom_metrics:notify_existing_metric({?APP, search_doc_throughput}, 1, meter),
+    folsom_metrics:notify_existing_metric({?APP, search_doc_pending}, {dec, 1}, counter).
+
 
 %% -------------------------------------------------------------------
 %% Private
@@ -66,13 +79,21 @@ get_metric_value(Name, _Type) ->
     folsom_metrics:get_metric_value(Name).
 
 stats() ->
-    [{index_entries, histogram},
+    [
+     {index_entries, histogram},
      {index_latency, histogram},
      {index_pending, counter},
      {index_throughput, meter},
-     {solr_query_pending, counter},
-     {solr_query_latency, histogram},
-     {solr_query_throughput, meter}].
+     {search_pending, counter},
+     {search_latency, histogram},
+     {search_throughput, meter},
+     {search_fold_pending, counter},
+     {search_fold_latency, histogram},
+     {search_fold_throughput, meter},
+     {search_doc_pending, counter},
+     {search_doc_latency, histogram},
+     {search_doc_throughput, meter}
+    ].
 
 register_stat(Name, histogram) ->
 %% get the global default histo type
