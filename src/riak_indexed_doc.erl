@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
@@ -8,14 +8,15 @@
 
 -export([
     new/4,
-    index/1, id/1, 
+    index/1, id/1,
     idx_doc_bucket/1,
     fields/1, fields/2,
     regular_fields/1, regular_fields/2,
     inline_fields/1, inline_fields/2,
-    props/1, add_prop/3, set_props/2, clear_props/1, 
+    props/1, add_prop/3, set_props/2, clear_props/1,
     postings/1,
     to_mochijson2/3,
+    to_pairs/3,
     analyze/1,
     new_obj/2, get_obj/3, put_obj/2, get/3, put/2, put/3,
     delete/2, delete/3,
@@ -28,13 +29,14 @@
 -endif.
 
 %% Create a new indexed doc
+-spec new(any(), any(), search_fields(), any()) -> #riak_idx_doc{}.
 new(Index, Id, Fields, Props) ->
     {ok, Schema} = riak_search_config:get_schema(Index),
     {RegularFields, InlineFields} = normalize_fields(Fields, Schema),
     #riak_idx_doc{ index=Index,
-                   id=Id, 
-                   fields=RegularFields, 
-                   inline_fields=InlineFields, 
+                   id=Id,
+                   fields=RegularFields,
+                   inline_fields=InlineFields,
                    props=Props }.
 
 fields(IdxDoc) -> fields(IdxDoc, all).
@@ -51,6 +53,8 @@ inline_fields(#riak_idx_doc{inline_fields=InlineFields}, FL) ->
     filter_fields(InlineFields, FL).
 
 %% @private
+-spec filter_fields([{binary(), any(), any()}], all | [binary()]) ->
+                           search_fields().
 filter_fields(Fields, all) -> [{Name, Val} || {Name, Val, _} <- Fields];
 filter_fields(Fields, FL) ->
     FS = ordsets:from_list(FL),
@@ -82,7 +86,7 @@ postings(IdxDoc) ->
     DocId = ?MODULE:id(IdxDoc),
     InlineFields = [{FieldName, Terms} || {FieldName, _, Terms} <- IdxDoc#riak_idx_doc.inline_fields],
     K = riak_search_utils:current_key_clock(),
-    
+
     %% Fold over each regular field, and then fold over each term in
     %% that field.
     F1 = fun({FieldName, _, TermPos}, FieldsAcc) ->
@@ -102,9 +106,13 @@ to_mochijson2(XForm, IdxDoc=#riak_idx_doc{id=Id, index=Index, props=Props}, FL) 
                                  || Field <- lists:keysort(1, Fields)]}},
               {props, {struct, Props}}]}.
 
+%% @doc This is for PB encoding
+to_pairs(UK, IdxDoc=#riak_idx_doc{id=Id}, FL) ->
+    [{UK, Id}|?MODULE:fields(IdxDoc, FL)].
+
 %% Parse a #riak_idx_doc{} record
 %% Return {ok, [{Index, FieldName, Term, DocID, Props}]}.
-analyze(IdxDoc) 
+analyze(IdxDoc)
   when is_record(IdxDoc, riak_idx_doc) andalso IdxDoc#riak_idx_doc.analyzed_flag == true ->
     %% Don't re-analyze an already analyzed idx doc.
     IdxDoc;
@@ -114,7 +122,7 @@ analyze(IdxDoc) when is_record(IdxDoc, riak_idx_doc) ->
     RegularFields = ?MODULE:regular_fields(IdxDoc),
     Inlines = ?MODULE:inline_fields(IdxDoc),
     {ok, Schema} = riak_search_config:get_schema(DocIndex),
-    
+
     %% For each Field = {FieldName, FieldValue, _}, split the FieldValue
     %% into terms and build a list of positions for those terms.
     F1 = fun({FieldName, FieldValue}, Acc2) ->
@@ -164,18 +172,18 @@ normalize_fields(DocFields, Schema) ->
                               true ->
                                   {[Field|Regular], [Field|Inlines]};
                               only ->
-                                  {Regular, [Field|Inlines]}                                  
+                                  {Regular, [Field|Inlines]}
                           end
                   end;
              ({InFieldName, FieldValue}, _) ->
                   throw({expected_binaries, InFieldName, FieldValue})
           end,
     {RevRegular, RevInlines} = lists:foldl(Fun, {[], []}, DocFields),
-    
+
     %% Aliasing makes it possible to have multiple entries in
     %% RevRegular.  Combine multiple entries for the same field name
     %% into a single field.
-    {merge_fields(lists:reverse(RevRegular)), 
+    {merge_fields(lists:reverse(RevRegular)),
      merge_fields(lists:reverse(RevInlines))}.
 
 %% @private
@@ -205,7 +213,7 @@ merge_fields_folder({FieldName, NewFieldData, NewTermPos}, [{FieldName, FieldDat
     [Field | Fields];
 merge_fields_folder(New, Fields) ->
     [New | Fields].
-      
+
 
 %% @private
 %% Parse a FieldValue into a list of terms.
@@ -238,7 +246,7 @@ get_term_positions(Terms) ->
          end,
     Keys = riak_search_utils:ets_keys(Table),
     Positions = [F2(X) || X <- Keys],
-    
+
     %% Delete the table and return.
     ets:delete(Table),
     Positions.
@@ -258,7 +266,7 @@ get_obj(RiakClient, DocIndex, DocID) ->
 %% Returns a #riak_idx_doc record.
 get(RiakClient, DocIndex, DocID) ->
     case get_obj(RiakClient, DocIndex, DocID) of
-        {ok, Obj} -> 
+        {ok, Obj} ->
             riak_object:get_value(Obj);
         Other ->
             Other
@@ -279,7 +287,7 @@ put(RiakClient, IdxDoc, Opts) ->
     Bucket = idx_doc_bucket(DocIndex),
     Key = DocID,
     case RiakClient:get(Bucket, Key) of
-        {ok, Obj} -> 
+        {ok, Obj} ->
             DocObj = riak_object:update_value(Obj, IdxDoc);
         {error, notfound} ->
             DocObj = riak_object:new(Bucket, Key, IdxDoc)
@@ -331,20 +339,20 @@ normalize_fields_test() ->
                   {field, [{name, <<"anotherinline">>},
                            {alias, <<"anotherinlinetoo">>},
                            {inline, true}]}],
-    
+
     SchemaDef = {schema, SchemaProps, FieldDefs},
     {ok, Schema} = riak_search_schema_parser:from_eterm(<<"is_skip_test">>, SchemaDef),
 
-    ?assertEqual({[], []}, 
-                 normalize_fields([], Schema)),    
+    ?assertEqual({[], []},
+                 normalize_fields([], Schema)),
 
-    ?assertEqual({[{<<"afield">>,<<"data">>, []}], []}, 
+    ?assertEqual({[{<<"afield">>,<<"data">>, []}], []},
                  normalize_fields([{<<"afield">>,<<"data">>}], Schema)),
 
-    ?assertEqual({[{<<"afield">>,<<"data">>, []}], []}, 
+    ?assertEqual({[{<<"afield">>,<<"data">>, []}], []},
                  normalize_fields([{<<"afieldtoo">>,<<"data">>}], Schema)),
 
-    ?assertEqual({[{<<"afield">>,<<"one two three">>, []}], []}, 
+    ?assertEqual({[{<<"afield">>,<<"one two three">>, []}], []},
                  normalize_fields([{<<"afieldtoo">>,<<"one">>},
                                    {<<"afield">>,<<"two">>},
                                    {<<"afieldtoo">>, <<"three">>}], Schema)),

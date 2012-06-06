@@ -40,11 +40,6 @@
 -type docid() :: binary().
 -type idxdoc() :: #riak_idx_doc{}.
 
--type search_fields() :: [{search_field(),search_data()}].
--type search_field() :: string().
--type search_data() :: string() | binary().
-    
-
 %% Bucket fixup hook for actually setting up the search hook
 fixup(Bucket, BucketProps) ->
     case proplists:get_value(search, BucketProps) of

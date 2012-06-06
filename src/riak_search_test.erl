@@ -360,7 +360,7 @@ validate_results_inner(_Length, Results, {property, Key, Value}) ->
     end;
 validate_results_inner(Length, Results, {doc, DocID, Validator}) ->
     case lists:keyfind(DocID, 2, Results) of
-        flase ->
+        false ->
             {fail, io_lib:format("Missing doc ID in results: ~p", [DocID])};
         Result ->
             validate_results_inner(1, [Result], Validator)

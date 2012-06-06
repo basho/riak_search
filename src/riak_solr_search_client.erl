@@ -9,8 +9,6 @@
          run_solr_command/3
 ]).
 
--define(DEFAULT_TIMEOUT, 60000).
-
 -import(riak_search_utils, [to_list/1, to_binary/1]).
 
 

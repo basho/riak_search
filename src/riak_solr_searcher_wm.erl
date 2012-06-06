@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
@@ -24,9 +24,6 @@
                 presort,
                 filter_ops,
                 fl}).
-
--define(DEFAULT_RESULT_SIZE, 10).
--define(DEFAULT_TIMEOUT, 60000).
 
 init(_) ->
     {ok, Client} = riak_search:local_client(),
@@ -61,8 +58,8 @@ malformed_request(Req, State) ->
         {ok, Schema0} ->
             case parse_squery(Req) of
                 {ok, SQuery} ->
-                    %% Update schema defaults...
-                    Schema = replace_schema_defaults(SQuery, Schema0),
+                    Schema = riak_search_utils:replace_schema_defaults(SQuery,
+                                                                       Schema0),
 
                     %% Try to parse the query
                     Client = State#state.client,
@@ -117,44 +114,30 @@ parse_fl(FL) ->
 
 to_json(Req, #state{sort=SortBy, fl=FL}=State) ->
     #state{schema=Schema, squery=SQuery}=State,
-    {ElapsedTime, NumFound, MaxScore, DocsOrIDs} = run_query(State),    
+    FL2 = parse_fl(FL),
+    State2 = State#state{fl=FL2},
+
+    {ElapsedTime, NumFound, MaxScore, DocsOrIDs} = run_query(State2),
     {riak_solr_output:json_response(Schema, SortBy, ElapsedTime, SQuery,
                                     NumFound, MaxScore, DocsOrIDs,
-                                    parse_fl(FL)),
+                                    FL2),
      Req, State}.
-    
+
 to_xml(Req, #state{sort=SortBy, fl=FL}=State) ->
     #state{schema=Schema, squery=SQuery}=State,
-    {ElapsedTime, NumFound, MaxScore, DocsOrIDs} = run_query(State),
+    FL2 = parse_fl(FL),
+    State2 = State#state{fl=FL2},
+
+    {ElapsedTime, NumFound, MaxScore, DocsOrIDs} = run_query(State2),
     {riak_solr_output:xml_response(Schema, SortBy, ElapsedTime, SQuery,
-                                   NumFound, MaxScore, DocsOrIDs, parse_fl(FL)),
+                                   NumFound, MaxScore, DocsOrIDs, FL2),
      Req, State}.
-    
+
 run_query(#state{client=Client, schema=Schema, squery=SQuery,
                  query_ops=QueryOps, filter_ops=FilterOps, presort=Presort,
                  fl=FL}) ->
-
-    #squery{query_start=QStart, query_rows=QRows}=SQuery,
-
-    %% Run the query...
-    UK = binary_to_list(Schema:unique_key()),
-    StartTime = erlang:now(),
-    if
-        FL == UK ->
-            MaxScore = "0.0", %% Max score is meaningless when only returning ids
-            {NumFound, Results} = Client:search(Schema, QueryOps, FilterOps,
-                                                QStart, QRows, Presort,
-                                                ?DEFAULT_TIMEOUT),
-            DocsOrIDs = {ids, [DocID || {_, DocID, _} <- Results]};
-        true ->
-            {NumFound, MaxScore, Docs} = Client:search_doc(Schema, QueryOps, FilterOps,
-                                                           QStart, QRows, Presort,
-                                                           ?DEFAULT_TIMEOUT),
-            DocsOrIDs = {docs, Docs}
-    end,
-            
-    ElapsedTime = erlang:round(timer:now_diff(erlang:now(), StartTime) / 1000),
-    {ElapsedTime, NumFound, MaxScore, DocsOrIDs}.
+    riak_search_utils:run_query(Client, Schema, SQuery, QueryOps, FilterOps,
+                                Presort, FL).
 
 %% @private
 %% Pull the index name from the request. If not found, then use the
@@ -191,22 +174,4 @@ parse_squery(Req) ->
                              query_start=QueryStart,
                              query_rows=QueryRows},
             {ok, SQuery}
-    end.
-
-
-%% @private
-%% Override the provided schema with a new default field, if one is
-%% supplied in the query string.
-replace_schema_defaults(SQuery, Schema0) ->
-    Schema1 = case SQuery#squery.default_op of
-                  undefined ->
-                      Schema0;
-                  Op ->
-                      Schema0:set_default_op(Op)
-              end,
-    case SQuery#squery.default_field of
-        undefined ->
-            Schema1;
-        Field ->
-            Schema1:set_default_field(to_binary(Field))
     end.
