@@ -95,6 +95,24 @@ intersection(State) ->
                 true ->
                     CandidateSet;
                 false ->
+                    %% TODO CHUNK: loop/chunk this
+                    %%
+                    %% Send candidate set in chunks, but can't b/c Op
+                    %% will start from beginning each time, so need
+                    %% two way comm?  Or return continuation to seek
+                    %% to last spot (that won't work with buffers).
+                    %%
+                    %% It really seems like I need a two-way channel
+                    %% to push in a chunk, get one back, potentially
+                    %% push more in, get more back, etc.
+                    %%
+                    %% I think to do this would need to alter term op
+                    %% to allow changing of filter during iteration.
+                    %%
+                    %% Would have to change mi_server:iterate to
+                    %% receive I think.  Could make a new API,
+                    %% lookup_lazy or something.  Allow me to get
+                    %% chunks and change filter.
                     Itr = riak_search_op_utils:iterator_tree(none,
                                                              [Op],
                                                              CandidateSet,
@@ -107,6 +125,7 @@ intersection(State) ->
                         false ->
                             merge_props(CandidateSet, ResultSet)
                     end
+                    %% TODO CHUNK: end loop/chunk
             end
     end.
 
