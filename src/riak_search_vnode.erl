@@ -203,8 +203,10 @@ delete(VState=#vstate{bmod=BMod, bstate=BState}) ->
     ok = BMod:drop(BState),
     {ok, VState}.
 
-handle_exit(_Pid, normal, _State) ->
-    {noreply, _State}.
+handle_exit(_Pid, Reason, State) ->
+    %% A linked process has crashed potentially causing pid values,
+    %% such as merge index or worker pool, to become obsolete.
+    {stop, Reason, State}.
 
 terminate(_Reason, #vstate{bmod=BMod, bstate=BState}) ->
     BMod:stop(BState),
