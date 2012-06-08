@@ -42,7 +42,8 @@ start_loop(Op, OutputPid, OutputRef, State) ->
 
     %% Create a #range_worker for each entry in the preflist...
     {From, To} = correct_term_order(Op#range_sized.from, Op#range_sized.to),
-    RangeWorkerOp = #range_worker { from=From, to=To, size=all },
+    Size = Op#range_sized.size,
+    RangeWorkerOp = #range_worker { from=From, to=To, size=Size },
     OpList = [RangeWorkerOp#range_worker { vnode=VNode } || VNode <- Preflist],
 
     %% Create the iterator...
