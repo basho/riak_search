@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
@@ -39,24 +39,20 @@ start(_StartType, _StartArgs) ->
 
                     ok = riak_api_pb_service:register(riak_search_pb_query, 27, 28),
 
-                    case riak_solr_sup:start_link() of
-                        {ok, _} ->
-                            webmachine_router:add_route({[Root, index, "update"],
-                                                         riak_solr_indexer_wm, []}),
-                            webmachine_router:add_route({[Root, "update"],
-                                                         riak_solr_indexer_wm, []}),
-                            webmachine_router:add_route({[Root, index, "select"],
-                                                         riak_solr_searcher_wm, []}),
-                            webmachine_router:add_route({[Root, "select"],
-                                                         riak_solr_searcher_wm, []}),
-                            {ok, Pid};
-                        Error ->
-                            Error
-                    end;
+                    webmachine_router:add_route({[Root, index, "update"],
+                                                 riak_solr_indexer_wm, []}),
+                    webmachine_router:add_route({[Root, "update"],
+                                                 riak_solr_indexer_wm, []}),
+                    webmachine_router:add_route({[Root, index, "select"],
+                                                 riak_solr_searcher_wm, []}),
+                    webmachine_router:add_route({[Root, "select"],
+                                                 riak_solr_searcher_wm, []}),
+                    {ok, Pid};
                 Error ->
                     Error
             end;
-        false -> {ok, self()}
+        false ->
+            {ok, self()}
     end.
 
 stop(_State) ->
