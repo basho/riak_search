@@ -101,7 +101,7 @@ it_op(Op, CandidateSet, SearchState) ->
 
     %% return an iterator that wraps the execution
     fun() ->
-            it_op_inner(Pid, Ref, Op)
+            it_op_inner(Pid, Ref, Op, [])
     end.
 
 %% @private Holds the function body of a leaf-iterator. When called,
@@ -109,13 +109,15 @@ it_op(Op, CandidateSet, SearchState) ->
 %% along with the new Iterator function to be called in the form
 %% {Term, Op, NewIteratorFun}. If we've hit the end of results, it
 %% returns {eof, Op}.
-it_op_inner(Pid, Ref, Op) ->
-    Pid!{get_result, self(), Ref},
+it_op_inner(Pid, Ref, Op, [Result|More]) ->
+    {Result, Op, fun() -> it_op_inner(Pid, Ref, Op, More) end};
+it_op_inner(Pid, Ref, Op, []) ->
+    Pid ! {get_results, self(), Ref},
     receive
-        {result, eof, Ref} ->
+        {results, eof, Ref} ->
             {eof, Op};
-        {result, Result, Ref} ->
-            {Result, Op, fun() -> it_op_inner(Pid, Ref, Op) end};
+        {results, [Result|More], Ref} ->
+            {Result, Op, fun() -> it_op_inner(Pid, Ref, Op, More) end};
         X ->
             lager:error("it_inner(~p, ~p, ~p) received unknown message: ~p",
                         [Pid, Ref, Op, X])
@@ -141,18 +143,18 @@ it_op_collector_loop(Parent, Ref, []) ->
         {'EXIT', Parent, _} ->
             stop
     end;
-it_op_collector_loop(Parent, Ref, [Result|Results]) ->
+it_op_collector_loop(Parent, Ref, Results) when is_list(Results) ->
     receive
-        {get_result, OutputPid, OutputRef} ->
-            OutputPid!{result, Result, OutputRef},
-            it_op_collector_loop(Parent, Ref, Results);
+        {get_results, From, FromRef} ->
+            From ! {results, Results, FromRef},
+            it_op_collector_loop(Parent, Ref, []);
         {'EXIT', Parent, _} ->
             stop
     end;
 it_op_collector_loop(Parent, _Ref, eof) ->
     receive
-        {get_result, OutputPid, OutputRef} ->
-            OutputPid!{result, eof, OutputRef};
+        {get_results, From, FromRef} ->
+            From ! {results, eof, FromRef};
         {'EXIT', Parent, _} ->
             stop
     end.
