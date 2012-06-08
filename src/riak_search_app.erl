@@ -23,6 +23,8 @@ start(_StartType, _StartArgs) ->
 
             case riak_search_sup:start_link() of
                 {ok, Pid} ->
+                    %% register stats
+                    riak_search_stat:register_stats(),
                     %% Register the search vnode with core and mark the node
                     %% as available for search requests.
                     riak_core:register(riak_search, [

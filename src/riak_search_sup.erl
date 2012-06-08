@@ -32,6 +32,7 @@ init([]) ->
     Config = {riak_search_config,
               {riak_search_config, start_link, []},
               permanent, 5000, worker, [riak_search_config]},
+
     VMaster = {riak_search_vnode_master,
                {riak_core_vnode_master, start_link, [riak_search_vnode]},
                permanent, 5000, worker, [riak_core_vnode_master]},

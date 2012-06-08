@@ -88,11 +88,13 @@ search(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows, Timeout) ->
 
 search(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows, PresortBy, Timeout)
   when PresortBy == key; PresortBy == score ->
-    %% Execute the search.
-    SearchRef1 = stream_search(IndexOrSchema, QueryOps, FilterOps),
 
-    %% Collect the results...
+    T1 = os:timestamp(),
+    riak_search_stat:update(search_begin),
+
+    SearchRef1 = stream_search(IndexOrSchema, QueryOps, FilterOps),
     MaxSearchResults = app_helper:get_env(riak_search, max_search_results),
+
     F = fun(Results, {Acc, AccCount}) ->
                 NewAcc = Results ++ Acc,
                 NewAccCount = AccCount + length(Results),
@@ -104,35 +106,50 @@ search(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows, PresortBy, Tim
                 end
         end,
 
-    case fold_results(SearchRef1, Timeout, F, {[], 0}) of
-        {ok, SearchRef2, {Results, _}} ->
-            case PresortBy of
-                key ->
-                    SortedResults = sort_by_key(SearchRef2, Results);
-                _ ->
-                    SortedResults = sort_by_score(SearchRef2, Results)
-            end,
+    R =
+        case fold_results(SearchRef1, Timeout, F, {[], 0}) of
+            {ok, SearchRef2, {Results, _}} ->
+                case PresortBy of
+                    key ->
+                        SortedResults = sort_by_key(SearchRef2, Results);
+                    _ ->
+                        SortedResults = sort_by_score(SearchRef2, Results)
+                end,
 
-            %% Dedup, and handle start and max results. Return matching
-            %% documents.
-            Results1 = truncate_list(QueryStart, QueryRows, SortedResults),
-            Length = length(SortedResults),
-            {Length, Results1};
-        {error, _} = Err ->
-            Err
-    end.
+                %% Dedup, and handle start and max results. Return matching
+                %% documents.
+                Results1 = truncate_list(QueryStart, QueryRows, SortedResults),
+                Length = length(SortedResults),
+
+                {Length, Results1};
+            {error, _} = Err ->
+                Err
+        end,
+
+    TD = timer:now_diff(os:timestamp(), T1),
+    riak_search_stat:update({search_end, TD}),
+    R.
+
 
 %% Run the search query, fold results through function, return final
 %% accumulator.
 search_fold(IndexOrSchema, QueryOps, FilterOps, Fun, AccIn, Timeout) ->
-    %% Execute the search, collect the results,.
+    T1 = os:timestamp(),
+    riak_search_stat:update(search_fold_begin),
+
     SearchRef = stream_search(IndexOrSchema, QueryOps, FilterOps),
-    case fold_results(SearchRef, Timeout, Fun, AccIn) of
-        {ok, _NewSearchRef, AccOut} ->
-            AccOut;
-        {error, _} = Err ->
-            Err
-    end.
+
+    R =
+        case fold_results(SearchRef, Timeout, Fun, AccIn) of
+            {ok, _NewSearchRef, AccOut} ->
+                AccOut;
+            {error, _} = Err ->
+                Err
+        end,
+
+    TD = timer:now_diff(os:timestamp(), T1),
+    riak_search_stat:update({search_fold_end, TD}),
+    R.
 
 search_doc(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows, Timeout) ->
     search_doc(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows,
@@ -141,7 +158,9 @@ search_doc(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows, Timeout) -
 search_doc(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows,
            PresortBy, Timeout)
   when PresortBy == key; PresortBy == score ->
-    %% Get results...
+    T1 = os:timestamp(),
+    riak_search_stat:update(search_doc_begin),
+
     {Length, Results} = search(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows, PresortBy, Timeout),
     MaxScore = case Results of
                    [] ->
@@ -155,7 +174,11 @@ search_doc(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows,
         riak_indexed_doc:get(RiakClient, Index, DocID)
     end,
     Documents = riak_search_utils:ptransform(F, Results),
-    {Length, MaxScore, [X || X <- Documents, X /= {error, notfound}]}.
+    R = {Length, MaxScore, [X || X <- Documents, X /= {error, notfound}]},
+
+    TD = timer:now_diff(os:timestamp(), T1),
+    riak_search_stat:update({search_doc_end, TD}),
+    R.
 
 %% Index a specified #riak_idx_doc
 index_doc(IdxDoc) ->
