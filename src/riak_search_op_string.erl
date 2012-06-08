@@ -36,17 +36,18 @@ preplan(Op, State) ->
         [skip] ->
             throw({error, stopword_not_allowed_in_query, TermString}),
             NewOp = undefined; % Make compiler happy.
-        [Term] when WildcardType == none -> 
+        [Term] when WildcardType == none ->
             %% Stream the results for a single term...
             NewOp = #term { s=Term, boost=Boost };
-        [Term] when WildcardType == glob -> 
+        [Term] when WildcardType == glob ->
             %% Stream the results for a '*' wildcard...
             {FromTerm, ToTerm} = calculate_range(Term, all),
             NewOp = #range_sized { from=FromTerm, to=ToTerm, size=all };
-        [Term] when WildcardType == char -> 
+        [Term] when WildcardType == char ->
             %% Stream the results for a '?' wildcard...
             {FromTerm, ToTerm} = calculate_range(Term, single),
-            NewOp = #range_sized { from=FromTerm, to=ToTerm, size=erlang:size(Term) };
+            %% Add 1 because Term doesn't include wildcard
+            NewOp = #range_sized { from=FromTerm, to=ToTerm, size=size(Term)+1 };
         _ when is_integer(ProximityVal) ->
             %% Filter out skipped terms...
             TermOps = [#term { s=X, boost=Boost } || X <- Terms, X /= skip],
