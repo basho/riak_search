@@ -231,12 +231,11 @@ bmod_response({reply, Reply, NewBState}, VState) ->
 -spec repair_filter(partition()) -> Filter::function().
 repair_filter(Target) ->
     {ok, Ring} = riak_core_ring_manager:get_my_ring(),
-    CH = element(4, Ring),
     NValMap = [{S:name(), S:n_val()} ||
                   S <- riak_search_config:get_all_schemas()],
-    RangeMap = riak_core_repair:gen_range_map(Target, CH, NValMap),
+    RangeMap = riak_core_repair:gen_range_map(Target, Ring, NValMap),
     DefaultN = riak_core_bucket:n_val(riak_core_config:default_bucket_props()),
-    Default = riak_core_repair:gen_range(Target, CH, DefaultN),
+    Default = riak_core_repair:gen_range(Target, Ring, DefaultN),
     RangeFun = riak_core_repair:gen_range_fun(RangeMap, Default),
     fun({I, {F, T}}) ->
             Hash = riak_search_ring_utils:calc_partition(I, F, T),
