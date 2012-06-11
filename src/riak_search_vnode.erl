@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
@@ -97,12 +97,24 @@ sync_command(IndexNode, Msg) ->
 %% @doc Repair the index at the given `Partition'.
 -spec repair(partition()) ->
                     {ok, Pairs::[{partition(), node()}]} |
-                    {down, Down::[{partition(), node()}]}.
+                    {down, Down::[{partition(), node()}]} |
+                    ownership_change_in_progress.
 repair(Partition) ->
     Service = riak_search,
     MP = {?MODULE, Partition},
     FilterModFun = {?MODULE, repair_filter},
     riak_core_vnode_manager:repair(Service, MP, FilterModFun).
+
+%% @doc Given a `Target' partition generate a `Filter' fun to use
+%%      during partition repair.
+-spec repair_filter(partition()) -> Filter::function().
+repair_filter(Target) ->
+    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
+    riak_core_repair:gen_filter(Target,
+                                Ring,
+                                schema_nval_map(),
+                                default_object_nval(),
+                                fun object_info/1).
 
 %% @doc Get the status of the repair process for the given `Partition'.
 -spec repair_status(partition()) -> no_repair | repair_in_progress.
@@ -222,27 +234,14 @@ bmod_response({reply, Reply, NewBState}, VState) ->
     {reply, Reply, VState#vstate{bstate=NewBState}}.
 
 %% @private
-%%
-%% @doc Given a `Target' partition, a `Ring' generate a `Filter' fun
-%%      to use during partition repair.  The `NValMap' is a map from
-%%      index name to n_val and is needed to determine which hash
-%%      range a key must fall into to be included.  Only non-default
-%%      schemas will be included in the map.
--spec repair_filter(partition()) -> Filter::function().
-repair_filter(Target) ->
-    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
-    NValMap = [{S:name(), S:n_val()} ||
-                  S <- riak_search_config:get_all_schemas()],
-    RangeMap = riak_core_repair:gen_range_map(Target, Ring, NValMap),
-    DefaultN = riak_core_bucket:n_val(riak_core_config:default_bucket_props()),
-    Default = riak_core_repair:gen_range(Target, Ring, DefaultN),
-    RangeFun = riak_core_repair:gen_range_fun(RangeMap, Default),
-    fun({I, {F, T}}) ->
-            Hash = riak_search_ring_utils:calc_partition(I, F, T),
-            case RangeFun(I) of
-                {nowrap, GTE, LTE} ->
-                    Hash >= GTE andalso Hash =< LTE;
-                {wrap, GTE, LTE} ->
-                    Hash >= GTE orelse Hash =< LTE
-            end
-    end.
+default_object_nval() ->
+    riak_core_bucket:n_val(riak_core_config:default_bucket_props()).
+
+%% @private
+object_info({I, {F, T}}) ->
+    Hash = riak_search_ring_utils:calc_partition(I, F, T),
+    {I, Hash}.
+
+%% @private
+schema_nval_map() ->
+    [{S:name(), S:n_val()} || S <- riak_search_config:get_all_schemas()].
