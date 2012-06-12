@@ -173,12 +173,20 @@ handle_command(#range_v1{index = Index,
 handle_command(?FOLD_REQ{foldfun=Fun, acc0=Acc},
                Sender,
                #vstate{bmod=BMod,bstate=BState}=VState) ->
-    {async, AsyncFoldFun} = BMod:fold(Fun, Acc, BState),
-    FinishFun =
-        fun(FinalAcc) ->
-                riak_core_vnode:reply(Sender, FinalAcc)
-        end,
-    {async, {fold, AsyncFoldFun, FinishFun}, Sender, VState}.
+    %% TODO: Hardcoding async vs. sync logic for now. In future
+    %% something like KV's backend capabilities should be put in
+    %% place, or make everything async capable.
+    case BMod of
+        merge_index_backend ->
+            {async, AsyncFoldFun} = BMod:fold(Fun, Acc, BState),
+            FinishFun =
+                fun(FinalAcc) ->
+                        riak_core_vnode:reply(Sender, FinalAcc)
+                end,
+            {async, {fold, AsyncFoldFun, FinishFun}, Sender, VState};
+        _ ->
+            bmod_response(BMod:fold(Fun, Acc, BState), VState)
+    end.
 
 %% Handle a command during handoff - if it's a fold then
 %% make sure it runs locally, otherwise forward it on to the
