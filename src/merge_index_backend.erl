@@ -109,21 +109,28 @@ async_fold_fun(FoldFun, Acc, State) ->
             {ok, BatchSize} = application:get_env(riak_search, fold_batch_size),
             Pid = State#state.pid,
             Fun = batch_fold(FoldFun, BatchSize),
-            {ok, {OuterAcc0, Final, _Count}} =
-                merge_index:fold(Pid, Fun, {Acc, undefined, 0}),
-            case Final of
-                {FoldKey, VPKList} ->
-                    %% one last IFT to send off
-                    FoldFun(FoldKey, VPKList, OuterAcc0);
-                undefined ->
-                    %% this partition was empty
-                    OuterAcc0
+            Filter = fun riak_search_op_term:default_filter/2,
+
+            case iterate_worker(Pid, Filter, Fun, {Acc, undefined, 0}) of
+                {error, Reason, PartialAcc} ->
+                    lager:error("failed to iterate the index with reason ~p "
+                                "and partial acc ~p", [Reason, PartialAcc]),
+                    {error, Reason, PartialAcc};
+                {OuterAcc0, Final, _Count} ->
+                    case Final of
+                        {FoldKey, VPKList} ->
+                            %% one last IFT to send off
+                            FoldFun(FoldKey, VPKList, OuterAcc0);
+                        undefined ->
+                            %% this partition was empty
+                            OuterAcc0
+                    end
             end
     end.
 
 batch_fold(FoldFun, FoldBatchSize) ->
     fun
-        (I,F,T,V,P,K, {OuterAcc, {FoldKey = {I,{F,T}}, VPKList}, Count}) ->
+        ({I,F,T,V,K,P}, {OuterAcc, {FoldKey = {I,{F,T}}, VPKList}, Count}) ->
             %% same IFT. If we have reached the fold_batch_size, then
             %% call FoldFun/3 on the batch and start the next
             %% batch. Otherwise, accumulate.
@@ -134,12 +141,12 @@ batch_fold(FoldFun, FoldBatchSize) ->
                 false ->
                     {OuterAcc, {FoldKey, [{V,P,K}|VPKList]}, Count + 1}
             end;
-        (I,F,T,V,P,K, {OuterAcc, {FoldKey, VPKList}, _Count}) ->
+        ({I,F,T,V,K,P}, {OuterAcc, {FoldKey, VPKList}, _Count}) ->
             %% finished a string of IFT, send it off
             %% (sorted order is assumed)
             NewOuterAcc = FoldFun(FoldKey, VPKList, OuterAcc),
             {NewOuterAcc, {{I,{F,T}},[{V,P,K}]}, 1};
-        (I,F,T,V,P,K, {OuterAcc, undefined, _Count}) ->
+        ({I,F,T,V,K,P}, {OuterAcc, undefined, _Count}) ->
             %% first round through the fold - just start building
             {OuterAcc, {{I,{F,T}},[{V,P,K}]}, 1}
     end.
@@ -166,3 +173,15 @@ stream_to({Results, Iter}, To) ->
     riak_search_backend:response_results(To, Results),
     stream_to(Iter(), To).
 
+-spec iterate_worker(pid(), fun(), fun(), term()) -> term().
+iterate_worker(Pid, Filter, Fun, Acc) ->
+    Iter = merge_index:iterator(Pid, Filter),
+    iterate_worker(Iter(), Fun, Acc).
+
+iterate_worker(eof, _, Acc) ->
+    Acc;
+iterate_worker({error, Reason}, _Fun, Acc) ->
+    {error, Reason, Acc};
+iterate_worker({Results, Iter}, Fun, Acc) ->
+    Acc2 = lists:foldl(Fun, Acc, Results),
+    iterate_worker(Iter(), Fun, Acc2).
