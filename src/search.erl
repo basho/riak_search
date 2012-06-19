@@ -161,7 +161,7 @@ index_docs(Docs) ->
                 riak_indexed_doc:new(Index, ID, Fields, Props)
         end,
     IdxDocs = [F(X) || X <- Docs],
-    
+
     %% Index the IdxDocs...
     {ok, Client} = riak_search:local_client(),
     Client:index_docs(IdxDocs),
@@ -200,7 +200,6 @@ delete_dir(Index, Directory) ->
                   Client:delete_docs(IdxDocs)
           end,
     riak_search_dir_indexer:index(Index, Directory, Fun).
-    
 
 delete_doc(DocIndex, DocID) ->
     delete_docs([{DocIndex, DocID}]).

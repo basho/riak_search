@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
@@ -8,7 +8,7 @@
 %%% schema that can be found in a schema.def file. The raw schema is
 %%% saved as a binary in a Riak object in the <<"_rs_schema">>
 %%% bucket. It is saved as a binary so that formatting and comments
-%%% are preserved.  
+%%% are preserved.
 %%%
 %%% The schema returned by get_schema/1 is a result of parsing the raw
 %%% schema into a riak_search_schema parameterized module.
@@ -22,11 +22,12 @@
 
 %% API
 -export([
-    start_link/0, 
-    clear/0, 
-    get_schema/1, 
-    get_raw_schema/1,
-    put_raw_schema/2
+         clear/0,
+         get_all_schemas/0,
+         get_raw_schema/1,
+         get_schema/1,
+         put_raw_schema/2,
+         start_link/0
 ]).
 
 %% gen_server callbacks
@@ -44,6 +45,13 @@ start_link() ->
 clear() ->
     gen_server:call(?SERVER, clear, infinity).
 
+%% @doc Return list of all `Schemas'.
+-spec get_all_schemas() -> Schemas::[any()].
+get_all_schemas() ->
+    {ok, C} = riak:local_client(),
+    {ok, Keys} = C:list_keys(?SCHEMA_BUCKET),
+    [S || {ok,S} <- [get_schema(K) || K <- Keys]].
+
 %% Get schema information for the provided index name.
 %% @param Schema - Either the name of an index, or a schema record.
 %%
@@ -59,7 +67,7 @@ get_schema(Schema) when is_tuple(Schema) ->
 get_schema(Index) ->
     SchemaName = riak_search_utils:to_binary(Index),
     case ets:lookup(schema_table, SchemaName) of
-        [{SchemaName, Schema}] -> 
+        [{SchemaName, Schema}] ->
             {ok, Schema};
         _ ->
             gen_server:call(?SERVER, {get_schema, SchemaName}, infinity)
@@ -89,7 +97,7 @@ handle_call({get_schema, SchemaName}, _From, State) ->
     Table = State#state.schema_table,
     Client = State#state.client,
     case get_raw_schema_from_kv(Client, SchemaName) of
-        {ok, RawSchemaBinary} -> 
+        {ok, RawSchemaBinary} ->
             %% Parse and cache the schema...
             {ok, RawSchema} = riak_search_utils:consult(RawSchemaBinary),
             {ok, Schema} = riak_search_schema_parser:from_eterm(SchemaName, RawSchema),
@@ -108,14 +116,14 @@ end;
 handle_call({get_raw_schema, SchemaName}, _From, State) ->
     Client = State#state.client,
     case get_raw_schema_from_kv(Client, SchemaName) of
-        {ok, RawSchema} -> 
+        {ok, RawSchema} ->
             {reply, {ok, RawSchema}, State};
         {error, Reason} = Error ->
             lager:critical("Error getting schema '~s': ~p", [SchemaName,
                     file:format_error(Reason)]),
             throw(Error)
     end;
-        
+
 handle_call({put_raw_schema, SchemaName, RawSchemaBinary}, _From, State) ->
     %% Parse the schema so that we can update buckets appropriately,
     %% and so that we don't put an incorrectly formatted schema into
@@ -142,7 +150,7 @@ handle_call({put_raw_schema, SchemaName, RawSchemaBinary}, _From, State) ->
 handle_call(Request, _From, State) ->
     ?PRINT({unhandled_call, Request}),
     {reply, ignore, State}.
-    
+
 handle_cast(Msg, State) ->
     ?PRINT({unhandled_cast, Msg}),
     {noreply, State}.
@@ -191,7 +199,7 @@ ensure_n_val_setting(Schema) ->
     NVal = Schema:n_val(),
     CurrentNVal = proplists:get_value(n_val,BucketProps),
     case NVal == CurrentNVal of
-        true -> 
+        true ->
             ok;
         false ->
             riak_core_bucket:set_bucket(BucketName, [{n_val, NVal}])

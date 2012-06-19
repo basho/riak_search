@@ -1,6 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
@@ -9,7 +9,10 @@
          delete/2,
          info/5,
          stream/6,
-         range/8
+         range/8,
+         repair/1,
+         repair_status/1,
+         repair_filter/1
         ]).
 -export([start_vnode/1, init/1, handle_command/3,
          handle_handoff_command/3, handle_handoff_data/2,
@@ -34,13 +37,13 @@ index(IndexNode, IFTVPList) ->
     Req = #index_v1{
       iftvp_list = IFTVPList
      },
-    sync_command(IndexNode, Req).    
+    sync_command(IndexNode, Req).
 
 delete(IndexNode, IFTVList) ->
     Req = #delete_v1{
       iftv_list = IFTVList
      },
-    sync_command(IndexNode, Req).    
+    sync_command(IndexNode, Req).
 
 info(Preflist, Index, Field, Term, ReplyTo) ->
     Req = #info_v1{
@@ -88,8 +91,35 @@ command(PrefList, Req, Sender) ->
                                    riak_search_vnode_master).
 
 sync_command(IndexNode, Msg) ->
-    riak_core_vnode_master:sync_command(IndexNode, Msg, 
+    riak_core_vnode_master:sync_command(IndexNode, Msg,
                                         riak_search_vnode_master, infinity).
+
+%% @doc Repair the index at the given `Partition'.
+-spec repair(partition()) ->
+                    {ok, Pairs::[{partition(), node()}]} |
+                    {down, Down::[{partition(), node()}]} |
+                    ownership_change_in_progress.
+repair(Partition) ->
+    Service = riak_search,
+    MP = {?MODULE, Partition},
+    FilterModFun = {?MODULE, repair_filter},
+    riak_core_vnode_manager:repair(Service, MP, FilterModFun).
+
+%% @doc Given a `Target' partition generate a `Filter' fun to use
+%%      during partition repair.
+-spec repair_filter(partition()) -> Filter::function().
+repair_filter(Target) ->
+    {ok, Ring} = riak_core_ring_manager:get_my_ring(),
+    riak_core_repair:gen_filter(Target,
+                                Ring,
+                                schema_nval_map(),
+                                default_object_nval(),
+                                fun object_info/1).
+
+%% @doc Get the status of the repair process for the given `Partition'.
+-spec repair_status(partition()) -> no_repair | repair_in_progress.
+repair_status(Partition) ->
+    riak_core_vnode_manager:repair_status({riak_search_vnode, Partition}).
 
 %%
 %% Callbacks for riak_core_vnode
@@ -103,10 +133,10 @@ init([VNodeIndex]) ->
     BMod = app_helper:get_env(riak_search, search_backend),
     Configuration = app_helper:get_env(riak_search),
     {ok, BState} = BMod:start(VNodeIndex, Configuration),
+    State = #vstate{idx=VNodeIndex, bmod=BMod, bstate=BState},
+    Pool = {pool, riak_search_worker, 2, []},
 
-    {ok, #vstate{idx=VNodeIndex,
-                 bmod=BMod,
-                 bstate=BState}}.
+    {ok, State, [Pool]}.
 
 handle_command(#index_v1{iftvp_list = IFTVPList},
                _Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
@@ -140,16 +170,30 @@ handle_command(#range_v1{index = Index,
 
 %% Request from core_vnode_handoff_sender - fold function
 %% expects to be called with {{Bucket,Key},Value}
-handle_command(?FOLD_REQ{foldfun=Fun, acc0=Acc},_Sender,
+handle_command(?FOLD_REQ{foldfun=Fun, acc0=Acc},
+               Sender,
                #vstate{bmod=BMod,bstate=BState}=VState) ->
-    bmod_response(BMod:fold(Fun, Acc, BState), VState).
+    %% TODO: Hardcoding async vs. sync logic for now. In future
+    %% something like KV's backend capabilities should be put in
+    %% place, or make everything async capable.
+    case BMod of
+        merge_index_backend ->
+            {async, AsyncFoldFun} = BMod:fold(Fun, Acc, BState),
+            FinishFun =
+                fun(FinalAcc) ->
+                        riak_core_vnode:reply(Sender, FinalAcc)
+                end,
+            {async, {fold, AsyncFoldFun, FinishFun}, Sender, VState};
+        _ ->
+            bmod_response(BMod:fold(Fun, Acc, BState), VState)
+    end.
 
 %% Handle a command during handoff - if it's a fold then
 %% make sure it runs locally, otherwise forward it on to the
 %% correct vnode.
-handle_handoff_command(Req=?FOLD_REQ{}, Sender, VState) -> 
+handle_handoff_command(Req=?FOLD_REQ{}, Sender, VState) ->
     handle_command(Req, Sender, VState);
-handle_handoff_command(_Req, _Sender, VState) -> 
+handle_handoff_command(_Req, _Sender, VState) ->
     {forward, VState}.
 
 handoff_starting(_TargetNode, VState) ->
@@ -164,7 +208,7 @@ handoff_finished(_TargetNode, State) ->
 encode_handoff_item({Index,{Field,Term}}, VPKList) ->
     BinObj = term_to_binary({Index,Field,Term,VPKList}),
     <<?HANDOFF_VER:8,BinObj/binary>>.
-   
+
 handle_handoff_data(<<?HANDOFF_VER:8,BinObj/binary>>,
                     #vstate{bmod=BMod,bstate=BState}=VState) ->
     {I,F,T,VPKList} = binary_to_term(BinObj),
@@ -179,8 +223,10 @@ delete(VState=#vstate{bmod=BMod, bstate=BState}) ->
     ok = BMod:drop(BState),
     {ok, VState}.
 
-handle_exit(_Pid, normal, _State) ->
-    {noreply, _State}.
+handle_exit(_Pid, Reason, State) ->
+    %% A linked process has crashed potentially causing pid values,
+    %% such as merge index or worker pool, to become obsolete.
+    {stop, Reason, State}.
 
 terminate(_Reason, #vstate{bmod=BMod, bstate=BState}) ->
     BMod:stop(BState),
@@ -194,3 +240,16 @@ bmod_response({noreply, NewBState}, VState) ->
     {noreply, VState#vstate{bstate=NewBState}};
 bmod_response({reply, Reply, NewBState}, VState) ->
     {reply, Reply, VState#vstate{bstate=NewBState}}.
+
+%% @private
+default_object_nval() ->
+    riak_core_bucket:n_val(riak_core_config:default_bucket_props()).
+
+%% @private
+object_info({I, {F, T}}) ->
+    Hash = riak_search_ring_utils:calc_partition(I, F, T),
+    {I, Hash}.
+
+%% @private
+schema_nval_map() ->
+    [{S:name(), S:n_val()} || S <- riak_search_config:get_all_schemas()].
