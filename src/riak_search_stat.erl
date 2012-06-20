@@ -20,51 +20,96 @@
 %% @doc Collector for various Search stats.
 -module(riak_search_stat).
 
-%% API
--export([register_stats/0,
-         get_stats/0,
-         update/1,
-        stats/0]).
+-behaviour(gen_server).
 
+%% API
+-export([start_link /0, register_stats/0,
+         get_stats/0,
+         produce_stats/0,
+         update/1,
+         stats/0]).
+
+%% gen_server callbacks
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2,
+         terminate/2, code_change/3]).
+
+-define(SERVER, ?MODULE).
 -define(APP, riak_search).
 
 %% -------------------------------------------------------------------
 %% API
 %% -------------------------------------------------------------------
 
+start_link() ->
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
 register_stats() ->
-    [register_stat(Stat, Type) || {Stat, Type} <- stats()].
+    [register_stat(Stat, Type) || {Stat, Type} <- stats()],
+    riak_core_stat_cache:register_app(?APP, {?MODULE, produce_stats, []}).
 
 %% @doc Return current aggregation of all stats.
 -spec get_stats() -> proplists:proplist().
 get_stats() ->
+    case riak_core_stat_cache:get_stats(?APP) of
+        {ok, Stats, _TS} ->
+            Stats;
+        Error -> Error
+    end.
+
+produce_stats() ->
     {?APP, [{Name, get_metric_value({?APP, Name}, Type)} || {Name, Type} <- stats()]}.
 
+update(Arg) ->
+    gen_server:cast(?SERVER, {update, Arg}).
+
+%% gen_server
+
+init([]) ->
+    {ok, ok}.
+
+handle_call(_Req, _From, State) ->
+    {reply, ok, State}.
+
+handle_cast({update, Arg}, State) ->
+    update1(Arg),
+    {noreply, State};
+handle_cast(_Req, State) ->
+    {noreply, State}.
+
+handle_info(_Info, State) ->
+    {noreply, State}.
+
+terminate(_Reason, _State) ->
+    ok.
+
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
+
 %% @doc Update the given `Stat'.
--spec update(term()) -> ok.
-update(index_begin) ->
+-spec update1(term()) -> ok.
+update1(index_begin) ->
     folsom_metrics:notify_existing_metric({?APP, index_pending}, {inc, 1}, counter);
-update({index_end, Time}) ->
+update1({index_end, Time}) ->
     folsom_metrics:notify_existing_metric({?APP, index_latency}, Time, histogram),
     folsom_metrics:notify_existing_metric({?APP, index_throughput}, 1, meter),
     folsom_metrics:notify_existing_metric({?APP, index_pending}, {dec, 1}, counter);
-update({index_entries, N}) ->
+update1({index_entries, N}) ->
     folsom_metrics:notify_existing_metric({?APP, index_entries}, N, histogram);
-update(search_begin) ->
+update1(search_begin) ->
     folsom_metrics:notify_existing_metric({?APP, search_pending}, {inc, 1}, counter);
-update({search_end, Time}) ->
+update1({search_end, Time}) ->
     folsom_metrics:notify_existing_metric({?APP, search_latency}, Time, histogram),
     folsom_metrics:notify_existing_metric({?APP, search_throughput}, 1, meter),
     folsom_metrics:notify_existing_metric({?APP, search_pending}, {dec, 1}, counter);
-update(search_fold_begin) ->
+update1(search_fold_begin) ->
     folsom_metrics:notify_existing_metric({?APP, search_fold_pending}, {inc, 1}, counter);
-update({search_fold_end, Time}) ->
+update1({search_fold_end, Time}) ->
     folsom_metrics:notify_existing_metric({?APP, search_fold_latency}, Time, histogram),
     folsom_metrics:notify_existing_metric({?APP, search_fold_throughput}, 1, meter),
     folsom_metrics:notify_existing_metric({?APP, search_fold_pending}, {dec, 1}, counter);
-update(search_doc_begin) ->
+update1(search_doc_begin) ->
     folsom_metrics:notify_existing_metric({?APP, search_doc_pending}, {inc, 1}, counter);
-update({search_doc_end, Time}) ->
+update1({search_doc_end, Time}) ->
     folsom_metrics:notify_existing_metric({?APP, search_doc_latency}, Time, histogram),
     folsom_metrics:notify_existing_metric({?APP, search_doc_throughput}, 1, meter),
     folsom_metrics:notify_existing_metric({?APP, search_doc_pending}, {dec, 1}, counter).
