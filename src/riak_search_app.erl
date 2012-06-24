@@ -11,6 +11,8 @@
 %% Application callbacks
 -export([start/2, stop/1]).
 
+-define(SERVICES, [{riak_search_pb_query, 27, 28}]).
+
 %% ===================================================================
 %% Application callbacks
 %% ===================================================================
@@ -39,7 +41,7 @@ start(_StartType, _StartArgs) ->
 
                     Root = app_helper:get_env(riak_solr, solr_name, "solr"),
 
-                    ok = riak_api_pb_service:register(riak_search_pb_query, 27, 28),
+                    ok = riak_api_pb_service:register(?SERVICES),
 
                     webmachine_router:add_route({[Root, index, "update"],
                                                  riak_solr_indexer_wm, []}),
@@ -58,4 +60,5 @@ start(_StartType, _StartArgs) ->
     end.
 
 stop(_State) ->
+    ok = riak_api_pb_service:deregister(?SERVICES),
     ok.
