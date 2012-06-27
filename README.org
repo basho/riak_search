@@ -1,5 +1,7 @@
 * Overview
 
+[[http://travis-ci.org/basho/riak_search][Travis-CI]] :: [[https://secure.travis-ci.org/basho/riak_search.png]]
+
 The =riak_search= OTP application provides
 [[Riak][https://github.com/basho/riak]] with the capability to act as a /text
 search engine/ similar to Apache's Lucene.  Previously Riak Search was
