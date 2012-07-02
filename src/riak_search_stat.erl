@@ -91,7 +91,7 @@ update1(index_begin) ->
     folsom_metrics:notify_existing_metric({?APP, index_pending}, {inc, 1}, counter);
 update1({index_end, Time}) ->
     folsom_metrics:notify_existing_metric({?APP, index_latency}, Time, histogram),
-    folsom_metrics:notify_existing_metric({?APP, index_throughput}, 1, meter),
+    folsom_metrics:notify_existing_metric({?APP, index_throughput}, 1, spiral),
     folsom_metrics:notify_existing_metric({?APP, index_pending}, {dec, 1}, counter);
 update1({index_entries, N}) ->
     folsom_metrics:notify_existing_metric({?APP, index_entries}, N, histogram);
@@ -99,19 +99,19 @@ update1(search_begin) ->
     folsom_metrics:notify_existing_metric({?APP, search_pending}, {inc, 1}, counter);
 update1({search_end, Time}) ->
     folsom_metrics:notify_existing_metric({?APP, search_latency}, Time, histogram),
-    folsom_metrics:notify_existing_metric({?APP, search_throughput}, 1, meter),
+    folsom_metrics:notify_existing_metric({?APP, search_throughput}, 1, spiral),
     folsom_metrics:notify_existing_metric({?APP, search_pending}, {dec, 1}, counter);
 update1(search_fold_begin) ->
     folsom_metrics:notify_existing_metric({?APP, search_fold_pending}, {inc, 1}, counter);
 update1({search_fold_end, Time}) ->
     folsom_metrics:notify_existing_metric({?APP, search_fold_latency}, Time, histogram),
-    folsom_metrics:notify_existing_metric({?APP, search_fold_throughput}, 1, meter),
+    folsom_metrics:notify_existing_metric({?APP, search_fold_throughput}, 1, spiral),
     folsom_metrics:notify_existing_metric({?APP, search_fold_pending}, {dec, 1}, counter);
 update1(search_doc_begin) ->
     folsom_metrics:notify_existing_metric({?APP, search_doc_pending}, {inc, 1}, counter);
 update1({search_doc_end, Time}) ->
     folsom_metrics:notify_existing_metric({?APP, search_doc_latency}, Time, histogram),
-    folsom_metrics:notify_existing_metric({?APP, search_doc_throughput}, 1, meter),
+    folsom_metrics:notify_existing_metric({?APP, search_doc_throughput}, 1, spiral),
     folsom_metrics:notify_existing_metric({?APP, search_doc_pending}, {dec, 1}, counter).
 
 
@@ -128,24 +128,24 @@ stats() ->
      {index_entries, histogram},
      {index_latency, histogram},
      {index_pending, counter},
-     {index_throughput, meter},
+     {index_throughput, spiral},
      {search_pending, counter},
      {search_latency, histogram},
-     {search_throughput, meter},
+     {search_throughput, spiral},
      {search_fold_pending, counter},
      {search_fold_latency, histogram},
-     {search_fold_throughput, meter},
+     {search_fold_throughput, spiral},
      {search_doc_pending, counter},
      {search_doc_latency, histogram},
-     {search_doc_throughput, meter}
+     {search_doc_throughput, spiral}
     ].
 
 register_stat(Name, histogram) ->
 %% get the global default histo type
     {SampleType, SampleArgs} = get_sample_type(Name),
     folsom_metrics:new_histogram({?APP, Name}, SampleType, SampleArgs);
-register_stat(Name, meter) ->
-    folsom_metrics:new_meter({?APP, Name});
+register_stat(Name, spiral) ->
+    folsom_metrics:new_spiral({?APP, Name});
 register_stat(Name, counter) ->
     folsom_metrics:new_counter({?APP, Name}).
 
