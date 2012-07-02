@@ -3,9 +3,9 @@
 [[http://travis-ci.org/basho/riak_search][Travis-CI]] :: [[https://secure.travis-ci.org/basho/riak_search.png]]
 
 The =riak_search= OTP application provides
-[[Riak][https://github.com/basho/riak]] with the capability to act as a /text
+[[https://github.com/basho/riak][Riak]] with the capability to act as a /text
 search engine/ similar to Apache's Lucene.  Previously Riak Search was
-a release in it's own right.  Since then Basho has decided it would be
+a release in its own right.  Since then Basho has decided it would be
 easier for our users if Search was simply a set of functionality that
 can be enabled via a config option.  For that reason, if you want to
 use Search you'll have to build a Riak release and enable it.
@@ -25,5 +25,5 @@ The Search portion of your =app.config= will look something like this.
 
 * Documentation
 
-Comprehensive documentation for Riak Search can be found on the [[Riak Wiki][http://wiki.basho.com/Riak-Search.html]].
+Comprehensive documentation for Riak Search can be found on the [[http://wiki.basho.com/Riak-Search.html][Riak Wiki]].
 
