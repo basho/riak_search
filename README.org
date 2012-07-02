@@ -22,3 +22,8 @@ The Search portion of your =app.config= will look something like this.
                {enabled, true},
               ]},
 #+END_SRC
+
+* Documentation
+
+Comprehensive documentation for Riak Search can be found on the [[Riak Wiki][http://wiki.basho.com/Riak-Search.html]].
+
