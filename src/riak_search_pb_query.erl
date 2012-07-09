@@ -127,6 +127,7 @@ parse_squery(#rpbsearchqueryreq{q=Query,
                  query_start=default(Start, 0),
                  query_rows=default(Rows, ?DEFAULT_RESULT_SIZE)}}.
 
+parse_fl([]) -> all;
 parse_fl([<<"*">>]) -> all;
 parse_fl(FL) -> FL.
 
