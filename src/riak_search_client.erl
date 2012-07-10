@@ -166,8 +166,7 @@ search_doc(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows,
                    [] ->
                        "0.0";
                    [{_, _, Props}|_] ->
-                       [MS] = io_lib:format("~g", [proplists:get_value(score, Props)]),
-                       MS
+                       lists:flatten(io_lib:format("~g", [proplists:get_value(score, Props)]))
                end,
     %% Fetch the documents in parallel.
     F = fun({Index, DocID, _}) ->
