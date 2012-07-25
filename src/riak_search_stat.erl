@@ -44,6 +44,7 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 register_stats() ->
+    [(catch folsom_metrics:delete_metric({?APP, Name})) || {Name, _Type} <- stats()],
     [register_stat(Stat, Type) || {Stat, Type} <- stats()],
     riak_core_stat_cache:register_app(?APP, {?MODULE, produce_stats, []}).
 
@@ -65,6 +66,7 @@ update(Arg) ->
 %% gen_server
 
 init([]) ->
+    register_stats(),
     {ok, ok}.
 
 handle_call(_Req, _From, State) ->
