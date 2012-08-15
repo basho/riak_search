@@ -62,11 +62,11 @@ mapred_search(Pipe, [DefaultIndex, Query, Filter], Timeout) ->
     {ok, C} = riak_search:local_client(),
     QueryOps = parse_query(C, DefaultIndex, Query),
     FilterOps = parse_filter(C, DefaultIndex, Filter),
-
     %% Perform a search, funnel results to the mapred job...
-    Q = queue_work(Pipe),
     F = fun(Results, Acc) ->
-                lists:foreach(Q, Results),
+                Inputs = [ {{Index, DocId}, {struct, Props}}
+                           || {Index, DocId, Props} <- Results ],
+                {ok, []} = riak_pipe:queue_work_list(Pipe, Inputs),
                 Acc
     end,
     ok = C:search_fold(DefaultIndex, QueryOps, FilterOps, F, ok, Timeout),
@@ -86,9 +86,4 @@ parse_filter(C, DefaultIndex, Filter) ->
         {error, ParseError2} ->
             lager:error("Error parsing filter '~s': ~p", [Filter, ParseError2]),
             throw({mapred_search, Filter, ParseError2})
-    end.
-
-queue_work(Pipe) ->
-    fun({Index, DocId, Props}) ->
-            riak_pipe:queue_work(Pipe, {{Index, DocId}, {struct, Props}})
     end.
