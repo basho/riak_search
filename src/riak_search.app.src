@@ -5,6 +5,7 @@
   {applications, [
                   kernel,
                   stdlib,
+                  riak_api,
                   riak_core,
                   riak_kv,
                   merge_index
