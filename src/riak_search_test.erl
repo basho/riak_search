@@ -238,9 +238,8 @@ test_inner({index_bucket, Bucket}, _) ->
     true;
 
 test_inner({mapred, Bucket, Search, Phases, Validators}, _) ->
-    {ok,C} = riak:local_client(),
     SearchInput = {modfun, riak_search, mapred_search, [Bucket, Search]},
-    try C:mapred(SearchInput, Phases) of
+    try riak_kv_mrc_pipe:mapred(SearchInput, Phases) of
         {ok, Results} ->
             case validate_results(length(Results), Results, Validators) of
                 pass ->
@@ -263,9 +262,8 @@ test_inner({mapred, Bucket, Search, Phases, Validators}, _) ->
     end;
 
 test_inner({mapred, Bucket, Search, Filter, Phases, Validators}, _) ->
-    {ok,C} = riak:local_client(),
     SearchInput = {modfun, riak_search, mapred_search, [Bucket, Search, Filter]},
-    try C:mapred(SearchInput, Phases) of
+    try riak_kv_mrc_pipe:mapred(SearchInput, Phases) of
         {ok, Results} ->
             case validate_results(length(Results), Results, Validators) of
                 pass ->
@@ -358,7 +356,7 @@ validate_results_inner(_Length, Results, {property, Key, Value}) ->
         false ->
             {fail, io_lib:format("Missing property: ~p -> ~p", [Key, Value])}
     end;
-validate_results_inner(Length, Results, {doc, DocID, Validator}) ->
+validate_results_inner(_Length, Results, {doc, DocID, Validator}) ->
     case lists:keyfind(DocID, 2, Results) of
         false ->
             {fail, io_lib:format("Missing doc ID in results: ~p", [DocID])};

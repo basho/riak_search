@@ -38,25 +38,8 @@ analyze(Text, {erlang, Mod, Fun}, AnalyzerArgs) ->
     Mod:Fun(Text, AnalyzerArgs).
 
 %% Used in riak_kv Map/Reduce integration.
-mapred_search(FlowOrPipe, [DefaultIndex, Query], Timeout) ->
-    mapred_search(FlowOrPipe, [DefaultIndex, Query, ""], Timeout);
-
-mapred_search(FlowPid, [DefaultIndex, Query, Filter], Timeout)
-  when is_pid(FlowPid) ->
-    {ok, C} = riak_search:local_client(),
-    QueryOps = parse_query(C, DefaultIndex, Query),
-    FilterOps = parse_filter(C, DefaultIndex, Filter),
-
-    %% Perform a search, funnel results to the mapred job...
-    F = fun(Results, Acc) ->
-        %% Make the list of BKeys...
-        BKeys = [{{Index, DocID}, {struct, Props}}
-                 || {Index, DocID, Props} <- Results],
-        luke_flow:add_inputs(FlowPid, BKeys),
-        Acc
-    end,
-    ok = C:search_fold(DefaultIndex, QueryOps, FilterOps, F, ok, Timeout),
-    luke_flow:finish_inputs(FlowPid);
+mapred_search(Pipe, [DefaultIndex, Query], Timeout) ->
+    mapred_search(Pipe, [DefaultIndex, Query, ""], Timeout);
 
 mapred_search(Pipe, [DefaultIndex, Query, Filter], Timeout) ->
     {ok, C} = riak_search:local_client(),

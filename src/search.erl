@@ -26,9 +26,6 @@
     search/1, search/2, search/3,
     search_doc/1, search_doc/2, search_doc/3,
 
-    %% Map/Reduce
-    mapred/2, mapred/3, mapred/4,
-
     %% Inspection.
     explain/1, explain/2, explain/3,
     graph/1, graph/2,
@@ -90,17 +87,6 @@ search_doc(Index, Query, Filter) ->
             lager:error("Error running query '~s': ~p", [Query, Error]),
             {error, Error}
     end.
-
-mapred(Query, Phases) ->
-    mapred(?DEFAULT_INDEX, Query, "", Phases).
-
-mapred(Index, Query, Phases) ->
-    mapred(Index, Query, "", Phases).
-
-mapred(Index, Query, Filter, Phases) ->
-    {ok, Client} = riak_search:local_client(),
-    Client:mapred(Index, Query, Filter, Phases, undefined, 60000).
-
 
 explain(Query) ->
     explain(?DEFAULT_INDEX, Query).
