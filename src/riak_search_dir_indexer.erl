@@ -206,7 +206,7 @@ console_status(start) ->
 console_status(finish) ->
     io:format("Finished.\n");
 console_status(Status) ->
-    lapsedSecs = timer:now_diff(os:timestamp(), Status#interval_status.start_time) / 1000 / 1000,
+    ElapsedSecs = timer:now_diff(os:timestamp(), Status#interval_status.start_time) / 1000 / 1000,
     Interval = Status#interval_status.interval + 1,
     AvgKbSec = (Status#interval_status.interval_bytes / Interval) / 1024,
     TotalBytes = Status#interval_status.total_bytes + 1,
