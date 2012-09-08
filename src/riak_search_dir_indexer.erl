@@ -80,8 +80,8 @@ start_main_loop(Index, RootDir, OpFun, StatusFun) ->
         ref=Ref,
         stat_timer=StatTimer,
         worker_pids=WorkerPids,
-        start_time=now(),
-        last_interval_time=now(),
+        start_time=os:timestamp(),
+        last_interval_time=os:timestamp(),
         total_files=TotalFiles,
         total_bytes=TotalBytes
     },
@@ -140,7 +140,7 @@ print_stats_finish(State) ->
 print_stats(State) ->
     %% Call the status function...
     StatusFun = State#state.status_fun,
-    Interval = timer:now_diff(now(), State#state.last_interval_time) / 1000 / 1000,
+    Interval = timer:now_diff(os:timestamp(), State#state.last_interval_time) / 1000 / 1000,
     IntervalStatus = #interval_status {
         start_time = State#state.start_time,
         interval = Interval,
@@ -155,7 +155,7 @@ print_stats(State) ->
 
     %% Update the status function...
     State#state {
-        last_interval_time=now(),
+        last_interval_time=os:timestamp(),
         interval_files=0, 
         interval_bytes=0
     }.
@@ -206,7 +206,7 @@ console_status(start) ->
 console_status(finish) ->
     io:format("Finished.\n");
 console_status(Status) ->
-    ElapsedSecs = timer:now_diff(now(), Status#interval_status.start_time) / 1000 / 1000,
+    lapsedSecs = timer:now_diff(os:timestamp(), Status#interval_status.start_time) / 1000 / 1000,
     Interval = Status#interval_status.interval + 1,
     AvgKbSec = (Status#interval_status.interval_bytes / Interval) / 1024,
     TotalBytes = Status#interval_status.total_bytes + 1,
