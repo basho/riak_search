@@ -96,13 +96,13 @@ precommit_def() ->
 %% document to store in riak search.
 -spec precommit(obj()) -> {fail, any()} | obj().
 precommit(Obj) ->
-    T1 = now(),
+    T1 = os:timestamp(),
     riak_search_stat:update(index_begin),
     Extractor = get_extractor(Obj),
     try
         case index_object(Obj, Extractor) of
             ok ->
-                T2 = now(),
+                T2 = os:timestamp(),
                 TD = timer:now_diff(T2, T1),
                 riak_search_stat:update({index_end, TD}),
                 Obj;

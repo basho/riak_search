@@ -268,7 +268,7 @@ err_msg(Error) ->
 -spec run_query(any(), any(), any(), any(), any(), any(), [binary()]) -> any().
 run_query(Client, Schema, SQuery, QueryOps, FilterOps, Presort, FL) ->
     UK = Schema:unique_key(),
-    StartTime = erlang:now(),
+    StartTime = os:timestamp(),
     #squery{query_start=QStart, query_rows=QRows}=SQuery,
 
     if
@@ -286,7 +286,7 @@ run_query(Client, Schema, SQuery, QueryOps, FilterOps, Presort, FL) ->
             DocsOrIDs = {docs, Docs}
     end,
 
-    ElapsedTime = erlang:round(timer:now_diff(erlang:now(), StartTime) / 1000),
+    ElapsedTime = erlang:round(timer:now_diff(os:timestamp(), StartTime) / 1000),
     {ElapsedTime, NumFound, MaxScore, DocsOrIDs}.
 
 
