@@ -74,7 +74,7 @@ process(Msg, #state{client=Client}=State) ->
             Presort = to_atom(default(Presort0, <<"score">>)),
             if
                 FL == [UK] andalso Sort /= <<"none">> ->
-                    {error, riak_search_utils:err_msg(fl_id_with_sort), State};
+                    {error, riak_search_utils:err_msg({error, fl_id_with_sort, UK}), State};
                 true ->
                     %% Execute
                     Result = run_query(Client, Schema, SQuery, QueryOps, FilterOps, Presort, FL),
