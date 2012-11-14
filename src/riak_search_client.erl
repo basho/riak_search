@@ -12,9 +12,6 @@
 -define(OPTIMIZER_PROC_CT, 32).
 
 -export([
-    %% MapReduce Searching...
-    mapred/6, mapred_stream/7,
-
     %% Searching...
     parse_query/2,
     parse_filter/2,
@@ -36,20 +33,6 @@
     delete_term/4,
     delete_terms/1
 ]).
-
-mapred(DefaultIndex, SearchQuery, SearchFilter, MRQuery, ResultTransformer, Timeout) ->
-    {ok, ReqID} = mapred_stream(DefaultIndex, SearchQuery, SearchFilter, MRQuery, self(), ResultTransformer, Timeout),
-    luke_flow:collect_output(ReqID, Timeout).
-
-mapred_stream(DefaultIndex, SearchQuery, SearchFilter, MRQuery, ClientPid,
-              ResultTransformer, Timeout) ->
-    InputDef = {modfun, riak_search, mapred_search,
-                [DefaultIndex, SearchQuery, SearchFilter]},
-    {ok, {RId, FSM}} = RiakClient:mapred_stream(MRQuery, ClientPid, ResultTransformer, Timeout),
-    RiakClient:mapred_dynamic_inputs_stream(FSM, InputDef, Timeout),
-    luke_flow:finish_inputs(FSM),
-    {ok, RId}.
-
 
 %% Parse the provided query. Returns either {ok, QueryOps} or {error,
 %% Error}.
