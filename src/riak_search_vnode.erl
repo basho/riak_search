@@ -125,7 +125,7 @@ repair_status(Partition) ->
 %% Callbacks for riak_core_vnode
 %%
 
-start_vnode(Partition) when is_integer(Partition) ->
+start_vnode(Partition) ->
     riak_core_vnode_master:get_vnode_pid(Partition, riak_search_vnode).
 
 
