@@ -1,6 +1,6 @@
 {application, riak_search,
  [{description, "Riak Search"},
-  {vsn, "1.3.0"},
+  {vsn, "1.4.0"},
   {registered, []},
   {applications, [
                   kernel,
