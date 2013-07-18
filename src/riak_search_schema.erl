@@ -1,145 +1,150 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2013 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
--module(riak_search_schema, [Name, Version, NVal, DefaultField, UniqueKey, Fields, DefaultOp, AnalyzerFactory]).
+-module(riak_search_schema).
 -export([
+    new/8,
     %% Properties...
-    name/0,
-    set_name/1,
-    version/0,
-    n_val/0,
-    fields_and_inlines/0,
-    inline_fields/0,
-    fields/0,
-    unique_key/0,
-    default_field/0,
-    set_default_field/1,
-    default_op/0,
-    analyzer_factory/0,
-    set_default_op/1,
+    name/1,
+    set_name/2,
+    version/1,
+    n_val/1,
+    fields_and_inlines/1,
+    inline_fields/1,
+    fields/1,
+    unique_key/1,
+    default_field/1,
+    set_default_field/2,
+    default_op/1,
+    analyzer_factory/1,
+    set_default_op/2,
 
     %% Field properties...
-    field_name/1,
-    field_type/1,
-    padding_size/1,
-    padding_char/1,
-    is_dynamic/1,
-    is_field_required/1,
-    analyzer_factory/1,
-    analyzer_args/1,
-    field_inline/1,
-    is_skip/1,
-    aliases/1,
+    field_name/2,
+    field_type/2,
+    padding_size/2,
+    padding_char/2,
+    is_dynamic/2,
+    is_field_required/2,
+    analyzer_factory/2,
+    analyzer_args/2,
+    field_inline/2,
+    is_skip/2,
+    aliases/2,
 
     %% Field lookup
-    find_field/1,
+    find_field/2,
 
     %% Validation
-    validate_commands/2
+    validate_commands/3
 ]).
 
 -include("riak_search.hrl").
 
-name() ->
+new(Name, Version, NVal, DefaultField, UniqueKey, Fields, DefaultOp, AnalyzerFactory) ->
+    {?MODULE, [Name,Version,NVal,DefaultField,UniqueKey,Fields,DefaultOp,AnalyzerFactory]}.
+
+name({?MODULE, [Name,_Version,_NVal,_DefaultField,_UniqueKey,_Fields,_DefaultOp,_AnalyzerFactory]}) ->
     riak_search_utils:to_binary(Name).
 
-set_name(NewName) ->
+set_name(NewName, {?MODULE, [_Name,Version,NVal,DefaultField,UniqueKey,Fields,DefaultOp,AnalyzerFactory]}) ->
     ?MODULE:new(NewName, Version, NVal, DefaultField, UniqueKey, Fields, DefaultOp, AnalyzerFactory).
 
-version() ->
+version({?MODULE, [_Name,Version,_NVal,_DefaultField,_UniqueKey,_Fields,_DefaultOp,_AnalyzerFactory]}) ->
     Version.
 
-n_val() ->
+n_val({?MODULE, [_Name,_Version,NVal,_DefaultField,_UniqueKey,_Fields,_DefaultOp,_AnalyzerFactory]}) ->
     NVal.
 
-fields_and_inlines() ->
+fields_and_inlines({?MODULE, [_Name,_Version,_NVal,_DefaultField,_UniqueKey,Fields,_DefaultOp,_AnalyzerFactory]}) ->
     Fields.
 
-fields() ->
+fields({?MODULE, [_Name,_Version,_NVal,_DefaultField,_UniqueKey,Fields,_DefaultOp,_AnalyzerFactory]}) ->
     [X || X <- Fields, X#riak_search_field.inline == false].
 
-inline_fields() ->
+inline_fields({?MODULE, [_Name,_Version,_NVal,_DefaultField,_UniqueKey,Fields,_DefaultOp,_AnalyzerFactory]}) ->
     [X || X <- Fields, X#riak_search_field.inline == true].
 
-unique_key() ->
+unique_key({?MODULE, [_Name,_Version,_NVal,_DefaultField,UniqueKey,_Fields,_DefaultOp,_AnalyzerFactory]}) ->
     UniqueKey.
 
-default_field() ->
+default_field({?MODULE, [_Name,_Version,_NVal,DefaultField,_UniqueKey,_Fields,_DefaultOp,_AnalyzerFactory]}) ->
     DefaultField.
 
-analyzer_factory() when is_list(AnalyzerFactory) ->
+analyzer_factory({?MODULE, [_Name,_Version,_NVal,_DefaultField,_UniqueKey,_Fields,_DefaultOp,AnalyzerFactory]})
+  when is_list(AnalyzerFactory) ->
     list_to_binary(AnalyzerFactory);
-analyzer_factory() ->
+analyzer_factory({?MODULE, [_Name,_Version,_NVal,_DefaultField,_UniqueKey,_Fields,_DefaultOp,AnalyzerFactory]}) ->
     AnalyzerFactory.
 
-set_default_field(NewDefaultField) ->
+set_default_field(NewDefaultField, {?MODULE, [Name,Version,NVal,_DefaultField,UniqueKey,Fields,DefaultOp,AnalyzerFactory]}) ->
     ?MODULE:new(Name, Version, NVal, NewDefaultField, UniqueKey, Fields, DefaultOp, AnalyzerFactory).
 
-default_op() ->
+default_op({?MODULE, [_Name,_Version,_NVal,_DefaultField,_UniqueKey,_Fields,DefaultOp,_AnalyzerFactory]}) ->
     DefaultOp.
 
-set_default_op(NewDefaultOp) ->
+set_default_op(NewDefaultOp, {?MODULE, [Name,Version,NVal,DefaultField,UniqueKey,Fields,_DefaultOp,AnalyzerFactory]}) ->
     ?MODULE:new(Name, Version, NVal, DefaultField, UniqueKey, Fields, NewDefaultOp, AnalyzerFactory).
 
-field_name(Field) ->
+field_name(Field, {?MODULE, [_Name,_Version,_NVal,_DefaultField,_UniqueKey,_Fields,_DefaultOp,_AnalyzerFactory]}) ->
     Field#riak_search_field.name.
 
-field_type(Field) ->
+field_type(Field, {?MODULE, [_Name,_Version,_NVal,_DefaultField,_UniqueKey,_Fields,_DefaultOp,_AnalyzerFactory]}) ->
     Field#riak_search_field.type.
 
-padding_size(Field) ->
+padding_size(Field, {?MODULE, [_Name,_Version,_NVal,_DefaultField,_UniqueKey,_Fields,_DefaultOp,_AnalyzerFactory]}) ->
     Field#riak_search_field.padding_size.
 
-padding_char(Field) ->
+padding_char(Field, {?MODULE, [_Name,_Version,_NVal,_DefaultField,_UniqueKey,_Fields,_DefaultOp,_AnalyzerFactory]}) ->
     Field#riak_search_field.padding_char.
 
-is_dynamic(Field) ->
+is_dynamic(Field, {?MODULE, [_Name,_Version,_NVal,_DefaultField,_UniqueKey,_Fields,_DefaultOp,_AnalyzerFactory]}) ->
     Field#riak_search_field.dynamic == true.
 
-is_field_required(Field) ->
+is_field_required(Field, {?MODULE, [_Name,_Version,_NVal,_DefaultField,_UniqueKey,_Fields,_DefaultOp,_AnalyzerFactory]}) ->
     Field#riak_search_field.required == true.
 
-analyzer_factory(Field) ->
+analyzer_factory(Field, {?MODULE, [_Name,_Version,_NVal,_DefaultField,_UniqueKey,_Fields,_DefaultOp,_AnalyzerFactory]}) ->
     Field#riak_search_field.analyzer_factory.
 
-analyzer_args(Field) ->
+analyzer_args(Field, {?MODULE, [_Name,_Version,_NVal,_DefaultField,_UniqueKey,_Fields,_DefaultOp,_AnalyzerFactory]}) ->
     Field#riak_search_field.analyzer_args.
 
-field_inline(Field) ->
+field_inline(Field, {?MODULE, [_Name,_Version,_NVal,_DefaultField,_UniqueKey,_Fields,_DefaultOp,_AnalyzerFactory]}) ->
     Field#riak_search_field.inline.
 
-is_skip(Field) ->
+is_skip(Field, {?MODULE, [_Name,_Version,_NVal,_DefaultField,_UniqueKey,_Fields,_DefaultOp,_AnalyzerFactory]}) ->
     Field#riak_search_field.skip == true.
 
-aliases(Field) ->
+aliases(Field, {?MODULE, [_Name,_Version,_NVal,_DefaultField,_UniqueKey,_Fields,_DefaultOp,_AnalyzerFactory]}) ->
     [element(2, T) || T <- Field#riak_search_field.aliases].
 
 %% Return the field matching the specified name, or 'undefined'
-find_field(FName) ->
-    find_field(FName, Fields).
+find_field(FName, {?MODULE, [_Name,_Version,_NVal,_DefaultField,_UniqueKey,Fields,_DefaultOp,_AnalyzerFactory]}=THIS) ->
+    find_field(FName, Fields, THIS).
 
-find_field(FName, [Field|Rest]) ->
+find_field(FName, [Field|Rest], {?MODULE, [_Name,_Version,_NVal,_DefaultField,_UniqueKey,_Fields,_DefaultOp,_AnalyzerFactory]}=THIS) ->
     case Field#riak_search_field.dynamic of
         true ->
             case re:run(FName, Field#riak_search_field.name) of
                 {match, _} ->
                     Field;
                 nomatch ->
-                    find_field(FName, Rest)
+                    find_field(FName, Rest, THIS)
             end;
         false ->
-            case FName == Field#riak_search_field.name orelse 
+            case FName == Field#riak_search_field.name orelse
                 matches_alias(FName, Field#riak_search_field.aliases) of
                 true ->
                     Field;
-                false ->                 
-                    find_field(FName, Rest)
+                false ->
+                    find_field(FName, Rest, THIS)
             end
     end;
-find_field(FName, []) ->
+find_field(FName, [], _) ->
     throw({error, missing_field, FName}).
 
 %% Return true if the name matches an alias
@@ -162,10 +167,10 @@ matches_alias(FName, [{re, _Alias, MP}|Aliases]) ->
 
 %% Verify that the schema names match. If so, then validate required
 %% and optional fields. Otherwise, return an error.
-validate_commands(add, Docs) ->
+validate_commands(add, Docs, {?MODULE, [_Name,_Version,_NVal,_DefaultField,_UniqueKey,Fields,_DefaultOp,_AnalyzerFactory]}) ->
     Required = [F || F <- Fields, F#riak_search_field.required =:= true],
     validate_required_fields(Docs, Required);
-validate_commands(_, _) ->
+validate_commands(_, _, _) ->
     ok.
 
 %% @private
@@ -192,5 +197,3 @@ validate_required_fields_1(Doc, [Field|Rest]) ->
         error ->
             {error, {reqd_field_missing, FieldName}}
     end.
-
-              

@@ -1,10 +1,10 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2013 Basho Technologies, Inc.  All Rights Reserved.
 %%
 %% -------------------------------------------------------------------
 
--module(riak_search_client, [RiakClient]).
+-module(riak_search_client).
 
 -include("riak_search.hrl").
 
@@ -12,31 +12,36 @@
 -define(OPTIMIZER_PROC_CT, 32).
 
 -export([
+    new/1,
     %% Searching...
-    parse_query/2,
-    parse_filter/2,
-    search/6,
+    parse_query/3,
+    parse_filter/3,
     search/7,
-    search_fold/6,
-    search_doc/6,
+    search/8,
+    search_fold/7,
     search_doc/7,
+    search_doc/8,
 
     %% Indexing...
-    index_doc/1,
-    index_docs/1,
-    index_term/5, index_term/6,
-    index_terms/1,
+    index_doc/2,
+    index_docs/2,
+    index_term/6, index_term/7,
+    index_terms/2,
 
     %% Delete
-    delete_docs/1,
-    delete_doc_terms/1,
-    delete_term/4,
-    delete_terms/1
+    delete_docs/2,
+    delete_doc_terms/2,
+    delete_term/5,
+    delete_terms/2
 ]).
+
+%% Create tuple module, used to implicitly pass the riak client to other functions in this module.
+new(RiakClient) ->
+    {?MODULE, [RiakClient]}.
 
 %% Parse the provided query. Returns either {ok, QueryOps} or {error,
 %% Error}.
-parse_query(IndexOrSchema, Query) ->
+parse_query(IndexOrSchema, Query, {?MODULE, [_RiakClient]}) ->
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
     DefaultIndex = Schema:name(),
     DefaultField = Schema:default_field(),
@@ -48,9 +53,9 @@ parse_query(IndexOrSchema, Query) ->
 
 %% Parse the provided filter. Returns either {ok, FilterOps} or {error,
 %% Error}.
-parse_filter(_, Filter) when Filter == <<>> orelse Filter == "" ->
+parse_filter(_, Filter, {?MODULE, [_RiakClient]}) when Filter == <<>> orelse Filter == "" ->
     {ok, []};
-parse_filter(IndexOrSchema, Filter) ->
+parse_filter(IndexOrSchema, Filter, {?MODULE, [_RiakClient]}) ->
     {ok, Schema} = riak_search_config:get_schema(IndexOrSchema),
     DefaultIndex = Schema:name(),
     DefaultField = Schema:default_field(),
@@ -65,11 +70,11 @@ parse_filter(IndexOrSchema, Filter) ->
 %% Run the Query, return the list of keys.
 %% Timeout is in milliseconds.
 %% Return the {Length, Results}.
-search(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows, Timeout) ->
+search(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows, Timeout, {?MODULE, [_RiakClient]}=THIS) ->
     search(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows, score,
-           Timeout).
+           Timeout, THIS).
 
-search(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows, PresortBy, Timeout)
+search(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows, PresortBy, Timeout, {?MODULE, [_RiakClient]})
   when PresortBy == key; PresortBy == score ->
 
     T1 = os:timestamp(),
@@ -116,7 +121,7 @@ search(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows, PresortBy, Tim
 
 %% Run the search query, fold results through function, return final
 %% accumulator.
-search_fold(IndexOrSchema, QueryOps, FilterOps, Fun, AccIn, Timeout) ->
+search_fold(IndexOrSchema, QueryOps, FilterOps, Fun, AccIn, Timeout, {?MODULE, [_RiakClient]}) ->
     T1 = os:timestamp(),
     riak_search_stat:update(search_fold_begin),
 
@@ -134,17 +139,17 @@ search_fold(IndexOrSchema, QueryOps, FilterOps, Fun, AccIn, Timeout) ->
     riak_search_stat:update({search_fold_end, TD}),
     R.
 
-search_doc(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows, Timeout) ->
+search_doc(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows, Timeout, {?MODULE, [_RiakClient]}=THIS) ->
     search_doc(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows,
-               score, Timeout).
+               score, Timeout, THIS).
 
 search_doc(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows,
-           PresortBy, Timeout)
+           PresortBy, Timeout, {?MODULE, [RiakClient]}=THIS)
   when PresortBy == key; PresortBy == score ->
     T1 = os:timestamp(),
     riak_search_stat:update(search_doc_begin),
 
-    {Length, Results} = search(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows, PresortBy, Timeout),
+    {Length, Results} = search(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows, PresortBy, Timeout, THIS),
     MaxScore = case Results of
                    [] ->
                        "0.0";
@@ -163,10 +168,10 @@ search_doc(IndexOrSchema, QueryOps, FilterOps, QueryStart, QueryRows,
     R.
 
 %% Index a specified #riak_idx_doc
-index_doc(IdxDoc) ->
-    index_docs([IdxDoc]).
+index_doc(IdxDoc, {?MODULE, [_RiakClient]}=THIS) ->
+    index_docs([IdxDoc], THIS).
 
-index_docs(IdxDocs) ->
+index_docs(IdxDocs, {?MODULE, [RiakClient]}=THIS) ->
     %% For each doc, update the object stored in Riak KV, and generate
     %% a list of postings to add and delete.
     F = fun(IdxDoc0, {RiakObjsAccIn, DeleteAccIn, IndexAccIn}) ->
@@ -204,22 +209,22 @@ index_docs(IdxDocs) ->
 
     %% Delete the old postings...
     FlatDeleteAcc = lists:flatten(DeleteAcc),
-    delete_terms(FlatDeleteAcc),
+    delete_terms(FlatDeleteAcc, THIS),
 
     %% Add the new postings...
     FlatIndexAcc = lists:flatten(IndexAcc),
-    index_terms(FlatIndexAcc),
+    index_terms(FlatIndexAcc, THIS),
     ok.
 
 %% Index the specified term - better to use the plural 'terms' interfaces
-index_term(Index, Field, Term, DocID, Props) ->
+index_term(Index, Field, Term, DocID, Props, {?MODULE, [_RiakClient]}=THIS) ->
     K = riak_search_utils:current_key_clock(),
-    index_term(Index, Field, Term, DocID, Props, K).
+    index_term(Index, Field, Term, DocID, Props, K, THIS).
 
-index_term(Index, Field, Term, DocID, Props, K) ->
-    index_terms([{Index, Field, Term, DocID, Props, K}]).
+index_term(Index, Field, Term, DocID, Props, K, {?MODULE, [_RiakClient]}=THIS) ->
+    index_terms([{Index, Field, Term, DocID, Props, K}], THIS).
 
-index_terms(Terms) ->
+index_terms(Terms, {?MODULE, [_RiakClient]}) ->
     IndexFun = fun(VNode, Postings) ->
                        riak_search_vnode:index(VNode, Postings)
                end,
@@ -307,7 +312,7 @@ process_terms_1(IndexFun, BatchSize, PreflistCache, Terms) ->
 
 
 %% Docs is a list of the form [{DocIndex, DocID}].
-delete_docs(Docs) ->
+delete_docs(Docs, {?MODULE, [RiakClient]}=THIS) ->
     F = fun({DocIndex, DocID}, {ObjsAccIn, DeleteAccIn}) ->
                 case riak_indexed_doc:get(RiakClient, DocIndex, DocID) of
                     IdxDoc when is_record(IdxDoc, riak_idx_doc) ->
@@ -323,7 +328,7 @@ delete_docs(Docs) ->
 
     %% Delete the postings...
     FlatDeleteAcc = lists:flatten(DeleteAcc),
-    delete_terms(FlatDeleteAcc),
+    delete_terms(FlatDeleteAcc, THIS),
 
     %% Delete the Riak objects...
     [riak_indexed_doc:delete(RiakClient, DocIndex, DocID)
@@ -332,17 +337,17 @@ delete_docs(Docs) ->
 
 
 %% Delete all of the indexed terms in the IdxDoc - does not remove the IdxDoc itself
-delete_doc_terms(IdxDoc) ->
+delete_doc_terms(IdxDoc, {?MODULE, [_RiakClient]}=THIS) ->
     %% Build a list of terms to delete and send them over to the delete FSM
     Postings = riak_indexed_doc:postings(IdxDoc),
-    delete_terms(Postings).
+    delete_terms(Postings, THIS).
 
 %% Delete the specified term - better to use the plural 'terms' interfaces.
-delete_term(Index, Field, Term, DocID) ->
+delete_term(Index, Field, Term, DocID, {?MODULE, [_RiakClient]}=THIS) ->
     K =  riak_search_utils:current_key_clock(),
-    delete_terms([{Index, Field, Term, DocID, K}]).
+    delete_terms([{Index, Field, Term, DocID, K}], THIS).
 
-delete_terms(Terms) ->
+delete_terms(Terms, {?MODULE, [_RiakClient]}) ->
     DeleteFun = fun(VNode, Postings) ->
                         riak_search_vnode:delete(VNode, Postings)
                 end,
