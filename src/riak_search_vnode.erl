@@ -245,7 +245,7 @@ bmod_response({reply, Reply, NewBState}, VState) ->
 
 %% @private
 default_object_nval() ->
-    riak_core_bucket:n_val(riak_core_config:default_bucket_props()).
+    riak_core_bucket:n_val(riak_core_bucket:default_bucket_props()).
 
 %% @private
 object_info({I, {F, T}}) ->
