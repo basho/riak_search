@@ -121,7 +121,12 @@ update1({search_doc_end, Time}) ->
 %% Private
 %% -------------------------------------------------------------------
 get_metric_value(Name, _Type) ->
-    exometer_entry:get_value(Name).
+    case exometer_entry:get_value(Name) of
+	{ok, Value} ->
+	    Value;
+	{error,_} ->
+	    unavailable
+    end.
 
 
 stats() ->
