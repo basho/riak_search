@@ -168,6 +168,11 @@ handle_command(#range_v1{index = Index,
                Sender, #vstate{bmod=BMod,bstate=BState}=VState) ->
     bmod_response(BMod:range(Index, Field, StartTerm, EndTerm, Size, FilterFun, Sender, BState), VState);
 
+handle_command(#riak_core_fold_req_v1{} = ReqV1,
+               Sender, State) ->
+    %% Use make_fold_req() to upgrade to the most recent ?FOLD_REQ
+    handle_command(riak_core_util:make_fold_req(ReqV1), Sender, State);
+
 %% Request from core_vnode_handoff_sender - fold function
 %% expects to be called with {{Bucket,Key},Value}
 handle_command(?FOLD_REQ{foldfun=Fun, acc0=Acc},
@@ -245,7 +250,7 @@ bmod_response({reply, Reply, NewBState}, VState) ->
 
 %% @private
 default_object_nval() ->
-    riak_core_bucket:n_val(riak_core_config:default_bucket_props()).
+    riak_core_bucket:n_val(riak_core_bucket_props:defaults()).
 
 %% @private
 object_info({I, {F, T}}) ->
