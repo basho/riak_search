@@ -171,7 +171,7 @@ handle_command(#range_v1{index = Index,
 handle_command(#riak_core_fold_req_v1{} = ReqV1,
                Sender, State) ->
     %% Use make_fold_req() to upgrade to the most recent ?FOLD_REQ
-    handle_command(riak_core_util:make_fold_req(ReqV1), Sender, State);
+    handle_command(riak_core_util:make_newest_fold_req(ReqV1), Sender, State);
 
 %% Request from core_vnode_handoff_sender - fold function
 %% expects to be called with {{Bucket,Key},Value}
@@ -197,6 +197,8 @@ handle_command(?FOLD_REQ{foldfun=Fun, acc0=Acc},
 %% make sure it runs locally, otherwise forward it on to the
 %% correct vnode.
 handle_handoff_command(Req=?FOLD_REQ{}, Sender, VState) ->
+    handle_command(Req, Sender, VState);
+handle_handoff_command(Req=#riak_core_fold_req_v1{}, Sender, VState) ->
     handle_command(Req, Sender, VState);
 handle_handoff_command(_Req, _Sender, VState) ->
     {forward, VState}.
