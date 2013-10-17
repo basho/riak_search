@@ -21,7 +21,7 @@
          handle_exit/3]).
 
 -include_lib("riak_core/include/riak_core_vnode.hrl").
--include_lib("riak_core/include/riak_core_pb.hrl").
+-include_lib("riak_kv/include/riak_core_pb.hrl").
 -include("riak_search.hrl").
 
 -record(vstate, {idx, bmod, bstate}).
