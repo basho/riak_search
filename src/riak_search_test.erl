@@ -150,7 +150,7 @@ test_inner({solr_select, Params, Validators}, _Root) ->
     test_inner({solr_select, Params, 200, Validators}, _Root);
 
 test_inner({solr_select, Params, Expect, Validators}, _Root) ->
-    {Host, Port} = hd(app_helper:get_env(riak_core, http)),
+    {Host, Port} = hd(app_helper:get_env(riak_api, http)),
     test_inner({solr_select, Host, Port, Params, Expect, Validators}, _Root);
 
 test_inner({solr_select, Host, Port, Params, Validators}, _Root) ->
@@ -206,7 +206,7 @@ test_inner({solr_update, Path, Params}, Root) ->
     inets:start(),
     case file:read_file(filename:join(Root, Path)) of
         {ok, Bytes} ->
-            {Hostname, Port} = hd(app_helper:get_env(riak_core, http)),
+            {Hostname, Port} = hd(app_helper:get_env(riak_api, http)),
             QueryString = to_querystring(Params),
             Url = io_lib:format("http://~s:~p/solr/~s/update?~s", [Hostname, Port, ?TEST_INDEX, QueryString]),
             Req = {lists:flatten(Url), [], "text/xml", Bytes},
