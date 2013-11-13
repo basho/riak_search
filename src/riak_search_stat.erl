@@ -25,7 +25,6 @@
 %% API
 -export([start_link /0, register_stats/0,
          get_stats/0,
-         produce_stats/0,
          update/1,
          stats/0]).
 
@@ -44,21 +43,12 @@ start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 register_stats() ->
-    [(catch exometer_entry:delete([?APP, Name])) || {Name, _Type} <- stats()],
-    [register_stat(Stat, Type) || {Stat, Type} <- stats()],
-    riak_core_stat_cache:register_app(?APP, {?MODULE, produce_stats, []}).
+    riak_core_stat:register_stats(?APP, stats()).
 
 %% @doc Return current aggregation of all stats.
 -spec get_stats() -> proplists:proplist().
 get_stats() ->
-    case riak_core_stat_cache:get_stats(?APP) of
-        {ok, Stats, _TS} ->
-            Stats;
-        Error -> Error
-    end.
-
-produce_stats() ->
-    {?APP, [{Name, get_metric_value({?APP, Name}, Type)} || {Name, Type} <- stats()]}.
+    riak_core_stat:get_stats(?APP).
 
 update(Arg) ->
     gen_server:cast(?SERVER, {update, Arg}).
@@ -67,14 +57,14 @@ update(Arg) ->
 
 init([]) ->
     register_stats(),
-    {ok, ok}.
+    {ok, riak_core_stat:prefix()}.
 
 handle_call(_Req, _From, State) ->
     {reply, ok, State}.
 
-handle_cast({update, Arg}, State) ->
-    update1(Arg),
-    {noreply, State};
+handle_cast({update, Arg}, Prefix) ->
+    update1(Prefix, Arg),
+    {noreply, Prefix};
 handle_cast(_Req, State) ->
     {noreply, State}.
 
@@ -88,46 +78,38 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% @doc Update the given `Stat'.
--spec update1(term()) -> ok.
-update1(index_begin) ->
-    exometer_entry:update([?APP, index_pending], 1);
-update1({index_end, Time}) ->
-    exometer_entry:update([?APP, index_latency], Time),
-    exometer_entry:update([?APP, index_throughput], 1),
-    exometer_entry:update([?APP, index_pending], -1);
-update1({index_entries, N}) ->
-    exometer_entry:update([?APP, index_entries], N);
-update1(search_begin) ->
-    exometer_entry:update([?APP, search_pending], 1);
-update1({search_end, Time}) ->
-    exometer_entry:update([?APP, search_latency], Time),
-    exometer_entry:update([?APP, search_throughput], 1),
-    exometer_entry:update([?APP, search_pending], -1);
-update1(search_fold_begin) ->
-    exometer_entry:update([?APP, search_fold_pending], 1);
-update1({search_fold_end, Time}) ->
-    exometer_entry:update([?APP, search_fold_latency], Time),
-    exometer_entry:update([?APP, search_fold_throughput], 1),
-    exometer_entry:update([?APP, search_fold_pending], -1);
-update1(search_doc_begin) ->
-    exometer_entry:update([?APP, search_doc_pending], 1);
-update1({search_doc_end, Time}) ->
-    exometer_entry:update([?APP, search_doc_latency], Time),
-    exometer_entry:update([?APP, search_doc_throughput], 1),
-    exometer_entry:update([?APP, search_doc_pending], -1).
+-spec update1(term(), term()) -> ok.
+update1(P, index_begin) ->
+    exometer:update([P, ?APP, index_pending], 1);
+update1(P, {index_end, Time}) ->
+    exometer:update([P, ?APP, index_latency], Time),
+    exometer:update([P, ?APP, index_throughput], 1),
+    exometer:update([P, ?APP, index_pending], -1);
+update1(P, {index_entries, N}) ->
+    exometer:update([P, ?APP, index_entries], N);
+update1(P, search_begin) ->
+    exometer:update([P, ?APP, search_pending], 1);
+update1(P, {search_end, Time}) ->
+    exometer:update([P, ?APP, search_latency], Time),
+    exometer:update([P, ?APP, search_throughput], 1),
+    exometer:update([P, ?APP, search_pending], -1);
+update1(P, search_fold_begin) ->
+    exometer:update([P, ?APP, search_fold_pending], 1);
+update1(P, {search_fold_end, Time}) ->
+    exometer:update([P, ?APP, search_fold_latency], Time),
+    exometer:update([P, ?APP, search_fold_throughput], 1),
+    exometer:update([P, ?APP, search_fold_pending], -1);
+update1(P, search_doc_begin) ->
+    exometer:update([P, ?APP, search_doc_pending], 1);
+update1(P, {search_doc_end, Time}) ->
+    exometer:update([P, ?APP, search_doc_latency], Time),
+    exometer:update([P, ?APP, search_doc_throughput], 1),
+    exometer:update([P, ?APP, search_doc_pending], -1).
 
 
 %% -------------------------------------------------------------------
 %% Private
 %% -------------------------------------------------------------------
-get_metric_value(Name, _Type) ->
-    case exometer_entry:get_value(Name) of
-	{ok, Value} ->
-	    Value;
-	{error,_} ->
-	    unavailable
-    end.
-
 
 stats() ->
     [
@@ -146,15 +128,6 @@ stats() ->
      {search_doc_throughput, spiral}
     ].
 
-register_stat(Name, histogram) ->
-%% get the global default histo type
-    {SampleType, SampleArgs} = get_sample_type(Name),
-    exometer_entry:new([?APP, Name], {histogram, SampleType, SampleArgs});
-register_stat(Name, spiral) ->
-    exometer_entry:new([?APP, Name], spiral);
-register_stat(Name, counter) ->
-    exometer_entry:new([?APP, Name], counter).
-
-get_sample_type(Name) ->
-    SampleType0 = app_helper:get_env(riak_search, stat_sample_type, {slide_uniform, {60, 1028}}),
-    app_helper:get_env(riak_search, Name, SampleType0).
+%% get_sample_type(Name) ->
+%%     SampleType0 = app_helper:get_env(riak_search, stat_sample_type, {slide_uniform, {60, 1028}}),
+%%     app_helper:get_env(riak_search, Name, SampleType0).
