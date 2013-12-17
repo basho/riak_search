@@ -18,7 +18,8 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    case app_helper:get_env(riak_search, enabled, false) of
+    case app_helper:get_env(riak_search, enabled, false) and not
+         riak_core_security:is_enabled() of
         true ->
             %% Ensure that the KV service has fully loaded.
             riak_core:wait_for_service(riak_kv),
