@@ -5,7 +5,7 @@
 %% -------------------------------------------------------------------
 
 -module(riak_solr_indexer_wm).
--export([init/1, allowed_methods/2, malformed_request/2]).
+-export([init/1, allowed_methods/2, malformed_request/2, forbidden/2]).
 -export([process_post/2]).
 
 -include("riak_search.hrl").
@@ -45,6 +45,18 @@ malformed_request(Req, State) ->
             lager:error("Could not parse schema for index '~s': ~p",
                         [Index, Error]),
             {true, Req, State}
+    end.
+
+forbidden(RD, Ctx) ->
+    case riak_core_security:is_enabled() of
+        true ->
+            RD1 = wrq:set_resp_header("Content-Type", "text/plain", RD),
+            {true, wrq:set_resp_body(<<"Riak Search 1.0 is"
+                                             " deprecated in Riak 2.0 and is"
+                                             " not compatible with"
+                                             " security.">>, RD1), Ctx};
+        false ->
+            {false, RD, Ctx}
     end.
 
 process_post(Req, State = #state{ solr_client=SolrClient, schema=Schema, command=Command, entries=Entries }) ->
