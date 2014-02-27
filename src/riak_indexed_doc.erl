@@ -92,7 +92,14 @@ postings(IdxDoc) ->
     F1 = fun({FieldName, _, TermPos}, FieldsAcc) ->
                  F2 = fun({Term, Positions}, Acc) ->
                               Props = build_props(Positions, InlineFields),
-                              [{DocIndex, FieldName, Term, DocId, Props, K} | Acc]
+                              TermLength = byte_size(Term),
+                              case TermLength < 30000 of
+                                true ->
+                                  [{DocIndex, FieldName, Term, DocId, Props, K} | Acc];
+                                false ->
+                                  lager:error("Encountered Large Term (~w) when indexing Bucket \"~s\", Key \"~s\", and Field Name \"~s\", Skipping.", [TermLength, DocIndex, DocId, FieldName]),
+                                  Acc
+                              end
                       end,
                  lists:foldl(F2, FieldsAcc, TermPos)
          end,
