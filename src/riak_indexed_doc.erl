@@ -98,7 +98,7 @@ postings(IdxDoc) ->
                                 true ->
                                   [GeneratedTerm | Acc];
                                 false ->
-                                  lager:error("Encountered Large Posting (~w) when indexing Bucket \"~s\", Key \"~s\", and Field Name \"~s\", Skipping. [~p]", [TermLength, DocIndex, DocId, FieldName, GeneratedTerm]),
+                                  lager:error("Encountered Large Posting (~w) when indexing Bucket \"~s\", Key \"~s\", and Field Name \"~s\", Skipping.", [TermLength, DocIndex, DocId, FieldName]),
                                   Acc
                               end
                       end,
