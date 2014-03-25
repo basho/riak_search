@@ -93,7 +93,7 @@ postings(IdxDoc) ->
                  F2 = fun({Term, Positions}, Acc) ->
                               Props = build_props(Positions, InlineFields),
                               GeneratedTerm = {DocIndex, FieldName, Term, DocId, Props, K},
-                              TermLength = byte_size(term_to_binary(GeneratedTerm)),
+                              TermLength = erlang:external_size(GeneratedTerm),
                               case TermLength < 32000 of
                                 true ->
                                   [GeneratedTerm | Acc];
