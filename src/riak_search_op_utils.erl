@@ -153,27 +153,7 @@ gather_iterator_results(OutputPid, OutputRef, {eof, _}, Acc) ->
 -spec gather_stream_results(stream_ref(), pid(), reference(), fun()) ->
                                    any() | no_return().
 gather_stream_results(Ref, OutputPid, OutputRef, TransformFun) ->
-    receive
-        {Ref, done} ->
-            OutputPid!{disconnect, OutputRef};
-
-        {Ref, {result_vec, ResultVec}} ->
-            ResultVec2 = lists:map(TransformFun, ResultVec),
-            OutputPid!{results, ResultVec2, OutputRef},
-            gather_stream_results(Ref, OutputPid, OutputRef, TransformFun);
-
-        {Ref, {error, _} = Err} ->
-            OutputPid ! Err;
-
-        %% TODO: Check if this is dead code
-        {Ref, {result, {DocID, Props}}} ->
-            NewResult = TransformFun({DocID, Props}),
-            OutputPid!{results, [NewResult], OutputRef},
-            gather_stream_results(Ref, OutputPid, OutputRef, TransformFun)
-    after
-        ?STREAM_TIMEOUT ->
-            throw(stream_timeout)
-    end.
+    gather_stream_results(Ref, OutputPid, OutputRef, TransformFun, ?STREAM_TIMEOUT).
 
 -spec gather_stream_results(stream_ref(), pid(), reference(), fun(), integer()) ->
                                    any() | no_return().

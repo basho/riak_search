@@ -46,16 +46,8 @@ response_done(Sender) ->
 response_error(Sender, Reason) ->
     riak_core_vnode:reply(Sender, {error, Reason}).
 
-collect_info_response(0, _Ref, Acc) ->
-    {ok, Acc};
 collect_info_response(RepliesRemaining, Ref, Acc) ->
-    receive
-        {Ref, List} ->
-            collect_info_response(RepliesRemaining - 1, Ref, List ++ Acc)
-    after 5000 ->
-        lager:error("range_loop timed out!"),
-        throw({timeout, range_loop})
-    end.
+    collect_info_response(RepliesRemaining, Ref, Acc, 5000).
 
 collect_info_response(0, _Ref, Acc, _Timeout) ->
     {ok, Acc};
