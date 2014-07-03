@@ -54,7 +54,7 @@ collect_info_response(0, _Ref, Acc, _Timeout) ->
 collect_info_response(RepliesRemaining, Ref, Acc, Timeout) ->
     receive
         {Ref, List} ->
-            collect_info_response(RepliesRemaining - 1, Ref, List ++ Acc)
+            collect_info_response(RepliesRemaining - 1, Ref, List ++ Acc, Timeout)
     after Timeout ->
         lager:error("range_loop timed out!"),
         throw({timeout, range_loop})

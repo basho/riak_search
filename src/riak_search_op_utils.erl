@@ -165,7 +165,7 @@ gather_stream_results(Ref, OutputPid, OutputRef, TransformFun, Timeout) ->
         {Ref, {result_vec, ResultVec}} ->
             ResultVec2 = lists:map(TransformFun, ResultVec),
             OutputPid!{results, ResultVec2, OutputRef},
-            gather_stream_results(Ref, OutputPid, OutputRef, TransformFun);
+            gather_stream_results(Ref, OutputPid, OutputRef, TransformFun, Timeout);
 
         {Ref, {error, _} = Err} ->
             OutputPid ! Err;
@@ -174,7 +174,7 @@ gather_stream_results(Ref, OutputPid, OutputRef, TransformFun, Timeout) ->
         {Ref, {result, {DocID, Props}}} ->
             NewResult = TransformFun({DocID, Props}),
             OutputPid!{results, [NewResult], OutputRef},
-            gather_stream_results(Ref, OutputPid, OutputRef, TransformFun)
+            gather_stream_results(Ref, OutputPid, OutputRef, TransformFun, Timeout)
     after
         Timeout ->
             throw(stream_timeout)
