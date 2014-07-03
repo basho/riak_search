@@ -9,11 +9,12 @@
          behaviour_info/1
         ]).
 -export([
-         response_results/2, 
+         response_results/2,
          response_done/1,
          response_error/2,
-         info_response/2, 
-         collect_info_response/3]).
+         info_response/2,
+         collect_info_response/3,
+         collect_info_response/4]).
 
 -spec behaviour_info(atom()) -> 'undefined' | [{atom(), arity()}].
 behaviour_info(callbacks) ->
@@ -52,6 +53,17 @@ collect_info_response(RepliesRemaining, Ref, Acc) ->
         {Ref, List} ->
             collect_info_response(RepliesRemaining - 1, Ref, List ++ Acc)
     after 5000 ->
+        lager:error("range_loop timed out!"),
+        throw({timeout, range_loop})
+    end.
+
+collect_info_response(0, _Ref, Acc, _Timeout) ->
+    {ok, Acc};
+collect_info_response(RepliesRemaining, Ref, Acc, Timeout) ->
+    receive
+        {Ref, List} ->
+            collect_info_response(RepliesRemaining - 1, Ref, List ++ Acc)
+    after Timeout ->
         lager:error("range_loop timed out!"),
         throw({timeout, range_loop})
     end.
