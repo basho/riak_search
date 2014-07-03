@@ -47,7 +47,7 @@ start_loop(Op, OutputPid, OutputRef, State) ->
                            {IndexName, DocID, Props}
                    end,
     {ok, Ref} = range(VNode, IndexName, FieldName, StartTerm, EndTerm, Size, FilterFun),
-    Timeout = app_helper:get_env(riak_search,stream_timeout,15000),
+    Timeout = app_helper:get_env(riak_search, stream_timeout, 15000),
     riak_search_op_utils:gather_stream_results(Ref, OutputPid, OutputRef, TransformFun, Timeout).
 
 range(VNode, Index, Field, StartTerm, EndTerm, Size, FilterFun) ->
