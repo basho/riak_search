@@ -9,7 +9,8 @@
 -export([
     iterator_tree/3,
     gather_iterator_results/3,
-    gather_stream_results/4
+    gather_stream_results/4,
+    gather_stream_results/5
 ]).
 
 -include("riak_search.hrl").
@@ -35,10 +36,10 @@ it_combine(SelectFun, Iterators) ->
         [] ->
             %% No iterators, so return eof.
             fun() -> {eof, undefined} end;
-        [OneIterator] -> 
+        [OneIterator] ->
             %% We've successfully collapsed to a single iterator.
             OneIterator;
-        ManyIterators -> 
+        ManyIterators ->
             %% More collapsing is neccessary.
             it_combine(SelectFun, ManyIterators)
     end.
@@ -52,7 +53,7 @@ it_combine_inner(_SelectFun, [Iterator]) ->
 it_combine_inner(SelectFun, [IteratorA,IteratorB|Rest]) ->
     Iterator = fun() -> SelectFun(IteratorA(), IteratorB()) end,
     [Iterator|it_combine_inner(SelectFun, Rest)].
-    
+
 %% @private Chain an operator, and build an iterator function around
 %% it. The iterator will return {Result, NotFlag, NewIteratorFun} each
 %% time it is called, or block until one is available. When there are
@@ -60,11 +61,11 @@ it_combine_inner(SelectFun, [IteratorA,IteratorB|Rest]) ->
 it_op(Op, SearchState) ->
     %% Spawn a collection process...
     Ref = make_ref(),
-    F = fun() -> 
+    F = fun() ->
                 Parent = SearchState#search_state.parent,
                 erlang:link(Parent),
                 erlang:process_flag(trap_exit, true),
-                it_op_collector_loop(Parent, Ref, []) 
+                it_op_collector_loop(Parent, Ref, [])
         end,
     Pid = erlang:spawn_link(F),
 
@@ -73,7 +74,7 @@ it_op(Op, SearchState) ->
 
     %% Return an iterator function. Returns
     %% a new result.
-    fun() -> 
+    fun() ->
             it_op_inner(Pid, Ref, Op)
     end.
 
@@ -152,14 +153,19 @@ gather_iterator_results(OutputPid, OutputRef, {eof, _}, Acc) ->
 -spec gather_stream_results(stream_ref(), pid(), reference(), fun()) ->
                                    any() | no_return().
 gather_stream_results(Ref, OutputPid, OutputRef, TransformFun) ->
-    receive 
+    gather_stream_results(Ref, OutputPid, OutputRef, TransformFun, ?STREAM_TIMEOUT).
+
+-spec gather_stream_results(stream_ref(), pid(), reference(), fun(), integer()) ->
+                                   any() | no_return().
+gather_stream_results(Ref, OutputPid, OutputRef, TransformFun, Timeout) ->
+    receive
         {Ref, done} ->
             OutputPid!{disconnect, OutputRef};
-            
+
         {Ref, {result_vec, ResultVec}} ->
             ResultVec2 = lists:map(TransformFun, ResultVec),
             OutputPid!{results, ResultVec2, OutputRef},
-            gather_stream_results(Ref, OutputPid, OutputRef, TransformFun);
+            gather_stream_results(Ref, OutputPid, OutputRef, TransformFun, Timeout);
 
         {Ref, {error, _} = Err} ->
             OutputPid ! Err;
@@ -168,9 +174,8 @@ gather_stream_results(Ref, OutputPid, OutputRef, TransformFun) ->
         {Ref, {result, {DocID, Props}}} ->
             NewResult = TransformFun({DocID, Props}),
             OutputPid!{results, [NewResult], OutputRef},
-            gather_stream_results(Ref, OutputPid, OutputRef, TransformFun)
+            gather_stream_results(Ref, OutputPid, OutputRef, TransformFun, Timeout)
     after
-        ?STREAM_TIMEOUT ->
+        Timeout ->
             throw(stream_timeout)
     end.
-

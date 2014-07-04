@@ -13,9 +13,9 @@
 -include_lib("lucene_parser/include/lucene_parser.hrl").
 
 chain_op(Op, OutputPid, OutputRef, State) ->
-    F = fun() -> 
+    F = fun() ->
                 erlang:link(State#search_state.parent),
-                start_loop(Op, OutputPid, OutputRef, State) 
+                start_loop(Op, OutputPid, OutputRef, State)
         end,
     erlang:spawn_link(F),
     {ok, 1}.
@@ -39,7 +39,7 @@ start_loop(Op, OutputPid, OutputRef, State) ->
         {exclusive, OldEndTerm} ->
             EndTerm = riak_search_utils:binary_inc(OldEndTerm, -1)
     end,
-    
+
     Size = Op#range_worker.size,
     VNode = Op#range_worker.vnode,
     FilterFun = State#search_state.filter,
@@ -47,7 +47,8 @@ start_loop(Op, OutputPid, OutputRef, State) ->
                            {IndexName, DocID, Props}
                    end,
     {ok, Ref} = range(VNode, IndexName, FieldName, StartTerm, EndTerm, Size, FilterFun),
-    riak_search_op_utils:gather_stream_results(Ref, OutputPid, OutputRef, TransformFun).
+    Timeout = app_helper:get_env(riak_search, stream_timeout, 15000),
+    riak_search_op_utils:gather_stream_results(Ref, OutputPid, OutputRef, TransformFun, Timeout).
 
 range(VNode, Index, Field, StartTerm, EndTerm, Size, FilterFun) ->
     riak_search_vnode:range(VNode, Index, Field, riak_search_utils:to_binary(StartTerm), riak_search_utils:to_binary(EndTerm), Size, FilterFun, self()).

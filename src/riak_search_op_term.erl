@@ -103,7 +103,8 @@ info(Index, Field, Term) ->
     Preflist = riak_search_utils:preflist(Index, Field, Term),
 
     {ok, Ref} = riak_search_vnode:info(Preflist, Index, Field, Term, self()),
-    {ok, Results} = riak_search_backend:collect_info_response(length(Preflist), Ref, []),
+    Timeout = app_helper:get_env(riak_search, range_loop_timeout, 5000),
+    {ok, Results} = riak_search_backend:collect_info_response(length(Preflist), Ref, [], Timeout),
     Results.
 
 %% Create transform function, taking scoring values into account.
