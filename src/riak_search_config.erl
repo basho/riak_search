@@ -198,9 +198,11 @@ ensure_n_val_setting(Schema) ->
     BucketProps = riak_core_bucket:get_bucket(BucketName),
     NVal = Schema:n_val(),
     CurrentNVal = proplists:get_value(n_val,BucketProps),
-    case NVal == CurrentNVal of
+    CurrentAllowMult = proplists:get_value(allow_mult, BucketProps),
+    case NVal =:= CurrentNVal andalso CurrentAllowMult =:= false of
         true ->
             ok;
         false ->
-            riak_core_bucket:set_bucket(BucketName, [{n_val, NVal}])
+            riak_core_bucket:set_bucket(BucketName, [{n_val, NVal},
+                                                    {allow_mult, false}])
     end.

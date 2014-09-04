@@ -92,7 +92,15 @@ postings(IdxDoc) ->
     F1 = fun({FieldName, _, TermPos}, FieldsAcc) ->
                  F2 = fun({Term, Positions}, Acc) ->
                               Props = build_props(Positions, InlineFields),
-                              [{DocIndex, FieldName, Term, DocId, Props, K} | Acc]
+                              GeneratedTerm = {DocIndex, FieldName, Term, DocId, Props, K},
+                              TermLength = erlang:external_size(GeneratedTerm),
+                              case TermLength < 32000 of
+                                true ->
+                                  [GeneratedTerm | Acc];
+                                false ->
+                                  lager:error("Encountered Large Posting (~w) when indexing Bucket \"~s\", Key \"~s\", and Field Name \"~s\", Skipping.", [TermLength, DocIndex, DocId, FieldName]),
+                                  Acc
+                              end
                       end,
                  lists:foldl(F2, FieldsAcc, TermPos)
          end,

@@ -1,6 +1,6 @@
 {application, riak_search,
  [{description, "Riak Search"},
-  {vsn, "1.4.1"},
+  {vsn, git},
   {registered, []},
   {applications, [
                   kernel,
@@ -32,6 +32,9 @@
 
          %% Number of index entries to transfer at a time during
          %% handoff
-         {fold_batch_size, 100}
+         {fold_batch_size, 100},
+
+         %% disabled by default
+         {enabled, false}
         ]}
  ]}.

@@ -20,6 +20,9 @@
 start(_StartType, _StartArgs) ->
     case app_helper:get_env(riak_search, enabled, false) of
         true ->
+            lager:warning("Riak Search has been deprecated as of Riak 2.0.0. "
+                "Please migrate to Yokozuna."),
+
             %% Ensure that the KV service has fully loaded.
             riak_core:wait_for_service(riak_kv),
 
