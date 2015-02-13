@@ -104,7 +104,7 @@ handle_call({get_schema, SchemaName}, _From, State) ->
             true = ets:insert(Table, {SchemaName, Schema}),
 
             %% Update buckets n_val...
-            ensure_n_val_setting(Schema),
+            ok = ensure_n_val_setting(Schema),
 
             {reply, {ok, Schema}, State};
         {error, Reason} = Error ->
@@ -132,7 +132,7 @@ handle_call({put_raw_schema, SchemaName, RawSchemaBinary}, _From, State) ->
         {ok, RawSchema} ->
             {ok, Schema} = riak_search_schema_parser:from_eterm(SchemaName, RawSchema),
             %% Update buckets n_val...
-            ensure_n_val_setting(Schema),
+            ok = ensure_n_val_setting(Schema),
 
             %% Clear the local cache entry...
             Table = State#state.schema_table,
