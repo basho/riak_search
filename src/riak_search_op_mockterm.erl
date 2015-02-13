@@ -27,5 +27,5 @@ send_results(Op, OutputPid, OutputRef, _State) ->
     F = fun(X) ->
         OutputPid!{results, X, OutputRef}
     end,
-    [F(X) || X <- Op#mockterm.results],
+    _ = [F(X) || X <- Op#mockterm.results],
     OutputPid!{disconnect, OutputRef}.

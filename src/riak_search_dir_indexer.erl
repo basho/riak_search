@@ -125,7 +125,7 @@ main_loop(State) ->
     %% Stop all workers...
     WorkerPids = State#state.worker_pids,
     Ref = State#state.ref,
-    [X ! {stop, Ref} || X <- WorkerPids],
+    _ = [X ! {stop, Ref} || X <- WorkerPids],
     ok.
 
 %% @private Call the supplied StatusFunction.    
