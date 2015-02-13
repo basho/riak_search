@@ -18,3 +18,6 @@ mochiweb_request.erl:246: The variable Length can never match since previous cla
 mochiweb_request.erl:271: The call mochiweb:new_response({{_,port() | {'ssl',{'sslsocket',_,_}},_,_,_,_},binary() | maybe_improper_list() | integer(),gb_tree()}) contains an opaque term as 1st argument argument when a structured term of type {_,_,[any()] | tuple()} is expected
 mochiweb_socket_server.erl:128: The call erlang:integer_to_list(S::maybe_improper_list()) will never return since it differs in the 1st argument from the success typing arguments: (integer())
 mochiweb_sup.erl:26: The pattern [Spec | _] can never match the type []
+riak_search_worker.erl:22: Callback info about the riak_core_vnode_worker behaviour is not available
+riak_search_ets_backend.erl:8: Callback info about the riak_search_backend behaviour is not available
+merge_index_backend.erl:8: Callback info about the riak_search_backend behaviour is not available
