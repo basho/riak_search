@@ -52,7 +52,7 @@ get_range_preflist(NVal, VNodes, UpNodes) ->
     UpNodesSet = ordsets:from_list(UpNodes),
 
     %% Randomly rotate the vnodes...
-    random:seed(now()),
+    _ = random:seed(now()),
     RotationFactor = random:uniform(NVal),
     {Pre, Post} = lists:split(RotationFactor, VNodes),
     VNodes1 = Post ++ Pre,
