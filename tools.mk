@@ -51,6 +51,7 @@ dialyzer-run:
 #   - Pre-pend duplicate count to each warning with sort | uniq -c
 #   - Remove annoying white space around duplicate count
 #   - Save in dialyer.ignore-warnings.tmp
+#   - Strip `Unknown functions:' blocks from the warning list
 #   - Do the same to dialyzer_warnings
 #   - Remove matches from dialyzer.ignore-warnings.tmp from output
 #   - Remove duplicate count
@@ -76,7 +77,12 @@ dialyzer-run:
 		| uniq -c \
 		| sed -E '/.*\.erl: /!s/^[[:space:]]*[0-9]+[[:space:]]*//' \
 		> dialyzer.ignore-warnings.tmp ; \
-		egrep -v "^[[:space:]]*(done|Checking|Proceeding|Compiling)" dialyzer_warnings \
+		awk 'BEGIN { UNKNOWN_BLOCK=0 } \
+			/^Unknown functions:$$/ {UNKNOWN_BLOCK=1} \
+			{if (UNKNOWN_BLOCK == 0) { print $$0 } } \
+			/^[[:space:]]*done/ { if ($$UNKNOWN_BLOCK == 1) {UNKNOWN_BLOCK=0}; print $$0 } ' dialyzer_warnings \
+		> dialyzer_warnings_nounknown; \
+		egrep -v "^[[:space:]]*(done|Checking|Proceeding|Compiling)" dialyzer_warnings_nounknown \
 		| sed -E 's/^([^:]+:)[^:]+:/\1/' \
 		| sort \
 		| uniq -c \
