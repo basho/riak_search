@@ -120,7 +120,7 @@ main_loop(State) ->
 
     %% Cancel the timer...
     StatTimer = State#state.stat_timer,
-    timer:cancel(StatTimer), 
+    _ = timer:cancel(StatTimer), 
 
     %% Stop all workers...
     WorkerPids = State#state.worker_pids,
