@@ -22,7 +22,7 @@
 new(_Id) ->
     MyNode = basho_bench_config:get(riaksearch_node),
     Cookie = basho_bench_config:get(riaksearch_cookie, riak),
-    net_kernel:start([MyNode]),
+    _ = net_kernel:start([MyNode]),
     erlang:set_cookie(node(), Cookie),
 
     %% Get the nodes...
