@@ -69,7 +69,7 @@ it_op(Op, SearchState) ->
     Pid = erlang:spawn_link(F),
 
     %% Chain the op...
-    riak_search_op:chain_op(Op, Pid, Ref, SearchState),
+    {ok, _} = riak_search_op:chain_op(Op, Pid, Ref, SearchState),
 
     %% Return an iterator function. Returns
     %% a new result.
