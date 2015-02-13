@@ -142,7 +142,7 @@ set_schema(Index, SchemaFile) ->
                     %%
                     %% TODO: Eventually the schema should be gossiped like
                     %% the ring
-                    clear_schema_cache(),
+                    _ = clear_schema_cache(),
                     io:format(" :: Done.~n");
                 Error ->
                     io:format(" :: ERROR: ~p~n", [Error]),
@@ -172,7 +172,8 @@ clear_schema_cache() ->
         [] -> ok;
         Errors ->
             io:format(" :: Received ~b errors:~n", [length(Errors)]),
-            [ io:format("    ~p~n", [E]) || E <- Errors ]
+            _ = [ io:format("    ~p~n", [E]) || E <- Errors ],
+            ok
     end,
     case BadNodes of
         [] -> ok;
@@ -192,11 +193,11 @@ search(DefaultIndex, Query, Filter) ->
             F = fun(X) ->
                 {Index, DocID, Props} = X,
                 io:format("index/id: ~s/~s~n", [Index, DocID]),
-                [io:format("~p -> ~p~n", [Key, Value]) ||
+                _ = [io:format("~p -> ~p~n", [Key, Value]) ||
                 {Key, Value} <- Props],
                 io:format("~n------------------------------~n~n")
             end,
-            [F(X) || X <- Results],
+            _ = [F(X) || X <- Results],
             io:format(" :: Found ~p results.~n", [Length])
     end.
 
@@ -214,16 +215,16 @@ search_doc(DefaultIndex, Query, Filter) ->
                 io:format("index/id: ~s/~s~n", [Index, DocID]),
 
                 %% Fields...
-                [io:format("~p => ~p~n", [Key, Value]) ||
+                _ = [io:format("~p => ~p~n", [Key, Value]) ||
                 {Key, Value} <- riak_indexed_doc:fields(X)],
                 io:format("~n"),
 
                 %% Properties...
-                [io:format("~p -> ~p~n", [Key, Value]) ||
+                _ = [io:format("~p -> ~p~n", [Key, Value]) ||
                 {Key, Value} <- riak_indexed_doc:props(X)],
                 io:format("------------------------------~n~n")
             end,
-            [F(X) || X <- Results],
+            _ = [F(X) || X <- Results],
             io:format(" :: Found ~p results.~n", [Length]),
             io:format(" :: Maximum score ~p.~n", [MaxScore])
     end.

@@ -117,7 +117,7 @@ repair_filter(Target) ->
                                 fun object_info/1).
 
 %% @doc Get the status of the repair process for the given `Partition'.
--spec repair_status(partition()) -> no_repair | repair_in_progress.
+-spec repair_status(partition()) -> in_progress | not_found.
 repair_status(Partition) ->
     riak_core_vnode_manager:repair_status({riak_search_vnode, Partition}).
 

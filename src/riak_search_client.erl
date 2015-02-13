@@ -205,7 +205,7 @@ index_docs(IdxDocs, {?MODULE, [RiakClient]}=THIS) ->
     {RiakObjsAcc, DeleteAcc, IndexAcc} = lists:foldl(F, {[],[],[]}, IdxDocs),
 
     %% Create the Riak objects...
-    [riak_indexed_doc:put_obj(RiakClient, X) || X <- RiakObjsAcc],
+    _ = [riak_indexed_doc:put_obj(RiakClient, X) || X <- RiakObjsAcc],
 
     %% Delete the old postings...
     FlatDeleteAcc = lists:flatten(DeleteAcc),
@@ -293,7 +293,7 @@ process_terms_1(IndexFun, BatchSize, PreflistCache, Terms) ->
                      Replicas = [{VNode, Posting} || {_, Posting} <- ets:lookup(SubBatchTable, PIKey), VNode <- Preflist],
                      ets:insert(ReplicaTable, Replicas)
              end,
-        [F2(X) || X <- PartitionIndexes],
+        _ = [F2(X) || X <- PartitionIndexes],
 
         %% Index the postings.
         F3 = fun(VNode) ->
@@ -301,7 +301,7 @@ process_terms_1(IndexFun, BatchSize, PreflistCache, Terms) ->
                      IndexFun(VNode, Postings)
              end,
         VNodes = riak_search_utils:ets_keys(ReplicaTable),
-        riak_search_utils:ptransform(F3, VNodes),
+        _ = riak_search_utils:ptransform(F3, VNodes),
 
         %% Repeat until there are no more terms...
         process_terms_1(IndexFun, BatchSize, NewPreflistCache, Rest)
@@ -331,7 +331,7 @@ delete_docs(Docs, {?MODULE, [RiakClient]}=THIS) ->
     delete_terms(FlatDeleteAcc, THIS),
 
     %% Delete the Riak objects...
-    [riak_indexed_doc:delete(RiakClient, DocIndex, DocID)
+    _ = [riak_indexed_doc:delete(RiakClient, DocIndex, DocID)
      || {DocIndex, DocID} <- ExistingObjs],
     ok.
 
