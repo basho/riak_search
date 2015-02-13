@@ -31,7 +31,7 @@ new(_Id) ->
         io:format("Testing connectivity to Node: ~p~n", [Node]),
         pong == net_adm:ping(Node) orelse throw({could_not_reach_node, Node})
     end,
-    [F(X) || X <- Nodes],
+    _ = [F(X) || X <- Nodes],
 
     %% Load the field array...
     FieldFile = basho_bench_config:get(riaksearch_fieldfile, undefined),
