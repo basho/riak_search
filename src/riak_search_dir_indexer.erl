@@ -115,7 +115,7 @@ main_loop(State) when State#state.processed_files < State#state.total_files ->
 
 main_loop(State) ->
     %% Print the final stats.
-    print_stats(State),
+    _ = print_stats(State),
     print_stats_finish(State),
 
     %% Cancel the timer...
