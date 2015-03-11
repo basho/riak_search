@@ -157,7 +157,7 @@ test_inner({solr_select, Host, Port, Params, Validators}, _Root) ->
     test_inner({solr_select, Host, Port, Params, 200, Validators}, _Root);
 
 test_inner({solr_select, Host, Port, Params, Expected, Validators}, _Root) ->
-    ok = inets:start(),
+    ok = start_inets(),
     Query = proplists:get_value(q, Params),
     QS = to_querystring(Params),
     Url = io_lib:format("http://~s:~p/solr/~s/select?~s", [Host, Port, ?TEST_INDEX, QS]),
@@ -203,7 +203,7 @@ test_inner({solr_update, Path, Params}, Root) ->
     io:format("~n :: Running Solr Update '~s' (via HTTP)...~n", [Path]),
 
     %% Run the update command...
-    ok = inets:start(),
+    ok = start_inets(),
     case file:read_file(filename:join(Root, Path)) of
         {ok, Bytes} ->
             {Hostname, Port} = hd(app_helper:get_env(riak_api, http)),
@@ -405,3 +405,11 @@ to_querystring(Params) ->
     QSParts = [F(K, V) || {K, V} <- Params],
     string:join(QSParts, "&").
 
+start_inets() ->
+    start_inets(inets:start()).
+
+start_inets(ok) ->
+    ok;
+
+start_inets({error, {already_started, inets}}) ->
+    ok.
