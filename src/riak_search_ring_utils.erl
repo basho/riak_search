@@ -1,3 +1,23 @@
+%% -------------------------------------------------------------------
+%%
+%% Copyright (c) 2011,2015 Basho Technologies, Inc.
+%%
+%% This file is provided to you under the Apache License,
+%% Version 2.0 (the "License"); you may not use this file
+%% except in compliance with the License.  You may obtain
+%% a copy of the License at
+%%
+%%   http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing,
+%% software distributed under the License is distributed on an
+%% "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+%% KIND, either express or implied.  See the License for the
+%% specific language governing permissions and limitations
+%% under the License.
+%%
+%% -------------------------------------------------------------------
+
 -module(riak_search_ring_utils).
 -export([
          get_covering_preflist/1,
@@ -5,6 +25,7 @@
          calc_partition/3
         ]).
 
+-include_lib("otp_compat/include/crypto_hash.hrl").
 -include("riak_search.hrl").
 
 %% Pick out the preflist of covering nodes. There are two approaches
@@ -44,7 +65,7 @@ get_covering_preflist(NVal) ->
 %% coverage. If node 3 AND 4 are down, then we need node 5 and node
 %% 2. It then picks out the nodes from the structure and returns the
 %% final unique preflist.
-%% 
+%%
 %% To create the structure, we first take the original set of X nodes,
 %% figure out how many iterations we need via ceiling(
 get_range_preflist(NVal, VNodes, UpNodes) ->
@@ -61,28 +82,28 @@ get_range_preflist(NVal, VNodes, UpNodes) ->
     %% Create the preflist structure and then choose the preflist based on up nodes.
     Structure = create_preflist_structure(Iterations, NVal, VNodes1 ++ VNodes1),
     lists:usort(choose_preflist(Structure, UpNodesSet)).
-    
-create_preflist_structure(0, _NVal, _VNodes) -> 
+
+create_preflist_structure(0, _NVal, _VNodes) ->
     [];
-create_preflist_structure(Iterations, NVal, VNodes) -> 
+create_preflist_structure(Iterations, NVal, VNodes) ->
     {Backup, VNodes1} = lists:split(NVal, VNodes),
     {Primary, _} = lists:split(NVal, VNodes1),
     Group = [{hd(Primary), []}] ++ create_preflist_structure_1(tl(Primary), tl(Backup)),
     [Group|create_preflist_structure(Iterations - 1, NVal, VNodes1)].
-create_preflist_structure_1([], []) -> 
+create_preflist_structure_1([], []) ->
     [];
 create_preflist_structure_1([H|T], Backups) ->
     [{H, Backups}|create_preflist_structure_1(T, tl(Backups))].
-    
+
 %% Given a preflist structure, return the preflist.
 choose_preflist([Group|Rest], UpNodesSet) ->
     choose_preflist_1(Group, UpNodesSet) ++ choose_preflist(Rest, UpNodesSet);
-choose_preflist([], _) -> 
+choose_preflist([], _) ->
     [].
 choose_preflist_1([{Primary, Backups}|Rest], UpNodesSet) ->
     {_, PrimaryNode} = Primary,
     AvailableBackups = filter_upnodes(Backups, UpNodesSet),
-    case ordsets:is_element(PrimaryNode, UpNodesSet) of 
+    case ordsets:is_element(PrimaryNode, UpNodesSet) of
         true when AvailableBackups == [] ->
             [Primary];
         true when AvailableBackups /= [] ->
@@ -90,13 +111,13 @@ choose_preflist_1([{Primary, Backups}|Rest], UpNodesSet) ->
         false ->
             choose_preflist_1(Rest, UpNodesSet)
     end;
-choose_preflist_1([], _) -> 
+choose_preflist_1([], _) ->
     [].
 
 %% Given a list of VNodes, filter out any that are offline.
 filter_upnodes([{Index,Node}|VNodes], UpNodesSet) ->
     case ordsets:is_element(Node, UpNodesSet) of
-        true -> 
+        true ->
             [{Index, Node}|filter_upnodes(VNodes, UpNodesSet)];
         false ->
             filter_upnodes(VNodes, UpNodesSet)
@@ -114,7 +135,7 @@ ceiling(Numerator, Denominator) ->
 % be used to calculate the partition on the ring. It is used in places
 % where we need to make repeated calls to get the actual partition
 % (not the DocIdx) of an Index/Field/Term combination. NOTE: This, or something like it,
-% should probably get moved to Riak Core in the future. 
+% should probably get moved to Riak Core in the future.
 -define(RINGTOP, trunc(math:pow(2,160)-1)).  % SHA-1 space
 
 zip_with_partition_and_index(Postings) ->
@@ -150,4 +171,4 @@ zip_with_partition_and_index(Postings) ->
 %% term and kills performance.
 -spec calc_partition(index(), field(), term()) -> binary().
 calc_partition(Index, Field, Term) ->
-    crypto:sha(term_to_binary({Index, Field, Term})).
+    ?crypto_hash_sha(term_to_binary({Index, Field, Term})).
