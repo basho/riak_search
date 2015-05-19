@@ -1,8 +1,24 @@
+%% -*- encoding: utf-8 -*-
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2010 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2011,2015 Basho Technologies, Inc.
+%%
+%% This file is provided to you under the Apache License,
+%% Version 2.0 (the "License"); you may not use this file
+%% except in compliance with the License.  You may obtain
+%% a copy of the License at
+%%
+%%   http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing,
+%% software distributed under the License is distributed on an
+%% "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+%% KIND, either express or implied.  See the License for the
+%% specific language governing permissions and limitations
+%% under the License.
 %%
 %% -------------------------------------------------------------------
+
 -module(riak_search_kv_json_extractor).
 -export([extract/3,
          extract_value/3]).
@@ -24,7 +40,7 @@ extract(RiakObject, DefaultField, _Args) ->
     end.
 
 extract_value(Data, DefaultField, _Args) ->
-    Json = mochijson2:decode(Data),    
+    Json = mochijson2:decode(Data),
     Fields = lists:reverse(lists:flatten(make_search_fields(undefined, Json, DefaultField, []))),
     [{to_utf8(FieldName), to_utf8(FieldValue)} || {FieldName, FieldValue} <- Fields].
 
@@ -51,13 +67,13 @@ to_data(Atom) when is_atom(Atom) ->
     atom_to_binary(Atom, utf8);
 to_data(Term) ->
     iolist_to_binary(io_lib:format("~p", [Term])).
-    
+
 
 append_fieldname(undefined, Name) ->
     binary_to_list(Name);
 append_fieldname(FieldPrefix, Name) ->
     FieldPrefix ++ [$_ | binary_to_list(Name)].
-    
+
 %% Make a search field name - if no names encountered yet use the
 %% default field, otherwise make sure the field name does not
 %% contain . or : by substituting with _
@@ -71,10 +87,10 @@ search_fieldname(Name, _) ->
 -ifdef(TEST).
 
 bad_json_test() ->
-    Data = <<"<?xml><suprise>this is not json</suprise>">>, 
+    Data = <<"<?xml><suprise>this is not json</suprise>">>,
     Object = riak_object:new(<<"b">>, <<"k">>, Data, "application/json"),
     ?assertMatch({fail, {cannot_parse_json,_}}, extract(Object, <<"value">>, undefined)).
-             
+
 json_test() ->
     Tests = [{<<"{\"myfield\":\"myvalue\"}">>,
               [{<<"myfield">>,<<"myvalue">>}]},
@@ -117,70 +133,70 @@ json_test() ->
                {<<"menu_popup_menuitem_value">>, <<"Close">>},
                {<<"menu_popup_menuitem_onclick">>, <<"CloseDoc()">>}]},
              %% From http://www.ibm.com/developerworks/library/x-atom2json.html
-             {<<"{ 
- \"lang\":\"en-US\", 
- \"dir\":\"ltr\", 
- \"id\":\"tag:example.org,2007:/foo\", 
- \"title\":\"Example Feed\", 
- \"subtitle\":{ 
-  \"attributes\":{ 
-   \"type\":\"html\" 
-  }, 
-  \"children\":[{ 
-    \"name\":\"p\", 
-    \"attributes\":{ }, 
-    \"children\":[\"This is an example feed\" ] 
-   } ] }, 
- \"rights\":{ 
-  \"attributes\":{ \"type\":\"xhtml\" }, 
-  \"children\":[{ 
-    \"name\":\"p\", 
-    \"attributes\":{ }, 
-    \"children\":[\"Copyright \\u00a9 James M Snell\" ] 
-   } ]}, 
- \"updated\":\"2007-10-14T12:12:12.000Z\", 
- \"authors\":[{ 
-   \"name\":\"James M Snell\", 
-   \"email\":\"jasnell@example.org\", 
-   \"uri\":\"http://example.org/~jasnell\" 
-  } ], 
+             {<<"{
+ \"lang\":\"en-US\",
+ \"dir\":\"ltr\",
+ \"id\":\"tag:example.org,2007:/foo\",
+ \"title\":\"Example Feed\",
+ \"subtitle\":{
+  \"attributes\":{
+   \"type\":\"html\"
+  },
+  \"children\":[{
+    \"name\":\"p\",
+    \"attributes\":{ },
+    \"children\":[\"This is an example feed\" ]
+   } ] },
+ \"rights\":{
+  \"attributes\":{ \"type\":\"xhtml\" },
+  \"children\":[{
+    \"name\":\"p\",
+    \"attributes\":{ },
+    \"children\":[\"Copyright \\u00a9 James M Snell\" ]
+   } ]},
+ \"updated\":\"2007-10-14T12:12:12.000Z\",
+ \"authors\":[{
+   \"name\":\"James M Snell\",
+   \"email\":\"jasnell@example.org\",
+   \"uri\":\"http://example.org/~jasnell\"
+  } ],
  \"links\":[
-   { 
-     \"href\":\"http://example.org/foo\", 
-     \"rel\":\"self\" 
+   {
+     \"href\":\"http://example.org/foo\",
+     \"rel\":\"self\"
    },
-   { 
-     \"href\":\"http://example.org/blog\" 
+   {
+     \"href\":\"http://example.org/blog\"
    },
-   { 
-     \"href\":\"http://example.org/blog;json\", 
-     \"rel\":\"alternate\", 
-     \"type\":\"application/json\" 
-   } ], 
+   {
+     \"href\":\"http://example.org/blog;json\",
+     \"rel\":\"alternate\",
+     \"type\":\"application/json\"
+   } ],
  \"entries\":[],
- \"attributes\":{ 
-  \"xml:lang\":\"en-US\", 
-  \"xml:base\":\"http://example.org/foo\" 
+ \"attributes\":{
+  \"xml:lang\":\"en-US\",
+  \"xml:base\":\"http://example.org/foo\"
  }
 }">>,
-              [{<<"lang">>,<<"en-US">>}, 
-               {<<"dir">>,<<"ltr">>}, 
-               {<<"id">>,<<"tag:example.org,2007:/foo">>}, 
-               {<<"title">>,<<"Example Feed">>}, 
+              [{<<"lang">>,<<"en-US">>},
+               {<<"dir">>,<<"ltr">>},
+               {<<"id">>,<<"tag:example.org,2007:/foo">>},
+               {<<"title">>,<<"Example Feed">>},
                {<<"subtitle_attributes_type">>, <<"html">>},
-               {<<"subtitle_children_name">>, <<"p">>}, 
+               {<<"subtitle_children_name">>, <<"p">>},
                {<<"subtitle_children_children">>, <<"This is an example feed">>},
-               {<<"rights_attributes_type">>, <<"xhtml">> }, 
-               {<<"rights_children_name">>,<<"p">>}, 
-               {<<"rights_children_children">>,<<"Copyright © James M Snell" >>},
-               {<<"updated">>,<<"2007-10-14T12:12:12.000Z">>}, 
-               {<<"authors_name">>,<<"James M Snell">>}, 
-               {<<"authors_email">>,<<"jasnell@example.org">>}, 
+               {<<"rights_attributes_type">>, <<"xhtml">> },
+               {<<"rights_children_name">>,<<"p">>},
+               {<<"rights_children_children">>,<<"Copyright © James M Snell"/utf8>>},
+               {<<"updated">>,<<"2007-10-14T12:12:12.000Z">>},
+               {<<"authors_name">>,<<"James M Snell">>},
+               {<<"authors_email">>,<<"jasnell@example.org">>},
                {<<"authors_uri">>,<<"http://example.org/~jasnell">>},
-               {<<"links_href">>,<<"http://example.org/foo">>}, 
+               {<<"links_href">>,<<"http://example.org/foo">>},
                {<<"links_rel">>,<<"self">>},
-               {<<"links_href">>,<<"http://example.org/blog">>}, 
-               {<<"links_href">>,<<"http://example.org/blog;json">>}, 
+               {<<"links_href">>,<<"http://example.org/blog">>},
+               {<<"links_href">>,<<"http://example.org/blog;json">>},
                {<<"links_rel">>,<<"alternate">>},
                {<<"links_type">>,<<"application/json">>},
                {<<"attributes_xml_lang">>, <<"en-US">>},
