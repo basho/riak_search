@@ -115,17 +115,17 @@ main_loop(State) when State#state.processed_files < State#state.total_files ->
 
 main_loop(State) ->
     %% Print the final stats.
-    print_stats(State),
+    _ = print_stats(State),
     print_stats_finish(State),
 
     %% Cancel the timer...
     StatTimer = State#state.stat_timer,
-    timer:cancel(StatTimer), 
+    _ = timer:cancel(StatTimer), 
 
     %% Stop all workers...
     WorkerPids = State#state.worker_pids,
     Ref = State#state.ref,
-    [X ! {stop, Ref} || X <- WorkerPids],
+    _ = [X ! {stop, Ref} || X <- WorkerPids],
     ok.
 
 %% @private Call the supplied StatusFunction.    

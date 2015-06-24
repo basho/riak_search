@@ -71,7 +71,7 @@ test_inner({echo, Text}, _) ->
     Tokens = string:tokens(Text, "\n"),
     Tokens1 = [string:strip(X, both) || X <- Tokens],
     io:format("~n"),
-    [io:format(" :: ~s~n", [X]) || X <- Tokens1, X /= ""],
+    _ = [io:format(" :: ~s~n", [X]) || X <- Tokens1, X /= ""],
     true;
 
 test_inner({sleep, Seconds}, _) ->
@@ -137,7 +137,7 @@ test_inner({search_node, Node, Query, Filter, Validators}, _Root) ->
                     true;
                 {fail, Errors} ->
                     io:format("~n    [ ] FAIL QUERY » ~s~n", [Query]),
-                    [io:format("        - ~s~n", [X]) || X <- Errors],
+                    _ = [io:format("        - ~s~n", [X]) || X <- Errors],
                     false
             end;
         Error ->
@@ -157,7 +157,7 @@ test_inner({solr_select, Host, Port, Params, Validators}, _Root) ->
     test_inner({solr_select, Host, Port, Params, 200, Validators}, _Root);
 
 test_inner({solr_select, Host, Port, Params, Expected, Validators}, _Root) ->
-    inets:start(),
+    ok = start_inets(),
     Query = proplists:get_value(q, Params),
     QS = to_querystring(Params),
     Url = io_lib:format("http://~s:~p/solr/~s/select?~s", [Host, Port, ?TEST_INDEX, QS]),
@@ -173,7 +173,7 @@ test_inner({solr_select, Host, Port, Params, Expected, Validators}, _Root) ->
                 {fail, Errors} ->
                     io:format("~n    [ ] FAIL SOLR SELECT » ~s:~p ~s (~s)~n",
                               [Host, Port, Query, QS]),
-                    [io:format("        - ~s~n", [X]) || X <- Errors],
+                    _ = [io:format("        - ~s~n", [X]) || X <- Errors],
                     false
             end;
         {ok, {{_, Status, _}, _, _}} when Status == Expected ->
@@ -203,7 +203,7 @@ test_inner({solr_update, Path, Params}, Root) ->
     io:format("~n :: Running Solr Update '~s' (via HTTP)...~n", [Path]),
 
     %% Run the update command...
-    inets:start(),
+    ok = start_inets(),
     case file:read_file(filename:join(Root, Path)) of
         {ok, Bytes} ->
             {Hostname, Port} = hd(app_helper:get_env(riak_api, http)),
@@ -247,7 +247,7 @@ test_inner({mapred, Bucket, Search, Phases, Validators}, _) ->
                     true;
                 {fail, Errors} ->
                     io:format("~n    [ ] FAIL MAPRED QUERY » ~s~n", [Search]),
-                    [io:format("        - ~s~n", [X]) || X <- Errors],
+                    _ = [io:format("        - ~s~n", [X]) || X <- Errors],
                     false
             end;
         Error ->
@@ -271,7 +271,7 @@ test_inner({mapred, Bucket, Search, Filter, Phases, Validators}, _) ->
                     true;
                 {fail, Errors} ->
                     io:format("~n    [ ] FAIL MAPRED QUERY » ~s/~s~n", [Search, Filter]),
-                    [io:format("        - ~s~n", [X]) || X <- Errors],
+                    _ = [io:format("        - ~s~n", [X]) || X <- Errors],
                     false
             end;
         Error ->
@@ -405,3 +405,11 @@ to_querystring(Params) ->
     QSParts = [F(K, V) || {K, V} <- Params],
     string:join(QSParts, "&").
 
+start_inets() ->
+    start_inets(inets:start()).
+
+start_inets(ok) ->
+    ok;
+
+start_inets({error, {already_started, inets}}) ->
+    ok.

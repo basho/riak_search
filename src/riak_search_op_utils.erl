@@ -52,7 +52,7 @@ it_combine_inner(_SelectFun, [Iterator]) ->
 it_combine_inner(SelectFun, [IteratorA,IteratorB|Rest]) ->
     Iterator = fun() -> SelectFun(IteratorA(), IteratorB()) end,
     [Iterator|it_combine_inner(SelectFun, Rest)].
-    
+
 %% @private Chain an operator, and build an iterator function around
 %% it. The iterator will return {Result, NotFlag, NewIteratorFun} each
 %% time it is called, or block until one is available. When there are
@@ -60,22 +60,20 @@ it_combine_inner(SelectFun, [IteratorA,IteratorB|Rest]) ->
 it_op(Op, SearchState) ->
     %% Spawn a collection process...
     Ref = make_ref(),
-    F = fun() -> 
+    F = fun() ->
                 Parent = SearchState#search_state.parent,
                 erlang:link(Parent),
                 erlang:process_flag(trap_exit, true),
-                it_op_collector_loop(Parent, Ref, []) 
+                it_op_collector_loop(Parent, Ref, [])
         end,
     Pid = erlang:spawn_link(F),
 
     %% Chain the op...
-    riak_search_op:chain_op(Op, Pid, Ref, SearchState),
+    {ok, _} = riak_search_op:chain_op(Op, Pid, Ref, SearchState),
 
     %% Return an iterator function. Returns
     %% a new result.
-    fun() -> 
-            it_op_inner(Pid, Ref, Op)
-    end.
+    fun() -> it_op_inner(Pid, Ref, Op) end.
 
 %% @private Holds the function body of a leaf-iterator. When called,
 %% it requests the next result from the mailbox, and serves it up

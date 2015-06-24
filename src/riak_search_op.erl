@@ -35,7 +35,7 @@ preplan(Op, State) when is_tuple(Op) ->
 %% Kick off execution of the query graph.
 chain_op(OpList, OutputPid, Ref, SearchState) when is_list(OpList)->
     erlang:link(SearchState#search_state.parent),
-    [chain_op(Op, OutputPid, Ref, SearchState) || Op <- OpList],
+    _ = [chain_op(Op, OutputPid, Ref, SearchState) || Op <- OpList],
     {ok, length(OpList)};
 
 chain_op(Op, OutputPid, Ref, SearchState) ->

@@ -80,31 +80,31 @@ code_change(_OldVsn, State, _Extra) ->
 %% @doc Update the given `Stat'.
 -spec update1(term(), term()) -> ok.
 update1(P, index_begin) ->
-    exometer:update([P, ?APP, index_pending], 1);
+    ok = exometer:update([P, ?APP, index_pending], 1);
 update1(P, {index_end, Time}) ->
-    exometer:update([P, ?APP, index_latency], Time),
-    exometer:update([P, ?APP, index_throughput], 1),
-    exometer:update([P, ?APP, index_pending], -1);
+    ok = exometer:update([P, ?APP, index_latency], Time),
+    ok = exometer:update([P, ?APP, index_throughput], 1),
+    ok = exometer:update([P, ?APP, index_pending], -1);
 update1(P, {index_entries, N}) ->
-    exometer:update([P, ?APP, index_entries], N);
+    ok = exometer:update([P, ?APP, index_entries], N);
 update1(P, search_begin) ->
-    exometer:update([P, ?APP, search_pending], 1);
+    ok = exometer:update([P, ?APP, search_pending], 1);
 update1(P, {search_end, Time}) ->
-    exometer:update([P, ?APP, search_latency], Time),
-    exometer:update([P, ?APP, search_throughput], 1),
-    exometer:update([P, ?APP, search_pending], -1);
+    ok = exometer:update([P, ?APP, search_latency], Time),
+    ok = exometer:update([P, ?APP, search_throughput], 1),
+    ok = exometer:update([P, ?APP, search_pending], -1);
 update1(P, search_fold_begin) ->
-    exometer:update([P, ?APP, search_fold_pending], 1);
+    ok = exometer:update([P, ?APP, search_fold_pending], 1);
 update1(P, {search_fold_end, Time}) ->
-    exometer:update([P, ?APP, search_fold_latency], Time),
-    exometer:update([P, ?APP, search_fold_throughput], 1),
-    exometer:update([P, ?APP, search_fold_pending], -1);
+    ok = exometer:update([P, ?APP, search_fold_latency], Time),
+    ok = exometer:update([P, ?APP, search_fold_throughput], 1),
+    ok = exometer:update([P, ?APP, search_fold_pending], -1);
 update1(P, search_doc_begin) ->
-    exometer:update([P, ?APP, search_doc_pending], 1);
+    ok = exometer:update([P, ?APP, search_doc_pending], 1);
 update1(P, {search_doc_end, Time}) ->
-    exometer:update([P, ?APP, search_doc_latency], Time),
-    exometer:update([P, ?APP, search_doc_throughput], 1),
-    exometer:update([P, ?APP, search_doc_pending], -1).
+    ok = exometer:update([P, ?APP, search_doc_latency], Time),
+    ok = exometer:update([P, ?APP, search_doc_throughput], 1),
+    ok = exometer:update([P, ?APP, search_doc_pending], -1).
 
 
 %% -------------------------------------------------------------------
