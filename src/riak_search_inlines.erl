@@ -7,7 +7,9 @@
 -module(riak_search_inlines).
 -export([passes_inlines/3]).
 -include("riak_search.hrl").
+-ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
+-endif.
 -include_lib("lucene_parser/include/lucene_parser.hrl").
 
 %% Convert all fields to list.
