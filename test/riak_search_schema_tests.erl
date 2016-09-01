@@ -34,7 +34,9 @@ job_class_defaults_test() ->
         {true, RCSchema} when erlang:is_list(RCSchema) ->
             confirm_enabled_job_classes(RCSchema);
         Ret ->
-            ?assertEqual({error, enoent}, Ret)
+            ?assertEqual({error, enoent}, Ret),
+            ?debugMsg("Supporting riak_core components not present,"
+                " skipping job_class_defaults test")
     end.
 
 confirm_enabled_job_classes(RCSchema) ->
