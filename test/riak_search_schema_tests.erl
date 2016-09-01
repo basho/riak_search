@@ -27,33 +27,47 @@
 ]).
 -define(DEFAULT_ENABLED_JOB_CLASSES, [
 ]).
--define(JOB_CLASS_CONFIG_KEY, "riak_core.job_accept_class").
+-define(JOB_CLASS_CONFIG_KEY,   [riak_core, job_accept_class]).
 
 job_class_defaults_test() ->
-    case riak_core_schema() of
-        {true, RCSchema} when erlang:is_list(RCSchema) ->
-            confirm_enabled_job_classes(RCSchema);
-        Ret ->
-            ?assertEqual({error, enoent}, Ret),
-            ?debugMsg("Supporting riak_core components not present,"
-                " skipping job_class_defaults test")
-    end.
+    confirm_enabled_job_classes(riak_core_schema()).
 
-confirm_enabled_job_classes(RCSchema) ->
+confirm_enabled_job_classes({true, RCSchema}) when erlang:is_list(RCSchema) ->
     Config = cuttlefish_unit:generate_templated_config(
         [RCSchema, "../priv/riak_search.schema"], [],
         riak_core_schema_tests:context() ++ context()),
+    Enabled = config_value(?JOB_CLASS_CONFIG_KEY, Config),
 
-    cuttlefish_unit:assert_config(
-        Config, ?JOB_CLASS_CONFIG_KEY,
-        lists:sort(?DEFAULT_ENABLED_JOB_CLASSES)),
-    ok.
+    [?assertEqual(lists:member(Class, Enabled), true)
+        || Class <- ?DEFAULT_ENABLED_JOB_CLASSES],
+
+    [?assertEqual(lists:member(Class, Enabled), false)
+        || Class <- ?DEFAULT_DISABLED_JOB_CLASSES],
+
+    ok;
+
+% If riak_core is not present, or eunit hasn't been run there, the necessary
+% schema and/or beam file won't be found. If we fail the test buildbot won't
+% pass because the riak_core .eunit files haven't been built.
+confirm_enabled_job_classes({error, enoent}) ->
+    ?debugMsg("Supporting riak_core components not present,"
+        " skipping job_class_defaults_test").
 
 %% Mustache substitutions - return a list of values for any {{variable}} that
 %% would normally be handled by rebar.
 context() ->
     % the riak_search.schema file doesn't currently contain any
     [].
+
+config_value([Key], Config) ->
+    proplists:get_value(Key, Config);
+config_value([Key | Keys], Config) ->
+    case proplists:get_value(Key, Config) of
+        undefined = Val ->
+            Val;
+        Vals ->
+            config_value(Keys, Vals)
+    end.
 
 %% Ensure that the riak_core_schema_tests module is loaded and return the
 %% path of the riak_core.schema file.
