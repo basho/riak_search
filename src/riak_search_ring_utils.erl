@@ -150,4 +150,4 @@ zip_with_partition_and_index(Postings) ->
 %% term and kills performance.
 -spec calc_partition(index(), field(), term()) -> binary().
 calc_partition(Index, Field, Term) ->
-    crypto:sha(term_to_binary({Index, Field, Term})).
+    crypto:hash(sha, term_to_binary({Index, Field, Term})).
