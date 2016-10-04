@@ -1,3 +1,5 @@
+*THIS REPO IS DEPRECATED AND NOT UNDER ACTIVE DEVELOPMENT*
+
 * Overview
 
 [[http://travis-ci.org/basho/riak_search][Travis-CI]] :: [[https://secure.travis-ci.org/basho/riak_search.png]]
