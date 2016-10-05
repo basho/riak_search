@@ -1,6 +1,20 @@
 %% -------------------------------------------------------------------
 %%
-%% Copyright (c) 2007-2012 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2007-2016 Basho Technologies, Inc.
+%%
+%% This file is provided to you under the Apache License,
+%% Version 2.0 (the "License"); you may not use this file
+%% except in compliance with the License.  You may obtain
+%% a copy of the License at
+%%
+%%   http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing,
+%% software distributed under the License is distributed on an
+%% "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+%% KIND, either express or implied.  See the License for the
+%% specific language governing permissions and limitations
+%% under the License.
 %%
 %% -------------------------------------------------------------------
 
@@ -66,7 +80,7 @@ malformed_request(Req, State) ->
                     try
                         {ok, QueryOps} = Client:parse_query(Schema, SQuery#squery.q),
                         {ok, FilterOps} = Client:parse_filter(Schema, SQuery#squery.filter),
-                        {false, Req, validate_state(State#state{schema=Schema, 
+                        {false, Req, validate_state(State#state{schema=Schema,
                                                                 squery=SQuery,
                                                                 query_ops=QueryOps,
                                                                 filter_ops=FilterOps,
@@ -92,16 +106,17 @@ malformed_request(Req, State) ->
             {true, Req, State}
     end.
 
-forbidden(RD, Ctx) ->
+forbidden(ReqData, Context) ->
     case riak_core_security:is_enabled() of
         true ->
-            RD1 = wrq:set_resp_header("Content-Type", "text/plain", RD),
-            {true, wrq:set_resp_body(<<"Riak Search 1.0 is"
-                                             " deprecated in Riak 2.0 and is"
-                                             " not compatible with"
-                                             " security.">>, RD1), Ctx};
+            {true,
+                wrq:set_resp_body(<<"Riak Search 1.0 is deprecated in Riak 2.0"
+                    " and is not compatible with security.">>,
+                    wrq:set_resp_header("Content-Type", "text/plain", ReqData)),
+                Context};
         false ->
-            {false, RD, Ctx}
+            Class = {riak_search, query},
+            riak_kv_wm_utils:is_forbidden(ReqData, Class, Context)
     end.
 
 content_types_provided(Req, #state{wt=WT}=State) ->
