@@ -1,8 +1,6 @@
 %% -------------------------------------------------------------------
 %%
-%% riak_search_pb_query: PB Service for Riak Search queries
-%%
-%% Copyright (c) 2012 Basho Technologies, Inc.  All Rights Reserved.
+%% Copyright (c) 2012-2016 Basho Technologies, Inc.
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -56,45 +54,57 @@ encode(Message) ->
     {ok, riak_pb_codec:encode(Message)}.
 
 %% @doc process/2 callback. Handles an incoming request message.
-process(Msg, #state{client=Client}=State) ->
-    case riak_core_security:is_enabled() of
+process(Msg, #state{client = Client} = State) ->
+    Class = {riak_search, query},
+    Accept = riak_core_util:job_class_enabled(Class),
+    _ = riak_core_util:report_job_request_disposition(
+        Accept, Class, ?MODULE, process, ?LINE, protobuf),
+    case Accept of
         true ->
-            %% we don't support link walking when security is
-            %% enabled, return an error of some kind
-            {error, "Riak Search 1.0 is"
-                     " deprecated in Riak 2.0 and is"
-                     " not compatible with security.", State};
+            case riak_core_security:is_enabled() of
+                true ->
+                    %% we don't support link walking when security is
+                    %% enabled, return an error of some kind
+                    {error, "Riak Search 1.0 is deprecated in Riak 2.0 and is"
+                        " not compatible with security.", State};
+                _ ->
+                    #rpbsearchqueryreq{index = Index,
+                        sort = Sort0, fl = FL0, presort = Presort0} = Msg,
+                    {ok, Schema0} = riak_search_config:get_schema(Index),
+                    case parse_squery(Msg) of
+                        {ok, SQuery} ->
+                            %% Construct schema, query, and filter
+                            Schema = riak_search_utils:replace_schema_defaults(
+                                SQuery, Schema0),
+                            {ok, QueryOps} = Client:parse_query(
+                                Schema, SQuery#squery.q),
+                            {ok, FilterOps} = Client:parse_filter(
+                                Schema, SQuery#squery.filter),
+                            %% Validate
+                            UK = Schema:unique_key(),
+                            FL = parse_fl(default(FL0, [<<"*">>])),
+                            Sort = default(Sort0, <<"none">>),
+                            Presort = to_atom(default(Presort0, <<"score">>)),
+                            if
+                                FL == [UK] andalso Sort /= <<"none">> ->
+                                    {error, riak_search_utils:err_msg(
+                                        {error, fl_id_with_sort, UK}), State};
+                                true ->
+                                    %% Execute
+                                    Result = run_query(Client, Schema, SQuery,
+                                        QueryOps, FilterOps, Presort, FL),
+                                    {reply,
+                                        encode_results(Result, UK, FL),
+                                        State}
+                            end;
+                        {error, missing_query} ->
+                            {error, "Missing query", State}
+                    end
+            end;
         _ ->
-            #rpbsearchqueryreq{index=Index, sort=Sort0,
-                            fl=FL0, presort=Presort0}=Msg,
-            {ok, Schema0} = riak_search_config:get_schema(Index),
-            case parse_squery(Msg) of
-                {ok, SQuery} ->
-                    %% Construct schema, query, and filter
-                    Schema = riak_search_utils:replace_schema_defaults(SQuery,
-                                                                    Schema0),
-                    {ok, QueryOps} = Client:parse_query(Schema,
-                                                        SQuery#squery.q),
-                    {ok, FilterOps} = Client:parse_filter(Schema,
-                                                          SQuery#squery.filter),
-                    %% Validate
-                    UK = Schema:unique_key(),
-                    FL = parse_fl(default(FL0, [<<"*">>])),
-                    Sort = default(Sort0, <<"none">>),
-                    Presort = to_atom(default(Presort0, <<"score">>)),
-                    if
-                        FL == [UK] andalso Sort /= <<"none">> ->
-                            {error, riak_search_utils:err_msg(
-                                    {error, fl_id_with_sort, UK}), State};
-                        true ->
-                            %% Execute
-                            Result = run_query(Client, Schema, SQuery,
-                                               QueryOps, FilterOps, Presort, FL),
-                            {reply, encode_results(Result, UK, FL), State}
-                    end;
-                {error, missing_query} ->
-                    {error, "Missing query", State}
-            end
+            {error,
+                riak_core_util:job_class_disabled_message(text, Class),
+                State}
     end.
 
 %% @doc process_stream/3 callback. Ignored.
